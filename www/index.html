@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Local Ride-Share</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-light">
+
+    <div id="app-container" class="container-fluid p-0 vh-100 position-relative">
+        
+        <div id="auth-view" class="h-100 d-flex flex-column justify-content-center align-items-center p-4">
+            <div class="card p-4 shadow-sm w-100" style="max-width: 400px;">
+                <h2 class="text-center text-primary fw-bold mb-4">Tripura RideShare</h2>
+                
+                <div id="phone-input-container">
+                    <label class="form-label fw-semibold">Enter Mobile Number</label>
+                    <div class="input-group mb-3">
+                        <span class="input-group-text">+91</span>
+                        <input type="tel" id="phone-number" class="form-control" placeholder="9999999999" maxlength="10">
+                    </div>
+                    <button id="send-otp-btn" class="btn btn-primary w-100 py-2 fw-bold">Send OTP</button>
+                </div>
+
+                <div id="otp-input-container" class="d-none">
+                    <label class="form-label fw-semibold">Enter 6-Digit OTP</label>
+                    <input type="text" id="otp-code" class="form-control text-center letter-spacing-2 mb-3" placeholder="******" maxlength="6">
+                    <button id="verify-otp-btn" class="btn btn-success w-100 py-2 fw-bold">Verify & Login</button>
+                </div>
+
+                <div id="registration-container" class="d-none">
+                    <h4 class="mb-3 text-secondary">Complete Your Profile</h4>
+                    <div class="mb-3">
+                        <label class="form-label">Full Name</label>
+                        <input type="text" id="user-name" class="form-control" placeholder="Rahul Nath">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">I want to register as a:</label>
+                        <select id="user-role" class="form-select">
+                            <option value="passenger">Passenger (Looking for Rides)</option>
+                            <option value="driver">Driver (Offering Rides)</option>
+                        </select>
+                    </div>
+                    <button id="register-btn" class="btn btn-warning w-100 py-2 fw-bold text-dark">Create Account</button>
+                </div>
+
+                <div id="recaptcha-container" class="mt-3 d-flex justify-content-center"></div>
+            </div>
+        </div>
+
+
+        <div id="dashboard-view" class="h-100 d-none flex-column">
+            <div id="map-container" class="flex-grow-1 bg-secondary"></div>
+
+            <div id="bottom-sheet" class="bg-white p-3 shadow-lg rounded-top-4 position-absolute bottom-0 w-100" style="z-index: 1000; min-height: 220px;">
+                <div class="container p-0">
+                    <h5 class="fw-bold mb-3 text-dark">Book a Local Ride</h5>
+                    
+                    <div class="mb-2">
+                        <label for="pickup-input">From : </label>
+                        <input type="text" id="pickup-input" class="form-control form-control-sm bg-light" placeholder="📍 Current Location (Detecting...)" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="drop-input">To : </label>
+                        <input type="text" id="drop-input" class="form-control form-control-sm" placeholder="🔍 Where to? (e.g., Kumarghat Station)">
+                    </div>
+                    
+                    <div id="fare-quote-box" class="d-none justify-content-between align-items-center bg-primary-subtle p-2 rounded mb-3">
+                        <span class="fw-semibold text-primary">Estimated Fare (Bike/Auto):</span>
+                        <span id="fare-amount" class="fw-bold text-primary fs-5">₹0.00</span>
+                    </div>
+
+                    <button id="request-ride-btn" class="btn btn-primary w-100 fw-bold py-2">Confirm Request</button>
+                </div>
+            </div>
+        </div>
+
+
+
+        <div id="driver-view" class="h-100 w-100 d-none flex-column p-3 bg-light position-absolute top-0 start-0" style="z-index: 1050; overflow-y: auto;">
+            <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+                <div>
+                    <h4 class="fw-bold text-success mb-0">Driver Duty Console</h4>
+                    <small class="text-muted" id="driver-welcome-name">Welcome, Driver</small>
+                </div>
+                <span class="badge bg-success p-2 animate-pulse">● Online</span>
+            </div>
+
+            <h5 class="fw-semibold mb-3 text-secondary">Incoming Local Ride Requests</h5>
+            
+            <div id="available-rides-list" class="flex-grow-1">
+                <div id="no-rides-msg" class="text-center my-5 text-muted">
+                    <i class="fs-1 d-block mb-2">📭</i>
+                    Searching for passengers in Tripura...
+                </div>
+            </div>
+
+            <div id="active-trip-container" class="d-none mt-4 p-3 bg-white rounded shadow-sm border-top border-success border-4">
+                <h6 class="fw-bold text-success mb-2">🚖 Active Trip Lifecycle</h6>
+                <div id="active-trip-details" class="small text-muted mb-3"></div>
+                <button id="complete-trip-btn" class="btn btn-dark w-100 fw-bold">
+                    Drop off Passenger & Complete Trip
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+
+
+    //payment pop-up section
+    <div id="passenger-payment-view" class="d-none position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex align-items-center justify-content-center" style="z-index: 2000;">
+        <div class="bg-white p-4 rounded-4 shadow text-center mx-3" style="max-width: 400px; width: 100%;">
+            <div class="display-4 text-success mb-2">🏁</div>
+            <h4 class="fw-bold mb-1">Trip Completed!</h4>
+            <p class="text-muted small">Thank you for riding with Tripura RideShare.</p>
+            <hr>
+            <div class="bg-light p-3 rounded mb-3">
+                <span class="text-secondary d-block small">AMOUNT DUE</span>
+                <h2 class="fw-bold text-dark m-0" id="passenger-final-fare">₹0.00</h2>
+            </div>
+            <p class="small text-secondary mb-3">Please pay your driver directly via Cash or by scanning their on-screen UPI QR code.</p>
+            <button id="close-passenger-payment-btn" class="btn btn-success w-100 fw-bold py-2">Done & Clear Screen</button>
+        </div>
+    </div>
+
+    <div id="driver-payment-view" class="d-none position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex align-items-center justify-content-center" style="z-index: 2000;">
+        <div class="bg-white p-4 rounded-4 shadow text-center mx-3" style="max-width: 400px; width: 100%;">
+            <div class="text-success mb-2" style="font-size: 40px;">💰</div>
+            <h4 class="fw-bold mb-1">Collect Your Fare</h4>
+            <p class="text-muted small">Show this screen to the passenger for easy collection.</p>
+            <hr>
+            <div class="bg-light p-2 rounded mb-3">
+                <span class="text-secondary d-block small">TOTAL FARE</span>
+                <h3 class="fw-bold text-success m-0" id="driver-final-fare">₹0.00</h3>
+            </div>
+            
+            <div class="d-flex justify-content-center my-3 p-2 bg-white border rounded">
+                <img id="upi-qr-image" src="" alt="UPI QR Code" style="width: 180px; height: 180px;">
+            </div>
+            
+            <p class="small text-muted mb-3">Funds shift straight to your connected bank account.</p>
+            <button id="close-driver-payment-btn" class="btn btn-dark w-100 fw-bold py-2">Fare Received & Clear</button>
+        </div>
+    </div>
+
+
+
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script type="module" src="js/firebase-init.js"></script>
+    <script type="module" src="js/auth.js"></script>
+    <script type="module" src="js/map.js"></script>
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
