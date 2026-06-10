@@ -179,11 +179,25 @@ async function finalizeRegistration() {
 
 function handleUserRouting(userData) {
     document.getElementById('auth-view').classList.add('d-none');
+    document.getElementById('dashboard-view').classList.add('d-none');
+    document.getElementById('dashboard-view').classList.remove('d-flex');
+    document.getElementById('driver-view').classList.add('d-none');
+    document.getElementById('driver-view').classList.remove('d-flex');
+    document.getElementById('driver-review-view').classList.add('d-none');
+    document.getElementById('driver-review-view').classList.remove('d-flex');
     
     // Check role to unveil correct visual layout framework
     if (userData.role === "driver") {
-        document.getElementById('driver-view').classList.remove('d-none');
-        document.getElementById('driver-view').classList.add('d-flex');
+        if (userData.verificationStatus === "approved") {
+            document.getElementById('driver-view').classList.remove('d-none');
+            document.getElementById('driver-view').classList.add('d-flex');
+        } else {
+            document.getElementById('driver-review-status').innerText = userData.verificationStatus || "pending_review";
+            document.getElementById('driver-review-vehicle').innerText = userData.vehicleNumber || "Not submitted";
+            document.getElementById('driver-review-license').innerText = userData.drivingLicenseNumber || "Not submitted";
+            document.getElementById('driver-review-view').classList.remove('d-none');
+            document.getElementById('driver-review-view').classList.add('d-flex');
+        }
     } else {
         document.getElementById('dashboard-view').classList.remove('d-none');
         document.getElementById('dashboard-view').classList.add('d-flex');

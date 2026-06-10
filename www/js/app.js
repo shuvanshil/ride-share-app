@@ -77,8 +77,19 @@ window.addEventListener('user-session-ready', (e) => {
     console.log(`Session validated. Routing profile role: ${currentUser.role}`);
 
     if (currentUser.role === "driver") {
+        if (currentUser.verificationStatus !== "approved") {
+            console.log(`Driver access paused. Verification status: ${currentUser.verificationStatus || "pending_review"}`);
+            if (activeDriverJobsListener) {
+                activeDriverJobsListener();
+                activeDriverJobsListener = null;
+            }
+            return;
+        }
+
         // Route directly to Driver Console Dashboard
         document.getElementById('auth-view').classList.add('d-none');
+        document.getElementById('driver-review-view').classList.add('d-none');
+        document.getElementById('driver-review-view').classList.remove('d-flex');
         document.getElementById('driver-view').classList.remove('d-none');
         document.getElementById('driver-view').classList.add('d-flex');
         document.getElementById('driver-welcome-name').innerText = `Welcome, ${currentUser.name}`;
