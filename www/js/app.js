@@ -69,6 +69,45 @@ function renderActiveTripStatus(status) {
     resetActiveTripButtons(status);
 }
 
+function resetPassengerRequestButtonForActiveRide(status) {
+    const requestBtn = document.getElementById('request-ride-btn');
+
+    const buttonState = {
+        pending: {
+            text: "Waiting for a driver to accept...",
+            className: "btn btn-warning w-100 fw-bold py-2 text-dark"
+        },
+        accepted: {
+            text: "Driver accepted. On the way to pickup.",
+            className: "btn btn-success w-100 fw-bold py-2"
+        },
+        arrived: {
+            text: "Driver arrived at pickup.",
+            className: "btn btn-info w-100 fw-bold py-2 text-dark"
+        },
+        started: {
+            text: "Trip started. Enjoy your ride.",
+            className: "btn btn-primary w-100 fw-bold py-2"
+        }
+    }[status] || {
+        text: "Ride in progress...",
+        className: "btn btn-secondary w-100 fw-bold py-2"
+    };
+
+    requestBtn.innerHTML = buttonState.text;
+    requestBtn.className = buttonState.className;
+    requestBtn.disabled = true;
+}
+
+function showDriverActiveTripPanel(status) {
+    document.getElementById('active-trip-container').classList.remove('d-none');
+    document.getElementById('active-trip-details').innerHTML = `
+        <p class="mb-1"><strong>Status:</strong> Restoring active trip...</p>
+        <p class="mb-0 text-secondary" id="gps-status">GPS locking...</p>
+    `;
+    renderActiveTripStatus(status);
+}
+
 // ==========================================
 // 1. ROLE-BASED APPLICATION ROUTER
 // ==========================================
@@ -98,11 +137,76 @@ window.addEventListener('user-session-ready', (e) => {
 
         // Start live monitoring for passenger broadcasts
         initDriverJobsStream();
+        restoreDriverActiveRide();
     } else {
         // User is a passenger; map initializations happen through map.js automatically
         console.log("Passenger architecture mapped via map.js pipeline context.");
+        restorePassengerActiveRide();
     }
 });
+
+async function restorePassengerActiveRide() {
+    if (!currentUser || currentUser.role !== "passenger") return;
+
+    try {
+        const activeRideQuery = query(
+            collection(db, "rides"),
+            where("passenger_id", "==", currentUser.uid),
+            where("status", "in", ACTIVE_RIDE_STATUSES)
+        );
+
+        const activeRideSnap = await getDocs(activeRideQuery);
+        if (activeRideSnap.empty) return;
+
+        const activeRideDoc = activeRideSnap.docs[0];
+        const activeRide = activeRideDoc.data();
+
+        console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
+        document.getElementById('drop-input').value = activeRide.drop_name || "";
+        if (activeRide.fare) {
+            document.getElementById('fare-amount').innerText = `₹${activeRide.fare}`;
+            document.getElementById('fare-quote-box').classList.remove('d-none');
+            document.getElementById('fare-quote-box').classList.add('d-flex');
+        }
+
+        resetPassengerRequestButtonForActiveRide(activeRide.status);
+        listenToRideStatusUpdates(activeRideDoc.id);
+
+        if (activeRide.driverLocation) {
+            window.dispatchEvent(new CustomEvent('driver-location-updated', {
+                detail: activeRide.driverLocation
+            }));
+        }
+    } catch (error) {
+        console.error("Passenger active ride restore failed:", error);
+    }
+}
+
+async function restoreDriverActiveRide() {
+    if (!currentUser || currentUser.role !== "driver" || currentUser.verificationStatus !== "approved") return;
+
+    try {
+        const activeRideQuery = query(
+            collection(db, "rides"),
+            where("driver_id", "==", currentUser.uid),
+            where("status", "in", DRIVER_ACTIVE_STATUSES)
+        );
+
+        const activeRideSnap = await getDocs(activeRideQuery);
+        if (activeRideSnap.empty) return;
+
+        const activeRideDoc = activeRideSnap.docs[0];
+        console.log(`Restoring driver active ride: ${activeRideDoc.id}`);
+
+        currentlyAssignedRideId = activeRideDoc.id;
+        await setDriverAvailability("busy");
+        showDriverActiveTripPanel(activeRideDoc.data().status);
+        attachDriverTripListener(doc(db, "rides", activeRideDoc.id));
+        startDriverGpsBroadcast(doc(db, "rides", activeRideDoc.id));
+    } catch (error) {
+        console.error("Driver active ride restore failed:", error);
+    }
+}
 
 // ==========================================
 // 2. PASSENGER ENGINE: SUBMIT REQUESTS
@@ -287,6 +391,63 @@ function initDriverJobsStream() {
     });
 }
 
+function attachDriverTripListener(rideRef) {
+    if (activeDriverTripListener) activeDriverTripListener();
+
+    activeDriverTripListener = onSnapshot(rideRef, (docSnap) => {
+        if (!docSnap.exists()) return;
+        const currentRideData = docSnap.data();
+
+        if (currentRideData.status === "cancelled_by_passenger") {
+            alert("The passenger has cancelled this ride request.");
+
+            if (activeDriverLocationWatchId !== null) {
+                navigator.geolocation.clearWatch(activeDriverLocationWatchId);
+                activeDriverLocationWatchId = null;
+            }
+
+            document.getElementById('active-trip-container').classList.add('d-none');
+            currentlyAssignedRideId = null;
+            setDriverAvailability("searching");
+
+            if (activeDriverTripListener) activeDriverTripListener();
+            return;
+        }
+
+        if (DRIVER_ACTIVE_STATUSES.includes(currentRideData.status)) {
+            renderActiveTripStatus(currentRideData.status);
+        }
+    });
+}
+
+function startDriverGpsBroadcast(rideRef) {
+    if (!navigator.geolocation) return;
+
+    if (activeDriverLocationWatchId !== null) {
+        navigator.geolocation.clearWatch(activeDriverLocationWatchId);
+        activeDriverLocationWatchId = null;
+    }
+
+    activeDriverLocationWatchId = navigator.geolocation.watchPosition(
+        async (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+
+            if (currentlyAssignedRideId) {
+                await updateDoc(rideRef, {
+                    driverLocation: { lat: lat, lng: lng }
+                });
+                document.getElementById('gps-status').innerText = "GPS Active & Broadcasting";
+            }
+        },
+        (error) => {
+            console.error("GPS Tracking Error:", error);
+            document.getElementById('gps-status').innerText = "GPS Signal Lost. Please enable location.";
+        },
+        { enableHighAccuracy: true, maximumAge: 0 }
+    );
+}
+
 // Execute state mutation to accept standard rides
 async function acceptRideJob(rideId) {
     try {
@@ -337,32 +498,7 @@ async function acceptRideJob(rideId) {
         `;
         resetActiveTripButtons("accepted");
 
-        // FIXED/ADDED: Driver monitors if Passenger cancels mid-route
-        activeDriverTripListener = onSnapshot(rideRef, (docSnap) => {
-            if (!docSnap.exists()) return;
-            const currentRideData = docSnap.data();
-
-            if (currentRideData.status === "cancelled_by_passenger") {
-                alert("The passenger has cancelled this ride request.");
-                
-                // Kill GPS safely
-                if (activeDriverLocationWatchId !== null) {
-                    navigator.geolocation.clearWatch(activeDriverLocationWatchId);
-                    activeDriverLocationWatchId = null;
-                }
-                
-                document.getElementById('active-trip-container').classList.add('d-none');
-                currentlyAssignedRideId = null;
-                setDriverAvailability("searching");
-                
-                if (activeDriverTripListener) activeDriverTripListener(); // Kill listener
-                return;
-            }
-
-            if (DRIVER_ACTIVE_STATUSES.includes(currentRideData.status)) {
-                renderActiveTripStatus(currentRideData.status);
-            }
-        });
+        attachDriverTripListener(rideRef);
 
         // Start Live GPS Tracking
         if (navigator.geolocation) {

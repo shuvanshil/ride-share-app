@@ -3,7 +3,8 @@ import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/fi
 import {
     RecaptchaVerifier,
     signInWithPhoneNumber,
-    onAuthStateChanged
+    onAuthStateChanged,
+    signOut
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 let confirmationResult = null;
@@ -16,6 +17,7 @@ const otpInputContainer = document.getElementById('otp-input-container');
 const registrationContainer = document.getElementById('registration-container');
 const userRoleSelect = document.getElementById('user-role');
 const driverVerificationFields = document.getElementById('driver-verification-fields');
+const logoutBtn = document.getElementById('logout-btn');
 
 function updateRegistrationFieldsForRole() {
     if (!userRoleSelect || !driverVerificationFields) return;
@@ -185,6 +187,7 @@ function handleUserRouting(userData) {
     document.getElementById('driver-view').classList.remove('d-flex');
     document.getElementById('driver-review-view').classList.add('d-none');
     document.getElementById('driver-review-view').classList.remove('d-flex');
+    logoutBtn.classList.remove('d-none');
     
     // Check role to unveil correct visual layout framework
     if (userData.role === "driver") {
@@ -211,6 +214,15 @@ document.getElementById('send-otp-btn').addEventListener('click', sendOTP);
 document.getElementById('verify-otp-btn').addEventListener('click', verifyOTP);
 document.getElementById('register-btn').addEventListener('click', finalizeRegistration);
 userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
+logoutBtn.addEventListener('click', async () => {
+    try {
+        await signOut(auth);
+        window.location.reload();
+    } catch (error) {
+        console.error("Logout failed:", error);
+        alert("Could not logout. Please try again.");
+    }
+});
 updateRegistrationFieldsForRole();
 
 onAuthStateChanged(auth, async (user) => {
