@@ -11,8 +11,12 @@ import {
     orderBy, 
     onSnapshot, 
     serverTimestamp,
-    increment
+    increment,
+    runTransaction
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started"];
+const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started"];
 
 // Global variables
 let activeDriverLocationWatchId = null;
@@ -23,6 +27,47 @@ let activeDriverJobsListener = null;     // For Driver marketplace stream
 
 // Global variable to keep track of the ride currently being driven
 let currentlyAssignedRideId = null;
+
+async function setDriverAvailability(status) {
+    if (!currentUser || currentUser.role !== "driver") return;
+
+    try {
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            driverAvailability: status,
+            driverAvailabilityUpdatedAt: serverTimestamp()
+        });
+    } catch (error) {
+        console.warn("Driver availability update failed:", error);
+    }
+}
+
+function resetActiveTripButtons(status = "accepted") {
+    const arrivedBtn = document.getElementById('arrived-trip-btn');
+    const startBtn = document.getElementById('start-trip-btn');
+    const completeBtn = document.getElementById('complete-trip-btn');
+
+    arrivedBtn.disabled = status !== "accepted";
+    startBtn.disabled = status !== "arrived";
+    completeBtn.disabled = status !== "started";
+}
+
+function renderActiveTripStatus(status) {
+    const labels = {
+        accepted: "Accepted - drive to pickup",
+        arrived: "Arrived at pickup - ready to start",
+        started: "Trip started - drive to destination"
+    };
+
+    const activeTripDetails = document.getElementById('active-trip-details');
+    const gpsStatusText = document.getElementById('gps-status')?.innerText || "GPS locking...";
+
+    activeTripDetails.innerHTML = `
+        <p class="mb-1"><strong>Status:</strong> ${labels[status] || status}</p>
+        <p class="mb-0 text-secondary" id="gps-status">${gpsStatusText}</p>
+    `;
+
+    resetActiveTripButtons(status);
+}
 
 // ==========================================
 // 1. ROLE-BASED APPLICATION ROUTER
@@ -38,6 +83,8 @@ window.addEventListener('user-session-ready', (e) => {
         document.getElementById('driver-view').classList.add('d-flex');
         document.getElementById('driver-welcome-name').innerText = `Welcome, ${currentUser.name}`;
         
+        setDriverAvailability("searching");
+
         // Start live monitoring for passenger broadcasts
         initDriverJobsStream();
     } else {
@@ -69,7 +116,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
         const activeRideQuery = query(
             collection(db, "rides"),
             where("passenger_id", "==", currentUser.uid),
-            where("status", "in", ["pending", "accepted", "en_route"])
+            where("status", "in", ACTIVE_RIDE_STATUSES)
         );
 
         const activeRideSnap = await getDocs(activeRideQuery); 
@@ -98,6 +145,11 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             fare: fareAmount, 
             status: "pending",
             driver_id: null,
+            driver_name: null,
+            driver_phone: null,
+            driverAvailabilitySnapshot: null,
+            payment_methods: ["cash", "upi"],
+            payment_status: "pending",
             createdAt: serverTimestamp()
         };
 
@@ -133,12 +185,30 @@ function listenToRideStatusUpdates(rideId) {
         }
 
         if (ride.status === "accepted") {
-            requestBtn.innerHTML = `✅ Driver En Route!`;
+            requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
             
             if (ride.driverLocation) {
                 window.dispatchEvent(new CustomEvent('driver-location-updated', { 
                     detail: ride.driverLocation 
+                }));
+            }
+        } else if (ride.status === "arrived") {
+            requestBtn.innerHTML = 'Driver arrived at pickup.';
+            requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
+
+            if (ride.driverLocation) {
+                window.dispatchEvent(new CustomEvent('driver-location-updated', {
+                    detail: ride.driverLocation
+                }));
+            }
+        } else if (ride.status === "started") {
+            requestBtn.innerHTML = 'Trip started. Enjoy your ride.';
+            requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
+
+            if (ride.driverLocation) {
+                window.dispatchEvent(new CustomEvent('driver-location-updated', {
+                    detail: ride.driverLocation
                 }));
             }
         } else if (ride.status === "completed") {
@@ -210,19 +280,51 @@ function initDriverJobsStream() {
 async function acceptRideJob(rideId) {
     try {
         const rideRef = doc(db, "rides", rideId);
-        await updateDoc(rideRef, {
-            status: "accepted",
-            driver_id: currentUser.uid
+        const driverActiveRideQuery = query(
+            collection(db, "rides"),
+            where("driver_id", "==", currentUser.uid),
+            where("status", "in", DRIVER_ACTIVE_STATUSES)
+        );
+        const activeRideSnap = await getDocs(driverActiveRideQuery);
+
+        if (!activeRideSnap.empty) {
+            throw new Error("You already have an active ride.");
+        }
+
+        await runTransaction(db, async (transaction) => {
+            const rideSnap = await transaction.get(rideRef);
+
+            if (!rideSnap.exists()) {
+                throw new Error("Ride request no longer exists.");
+            }
+
+            const rideData = rideSnap.data();
+
+            if (rideData.status !== "pending" || rideData.driver_id) {
+                throw new Error("This ride was already accepted by another driver.");
+            }
+
+            transaction.update(rideRef, {
+                status: "accepted",
+                driver_id: currentUser.uid,
+                driver_name: currentUser.name,
+                driver_phone: currentUser.phone,
+                acceptedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
         });
+
+        await setDriverAvailability("busy");
 
         currentlyAssignedRideId = rideId;
         
         // UI Transition: Show active trip control panel
         document.getElementById('active-trip-container').classList.remove('d-none');
         document.getElementById('active-trip-details').innerHTML = `
-            <p class="mb-1"><strong>Status:</strong> En route to destination</p>
+            <p class="mb-1"><strong>Status:</strong> Accepted - drive to pickup</p>
             <p class="mb-0 text-secondary" id="gps-status">📍 Locking GPS signal...</p>
         `;
+        resetActiveTripButtons("accepted");
 
         // FIXED/ADDED: Driver monitors if Passenger cancels mid-route
         activeDriverTripListener = onSnapshot(rideRef, (docSnap) => {
@@ -240,8 +342,14 @@ async function acceptRideJob(rideId) {
                 
                 document.getElementById('active-trip-container').classList.add('d-none');
                 currentlyAssignedRideId = null;
+                setDriverAvailability("searching");
                 
                 if (activeDriverTripListener) activeDriverTripListener(); // Kill listener
+                return;
+            }
+
+            if (DRIVER_ACTIVE_STATUSES.includes(currentRideData.status)) {
+                renderActiveTripStatus(currentRideData.status);
             }
         });
 
@@ -269,7 +377,67 @@ async function acceptRideJob(rideId) {
 
     } catch (error) {
         console.error("Failed to commit transactional state adjustment:", error);
+        alert(error.message || "Could not accept this ride.");
     }
+}
+
+
+async function updateActiveRideStatus(nextStatus) {
+    if (!currentlyAssignedRideId) {
+        console.error("Cannot update trip status: active ride tracker lost.");
+        return;
+    }
+
+    try {
+        const rideRef = doc(db, "rides", currentlyAssignedRideId);
+        const rideSnap = await getDoc(rideRef);
+
+        if (!rideSnap.exists()) {
+            alert("This ride no longer exists.");
+            return;
+        }
+
+        const rideData = rideSnap.data();
+        const allowedTransitions = {
+            accepted: ["arrived"],
+            arrived: ["started"],
+            started: ["completed"]
+        };
+
+        if (rideData.driver_id !== currentUser.uid) {
+            alert("Only the assigned driver can update this trip.");
+            return;
+        }
+
+        if (!allowedTransitions[rideData.status]?.includes(nextStatus)) {
+            alert(`Cannot move ride from ${rideData.status} to ${nextStatus}.`);
+            return;
+        }
+
+        const timestampField = {
+            arrived: "arrivedAt",
+            started: "startedAt"
+        }[nextStatus];
+
+        await updateDoc(rideRef, {
+            status: nextStatus,
+            [timestampField]: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        renderActiveTripStatus(nextStatus);
+    } catch (error) {
+        console.error("Trip status update failed:", error);
+        alert("Could not update trip status. Please try again.");
+    }
+}
+
+async function markDriverArrived() {
+    await updateActiveRideStatus("arrived");
+}
+
+async function startRideJob() {
+    await updateActiveRideStatus("started");
 }
 
 
@@ -284,19 +452,26 @@ async function completeRideJob() {
 
     try {
         const rideRef = doc(db, "rides", currentlyAssignedRideId);
-        if (activeDriverTripListener) activeDriverTripListener();
 
         const rideSnap = await getDoc(rideRef);
         if (!rideSnap.exists()) return;
 
         const rideData = rideSnap.data();
+        if (rideData.status !== "started") {
+            alert("Start the trip before completing it.");
+            return;
+        }
+
         const finalFare = parseFloat(rideData.fare || 0); // Ensure it's a clean number
 
         // 1. Mark the ride as complete
         await updateDoc(rideRef, {
             status: "completed",
-            completedAt: serverTimestamp() // Time-stamp it for the history logs
+            completedAt: serverTimestamp(), // Time-stamp it for the history logs
+            updatedAt: serverTimestamp()
         });
+
+        if (activeDriverTripListener) activeDriverTripListener();
 
         // 2. 💰 MODULE E: UPDATE DRIVER LIFETIME EARNINGS LEDGER
         const driverProfileRef = doc(db, "users", currentUser.uid);
@@ -312,13 +487,24 @@ async function completeRideJob() {
             activeDriverLocationWatchId = null;
         }
 
+        await setDriverAvailability("searching");
+
         // 4. UI Transitions
         document.getElementById('active-trip-container').classList.add('d-none');
         document.getElementById('driver-final-fare').innerText = `₹${finalFare}`;
         
-        const driverUPI = "yourname@okaxis"; 
-        const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${finalFare}&cu=INR`);
-        document.getElementById('upi-qr-image').src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
+        const driverUPI = currentUser.upiId;
+        const upiQrImage = document.getElementById('upi-qr-image');
+
+        if (driverUPI) {
+            const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${finalFare}&cu=INR`);
+            upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
+            upiQrImage.classList.remove('d-none');
+        } else {
+            upiQrImage.src = "";
+            upiQrImage.classList.add('d-none');
+            alert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+        }
         
         document.getElementById('driver-payment-view').classList.remove('d-none');
         currentlyAssignedRideId = null;
@@ -355,6 +541,12 @@ async function cancelRideByPassenger(rideId) {
 
 // Triggered when driver clicks a "Cancel Active Trip" button
 async function cancelRideByDriver(rideId) {
+    rideId = rideId || currentlyAssignedRideId;
+    if (!rideId) {
+        alert("No active trip found to cancel.");
+        return;
+    }
+
     if (!confirm("Warning: Cancelling active trips impacts your driver rating. Proceed?")) return;
 
     try {
@@ -376,6 +568,7 @@ async function cancelRideByDriver(rideId) {
         alert("Trip aborted successfully. Status set to offline.");
         
         currentlyAssignedRideId = null;
+        await setDriverAvailability("searching");
 
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
@@ -385,7 +578,10 @@ async function cancelRideByDriver(rideId) {
 // ==========================================
 // 4. GLOBAL UI EVENT LISTENERS
 // ==========================================
+document.getElementById('arrived-trip-btn').addEventListener('click', markDriverArrived);
+document.getElementById('start-trip-btn').addEventListener('click', startRideJob);
 document.getElementById('complete-trip-btn').addEventListener('click', completeRideJob);
+document.getElementById('cancel-driver-trip-btn').addEventListener('click', () => cancelRideByDriver());
 
 document.getElementById('close-passenger-payment-btn').addEventListener('click', () => {
     document.getElementById('passenger-payment-view').classList.add('d-none');
