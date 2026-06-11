@@ -279,7 +279,6 @@ async function markRidePaidAndCreateHistory(rideId) {
                 throw new Error("Only the assigned driver can confirm this payment.");
             }
 
-            const historySnap = await transaction.get(historyRef);
             transaction.update(rideRef, {
                 payment_status: "paid",
                 payment_confirmed_by: currentUser.uid,
@@ -287,12 +286,10 @@ async function markRidePaidAndCreateHistory(rideId) {
                 updatedAt: serverTimestamp()
             });
 
-            if (!historySnap.exists()) {
-                transaction.set(historyRef, buildTripHistoryRecord(rideId, {
-                    ...rideData,
-                    payment_status: "paid"
-                }));
-            }
+            transaction.set(historyRef, buildTripHistoryRecord(rideId, {
+                ...rideData,
+                payment_status: "paid"
+            }));
         });
 
         return true;
