@@ -1043,15 +1043,20 @@ async function fetchUserTripHistory() {
         const roleField = currentUser.role === "driver" ? "driver_id" : "passenger_id";
         const historyQuery = query(
             collection(db, "tripHistory"),
-            where(roleField, "==", currentUser.uid),
-            orderBy("completedAt", "desc")
+            where(roleField, "==", currentUser.uid)
         );
 
         const snapshot = await getDocs(historyQuery);
-        return snapshot.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...docSnap.data()
-        }));
+        return snapshot.docs
+            .map((docSnap) => ({
+                id: docSnap.id,
+                ...docSnap.data()
+            }))
+            .sort((a, b) => {
+                const aTime = a.completedAt?.toMillis ? a.completedAt.toMillis() : 0;
+                const bTime = b.completedAt?.toMillis ? b.completedAt.toMillis() : 0;
+                return bTime - aTime;
+            });
     } catch (error) {
         console.error("Failed to fetch trip history:", error);
         alert("Could not load trip history. If Firebase asks for an index, create it from the console error link.");
