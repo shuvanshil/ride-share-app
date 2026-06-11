@@ -15,8 +15,8 @@ import {
     runTransaction
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started"];
-const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started"];
+const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
+const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 
 // Global variables
 let activeDriverLocationWatchId = null;
@@ -27,6 +27,38 @@ let activeDriverJobsListener = null;     // For Driver marketplace stream
 
 // Global variable to keep track of the ride currently being driven
 let currentlyAssignedRideId = null;
+let activeDriverRenderedStatus = null;
+
+function generateVerificationPin() {
+    return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+function renderPassengerVerificationPin(pin) {
+    if (!pin) return;
+
+    const bottomSheetContainer = document.querySelector('#bottom-sheet .container');
+    if (!bottomSheetContainer) return;
+
+    let pinBox = document.getElementById('passenger-verification-pin-box');
+    if (!pinBox) {
+        pinBox = document.createElement('div');
+        pinBox.id = 'passenger-verification-pin-box';
+        pinBox.className = 'bg-warning-subtle border border-warning rounded p-2 mb-3 text-center';
+        bottomSheetContainer.insertBefore(pinBox, document.getElementById('request-ride-btn'));
+    }
+
+    pinBox.innerHTML = `
+        <div class="small text-secondary fw-semibold">Passenger Verification PIN</div>
+        <div class="fs-3 fw-bold text-dark letter-spacing-2">${pin}</div>
+        <div class="small text-muted">Share this PIN only with your assigned driver.</div>
+    `;
+    pinBox.classList.remove('d-none');
+}
+
+function hidePassengerVerificationPin() {
+    const pinBox = document.getElementById('passenger-verification-pin-box');
+    if (pinBox) pinBox.classList.add('d-none');
+}
 
 async function setDriverAvailability(status) {
     if (!currentUser || currentUser.role !== "driver") return;
@@ -46,27 +78,46 @@ function resetActiveTripButtons(status = "accepted") {
     const startBtn = document.getElementById('start-trip-btn');
     const completeBtn = document.getElementById('complete-trip-btn');
 
-    arrivedBtn.disabled = status !== "accepted";
-    startBtn.disabled = status !== "arrived";
-    completeBtn.disabled = status !== "started";
+    arrivedBtn.classList.add('d-none');
+    startBtn.classList.add('d-none');
+    completeBtn.classList.toggle('d-none', status !== "en_route");
+    completeBtn.disabled = status !== "en_route";
 }
 
 function renderActiveTripStatus(status) {
+    activeDriverRenderedStatus = status;
+
     const labels = {
-        accepted: "Accepted - drive to pickup",
+        accepted: "PIN verification required",
         arrived: "Arrived at pickup - ready to start",
-        started: "Trip started - drive to destination"
+        started: "Trip started - drive to destination",
+        en_route: "Trip in Progress"
     };
 
     const activeTripDetails = document.getElementById('active-trip-details');
     const gpsStatusText = document.getElementById('gps-status')?.innerText || "GPS locking...";
+    const pinVerificationHtml = status === "accepted" ? `
+        <div id="verification-pin-panel" class="mt-3">
+            <label for="verification-pin-input" class="form-label fw-semibold mb-1">Passenger PIN</label>
+            <input id="verification-pin-input" type="tel" maxlength="4" inputmode="numeric" class="form-control text-center fw-bold mb-2" placeholder="Enter 4-digit PIN">
+            <button id="verify-pin-btn" class="btn btn-success w-100 fw-bold">
+                Verify & Start Trip
+            </button>
+        </div>
+    ` : "";
 
     activeTripDetails.innerHTML = `
         <p class="mb-1"><strong>Status:</strong> ${labels[status] || status}</p>
         <p class="mb-0 text-secondary" id="gps-status">${gpsStatusText}</p>
+        ${pinVerificationHtml}
     `;
 
     resetActiveTripButtons(status);
+
+    const verifyPinBtn = document.getElementById('verify-pin-btn');
+    if (verifyPinBtn) {
+        verifyPinBtn.addEventListener('click', () => verifyAndStartTrip(currentlyAssignedRideId));
+    }
 }
 
 function resetPassengerRequestButtonForActiveRide(status) {
@@ -87,6 +138,10 @@ function resetPassengerRequestButtonForActiveRide(status) {
         },
         started: {
             text: "Trip started. Enjoy your ride.",
+            className: "btn btn-primary w-100 fw-bold py-2"
+        },
+        en_route: {
+            text: "🚗 Trip in Progress! Enjoy your ride.",
             className: "btn btn-primary w-100 fw-bold py-2"
         }
     }[status] || {
@@ -163,6 +218,7 @@ async function restorePassengerActiveRide() {
 
         console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
         document.getElementById('drop-input').value = activeRide.drop_name || "";
+        renderPassengerVerificationPin(activeRide.verification_pin);
         if (activeRide.fare) {
             document.getElementById('fare-amount').innerText = `₹${activeRide.fare}`;
             document.getElementById('fare-quote-box').classList.remove('d-none');
@@ -251,6 +307,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
     requestBtn.disabled = true;
 
     try {
+        const verificationPin = generateVerificationPin();
         const rideData = {
             passenger_id: currentUser.uid,
             passenger_name: currentUser.name,
@@ -265,10 +322,12 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             driverAvailabilitySnapshot: null,
             payment_methods: ["cash", "upi"],
             payment_status: "pending",
+            verification_pin: verificationPin,
             createdAt: serverTimestamp()
         };
 
         const docRef = await addDoc(collection(db, "rides"), rideData);
+        renderPassengerVerificationPin(verificationPin);
         listenToRideStatusUpdates(docRef.id);
 
     } catch (error) {
@@ -289,6 +348,7 @@ function listenToRideStatusUpdates(rideId) {
         // FIXED: Added handling for when a driver cancels mid-trip
         if (ride.status === "cancelled_by_driver") {
             alert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
+            hidePassengerVerificationPin();
             
             requestBtn.innerHTML = 'Confirm Request';
             document.getElementById('request-ride-btn').disabled = false;
@@ -300,6 +360,7 @@ function listenToRideStatusUpdates(rideId) {
         }
 
         if (ride.status === "accepted") {
+            renderPassengerVerificationPin(ride.verification_pin);
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
             
@@ -326,9 +387,19 @@ function listenToRideStatusUpdates(rideId) {
                     detail: ride.driverLocation
                 }));
             }
+        } else if (ride.status === "en_route") {
+            requestBtn.innerHTML = '🚗 Trip in Progress! Enjoy your ride.';
+            requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
+
+            if (ride.driverLocation) {
+                window.dispatchEvent(new CustomEvent('driver-location-updated', {
+                    detail: ride.driverLocation
+                }));
+            }
         } else if (ride.status === "completed") {
             requestBtn.innerHTML = '🎉 Trip Completed! Safe travels.';
             requestBtn.className = "btn btn-dark w-100 fw-bold py-2";
+            hidePassengerVerificationPin();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
@@ -415,7 +486,9 @@ function attachDriverTripListener(rideRef) {
         }
 
         if (DRIVER_ACTIVE_STATUSES.includes(currentRideData.status)) {
-            renderActiveTripStatus(currentRideData.status);
+            if (currentRideData.status !== activeDriverRenderedStatus) {
+                renderActiveTripStatus(currentRideData.status);
+            }
         }
     });
 }
@@ -492,11 +565,7 @@ async function acceptRideJob(rideId) {
         
         // UI Transition: Show active trip control panel
         document.getElementById('active-trip-container').classList.remove('d-none');
-        document.getElementById('active-trip-details').innerHTML = `
-            <p class="mb-1"><strong>Status:</strong> Accepted - drive to pickup</p>
-            <p class="mb-0 text-secondary" id="gps-status">📍 Locking GPS signal...</p>
-        `;
-        resetActiveTripButtons("accepted");
+        renderActiveTripStatus("accepted");
 
         attachDriverTripListener(rideRef);
 
@@ -587,6 +656,58 @@ async function startRideJob() {
     await updateActiveRideStatus("started");
 }
 
+async function verifyAndStartTrip(rideId) {
+    if (!rideId) {
+        alert("No active ride found for PIN verification.");
+        return;
+    }
+
+    const pinInput = document.getElementById('verification-pin-input');
+    const typedPin = pinInput ? pinInput.value.trim() : "";
+
+    if (!/^\d{4}$/.test(typedPin)) {
+        alert("Please enter the 4-digit passenger PIN.");
+        return;
+    }
+
+    try {
+        const rideRef = doc(db, "rides", rideId);
+        const rideSnap = await getDoc(rideRef);
+
+        if (!rideSnap.exists()) {
+            alert("This ride no longer exists.");
+            return;
+        }
+
+        const rideData = rideSnap.data();
+
+        if (rideData.driver_id !== currentUser.uid) {
+            alert("Only the assigned driver can verify this ride.");
+            return;
+        }
+
+        if (String(rideData.verification_pin || "") !== typedPin) {
+            alert("Incorrect verification PIN. Please verify with the passenger.");
+            return;
+        }
+
+        await updateDoc(rideRef, {
+            status: "en_route",
+            pinVerifiedAt: serverTimestamp(),
+            startedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        const verificationPanel = document.getElementById('verification-pin-panel');
+        if (verificationPanel) verificationPanel.classList.add('d-none');
+
+        renderActiveTripStatus("en_route");
+    } catch (error) {
+        console.error("PIN verification failed:", error);
+        alert("Could not verify PIN. Please try again.");
+    }
+}
+
 
 // Execute final state mutation to complete the ride & update ledgers
 async function completeRideJob() {
@@ -604,8 +725,8 @@ async function completeRideJob() {
         if (!rideSnap.exists()) return;
 
         const rideData = rideSnap.data();
-        if (rideData.status !== "started") {
-            alert("Start the trip before completing it.");
+        if (rideData.status !== "en_route") {
+            alert("Verify the passenger PIN before completing this trip.");
             return;
         }
 
@@ -676,6 +797,7 @@ async function cancelRideByPassenger(rideId) {
         });
 
         alert("Your ride request has been cancelled.");
+        hidePassengerVerificationPin();
         
         document.getElementById('request-ride-btn').innerHTML = 'Confirm Request';
         document.getElementById('request-ride-btn').disabled = false;
