@@ -27,6 +27,7 @@ let activeDriverJobsListener = null;     // For Driver marketplace stream
 
 // Global variable to keep track of the ride currently being driven
 let currentlyAssignedRideId = null;
+let pendingDriverPaymentRideId = null;
 let activeDriverRenderedStatus = null;
 
 function generateVerificationPin() {
@@ -203,6 +204,105 @@ function showDriverActiveTripPanel(status) {
     renderActiveTripStatus(status);
 }
 
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function formatHistoryDate(timestamp) {
+    if (!timestamp?.toDate) return "Date not recorded";
+    return timestamp.toDate().toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short"
+    });
+}
+
+function formatDistance(distanceKm) {
+    return Number.isFinite(Number(distanceKm)) ? `${Number(distanceKm).toFixed(2)} km` : "Not recorded";
+}
+
+function formatDuration(durationMinutes) {
+    return Number.isFinite(Number(durationMinutes)) ? `${Math.round(Number(durationMinutes))} min` : "Not recorded";
+}
+
+function buildTripHistoryRecord(rideId, rideData) {
+    return {
+        ride_id: rideId,
+        passenger_id: rideData.passenger_id || null,
+        driver_id: rideData.driver_id || null,
+        pickup_location: rideData.pickup_name || "Pickup not recorded",
+        drop_location: rideData.drop_name || "Drop not recorded",
+        completedAt: rideData.completedAt || serverTimestamp(),
+        paidAt: serverTimestamp(),
+        distance_km: Number(rideData.distance_km || 0),
+        duration_minutes: Number(rideData.duration_minutes || 0),
+        fare_amount: Number(rideData.fare || 0),
+        trip_status: rideData.status || "completed",
+        payment_status: "paid",
+        driver_name: rideData.driver_name || "Driver",
+        passenger_name: rideData.passenger_name || "Passenger",
+        vehicle_model: rideData.vehicle_model || "Vehicle",
+        vehicle_number: rideData.vehicle_number || "Number not recorded",
+        vehicle_details: `${rideData.vehicle_model || "Vehicle"} • ${rideData.vehicle_number || "Number not recorded"}`,
+        source: "client_payment_confirmation",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    };
+}
+
+async function markRidePaidAndCreateHistory(rideId) {
+    if (!rideId) {
+        alert("No completed ride found for payment confirmation.");
+        return false;
+    }
+
+    try {
+        const rideRef = doc(db, "rides", rideId);
+        const historyRef = doc(db, "tripHistory", rideId);
+
+        await runTransaction(db, async (transaction) => {
+            const rideSnap = await transaction.get(rideRef);
+            if (!rideSnap.exists()) {
+                throw new Error("Ride document no longer exists.");
+            }
+
+            const rideData = rideSnap.data();
+            if (rideData.status !== "completed") {
+                throw new Error("Only completed rides can be moved into trip history.");
+            }
+
+            if (rideData.driver_id !== currentUser.uid) {
+                throw new Error("Only the assigned driver can confirm this payment.");
+            }
+
+            const historySnap = await transaction.get(historyRef);
+            transaction.update(rideRef, {
+                payment_status: "paid",
+                payment_confirmed_by: currentUser.uid,
+                paymentConfirmedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+
+            if (!historySnap.exists()) {
+                transaction.set(historyRef, buildTripHistoryRecord(rideId, {
+                    ...rideData,
+                    payment_status: "paid"
+                }));
+            }
+        });
+
+        return true;
+    } catch (error) {
+        console.error("Trip history creation failed:", error);
+        alert(error.message || "Could not confirm payment and save trip history.");
+        return false;
+    }
+}
+
 // ==========================================
 // 1. ROLE-BASED APPLICATION ROUTER
 // ==========================================
@@ -349,12 +449,19 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
 
     try {
         const verificationPin = generateVerificationPin();
+        const fareQuote = window.latestFareQuote || {};
         const rideData = {
             passenger_id: currentUser.uid,
             passenger_name: currentUser.name,
             passenger_phone: currentUser.phone,
             pickup_name: pickupText,
             drop_name: dropText,
+            pickup_lat: fareQuote.pickup_lat || null,
+            pickup_lng: fareQuote.pickup_lng || null,
+            drop_lat: fareQuote.drop_lat || null,
+            drop_lng: fareQuote.drop_lng || null,
+            distance_km: fareQuote.distance_km || null,
+            duration_minutes: fareQuote.duration_minutes || null,
             fare: fareAmount, 
             status: "pending",
             driver_id: null,
@@ -826,6 +933,7 @@ async function completeRideJob() {
         }
         
         document.getElementById('driver-payment-view').classList.remove('d-none');
+        pendingDriverPaymentRideId = currentlyAssignedRideId;
         currentlyAssignedRideId = null;
 
     } catch (error) {
@@ -909,7 +1017,18 @@ document.getElementById('close-passenger-payment-btn').addEventListener('click',
     window.location.reload(); 
 });
 
-document.getElementById('close-driver-payment-btn').addEventListener('click', () => {
+document.getElementById('close-driver-payment-btn').addEventListener('click', async () => {
+    const closeBtn = document.getElementById('close-driver-payment-btn');
+    closeBtn.disabled = true;
+    closeBtn.innerText = "Saving trip history...";
+
+    const saved = await markRidePaidAndCreateHistory(pendingDriverPaymentRideId);
+    if (!saved) {
+        closeBtn.disabled = false;
+        closeBtn.innerText = "Fare Received & Clear";
+        return;
+    }
+
     document.getElementById('driver-payment-view').classList.add('d-none');
     window.location.reload();
 });
@@ -920,49 +1039,132 @@ document.getElementById('close-driver-payment-btn').addEventListener('click', ()
 // 5. MODULE E: HISTORICAL TRIP LEDGER ENGINE
 // ==========================================
 
-// Call this function when the user opens their "History" or "Earnings" tab
 async function fetchUserTripHistory() {
     if (!currentUser) return [];
 
-    console.log(`Fetching history for ${currentUser.role}: ${currentUser.uid}...`);
-    
     try {
-        // Determine which column to check based on their role
         const roleField = currentUser.role === "driver" ? "driver_id" : "passenger_id";
-
-        // Query: Get completed rides for this specific user, newest first
         const historyQuery = query(
-            collection(db, "rides"),
+            collection(db, "tripHistory"),
             where(roleField, "==", currentUser.uid),
-            where("status", "==", "completed"),
-            orderBy("completedAt", "desc") // Sort newest to oldest
+            orderBy("completedAt", "desc")
         );
 
         const snapshot = await getDocs(historyQuery);
-        const tripHistory = [];
-
-        snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            tripHistory.push({
-                id: docSnap.id,
-                date: data.completedAt ? data.completedAt.toDate().toLocaleDateString() : "Unknown Date",
-                pickup: data.pickup_name,
-                drop: data.drop_name,
-                fare: data.fare
-            });
-        });
-
-        console.log(`✅ Found ${tripHistory.length} past trips in the ledger.`);
-        return tripHistory; // Returns an array of clean data objects ready for the UI team's layout!
-
+        return snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data()
+        }));
     } catch (error) {
-        console.error("Failed to fetch historical ledger:", error);
-        
-        // Note: If Firebase throws a 'Missing Index' error link in the console here, 
-        // click the link it provides to automatically build the composite index for sorting.
+        console.error("Failed to fetch trip history:", error);
+        alert("Could not load trip history. If Firebase asks for an index, create it from the console error link.");
         return [];
     }
 }
 
-// Expose it globally so your HTML buttons can trigger it later
+function renderTripHistoryList(trips) {
+    const list = document.getElementById('trip-history-list');
+    const subtitle = document.getElementById('trip-history-subtitle');
+    if (!list || !subtitle) return;
+
+    subtitle.innerText = currentUser.role === "driver" ? "Completed rides and earnings" : "Completed passenger trips";
+
+    if (!trips.length) {
+        list.innerHTML = `
+            <div class="bg-white border rounded p-4 text-center text-muted">
+                No completed paid trips found yet.
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = trips.map((trip) => {
+        const isDriver = currentUser.role === "driver";
+        const title = isDriver ? trip.passenger_name : trip.driver_name;
+        const moneyLabel = isDriver ? "Earnings" : "Fare";
+        const vehicleLine = !isDriver ? `
+            <div class="small text-muted">${escapeHtml(trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || ""}`)}</div>
+        ` : "";
+
+        return `
+            <div class="bg-white border rounded p-3 mb-3 shadow-sm">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-bold text-dark">${escapeHtml(title || "Trip participant")}</div>
+                        <div class="small text-muted">${formatHistoryDate(trip.completedAt)}</div>
+                        ${vehicleLine}
+                    </div>
+                    <div class="text-end">
+                        <div class="fw-bold text-success">₹${escapeHtml(trip.fare_amount || 0)}</div>
+                        <div class="small text-muted">${moneyLabel}</div>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <div class="small"><strong>From:</strong> ${escapeHtml(trip.pickup_location)}</div>
+                <div class="small"><strong>To:</strong> ${escapeHtml(trip.drop_location)}</div>
+                <div class="d-flex justify-content-between small text-muted mt-2">
+                    <span>${formatDistance(trip.distance_km)}</span>
+                    <span>${formatDuration(trip.duration_minutes)}</span>
+                    <span class="text-capitalize">${escapeHtml(trip.payment_status || trip.trip_status || "completed")}</span>
+                </div>
+                <button class="btn btn-sm btn-outline-primary w-100 mt-3 trip-detail-btn" data-trip-id="${escapeHtml(trip.id)}">
+                    View Details
+                </button>
+            </div>
+        `;
+    }).join("");
+
+    document.querySelectorAll('.trip-detail-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const trip = trips.find((item) => item.id === btn.getAttribute('data-trip-id'));
+            if (trip) renderTripDetail(trip);
+        });
+    });
+}
+
+function renderTripDetail(trip) {
+    const detailContent = document.getElementById('trip-detail-content');
+    if (!detailContent) return;
+
+    detailContent.innerHTML = `
+        <div class="mb-2"><strong>Ride ID:</strong> ${escapeHtml(trip.ride_id || trip.id)}</div>
+        <div class="mb-2"><strong>Date & Time:</strong> ${formatHistoryDate(trip.completedAt)}</div>
+        <div class="mb-2"><strong>Passenger:</strong> ${escapeHtml(trip.passenger_name || "Passenger")}</div>
+        <div class="mb-2"><strong>Driver:</strong> ${escapeHtml(trip.driver_name || "Driver")}</div>
+        <div class="mb-2"><strong>Vehicle:</strong> ${escapeHtml(trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`)}</div>
+        <div class="mb-2"><strong>Pickup:</strong> ${escapeHtml(trip.pickup_location)}</div>
+        <div class="mb-2"><strong>Drop:</strong> ${escapeHtml(trip.drop_location)}</div>
+        <div class="mb-2"><strong>Distance:</strong> ${formatDistance(trip.distance_km)}</div>
+        <div class="mb-2"><strong>Duration:</strong> ${formatDuration(trip.duration_minutes)}</div>
+        <div class="mb-2"><strong>Fare:</strong> ₹${escapeHtml(trip.fare_amount || 0)}</div>
+        <div class="mb-0"><strong>Status:</strong> ${escapeHtml(trip.trip_status || "completed")} / ${escapeHtml(trip.payment_status || "paid")}</div>
+    `;
+
+    document.getElementById('trip-detail-view').classList.remove('d-none');
+}
+
+async function openTripHistory() {
+    if (!currentUser) {
+        alert("Please login first.");
+        return;
+    }
+
+    const historyView = document.getElementById('trip-history-view');
+    const list = document.getElementById('trip-history-list');
+    historyView.classList.remove('d-none');
+    list.innerHTML = `<div class="text-center text-muted py-5">Loading trip history...</div>`;
+
+    const trips = await fetchUserTripHistory();
+    renderTripHistoryList(trips);
+}
+
+document.getElementById('passenger-history-btn').addEventListener('click', openTripHistory);
+document.getElementById('driver-history-btn').addEventListener('click', openTripHistory);
+document.getElementById('close-trip-history-btn').addEventListener('click', () => {
+    document.getElementById('trip-history-view').classList.add('d-none');
+});
+document.getElementById('close-trip-detail-btn').addEventListener('click', () => {
+    document.getElementById('trip-detail-view').classList.add('d-none');
+});
+
 window.fetchUserTripHistory = fetchUserTripHistory;

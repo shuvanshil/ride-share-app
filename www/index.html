@@ -107,6 +107,7 @@
                     </div>
 
                     <button id="request-ride-btn" class="btn btn-primary w-100 fw-bold py-2">Confirm Request</button>
+                    <button id="passenger-history-btn" class="btn btn-outline-secondary w-100 fw-bold py-2 mt-2">Trip History</button>
                 </div>
             </div>
         </div>
@@ -137,6 +138,7 @@
             </div>
 
             <h5 class="fw-semibold mb-3 text-secondary">Incoming Local Ride Requests</h5>
+            <button id="driver-history-btn" class="btn btn-outline-secondary w-100 fw-bold mb-3">Trip History</button>
             
             <div id="available-rides-list" class="flex-grow-1">
                 <div id="no-rides-msg" class="text-center my-5 text-muted">
@@ -162,6 +164,32 @@
                 </button>
             </div>
 
+        </div>
+    </div>
+
+    <div id="trip-history-view" class="d-none position-fixed top-0 start-0 w-100 h-100 bg-light" style="z-index: 2500; overflow-y: auto;">
+        <div class="container py-4" style="max-width: 720px;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h4 class="fw-bold mb-0">Trip History</h4>
+                    <small class="text-muted" id="trip-history-subtitle">Completed trips</small>
+                </div>
+                <button id="close-trip-history-btn" class="btn btn-sm btn-outline-dark">Close</button>
+            </div>
+
+            <div id="trip-history-list">
+                <div class="text-center text-muted py-5">Loading trip history...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="trip-detail-view" class="d-none position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-75 d-flex align-items-center justify-content-center" style="z-index: 2600;">
+        <div class="bg-white rounded shadow mx-3 w-100" style="max-width: 520px;">
+            <div class="d-flex justify-content-between align-items-center border-bottom p-3">
+                <h5 class="fw-bold mb-0">Trip Details</h5>
+                <button id="close-trip-detail-btn" class="btn btn-sm btn-outline-dark">Close</button>
+            </div>
+            <div id="trip-detail-content" class="p-3 small"></div>
         </div>
     </div>
 

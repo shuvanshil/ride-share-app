@@ -228,11 +228,20 @@ function setupFareEngineListeners() {
         if (destination) {
             // Calculate rough distance in kilometers
             const distance = calculateDistance(userLatitude, userLongitude, destination.lat, destination.lng);
+            const estimatedDurationMinutes = Math.max(5, Math.round((distance / 25) * 60));
 
             // Dynamic Pricing Rule: Rs 30 Base Fare + Rs 12 per kilometer
             const baseFare = 30;
             const perKmRate = 12;
             const finalFare = Math.round(baseFare + (distance * perKmRate));
+            window.latestFareQuote = {
+                pickup_lat: userLatitude,
+                pickup_lng: userLongitude,
+                drop_lat: destination.lat,
+                drop_lng: destination.lng,
+                distance_km: Number(distance.toFixed(2)),
+                duration_minutes: estimatedDurationMinutes
+            };
 
             // Unveil the price ticket smoothly in the UI
             fareAmountSpan.innerText = `₹${finalFare}.00`;
@@ -273,6 +282,7 @@ function setupFareEngineListeners() {
         } else {
             fareQuoteBox.classList.add('d-none');
             fareQuoteBox.classList.remove('d-flex');
+            window.latestFareQuote = null;
             clearDestinationRoute();
         }
     });
