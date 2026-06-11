@@ -60,6 +60,46 @@ function hidePassengerVerificationPin() {
     if (pinBox) pinBox.classList.add('d-none');
 }
 
+function renderPassengerDriverCard(ride) {
+    if (!ride.driver_name && !ride.driver_phone && !ride.vehicle_model && !ride.vehicle_number) return;
+
+    const bottomSheetContainer = document.querySelector('#bottom-sheet .container');
+    if (!bottomSheetContainer) return;
+
+    let driverCard = document.getElementById('passenger-driver-card');
+    if (!driverCard) {
+        driverCard = document.createElement('div');
+        driverCard.id = 'passenger-driver-card';
+        driverCard.className = 'bg-white border rounded p-3 mb-3 shadow-sm';
+        bottomSheetContainer.insertBefore(driverCard, document.getElementById('passenger-verification-pin-box') || document.getElementById('request-ride-btn'));
+    }
+
+    const driverName = ride.driver_name || "Assigned Driver";
+    const vehicleModel = ride.vehicle_model || "Vehicle";
+    const vehicleNumber = ride.vehicle_number || "Number pending";
+    const driverPhone = ride.driver_phone || "";
+
+    driverCard.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start gap-3">
+            <div>
+                <div class="fw-bold text-dark">${driverName}</div>
+                <div class="small text-muted">🚗 ${vehicleModel} • ${vehicleNumber}</div>
+            </div>
+            ${driverPhone ? `
+                <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
+                    Call Driver
+                </a>
+            ` : ""}
+        </div>
+    `;
+    driverCard.classList.remove('d-none');
+}
+
+function hidePassengerDriverCard() {
+    const driverCard = document.getElementById('passenger-driver-card');
+    if (driverCard) driverCard.classList.add('d-none');
+}
+
 async function setDriverAvailability(status) {
     if (!currentUser || currentUser.role !== "driver") return;
 
@@ -218,6 +258,7 @@ async function restorePassengerActiveRide() {
 
         console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
         document.getElementById('drop-input').value = activeRide.drop_name || "";
+        renderPassengerDriverCard(activeRide);
         renderPassengerVerificationPin(activeRide.verification_pin);
         if (activeRide.fare) {
             document.getElementById('fare-amount').innerText = `₹${activeRide.fare}`;
@@ -319,6 +360,8 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             driver_id: null,
             driver_name: null,
             driver_phone: null,
+            vehicle_model: null,
+            vehicle_number: null,
             driverAvailabilitySnapshot: null,
             payment_methods: ["cash", "upi"],
             payment_status: "pending",
@@ -349,6 +392,7 @@ function listenToRideStatusUpdates(rideId) {
         if (ride.status === "cancelled_by_driver") {
             alert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
             hidePassengerVerificationPin();
+            hidePassengerDriverCard();
             
             requestBtn.innerHTML = 'Confirm Request';
             document.getElementById('request-ride-btn').disabled = false;
@@ -360,6 +404,7 @@ function listenToRideStatusUpdates(rideId) {
         }
 
         if (ride.status === "accepted") {
+            renderPassengerDriverCard(ride);
             renderPassengerVerificationPin(ride.verification_pin);
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
@@ -370,6 +415,7 @@ function listenToRideStatusUpdates(rideId) {
                 }));
             }
         } else if (ride.status === "arrived") {
+            renderPassengerDriverCard(ride);
             requestBtn.innerHTML = 'Driver arrived at pickup.';
             requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
 
@@ -379,6 +425,7 @@ function listenToRideStatusUpdates(rideId) {
                 }));
             }
         } else if (ride.status === "started") {
+            renderPassengerDriverCard(ride);
             requestBtn.innerHTML = 'Trip started. Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
@@ -388,6 +435,7 @@ function listenToRideStatusUpdates(rideId) {
                 }));
             }
         } else if (ride.status === "en_route") {
+            renderPassengerDriverCard(ride);
             requestBtn.innerHTML = '🚗 Trip in Progress! Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
@@ -400,6 +448,7 @@ function listenToRideStatusUpdates(rideId) {
             requestBtn.innerHTML = '🎉 Trip Completed! Safe travels.';
             requestBtn.className = "btn btn-dark w-100 fw-bold py-2";
             hidePassengerVerificationPin();
+            hidePassengerDriverCard();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
@@ -554,6 +603,8 @@ async function acceptRideJob(rideId) {
                 driver_id: currentUser.uid,
                 driver_name: currentUser.name,
                 driver_phone: currentUser.phone,
+                vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || currentUser.vehicleName || "Registered Vehicle",
+                vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || currentUser.vehicleNo || "Vehicle number pending",
                 acceptedAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
             });
@@ -798,6 +849,7 @@ async function cancelRideByPassenger(rideId) {
 
         alert("Your ride request has been cancelled.");
         hidePassengerVerificationPin();
+        hidePassengerDriverCard();
         
         document.getElementById('request-ride-btn').innerHTML = 'Confirm Request';
         document.getElementById('request-ride-btn').disabled = false;
