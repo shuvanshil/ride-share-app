@@ -152,18 +152,7 @@ select {
 }
 
 .logout-chip {
-    position: fixed;
-    top: 18px;
-    right: 16px;
-    z-index: 3000;
-    border: 0;
-    border-radius: 999px;
-    padding: 8px 12px;
-    color: var(--gy-danger);
-    background: #fff;
-    box-shadow: var(--gy-shadow);
-    font-weight: 800;
-    font-size: 12px;
+    display: none !important;
 }
 
 .app-bar {
