@@ -32,6 +32,7 @@ let activeDispatchExpansionTimer = null;
 
 // Global variable to keep track of the ride currently being driven
 let currentlyAssignedRideId = null;
+let currentPassengerRideId = null;
 let pendingDriverPaymentRideId = null;
 let activeDriverRenderedStatus = null;
 
@@ -104,6 +105,30 @@ function renderPassengerDriverCard(ride) {
 function hidePassengerDriverCard() {
     const driverCard = document.getElementById('passenger-driver-card');
     if (driverCard) driverCard.classList.add('d-none');
+}
+
+function showPassengerCancelButton(rideId) {
+    currentPassengerRideId = rideId;
+    const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
+    if (cancelBtn) cancelBtn.classList.remove('d-none');
+}
+
+function hidePassengerCancelButton() {
+    currentPassengerRideId = null;
+    const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
+    if (cancelBtn) cancelBtn.classList.add('d-none');
+}
+
+function resetPassengerBookingUi() {
+    clearDispatchExpansionTimer();
+    hidePassengerVerificationPin();
+    hidePassengerDriverCard();
+    hidePassengerCancelButton();
+
+    const requestBtn = document.getElementById('request-ride-btn');
+    requestBtn.innerHTML = 'Find Ride';
+    requestBtn.disabled = false;
+    requestBtn.className = "gy-btn gy-btn-primary w-100";
 }
 
 async function setDriverAvailability(status) {
@@ -273,7 +298,7 @@ async function expandRideDispatch(rideId) {
                 search_status: "no_more_available_drivers",
                 updatedAt: serverTimestamp()
             });
-            document.getElementById('request-ride-btn').innerHTML = "No nearby drivers found. Try again shortly.";
+            document.getElementById('request-ride-btn').innerHTML = "No nearby drivers online. You can cancel and rebook.";
             document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
             return;
         }
@@ -535,6 +560,7 @@ async function restorePassengerActiveRide() {
         const activeRide = activeRideDoc.data();
 
         console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
+        showPassengerCancelButton(activeRideDoc.id);
         document.getElementById('drop-input').value = activeRide.drop_name || "";
         renderPassengerDriverCard(activeRide);
         renderPassengerVerificationPin(activeRide.verification_pin);
@@ -657,6 +683,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
         };
 
         const docRef = await addDoc(collection(db, "rides"), rideData);
+        showPassengerCancelButton(docRef.id);
         renderPassengerVerificationPin(verificationPin);
         listenToRideStatusUpdates(docRef.id);
 
@@ -670,6 +697,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
 
 function listenToRideStatusUpdates(rideId) {
     const requestBtn = document.getElementById('request-ride-btn');
+    showPassengerCancelButton(rideId);
 
     activeRideListener = onSnapshot(doc(db, "rides", rideId), (docSnap) => {
         if (!docSnap.exists()) return;
@@ -677,23 +705,24 @@ function listenToRideStatusUpdates(rideId) {
 
         // FIXED: Added handling for when a driver cancels mid-trip
         if (ride.status === "cancelled_by_driver") {
-            clearDispatchExpansionTimer();
             alert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
-            hidePassengerVerificationPin();
-            hidePassengerDriverCard();
-            
-            requestBtn.innerHTML = 'Confirm Request';
-            document.getElementById('request-ride-btn').disabled = false;
-            document.getElementById('request-ride-btn').className = "btn btn-primary w-100 fw-bold py-2";
+            resetPassengerBookingUi();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
             return;
         }
 
+        if (ride.status === "cancelled_by_passenger") {
+            resetPassengerBookingUi();
+            window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
+            if (activeRideListener) activeRideListener();
+            return;
+        }
+
         if (ride.status === "pending") {
             if (ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers") {
-                requestBtn.innerHTML = "No nearby drivers found. Try again shortly.";
+                requestBtn.innerHTML = "No nearby drivers online. You can cancel and rebook.";
                 requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
                 if (ride.search_status === "no_available_drivers") {
                     scheduleDispatchExpansion(rideId, ride);
@@ -753,6 +782,7 @@ function listenToRideStatusUpdates(rideId) {
             requestBtn.className = "btn btn-dark w-100 fw-bold py-2";
             hidePassengerVerificationPin();
             hidePassengerDriverCard();
+            hidePassengerCancelButton();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
@@ -1157,6 +1187,12 @@ async function completeRideJob() {
 
 // Triggered when passenger clicks a "Cancel Ride" button
 async function cancelRideByPassenger(rideId) {
+    rideId = rideId || currentPassengerRideId;
+    if (!rideId) {
+        alert("No active ride found to cancel.");
+        return;
+    }
+
     if (!confirm("Are you sure you want to cancel your ride request?")) return;
 
     try {
@@ -1168,15 +1204,16 @@ async function cancelRideByPassenger(rideId) {
         });
 
         alert("Your ride request has been cancelled.");
-        hidePassengerVerificationPin();
-        hidePassengerDriverCard();
-        
-        document.getElementById('request-ride-btn').innerHTML = 'Confirm Request';
-        document.getElementById('request-ride-btn').disabled = false;
-        document.getElementById('request-ride-btn').className = "btn btn-primary w-100 fw-bold py-2";
+        resetPassengerBookingUi();
+
+        if (activeRideListener) {
+            activeRideListener();
+            activeRideListener = null;
+        }
 
     } catch (error) {
         console.error("Failed to cancel ride:", error);
+        alert(error.message || "Could not cancel this ride. Please try again.");
     }
 }
 
@@ -1223,6 +1260,7 @@ document.getElementById('arrived-trip-btn').addEventListener('click', markDriver
 document.getElementById('start-trip-btn').addEventListener('click', startRideJob);
 document.getElementById('complete-trip-btn').addEventListener('click', completeRideJob);
 document.getElementById('cancel-driver-trip-btn').addEventListener('click', () => cancelRideByDriver());
+document.getElementById('passenger-cancel-ride-btn').addEventListener('click', () => cancelRideByPassenger());
 
 document.getElementById('close-passenger-payment-btn').addEventListener('click', () => {
     document.getElementById('passenger-payment-view').classList.add('d-none');
