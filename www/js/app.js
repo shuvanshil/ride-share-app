@@ -3,12 +3,12 @@ import {
     collection, 
     addDoc, 
     doc, 
+    setDoc,
     updateDoc, 
     getDoc,
     getDocs,
     query, 
     where,
-    orderBy, 
     onSnapshot, 
     serverTimestamp,
     increment,
@@ -17,13 +17,18 @@ import {
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
+const DISPATCH_BATCH_SIZE = 10;
+const DISPATCH_TIMEOUT_MS = 45000;
+const ACTIVE_DRIVER_LAST_SEEN_MS = 120000;
 
 // Global variables
 let activeDriverLocationWatchId = null;
+let driverPresenceWatchId = null;
 let currentUser = null;
 let activeRideListener = null;          // For Passenger monitoring
 let activeDriverTripListener = null;      // NEW: For Driver active trip monitoring
 let activeDriverJobsListener = null;     // For Driver marketplace stream
+let activeDispatchExpansionTimer = null;
 
 // Global variable to keep track of the ride currently being driven
 let currentlyAssignedRideId = null;
@@ -103,14 +108,189 @@ function hidePassengerDriverCard() {
 
 async function setDriverAvailability(status) {
     if (!currentUser || currentUser.role !== "driver") return;
+    currentUser.driverAvailability = status;
 
     try {
         await updateDoc(doc(db, "users", currentUser.uid), {
             driverAvailability: status,
+            isConnected: status !== "offline",
             driverAvailabilityUpdatedAt: serverTimestamp()
         });
+        await setDoc(doc(db, "driverPresence", currentUser.uid), {
+            uid: currentUser.uid,
+            driverAvailability: status,
+            verificationStatus: currentUser.verificationStatus || "pending_review",
+            isConnected: status !== "offline",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
     } catch (error) {
         console.warn("Driver availability update failed:", error);
+    }
+}
+
+function calculateDispatchDistanceKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+function isDriverRecentlyConnected(driver) {
+    if (!driver.isConnected) return false;
+    if (!driver.lastSeenAt?.toMillis) return true;
+    return Date.now() - driver.lastSeenAt.toMillis() <= ACTIVE_DRIVER_LAST_SEEN_MS;
+}
+
+async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriverIds = []) {
+    if (!Number.isFinite(Number(pickupLat)) || !Number.isFinite(Number(pickupLng))) {
+        return [];
+    }
+
+    const excludedSet = new Set(excludedDriverIds.filter(Boolean));
+    const driversQuery = query(collection(db, "driverPresence"), where("driverAvailability", "==", "searching"));
+    const driversSnap = await getDocs(driversQuery);
+
+    return driversSnap.docs
+        .map((driverDoc) => ({ id: driverDoc.id, ...driverDoc.data() }))
+        .filter((driver) => {
+            const location = driver.driverLocation || {};
+            return driver.verificationStatus === "approved"
+                && isDriverRecentlyConnected(driver)
+                && !excludedSet.has(driver.uid || driver.id)
+                && Number.isFinite(Number(location.lat))
+                && Number.isFinite(Number(location.lng));
+        })
+        .map((driver) => ({
+            ...driver,
+            dispatchDistanceKm: calculateDispatchDistanceKm(
+                Number(pickupLat),
+                Number(pickupLng),
+                Number(driver.driverLocation.lat),
+                Number(driver.driverLocation.lng)
+            )
+        }))
+        .sort((a, b) => a.dispatchDistanceKm - b.dispatchDistanceKm);
+}
+
+async function buildInitialDispatchState(pickupLat, pickupLng) {
+    const nearestDrivers = await fetchNearestAvailableDrivers(pickupLat, pickupLng);
+    const firstBatch = nearestDrivers.slice(0, DISPATCH_BATCH_SIZE);
+    const firstBatchIds = firstBatch.map((driver) => driver.uid || driver.id);
+
+    return {
+        eligible_driver_ids: firstBatchIds,
+        notified_driver_ids: firstBatchIds,
+        rejected_driver_ids: [],
+        dispatch_batch_size: DISPATCH_BATCH_SIZE,
+        dispatch_timeout_ms: DISPATCH_TIMEOUT_MS,
+        dispatch_total_candidates: nearestDrivers.length,
+        dispatch_round: firstBatchIds.length ? 1 : 0,
+        search_status: firstBatchIds.length ? "searching_nearby_drivers" : "no_available_drivers",
+        last_dispatch_at: serverTimestamp()
+    };
+}
+
+function startDriverPresenceTracking() {
+    if (!currentUser || currentUser.role !== "driver" || currentUser.verificationStatus !== "approved") return;
+    if (!navigator.geolocation) {
+        console.warn("Driver presence tracking needs browser location access.");
+        return;
+    }
+
+    if (driverPresenceWatchId !== null) {
+        navigator.geolocation.clearWatch(driverPresenceWatchId);
+        driverPresenceWatchId = null;
+    }
+
+    driverPresenceWatchId = navigator.geolocation.watchPosition(
+        async (position) => {
+            try {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                await updateDoc(doc(db, "users", currentUser.uid), {
+                    driverLocation: { lat, lng },
+                    isConnected: true,
+                    lastSeenAt: serverTimestamp()
+                });
+                await setDoc(doc(db, "driverPresence", currentUser.uid), {
+                    uid: currentUser.uid,
+                    driverLocation: { lat, lng },
+                    driverAvailability: currentUser.driverAvailability || "searching",
+                    verificationStatus: currentUser.verificationStatus || "pending_review",
+                    isConnected: true,
+                    lastSeenAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            } catch (error) {
+                console.warn("Driver presence update failed:", error);
+            }
+        },
+        (error) => {
+            console.warn("Driver presence GPS failed:", error);
+        },
+        { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
+    );
+}
+
+function clearDispatchExpansionTimer() {
+    if (activeDispatchExpansionTimer) {
+        clearTimeout(activeDispatchExpansionTimer);
+        activeDispatchExpansionTimer = null;
+    }
+}
+
+function scheduleDispatchExpansion(rideId, ride) {
+    if (!currentUser || currentUser.role !== "passenger" || ride.status !== "pending") return;
+    clearDispatchExpansionTimer();
+
+    activeDispatchExpansionTimer = setTimeout(() => expandRideDispatch(rideId), ride.dispatch_timeout_ms || DISPATCH_TIMEOUT_MS);
+}
+
+async function expandRideDispatch(rideId) {
+    if (!currentUser || currentUser.role !== "passenger") return;
+
+    try {
+        const rideRef = doc(db, "rides", rideId);
+        const rideSnap = await getDoc(rideRef);
+        if (!rideSnap.exists()) return;
+
+        const ride = rideSnap.data();
+        if (ride.status !== "pending" || ride.passenger_id !== currentUser.uid) return;
+
+        const alreadyNotified = ride.notified_driver_ids || [];
+        const rejectedDrivers = ride.rejected_driver_ids || [];
+        const excludedIds = [...alreadyNotified, ...rejectedDrivers];
+        const nearestDrivers = await fetchNearestAvailableDrivers(ride.pickup_lat, ride.pickup_lng, excludedIds);
+        const nextBatch = nearestDrivers.slice(0, ride.dispatch_batch_size || DISPATCH_BATCH_SIZE);
+        const nextBatchIds = nextBatch.map((driver) => driver.uid || driver.id);
+
+        if (!nextBatchIds.length) {
+            await updateDoc(rideRef, {
+                search_status: "no_more_available_drivers",
+                updatedAt: serverTimestamp()
+            });
+            document.getElementById('request-ride-btn').innerHTML = "No nearby drivers found. Try again shortly.";
+            document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
+            return;
+        }
+
+        const updatedEligibleIds = [...new Set([...(ride.eligible_driver_ids || []), ...nextBatchIds])];
+        const updatedNotifiedIds = [...new Set([...alreadyNotified, ...nextBatchIds])];
+
+        await updateDoc(rideRef, {
+            eligible_driver_ids: updatedEligibleIds,
+            notified_driver_ids: updatedNotifiedIds,
+            dispatch_round: (ride.dispatch_round || 0) + 1,
+            search_status: "expanded_driver_search",
+            last_dispatch_at: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+    } catch (error) {
+        console.error("Ride dispatch expansion failed:", error);
     }
 }
 
@@ -326,6 +506,7 @@ window.addEventListener('user-session-ready', (e) => {
         document.getElementById('driver-welcome-name').innerText = `Welcome, ${currentUser.name}`;
         
         setDriverAvailability("searching");
+        startDriverPresenceTracking();
 
         // Start live monitoring for passenger broadcasts
         initDriverJobsStream();
@@ -447,6 +628,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
     try {
         const verificationPin = generateVerificationPin();
         const fareQuote = window.latestFareQuote || {};
+        const dispatchState = await buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng);
         const rideData = {
             passenger_id: currentUser.uid,
             passenger_name: currentUser.name,
@@ -470,6 +652,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             payment_methods: ["cash", "upi"],
             payment_status: "pending",
             verification_pin: verificationPin,
+            ...dispatchState,
             createdAt: serverTimestamp()
         };
 
@@ -494,6 +677,7 @@ function listenToRideStatusUpdates(rideId) {
 
         // FIXED: Added handling for when a driver cancels mid-trip
         if (ride.status === "cancelled_by_driver") {
+            clearDispatchExpansionTimer();
             alert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
             hidePassengerVerificationPin();
             hidePassengerDriverCard();
@@ -507,7 +691,22 @@ function listenToRideStatusUpdates(rideId) {
             return;
         }
 
-        if (ride.status === "accepted") {
+        if (ride.status === "pending") {
+            if (ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers") {
+                requestBtn.innerHTML = "No nearby drivers found. Try again shortly.";
+                requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
+                if (ride.search_status === "no_available_drivers") {
+                    scheduleDispatchExpansion(rideId, ride);
+                } else {
+                    clearDispatchExpansionTimer();
+                }
+            } else {
+                scheduleDispatchExpansion(rideId, ride);
+                requestBtn.innerHTML = "Searching nearby drivers...";
+                requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
+            }
+        } else if (ride.status === "accepted") {
+            clearDispatchExpansionTimer();
             renderPassengerDriverCard(ride);
             renderPassengerVerificationPin(ride.verification_pin);
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
@@ -549,6 +748,7 @@ function listenToRideStatusUpdates(rideId) {
                 }));
             }
         } else if (ride.status === "completed") {
+            clearDispatchExpansionTimer();
             requestBtn.innerHTML = '🎉 Trip Completed! Safe travels.';
             requestBtn.className = "btn btn-dark w-100 fw-bold py-2";
             hidePassengerVerificationPin();
@@ -572,7 +772,10 @@ function initDriverJobsStream() {
     const ridesContainer = document.getElementById('available-rides-list');
     const noRidesMsg = document.getElementById('no-rides-msg');
 
-    const q = query(collection(db, "rides"), where("status", "==", "pending"));
+    const q = query(
+        collection(db, "rides"),
+        where("eligible_driver_ids", "array-contains", currentUser.uid)
+    );
 
     activeDriverJobsListener = onSnapshot(q, (querySnapshot) => {
         ridesContainer.innerHTML = "";
@@ -584,10 +787,14 @@ function initDriverJobsStream() {
         }
 
         noRidesMsg.classList.add('d-none');
+        let renderedRideCount = 0;
 
         querySnapshot.forEach((docSnapshot) => {
             const rideId = docSnapshot.id;
             const ride = docSnapshot.data();
+
+            if (ride.status !== "pending" || ride.driver_id) return;
+            renderedRideCount += 1;
 
             // FIXED: Changed ride.fare_amount to ride.fare to clear the undefined bug
             const card = document.createElement('div');
@@ -608,6 +815,10 @@ function initDriverJobsStream() {
 
             ridesContainer.appendChild(card);
         });
+
+        if (renderedRideCount === 0) {
+            noRidesMsg.classList.remove('d-none');
+        }
 
         document.querySelectorAll('.accept-job-btn').forEach(btn => {
             btn.addEventListener('click', (e) => acceptRideJob(e.target.getAttribute('data-id')));
@@ -700,6 +911,10 @@ async function acceptRideJob(rideId) {
 
             if (rideData.status !== "pending" || rideData.driver_id) {
                 throw new Error("This ride was already accepted by another driver.");
+            }
+
+            if (!Array.isArray(rideData.eligible_driver_ids) || !rideData.eligible_driver_ids.includes(currentUser.uid)) {
+                throw new Error("This ride request is no longer available for you.");
             }
 
             transaction.update(rideRef, {
@@ -1167,6 +1382,21 @@ document.getElementById('close-trip-history-btn').addEventListener('click', () =
 });
 document.getElementById('close-trip-detail-btn').addEventListener('click', () => {
     document.getElementById('trip-detail-view').classList.add('d-none');
+});
+
+window.addEventListener('beforeunload', () => {
+    if (currentUser?.role === "driver") {
+        updateDoc(doc(db, "users", currentUser.uid), {
+            isConnected: false,
+            driverAvailability: "offline",
+            driverAvailabilityUpdatedAt: serverTimestamp()
+        }).catch(() => {});
+        setDoc(doc(db, "driverPresence", currentUser.uid), {
+            isConnected: false,
+            driverAvailability: "offline",
+            updatedAt: serverTimestamp()
+        }, { merge: true }).catch(() => {});
+    }
 });
 
 window.fetchUserTripHistory = fetchUserTripHistory;
