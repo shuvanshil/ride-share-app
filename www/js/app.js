@@ -1282,146 +1282,12 @@ document.getElementById('close-driver-payment-btn').addEventListener('click', as
     document.getElementById('driver-payment-view').classList.add('d-none');
     window.location.reload();
 });
-
-
-
-// ==========================================
-// 5. MODULE E: HISTORICAL TRIP LEDGER ENGINE
-// ==========================================
-
-async function fetchUserTripHistory() {
-    if (!currentUser) return [];
-
-    try {
-        const roleField = currentUser.role === "driver" ? "driver_id" : "passenger_id";
-        const historyQuery = query(
-            collection(db, "tripHistory"),
-            where(roleField, "==", currentUser.uid)
-        );
-
-        const snapshot = await getDocs(historyQuery);
-        return snapshot.docs
-            .map((docSnap) => ({
-                id: docSnap.id,
-                ...docSnap.data()
-            }))
-            .sort((a, b) => {
-                const aTime = a.completedAt?.toMillis ? a.completedAt.toMillis() : 0;
-                const bTime = b.completedAt?.toMillis ? b.completedAt.toMillis() : 0;
-                return bTime - aTime;
-            });
-    } catch (error) {
-        console.error("Failed to fetch trip history:", error);
-        alert("Could not load trip history. If Firebase asks for an index, create it from the console error link.");
-        return [];
-    }
-}
-
-function renderTripHistoryList(trips) {
-    const list = document.getElementById('trip-history-list');
-    const subtitle = document.getElementById('trip-history-subtitle');
-    if (!list || !subtitle) return;
-
-    subtitle.innerText = currentUser.role === "driver" ? "Completed rides and earnings" : "Completed passenger trips";
-
-    if (!trips.length) {
-        list.innerHTML = `
-            <div class="bg-white border rounded p-4 text-center text-muted">
-                No completed paid trips found yet.
-            </div>
-        `;
-        return;
-    }
-
-    list.innerHTML = trips.map((trip) => {
-        const isDriver = currentUser.role === "driver";
-        const title = isDriver ? trip.passenger_name : trip.driver_name;
-        const moneyLabel = isDriver ? "Earnings" : "Fare";
-        const vehicleLine = !isDriver ? `
-            <div class="small text-muted">${escapeHtml(trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || ""}`)}</div>
-        ` : "";
-
-        return `
-            <div class="bg-white border rounded p-3 mb-3 shadow-sm">
-                <div class="d-flex justify-content-between gap-3">
-                    <div>
-                        <div class="fw-bold text-dark">${escapeHtml(title || "Trip participant")}</div>
-                        <div class="small text-muted">${formatHistoryDate(trip.completedAt)}</div>
-                        ${vehicleLine}
-                    </div>
-                    <div class="text-end">
-                        <div class="fw-bold text-success">₹${escapeHtml(trip.fare_amount || 0)}</div>
-                        <div class="small text-muted">${moneyLabel}</div>
-                    </div>
-                </div>
-                <hr class="my-2">
-                <div class="small"><strong>From:</strong> ${escapeHtml(trip.pickup_location)}</div>
-                <div class="small"><strong>To:</strong> ${escapeHtml(trip.drop_location)}</div>
-                <div class="d-flex justify-content-between small text-muted mt-2">
-                    <span>${formatDistance(trip.distance_km)}</span>
-                    <span>${formatDuration(trip.duration_minutes)}</span>
-                    <span class="text-capitalize">${escapeHtml(trip.payment_status || trip.trip_status || "completed")}</span>
-                </div>
-                <button class="btn btn-sm btn-outline-primary w-100 mt-3 trip-detail-btn" data-trip-id="${escapeHtml(trip.id)}">
-                    View Details
-                </button>
-            </div>
-        `;
-    }).join("");
-
-    document.querySelectorAll('.trip-detail-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const trip = trips.find((item) => item.id === btn.getAttribute('data-trip-id'));
-            if (trip) renderTripDetail(trip);
-        });
-    });
-}
-
-function renderTripDetail(trip) {
-    const detailContent = document.getElementById('trip-detail-content');
-    if (!detailContent) return;
-
-    detailContent.innerHTML = `
-        <div class="mb-2"><strong>Ride ID:</strong> ${escapeHtml(trip.ride_id || trip.id)}</div>
-        <div class="mb-2"><strong>Date & Time:</strong> ${formatHistoryDate(trip.completedAt)}</div>
-        <div class="mb-2"><strong>Passenger:</strong> ${escapeHtml(trip.passenger_name || "Passenger")}</div>
-        <div class="mb-2"><strong>Driver:</strong> ${escapeHtml(trip.driver_name || "Driver")}</div>
-        <div class="mb-2"><strong>Vehicle:</strong> ${escapeHtml(trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`)}</div>
-        <div class="mb-2"><strong>Pickup:</strong> ${escapeHtml(trip.pickup_location)}</div>
-        <div class="mb-2"><strong>Drop:</strong> ${escapeHtml(trip.drop_location)}</div>
-        <div class="mb-2"><strong>Distance:</strong> ${formatDistance(trip.distance_km)}</div>
-        <div class="mb-2"><strong>Duration:</strong> ${formatDuration(trip.duration_minutes)}</div>
-        <div class="mb-2"><strong>Fare:</strong> ₹${escapeHtml(trip.fare_amount || 0)}</div>
-        <div class="mb-0"><strong>Status:</strong> ${escapeHtml(trip.trip_status || "completed")} / ${escapeHtml(trip.payment_status || "paid")}</div>
-    `;
-
-    document.getElementById('trip-detail-view').classList.remove('d-none');
-}
-
-async function openTripHistory() {
-    if (!currentUser) {
-        alert("Please login first.");
-        return;
-    }
-
-    const historyView = document.getElementById('trip-history-view');
-    const list = document.getElementById('trip-history-list');
-    historyView.classList.remove('d-none');
-    list.innerHTML = `<div class="text-center text-muted py-5">Loading trip history...</div>`;
-
-    const trips = await fetchUserTripHistory();
-    renderTripHistoryList(trips);
-}
-
-document.getElementById('passenger-history-btn').addEventListener('click', openTripHistory);
-document.getElementById('driver-history-btn').addEventListener('click', openTripHistory);
-document.getElementById('close-trip-history-btn').addEventListener('click', () => {
-    document.getElementById('trip-history-view').classList.add('d-none');
+document.getElementById('passenger-history-btn').addEventListener('click', () => {
+    window.location.href = 'history.html';
 });
-document.getElementById('close-trip-detail-btn').addEventListener('click', () => {
-    document.getElementById('trip-detail-view').classList.add('d-none');
+document.getElementById('driver-history-btn').addEventListener('click', () => {
+    window.location.href = 'history.html';
 });
-
 window.addEventListener('beforeunload', () => {
     if (currentUser?.role === "driver") {
         updateDoc(doc(db, "users", currentUser.uid), {
@@ -1437,4 +1303,3 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-window.fetchUserTripHistory = fetchUserTripHistory;
