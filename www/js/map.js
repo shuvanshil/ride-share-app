@@ -205,6 +205,11 @@ export async function initializeMapEngine() {
 
     setTimeout(() => window.mapInstance.invalidateSize(), 100);
     setupFareEngineListeners();
+    window.dispatchEvent(new CustomEvent('map-engine-ready', {
+        detail: {
+            pickup: { lat: coords.lat, lng: coords.lng }
+        }
+    }));
 }
 
 // 3. Dynamic Fare Calculation Engine (Straight-Line Haversine Approximation)

@@ -131,6 +131,40 @@ function resetPassengerBookingUi() {
     requestBtn.className = "gy-btn gy-btn-primary w-100";
 }
 
+function applyServiceBookingDraft() {
+    if (!currentUser || currentUser.role !== "passenger") return false;
+
+    const rawDraft = sessionStorage.getItem("goyatra_service_booking_draft");
+    if (!rawDraft) return false;
+
+    try {
+        const draft = JSON.parse(rawDraft);
+        if (!draft?.drop || Date.now() - Number(draft.createdAt || 0) > 10 * 60 * 1000) {
+            sessionStorage.removeItem("goyatra_service_booking_draft");
+            return false;
+        }
+
+        const pickupInput = document.getElementById('pickup-input');
+        const dropInput = document.getElementById('drop-input');
+
+        if (pickupInput && draft.pickup && !pickupInput.value) {
+            pickupInput.value = draft.pickup;
+        }
+
+        if (dropInput) {
+            dropInput.value = draft.drop;
+            dropInput.dispatchEvent(new Event('input', { bubbles: true }));
+            sessionStorage.removeItem("goyatra_service_booking_draft");
+            return true;
+        }
+    } catch (error) {
+        console.warn("Could not apply Services booking draft:", error);
+        sessionStorage.removeItem("goyatra_service_booking_draft");
+    }
+
+    return false;
+}
+
 async function setDriverAvailability(status) {
     if (!currentUser || currentUser.role !== "driver") return;
     currentUser.driverAvailability = status;
@@ -539,7 +573,11 @@ window.addEventListener('user-session-ready', (e) => {
     } else {
         // User is a passenger; map initializations happen through map.js automatically
         console.log("Passenger architecture mapped via map.js pipeline context.");
-        restorePassengerActiveRide();
+        restorePassengerActiveRide().then((restoredActiveRide) => {
+            if (restoredActiveRide) return;
+            window.addEventListener('map-engine-ready', applyServiceBookingDraft, { once: true });
+            setTimeout(applyServiceBookingDraft, 1200);
+        });
     }
 });
 
@@ -554,7 +592,7 @@ async function restorePassengerActiveRide() {
         );
 
         const activeRideSnap = await getDocs(activeRideQuery);
-        if (activeRideSnap.empty) return;
+        if (activeRideSnap.empty) return false;
 
         const activeRideDoc = activeRideSnap.docs[0];
         const activeRide = activeRideDoc.data();
@@ -578,8 +616,11 @@ async function restorePassengerActiveRide() {
                 detail: activeRide.driverLocation
             }));
         }
+
+        return true;
     } catch (error) {
         console.error("Passenger active ride restore failed:", error);
+        return false;
     }
 }
 
