@@ -1,5 +1,10 @@
+import { auth, db } from './firebase-init.js';
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { initializeMapEngine } from './map.js';
 
+const authView = document.getElementById('auth-view');
+const dashboardView = document.getElementById('dashboard-view');
 const pickupInput = document.getElementById('pickup-input');
 const dropInput = document.getElementById('drop-input');
 const findRideBtn = document.getElementById('request-ride-btn');
@@ -8,69 +13,90 @@ const clearDropBtn = document.getElementById('clear-drop-btn');
 const locationStatus = document.getElementById('services-location-status');
 const gpsPill = document.getElementById('services-gps-pill');
 
+let servicesSessionStarted = false;
+
 function setStatus(message, state = "loading") {
-    locationStatus.innerText = message;
+    if (locationStatus) locationStatus.innerText = message;
+    if (!gpsPill) return;
+
     gpsPill.dataset.state = state;
     gpsPill.innerText = state === "ready" ? "Live" : state === "error" ? "Check" : "GPS";
 }
 
-async function bootServicesMap() {
+function showAuthGuard(title, message) {
+    dashboardView.classList.add('d-none');
+    authView.classList.remove('d-none');
+
+    const heading = authView.querySelector('h1');
+    const copy = authView.querySelector('p');
+    if (heading) heading.innerText = title;
+    if (copy) copy.innerText = message;
+}
+
+function showPassengerServices() {
+    authView.classList.add('d-none');
+    dashboardView.classList.remove('d-none');
+}
+
+async function refreshServicesMap() {
     try {
-        setStatus("Locking your exact location...", "loading");
+        setStatus("Refreshing your exact pickup location...", "loading");
         await initializeMapEngine();
         setStatus(pickupInput.value || "Pickup location detected.", "ready");
     } catch (error) {
-        console.error("Services map failed to initialize:", error);
-        setStatus("Could not load map. Check location permission and internet.", "error");
+        console.error("Services location refresh failed:", error);
+        setStatus("Could not refresh location. Check GPS permission.", "error");
     }
 }
 
-function saveBookingDraftAndContinue() {
-    const pickup = pickupInput.value.trim();
-    const drop = dropInput.value.trim();
-    const fare = document.getElementById('fare-amount')?.innerText || "₹0.00";
+function bindServicesControls() {
+    refreshLocationBtn.addEventListener('click', refreshServicesMap);
 
-    if (!pickup) {
-        alert("Please allow location access or wait for pickup detection.");
-        return;
-    }
-
-    if (!drop) {
-        alert("Please enter your drop location.");
+    clearDropBtn.addEventListener('click', () => {
+        dropInput.value = "";
+        dropInput.dispatchEvent(new Event('input', { bubbles: true }));
         dropInput.focus();
-        return;
-    }
+    });
 
-    if (fare === "₹0.00" && !window.latestFareQuote) {
-        alert("Please choose a known destination like Unakoti, Kumarghat Station, RGM Hospital, or Dharmanagar to calculate fare.");
-        dropInput.focus();
-        return;
-    }
+    dropInput.addEventListener('input', () => {
+        findRideBtn.disabled = !dropInput.value.trim();
+    });
 
-    sessionStorage.setItem("goyatra_service_booking_draft", JSON.stringify({
-        pickup,
-        drop,
-        createdAt: Date.now()
-    }));
-
-    window.location.href = "index.html";
+    window.addEventListener('map-engine-ready', () => {
+        setStatus(pickupInput.value || "Pickup location detected.", "ready");
+    });
 }
 
-findRideBtn.addEventListener('click', saveBookingDraftAndContinue);
-
-refreshLocationBtn.addEventListener('click', () => {
-    bootServicesMap();
-});
-
-clearDropBtn.addEventListener('click', () => {
-    dropInput.value = "";
-    dropInput.dispatchEvent(new Event('input', { bubbles: true }));
-    dropInput.focus();
-});
-
-dropInput.addEventListener('input', () => {
-    findRideBtn.disabled = !dropInput.value.trim();
-});
-
+bindServicesControls();
 findRideBtn.disabled = true;
-bootServicesMap();
+
+onAuthStateChanged(auth, async (firebaseUser) => {
+    if (!firebaseUser) {
+        showAuthGuard("Login required", "Please login before booking your ride.");
+        return;
+    }
+
+    try {
+        const userSnap = await getDoc(doc(db, "users", firebaseUser.uid));
+        if (!userSnap.exists()) {
+            showAuthGuard("Profile incomplete", "Please complete your GoYatra profile before booking.");
+            return;
+        }
+
+        const profile = userSnap.data();
+        if (profile.role === "driver") {
+            showAuthGuard("Passenger service only", "Drivers can manage ride requests from the Home duty console.");
+            return;
+        }
+
+        showPassengerServices();
+
+        if (!servicesSessionStarted) {
+            servicesSessionStarted = true;
+            window.dispatchEvent(new CustomEvent('user-session-ready', { detail: profile }));
+        }
+    } catch (error) {
+        console.error("Services auth bootstrap failed:", error);
+        showAuthGuard("Could not load account", "Please check your internet connection and try again.");
+    }
+});

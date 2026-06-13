@@ -204,7 +204,32 @@ function isDriverRecentlyConnected(driver) {
     return Date.now() - driver.lastSeenAt.toMillis() <= ACTIVE_DRIVER_LAST_SEEN_MS;
 }
 
-async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriverIds = []) {
+function inferVehicleTypeFromProfile(driver) {
+    const text = [
+        driver.vehicle_type,
+        driver.vehicleType,
+        driver.vehicle_model,
+        driver.vehicleModel,
+        driver.vehicleName
+    ].filter(Boolean).join(" ").toLowerCase();
+
+    if (text.includes("auto") || text.includes("rickshaw") || text.includes("tuk")) return "auto";
+    if (text.includes("bike") || text.includes("scooter") || text.includes("activa") || text.includes("motorcycle")) return "bike";
+    return "";
+}
+
+function driverMatchesRequestedVehicle(driver, requestedVehicleType) {
+    if (!requestedVehicleType) return true;
+    const driverVehicleType = inferVehicleTypeFromProfile(driver);
+    return !driverVehicleType || driverVehicleType === requestedVehicleType;
+}
+
+function serviceConfirmRideRequired(requestBtn) {
+    return Boolean(document.getElementById('service-confirm-ride-view'))
+        && requestBtn?.dataset.serviceRideConfirmed !== "true";
+}
+
+async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriverIds = [], requestedVehicleType = "") {
     if (!Number.isFinite(Number(pickupLat)) || !Number.isFinite(Number(pickupLng))) {
         return [];
     }
@@ -219,6 +244,7 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
             const location = driver.driverLocation || {};
             return driver.verificationStatus === "approved"
                 && isDriverRecentlyConnected(driver)
+                && driverMatchesRequestedVehicle(driver, requestedVehicleType)
                 && !excludedSet.has(driver.uid || driver.id)
                 && Number.isFinite(Number(location.lat))
                 && Number.isFinite(Number(location.lng));
@@ -235,8 +261,8 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
         .sort((a, b) => a.dispatchDistanceKm - b.dispatchDistanceKm);
 }
 
-async function buildInitialDispatchState(pickupLat, pickupLng) {
-    const nearestDrivers = await fetchNearestAvailableDrivers(pickupLat, pickupLng);
+async function buildInitialDispatchState(pickupLat, pickupLng, requestedVehicleType = "") {
+    const nearestDrivers = await fetchNearestAvailableDrivers(pickupLat, pickupLng, [], requestedVehicleType);
     const firstBatch = nearestDrivers.slice(0, DISPATCH_BATCH_SIZE);
     const firstBatchIds = firstBatch.map((driver) => driver.uid || driver.id);
 

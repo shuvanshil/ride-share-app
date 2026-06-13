@@ -1308,6 +1308,10 @@ select {
 }
 
 /* Services page */
+.services-app-root {
+    overflow: visible;
+}
+
 .services-page {
     min-height: 100vh;
     display: flex;
@@ -1316,6 +1320,30 @@ select {
     background: #fff;
     position: relative;
     overflow-x: hidden;
+}
+
+.services-auth-guard {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    width: min(100% - 32px, 420px);
+    margin: 0 auto;
+    padding: 24px;
+    background: #fff;
+}
+
+.services-auth-guard h1 {
+    margin: 18px 0 0;
+    font-size: 28px;
+    font-weight: 800;
+}
+
+.services-auth-guard p {
+    margin: 0 0 8px;
+    color: var(--gy-muted);
+    font-size: 14px;
 }
 
 .services-app-head {
