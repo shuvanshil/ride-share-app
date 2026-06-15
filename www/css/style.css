@@ -1583,70 +1583,33 @@ select {
     height: 292px;
     margin: -10px -16px 0;
     overflow: hidden;
-    background:
-        linear-gradient(90deg, rgba(26, 122, 46, 0.07) 1px, transparent 1px),
-        linear-gradient(0deg, rgba(26, 122, 46, 0.07) 1px, transparent 1px),
-        #F4F7F4;
-    background-size: 44px 44px;
+    background: #EAF3EF;
 }
 
-.service-route-preview svg {
+.service-confirm-map {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
 }
 
-.service-route-preview path {
-    fill: none;
-    stroke: var(--gy-green);
-    stroke-width: 8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    filter: drop-shadow(0 3px 0 rgba(255, 255, 255, 0.95));
+.service-confirm-marker {
+    display: grid;
+    place-items: center;
 }
 
-.route-node {
-    position: absolute;
+.confirm-pickup-dot {
     width: 22px;
     height: 22px;
-    border: 4px solid #fff;
+    display: block;
     border-radius: 50%;
+    border: 3px solid #fff;
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.22);
-}
-
-.route-node.pickup {
-    left: 88px;
-    top: 40px;
     background: var(--gy-green);
 }
 
-.route-node.drop {
-    right: 58px;
-    bottom: 34px;
-    background: #EF4444;
-}
-
-.route-road-label {
-    position: absolute;
-    color: rgba(17, 17, 17, 0.66);
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.route-road-label.one {
-    left: 54px;
-    top: 132px;
-}
-
-.route-road-label.two {
-    left: 172px;
-    top: 82px;
-}
-
-.route-road-label.three {
-    right: 36px;
-    bottom: 90px;
+.service-confirm-marker.drop svg {
+    filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.2));
 }
 
 .service-route-metric {

@@ -24,6 +24,7 @@ const confirmAutoFare = document.getElementById('confirm-auto-fare');
 const vehicleOptions = Array.from(document.querySelectorAll('.service-vehicle-option'));
 
 let servicesSessionStarted = false;
+let confirmMapInstance = null;
 let selectedVehicleType = "bike";
 let confirmFares = {
     bike: 0,
@@ -65,6 +66,13 @@ function hideConfirmRideView() {
     dashboardView.classList.remove('d-none');
 }
 
+function resetConfirmMap() {
+    if (confirmMapInstance) {
+        confirmMapInstance.remove();
+        confirmMapInstance = null;
+    }
+}
+
 function parseFareAmount(fareText) {
     return Math.max(0, Math.round(Number(String(fareText || "").replace(/[^\d.]/g, "")) || 0));
 }
@@ -83,6 +91,105 @@ function updateVehicleSelection(vehicleType) {
         option.classList.toggle('active', isActive);
         option.querySelector('i').innerText = isActive ? "✓" : "";
     });
+}
+
+function createConfirmIcon(type) {
+    const isPickup = type === "pickup";
+    return window.L.divIcon({
+        className: `service-confirm-marker ${type}`,
+        html: isPickup
+            ? '<span class="confirm-pickup-dot"></span>'
+            : `<svg width="28" height="34" viewBox="0 0 28 34" aria-hidden="true">
+                <path d="M14 33C14 33 26 20.7 26 12.8C26 6.3 20.6 1 14 1C7.4 1 2 6.3 2 12.8C2 20.7 14 33 14 33Z" fill="#EF4444" stroke="#fff" stroke-width="3"/>
+                <circle cx="14" cy="12.8" r="4.2" fill="#fff"/>
+            </svg>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+    });
+}
+
+async function fetchConfirmRoute(origin, destination) {
+    const fallback = [
+        [origin.lat, origin.lng],
+        [destination.lat, destination.lng]
+    ];
+
+    try {
+        const routeUrl = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`;
+        const response = await fetch(routeUrl);
+        const data = await response.json();
+        const coordinates = data.routes?.[0]?.geometry?.coordinates;
+
+        if (!Array.isArray(coordinates) || !coordinates.length) {
+            return fallback;
+        }
+
+        return coordinates.map(([lng, lat]) => [lat, lng]);
+    } catch (error) {
+        console.warn("Confirm route fetch failed, using direct fallback:", error);
+        return fallback;
+    }
+}
+
+async function renderConfirmRouteMap(fareQuote) {
+    const mapElement = document.getElementById('service-confirm-map');
+    if (!mapElement || !window.L) return;
+
+    const origin = {
+        lat: Number(fareQuote?.pickup_lat),
+        lng: Number(fareQuote?.pickup_lng)
+    };
+    const destination = {
+        lat: Number(fareQuote?.drop_lat),
+        lng: Number(fareQuote?.drop_lng)
+    };
+
+    if (![origin.lat, origin.lng, destination.lat, destination.lng].every(Number.isFinite)) {
+        return;
+    }
+
+    resetConfirmMap();
+    confirmMapInstance = window.L.map(mapElement, {
+        zoomControl: false,
+        attributionControl: false,
+        dragging: true,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        touchZoom: true,
+        minZoom: 10,
+        maxZoom: 19
+    });
+
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(confirmMapInstance);
+
+    const routeCoords = await fetchConfirmRoute(origin, destination);
+    const routeGlow = window.L.polyline(routeCoords, {
+        color: '#fff',
+        weight: 10,
+        opacity: 0.75,
+        lineCap: 'round',
+        lineJoin: 'round'
+    }).addTo(confirmMapInstance);
+
+    const routeLine = window.L.polyline(routeCoords, {
+        color: '#1A7A2E',
+        weight: 5,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round'
+    }).addTo(confirmMapInstance);
+
+    window.L.marker([origin.lat, origin.lng], { icon: createConfirmIcon("pickup") }).addTo(confirmMapInstance);
+    window.L.marker([destination.lat, destination.lng], { icon: createConfirmIcon("drop") }).addTo(confirmMapInstance);
+    confirmMapInstance.fitBounds(routeLine.getBounds(), { padding: [42, 42] });
+
+    setTimeout(() => {
+        confirmMapInstance?.invalidateSize();
+        confirmMapInstance?.fitBounds(routeGlow.getBounds(), { padding: [42, 42] });
+    }, 80);
 }
 
 function openConfirmRide(detail) {
@@ -105,6 +212,7 @@ function openConfirmRide(detail) {
     confirmAutoFare.innerText = formatFare(confirmFares.auto);
     updateVehicleSelection("bike");
     showConfirmRideView();
+    renderConfirmRouteMap(detail.fareQuote || {});
 }
 
 async function refreshServicesMap() {
