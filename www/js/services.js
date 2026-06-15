@@ -54,6 +54,8 @@ function showPassengerServices() {
 }
 
 function showConfirmRideView() {
+    // Services is a separate page, so this swaps local page panels instead of
+    // navigating away from the shared app.js lifecycle engine.
     dashboardView.classList.add('d-none');
     confirmRideView.classList.remove('d-none');
 }
@@ -73,6 +75,7 @@ function formatFare(amount) {
 
 function updateVehicleSelection(vehicleType) {
     selectedVehicleType = vehicleType;
+    // app.js reads this value after Services confirms the ride.
     window.selectedServiceVehicleType = vehicleType;
 
     vehicleOptions.forEach((option) => {
@@ -83,6 +86,7 @@ function updateVehicleSelection(vehicleType) {
 }
 
 function openConfirmRide(detail) {
+    // app.js dispatches this payload after fare calculation, before Firestore create.
     const baseBikeFare = parseFareAmount(detail.fareText);
     confirmFares = {
         bike: baseBikeFare,
@@ -142,13 +146,19 @@ function bindServicesControls() {
     });
 
     confirmRideBtn.addEventListener('click', () => {
+        confirmRideBtn.disabled = true;
+        confirmRideBtn.innerText = "Starting search...";
         const selectedFare = confirmFares[selectedVehicleType] || confirmFares.bike;
         document.getElementById('fare-amount').innerText = formatFare(selectedFare);
+        // These dataset values tell app.js to skip the Services confirm screen
+        // and continue into the original Firestore ride creation flow.
         findRideBtn.dataset.serviceRideConfirmed = "true";
         findRideBtn.dataset.vehicleType = selectedVehicleType;
         window.selectedServiceVehicleType = selectedVehicleType;
         hideConfirmRideView();
         findRideBtn.click();
+        confirmRideBtn.disabled = false;
+        confirmRideBtn.innerText = "Confirm Ride";
     });
 }
 

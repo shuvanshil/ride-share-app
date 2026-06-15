@@ -226,6 +226,8 @@ function inferVehicleTypeFromProfile(driver) {
 function driverMatchesRequestedVehicle(driver, requestedVehicleType) {
     if (!requestedVehicleType) return true;
     const driverVehicleType = inferVehicleTypeFromProfile(driver);
+    // Services adds vehicle choice before booking. Older driverPresence docs may not
+    // have a vehicle type yet, so keep them eligible while ranking exact matches first.
     return !driverVehicleType || driverVehicleType === requestedVehicleType;
 }
 
@@ -237,6 +239,8 @@ function getVehicleMatchRank(driver, requestedVehicleType) {
 }
 
 function serviceConfirmRideRequired(requestBtn) {
+    // Services owns a dedicated confirm screen. Home does not have this element,
+    // so Home keeps the original direct "Find Ride" behavior.
     return Boolean(document.getElementById('service-confirm-ride-view'))
         && requestBtn?.dataset.serviceRideConfirmed !== "true";
 }
@@ -710,6 +714,8 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
 
 
     if (serviceConfirmRideRequired(requestBtn)) {
+        // Let services.js render the vehicle selection/confirm view, then it will
+        // re-click this same button with data-service-ride-confirmed set to true.
         window.dispatchEvent(new CustomEvent('service-confirm-ride-requested', {
             detail: {
                 pickupText,
@@ -762,6 +768,8 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             distance_km: fareQuote.distance_km || null,
             duration_minutes: fareQuote.duration_minutes || null,
             fare: fareAmount, 
+            // Saved with the ride so dispatch expansion and driver filtering can
+            // continue honoring the passenger's Services vehicle choice.
             vehicle_type: requestedVehicleType || "bike",
             status: "pending",
             driver_id: null,
