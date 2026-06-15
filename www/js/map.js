@@ -1,3 +1,9 @@
+import { db } from './firebase-init.js';
+import {
+    collection,
+    onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
 // Local state variables for tracking user position
 let userLatitude = 24.3124; // Default center fallback (Kailashahar center)
 let userLongitude = 92.0135;
@@ -5,6 +11,8 @@ let mapInstance = null;
 let userMarker = null;
 let routePolyline = null;
 let destinationMarker = null;
+let globalDriversUnsubscribe = null;
+const globalDriverMarkers = new Map();
 
 // Mock local landmarks database for North Tripura to compute distances/fares without an expensive Google API key
 const localLandmarks = {
@@ -121,6 +129,30 @@ function injectMapStyles() {
             font-size: 12px;
             color: #666;
         }
+
+        .global-driver-marker {
+            background: transparent;
+            border: 0;
+        }
+
+        .global-driver-shell {
+            width: 38px;
+            height: 38px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 8px 18px rgba(17, 24, 39, 0.25);
+            transform: translateZ(0);
+        }
+
+        .global-driver-marker.bike .global-driver-shell {
+            border: 2px solid #1A7A2E;
+        }
+
+        .global-driver-marker.auto .global-driver-shell {
+            border: 2px solid #facc15;
+        }
     `;
     document.head.appendChild(mapStyle);
 }
@@ -154,6 +186,174 @@ function loadLeaflet() {
     });
 }
 
+function inferDriverVehicleType(driver) {
+    const text = [
+        driver.vehicle_type,
+        driver.vehicleType,
+        driver.vehicle_model,
+        driver.vehicleModel,
+        driver.vehicleName
+    ].filter(Boolean).join(" ").toLowerCase();
+
+    if (text.includes("auto") || text.includes("rickshaw") || text.includes("tuk")) return "auto";
+    return "bike";
+}
+
+function createLiveDriverIcon(driver) {
+    const vehicleType = inferDriverVehicleType(driver);
+    const isAuto = vehicleType === "auto";
+
+    return L.divIcon({
+        className: `global-driver-marker ${vehicleType}`,
+        html: `
+            <div class="global-driver-shell" title="${isAuto ? "Online auto driver" : "Online bike driver"}">
+                ${isAuto ? `
+                    <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
+                        <rect x="7" y="12" width="24" height="15" rx="5" fill="#15803d"/>
+                        <rect x="11" y="8" width="15" height="10" rx="4" fill="#facc15"/>
+                        <rect x="13" y="10" width="9" height="6" rx="2" fill="#e0f2fe"/>
+                        <circle cx="12" cy="28" r="4" fill="#111827"/>
+                        <circle cx="27" cy="28" r="4" fill="#111827"/>
+                        <circle cx="12" cy="28" r="1.7" fill="#fff"/>
+                        <circle cx="27" cy="28" r="1.7" fill="#fff"/>
+                    </svg>
+                ` : `
+                    <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
+                        <circle cx="12" cy="27" r="5" fill="#111827"/>
+                        <circle cx="28" cy="27" r="5" fill="#111827"/>
+                        <path d="M12 27L18 18H24L28 27" stroke="#15803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M17 18L14 14H20L23 18" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M22 15H29" stroke="#15803d" stroke-width="3" stroke-linecap="round"/>
+                        <circle cx="19" cy="11" r="3" fill="#facc15"/>
+                    </svg>
+                `}
+            </div>
+        `,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19]
+    });
+}
+
+function isLiveDriverVisible(driver) {
+    const location = driver.driverLocation || {};
+    return driver.isConnected === true
+        && driver.driverAvailability !== "offline"
+        && Number.isFinite(Number(location.lat))
+        && Number.isFinite(Number(location.lng));
+}
+
+function animateDriverMarker(markerState, nextLatLng) {
+    const marker = markerState.marker;
+    const start = marker.getLatLng();
+    const end = L.latLng(nextLatLng);
+    const duration = 900;
+    const startedAt = performance.now();
+
+    if (markerState.animationFrame) {
+        cancelAnimationFrame(markerState.animationFrame);
+    }
+
+    function step(now) {
+        const progress = Math.min(1, (now - startedAt) / duration);
+        const eased = progress < 0.5
+            ? 2 * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+        marker.setLatLng([
+            start.lat + (end.lat - start.lat) * eased,
+            start.lng + (end.lng - start.lng) * eased
+        ]);
+
+        if (progress < 1) {
+            markerState.animationFrame = requestAnimationFrame(step);
+        } else {
+            markerState.animationFrame = null;
+        }
+    }
+
+    markerState.animationFrame = requestAnimationFrame(step);
+}
+
+function upsertGlobalDriverMarker(driverId, driver) {
+    if (!window.mapInstance) return;
+
+    const location = driver.driverLocation || {};
+    const nextLatLng = [Number(location.lat), Number(location.lng)];
+    const existing = globalDriverMarkers.get(driverId);
+
+    if (!existing) {
+        const marker = L.marker(nextLatLng, {
+            icon: createLiveDriverIcon(driver),
+            zIndexOffset: 500
+        }).addTo(window.mapInstance);
+
+        marker.bindPopup(`
+            <div class="map-popup-title">${driver.name || "Online Driver"}</div>
+            <div class="map-popup-sub">${inferDriverVehicleType(driver) === "auto" ? "Auto" : "Bike"} available nearby</div>
+        `);
+
+        globalDriverMarkers.set(driverId, {
+            marker,
+            vehicleType: inferDriverVehicleType(driver),
+            animationFrame: null
+        });
+        return;
+    }
+
+    const nextVehicleType = inferDriverVehicleType(driver);
+    if (existing.vehicleType !== nextVehicleType) {
+        existing.marker.setIcon(createLiveDriverIcon(driver));
+        existing.vehicleType = nextVehicleType;
+    }
+
+    animateDriverMarker(existing, nextLatLng);
+}
+
+function removeGlobalDriverMarker(driverId) {
+    const existing = globalDriverMarkers.get(driverId);
+    if (!existing) return;
+
+    if (existing.animationFrame) {
+        cancelAnimationFrame(existing.animationFrame);
+    }
+
+    if (window.mapInstance) {
+        window.mapInstance.removeLayer(existing.marker);
+    }
+
+    globalDriverMarkers.delete(driverId);
+}
+
+function clearGlobalDriverMarkers() {
+    Array.from(globalDriverMarkers.keys()).forEach(removeGlobalDriverMarker);
+}
+
+function startGlobalDriverPresenceListener() {
+    if (!window.mapInstance) return;
+
+    if (globalDriversUnsubscribe) {
+        globalDriversUnsubscribe();
+        globalDriversUnsubscribe = null;
+    }
+    clearGlobalDriverMarkers();
+
+    globalDriversUnsubscribe = onSnapshot(collection(db, "driverPresence"), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            const driverId = change.doc.id;
+            const driver = { id: driverId, ...change.doc.data() };
+
+            if (change.type === "removed" || !isLiveDriverVisible(driver)) {
+                removeGlobalDriverMarker(driverId);
+                return;
+            }
+
+            upsertGlobalDriverMarker(driverId, driver);
+        });
+    }, (error) => {
+        console.warn("Global live driver listener failed:", error);
+    });
+}
+
 // 2. Initialize Visual Map Window
 export async function initializeMapEngine() {
     const coords = await getUserLocation();
@@ -166,6 +366,11 @@ export async function initializeMapEngine() {
     injectMapStyles();
 
     if (window.mapInstance) {
+        if (globalDriversUnsubscribe) {
+            globalDriversUnsubscribe();
+            globalDriversUnsubscribe = null;
+        }
+        clearGlobalDriverMarkers();
         window.mapInstance.remove();
         window.mapInstance = null;
     }
@@ -205,6 +410,7 @@ export async function initializeMapEngine() {
 
     setTimeout(() => window.mapInstance.invalidateSize(), 100);
     setupFareEngineListeners();
+    startGlobalDriverPresenceListener();
     window.dispatchEvent(new CustomEvent('map-engine-ready', {
         detail: {
             pickup: { lat: coords.lat, lng: coords.lng }

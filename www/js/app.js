@@ -193,6 +193,11 @@ async function setDriverAvailability(status) {
     currentUser.driverAvailability = status;
 
     try {
+        if (status === "offline" && driverPresenceWatchId !== null) {
+            navigator.geolocation.clearWatch(driverPresenceWatchId);
+            driverPresenceWatchId = null;
+        }
+
         await updateDoc(doc(db, "users", currentUser.uid), {
             driverAvailability: status,
             isConnected: status !== "offline",
@@ -200,9 +205,12 @@ async function setDriverAvailability(status) {
         });
         await setDoc(doc(db, "driverPresence", currentUser.uid), {
             uid: currentUser.uid,
+            name: currentUser.name || "Driver",
+            phone: currentUser.phone || "",
             driverAvailability: status,
             verificationStatus: currentUser.verificationStatus || "pending_review",
             vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
+            vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
             vehicle_type: inferVehicleTypeFromProfile(currentUser),
             isConnected: status !== "offline",
             updatedAt: serverTimestamp()
@@ -256,6 +264,25 @@ function getVehicleMatchRank(driver, requestedVehicleType) {
     const driverVehicleType = inferVehicleTypeFromProfile(driver);
     if (driverVehicleType === requestedVehicleType) return 0;
     return driverVehicleType ? 2 : 1;
+}
+
+async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "searching") {
+    if (!currentUser || currentUser.role !== "driver") return;
+
+    await setDoc(doc(db, "driverPresence", currentUser.uid), {
+        uid: currentUser.uid,
+        name: currentUser.name || "Driver",
+        phone: currentUser.phone || "",
+        driverLocation: { lat, lng },
+        driverAvailability: currentUser.driverAvailability || fallbackAvailability,
+        verificationStatus: currentUser.verificationStatus || "pending_review",
+        vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
+        vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
+        vehicle_type: inferVehicleTypeFromProfile(currentUser),
+        isConnected: true,
+        lastSeenAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    }, { merge: true });
 }
 
 function serviceConfirmRideRequired(requestBtn) {
@@ -338,17 +365,7 @@ function startDriverPresenceTracking() {
                     isConnected: true,
                     lastSeenAt: serverTimestamp()
                 });
-                await setDoc(doc(db, "driverPresence", currentUser.uid), {
-                    uid: currentUser.uid,
-                    driverLocation: { lat, lng },
-                    driverAvailability: currentUser.driverAvailability || "searching",
-                    verificationStatus: currentUser.verificationStatus || "pending_review",
-                    vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
-                    vehicle_type: inferVehicleTypeFromProfile(currentUser),
-                    isConnected: true,
-                    lastSeenAt: serverTimestamp(),
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
+                await updateDriverPresenceLocation(lat, lng, "searching");
             } catch (error) {
                 console.warn("Driver presence update failed:", error);
             }
@@ -1029,6 +1046,7 @@ function startDriverGpsBroadcast(rideRef) {
                 await updateDoc(rideRef, {
                     driverLocation: { lat: lat, lng: lng }
                 });
+                await updateDriverPresenceLocation(lat, lng, "busy");
                 document.getElementById('gps-status').innerText = "GPS Active & Broadcasting";
             }
         },
@@ -1105,6 +1123,7 @@ async function acceptRideJob(rideId) {
                         await updateDoc(rideRef, {
                             driverLocation: { lat: lat, lng: lng }
                         });
+                        await updateDriverPresenceLocation(lat, lng, "busy");
                         document.getElementById('gps-status').innerText = "🟢 GPS Active & Broadcasting";
                     }
                 },
