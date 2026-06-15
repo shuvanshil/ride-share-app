@@ -745,7 +745,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
     const fareAmount = parseFloat(String(fareText).replace(/[^\d.]/g, ''));
 
     if (!dropText || !Number.isFinite(fareAmount) || fareAmount <= 0) {
-        alert("Please enter a valid destination to get a fare quote first.");
+        alert("Please enter a Tripura pickup/drop location and wait for the fare quote to calculate.");
         return;
     }
 

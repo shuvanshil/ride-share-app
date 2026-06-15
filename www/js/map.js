@@ -12,15 +12,29 @@ let userMarker = null;
 let routePolyline = null;
 let destinationMarker = null;
 let globalDriversUnsubscribe = null;
+let destinationSearchTimer = null;
+let destinationSearchAbortController = null;
 const globalDriverMarkers = new Map();
 
-// Mock local landmarks database for North Tripura to compute distances/fares without an expensive Google API key
+// Fast shortcuts only. Unknown Tripura villages/streets are resolved through Nominatim geocoding below.
 const localLandmarks = {
     "kumarghat station": { lat: 24.2415, lng: 92.0312, name: "Kumarghat Railway Station" },
     "rgm hospital": { lat: 24.3210, lng: 92.0110, name: "Kailashahar RGM Hospital" },
     "dharmanagar": { lat: 24.3667, lng: 92.1667, name: "Dharmanagar Town Center" },
     "unakoti": { lat: 24.3236, lng: 92.0272, name: "Unakoti Heritage Site" }
 };
+
+const TRIPURA_VIEWBOX = "91.0,24.7,92.6,22.8";
+const RURAL_PRIORITY_TYPES = new Set([
+    "village",
+    "hamlet",
+    "locality",
+    "suburb",
+    "neighbourhood",
+    "residential",
+    "town",
+    "city"
+]);
 
 // 1. Fetch live hardware GPS coordinates from the device
 export function getUserLocation() {
@@ -424,79 +438,185 @@ function setupFareEngineListeners() {
     const fareQuoteBox = document.getElementById('fare-quote-box');
     const fareAmountSpan = document.getElementById('fare-amount');
 
-    dropInput.addEventListener('input', async (e) => {
+    dropInput.addEventListener('input', (e) => {
         const query = e.target.value.toLowerCase().trim();
 
-        // Check if user is typing one of our known local destinations
-        let destination = null;
-        for (const key in localLandmarks) {
-            if (query.includes(key) || key.includes(query) && query.length > 3) {
-                destination = localLandmarks[key];
-                break;
-            }
+        if (destinationSearchTimer) {
+            clearTimeout(destinationSearchTimer);
         }
 
-        if (destination) {
-            // Calculate rough distance in kilometers
-            const distance = calculateDistance(userLatitude, userLongitude, destination.lat, destination.lng);
-            const estimatedDurationMinutes = Math.max(5, Math.round((distance / 25) * 60));
-
-            // Dynamic Pricing Rule: Rs 30 Base Fare + Rs 12 per kilometer
-            const baseFare = 30;
-            const perKmRate = 12;
-            const finalFare = Math.round(baseFare + (distance * perKmRate));
-            window.latestFareQuote = {
-                pickup_lat: userLatitude,
-                pickup_lng: userLongitude,
-                drop_lat: destination.lat,
-                drop_lng: destination.lng,
-                distance_km: Number(distance.toFixed(2)),
-                duration_minutes: estimatedDurationMinutes
-            };
-
-            // Unveil the price ticket smoothly in the UI
-            fareAmountSpan.innerText = `₹${finalFare}.00`;
-            fareQuoteBox.classList.remove('d-none');
-            fareQuoteBox.classList.add('d-flex');
-
-            if (window.mapInstance) {
-                clearDestinationRoute();
-
-                const destinationIcon = L.divIcon({
-                    className: 'destination-marker-icon',
-                    html: `
-                        <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 35C12 35 23 22.2 23 12.5C23 6.14873 18.0751 1 12 1C5.92487 1 1 6.14873 1 12.5C1 22.2 12 35 12 35Z" fill="#ef4444" stroke="white" stroke-width="2"/>
-                            <circle cx="12" cy="12.5" r="4.5" fill="white"/>
-                        </svg>
-                    `,
-                    iconSize: [24, 36],
-                    iconAnchor: [12, 36],
-                    popupAnchor: [0, -32]
-                });
-
-                destinationMarker = L.marker([destination.lat, destination.lng], {
-                    icon: destinationIcon
-                }).addTo(window.mapInstance)
-                    .bindPopup(`
-                        <div class="map-popup-title">${destination.name}</div>
-                        <div class="map-popup-sub">Drop location</div>
-                    `);
-
-                const routeCoords = await fetchRoadRouteCoords(
-                    { lat: userLatitude, lng: userLongitude },
-                    { lat: destination.lat, lng: destination.lng }
-                );
-
-                drawRoutePolyline(routeCoords);
-            }
-        } else {
-            fareQuoteBox.classList.add('d-none');
-            fareQuoteBox.classList.remove('d-flex');
-            window.latestFareQuote = null;
-            clearDestinationRoute();
+        if (destinationSearchAbortController) {
+            destinationSearchAbortController.abort();
+            destinationSearchAbortController = null;
         }
+
+        if (query.length < 3) {
+            resetDestinationFareState(fareQuoteBox);
+            return;
+        }
+
+        const localDestination = findLocalDestination(query);
+        if (localDestination) {
+            renderDestinationFare(localDestination, fareQuoteBox, fareAmountSpan);
+            return;
+        }
+
+        fareAmountSpan.innerText = "Searching...";
+        fareQuoteBox.classList.remove('d-none');
+        fareQuoteBox.classList.add('d-flex');
+
+        destinationSearchTimer = setTimeout(async () => {
+            const destination = await geocodeTripuraDestination(query);
+            if (destination) {
+                renderDestinationFare(destination, fareQuoteBox, fareAmountSpan);
+            } else {
+                resetDestinationFareState(fareQuoteBox);
+            }
+        }, 650);
     });
+}
+
+function findLocalDestination(query) {
+    for (const key in localLandmarks) {
+        if (query.includes(key) || (key.includes(query) && query.length > 3)) {
+            return localLandmarks[key];
+        }
+    }
+
+    return null;
+}
+
+function resetDestinationFareState(fareQuoteBox) {
+    fareQuoteBox.classList.add('d-none');
+    fareQuoteBox.classList.remove('d-flex');
+    window.latestFareQuote = null;
+    clearDestinationRoute();
+
+    if (destinationSearchAbortController) {
+        destinationSearchAbortController.abort();
+        destinationSearchAbortController = null;
+    }
+}
+
+function rankTripuraResult(result) {
+    const address = result.address || {};
+    const type = result.type || "";
+    const displayName = (result.display_name || "").toLowerCase();
+    let score = 0;
+
+    if (displayName.includes("tripura")) score += 100;
+    if (RURAL_PRIORITY_TYPES.has(type)) score += 35;
+    if (address.village || address.hamlet || address.locality) score += 30;
+    if (address.suburb || address.neighbourhood) score += 20;
+    if (address.town || address.city) score += 12;
+
+    return score;
+}
+
+function buildDestinationName(result, fallbackQuery) {
+    const address = result.address || {};
+    const parts = [
+        address.road,
+        address.village || address.hamlet || address.locality || address.suburb || address.neighbourhood,
+        address.town || address.city || address.county || address.state_district
+    ].filter(Boolean);
+
+    return parts.length ? [...new Set(parts)].join(", ") : result.name || fallbackQuery;
+}
+
+async function geocodeTripuraDestination(query) {
+    if (destinationSearchAbortController) {
+        destinationSearchAbortController.abort();
+    }
+
+    destinationSearchAbortController = new AbortController();
+
+    try {
+        const params = new URLSearchParams({
+            format: "jsonv2",
+            q: `${query}, Tripura, India`,
+            addressdetails: "1",
+            limit: "8",
+            countrycodes: "in",
+            viewbox: TRIPURA_VIEWBOX,
+            bounded: "1"
+        });
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+            headers: { "Accept-Language": "en" },
+            signal: destinationSearchAbortController.signal
+        });
+        const results = await response.json();
+
+        const bestResult = (Array.isArray(results) ? results : [])
+            .filter((result) => Number.isFinite(Number(result.lat)) && Number.isFinite(Number(result.lon)))
+            .sort((a, b) => rankTripuraResult(b) - rankTripuraResult(a))[0];
+
+        if (!bestResult) return null;
+
+        return {
+            lat: Number(bestResult.lat),
+            lng: Number(bestResult.lon),
+            name: buildDestinationName(bestResult, query)
+        };
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            console.warn("Tripura destination geocoding failed:", error);
+        }
+        return null;
+    }
+}
+
+async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) {
+    const distance = calculateDistance(userLatitude, userLongitude, destination.lat, destination.lng);
+    const estimatedDurationMinutes = Math.max(5, Math.round((distance / 25) * 60));
+    const baseFare = 30;
+    const perKmRate = 12;
+    const finalFare = Math.round(baseFare + (distance * perKmRate));
+
+    window.latestFareQuote = {
+        pickup_lat: userLatitude,
+        pickup_lng: userLongitude,
+        drop_lat: destination.lat,
+        drop_lng: destination.lng,
+        distance_km: Number(distance.toFixed(2)),
+        duration_minutes: estimatedDurationMinutes
+    };
+
+    fareAmountSpan.innerText = `\u20B9${finalFare}.00`;
+    fareQuoteBox.classList.remove('d-none');
+    fareQuoteBox.classList.add('d-flex');
+
+    if (!window.mapInstance) return;
+
+    clearDestinationRoute();
+
+    const destinationIcon = L.divIcon({
+        className: 'destination-marker-icon',
+        html: `
+            <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 35C12 35 23 22.2 23 12.5C23 6.14873 18.0751 1 12 1C5.92487 1 1 6.14873 1 12.5C1 22.2 12 35 12 35Z" fill="#ef4444" stroke="white" stroke-width="2"/>
+                <circle cx="12" cy="12.5" r="4.5" fill="white"/>
+            </svg>
+        `,
+        iconSize: [24, 36],
+        iconAnchor: [12, 36],
+        popupAnchor: [0, -32]
+    });
+
+    destinationMarker = L.marker([destination.lat, destination.lng], {
+        icon: destinationIcon
+    }).addTo(window.mapInstance)
+        .bindPopup(`
+            <div class="map-popup-title">${destination.name}</div>
+            <div class="map-popup-sub">Drop location</div>
+        `);
+
+    const routeCoords = await fetchRoadRouteCoords(
+        { lat: userLatitude, lng: userLongitude },
+        { lat: destination.lat, lng: destination.lng }
+    );
+
+    drawRoutePolyline(routeCoords);
 }
 
 function clearDestinationRoute() {
