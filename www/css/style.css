@@ -1478,19 +1478,15 @@ select {
 }
 
 .services-ride-actions {
-    position: fixed;
-    left: 16px;
-    right: 16px;
-    bottom: 86px;
-    z-index: 1040;
+    position: static;
     display: grid;
     gap: 8px;
+    margin-top: 12px;
     padding: 12px;
     border: 1px solid var(--gy-border);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.08);
-    backdrop-filter: blur(12px);
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
 .services-ride-actions p {
@@ -1784,7 +1780,6 @@ select {
         box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
     }
 
-    .services-ride-actions,
     .services-bottom-nav {
         left: 50%;
         width: min(calc(100% - 32px), 528px);
@@ -1812,8 +1807,4 @@ select {
         min-height: 260px;
     }
 
-    .services-ride-actions {
-        left: 12px;
-        right: 12px;
-    }
 }

@@ -40,6 +40,26 @@ function generateVerificationPin() {
     return String(Math.floor(1000 + Math.random() * 9000));
 }
 
+function insertPassengerLifecycleCard(element, preferredAnchor = null) {
+    const bottomSheetContainer = document.querySelector('#bottom-sheet .container');
+    if (!bottomSheetContainer) return false;
+
+    // Home keeps the request button directly inside the container. Services wraps
+    // it inside .services-ride-actions, so only insert before direct children.
+    const anchor = preferredAnchor && preferredAnchor.parentElement === bottomSheetContainer
+        ? preferredAnchor
+        : bottomSheetContainer.querySelector(':scope > .services-ride-actions')
+            || bottomSheetContainer.querySelector(':scope > #request-ride-btn');
+
+    if (anchor) {
+        bottomSheetContainer.insertBefore(element, anchor);
+    } else {
+        bottomSheetContainer.appendChild(element);
+    }
+
+    return true;
+}
+
 function renderPassengerVerificationPin(pin) {
     if (!pin) return;
 
@@ -51,7 +71,7 @@ function renderPassengerVerificationPin(pin) {
         pinBox = document.createElement('div');
         pinBox.id = 'passenger-verification-pin-box';
         pinBox.className = 'bg-warning-subtle border border-warning rounded p-2 mb-3 text-center';
-        bottomSheetContainer.insertBefore(pinBox, document.getElementById('request-ride-btn'));
+        insertPassengerLifecycleCard(pinBox, document.getElementById('request-ride-btn'));
     }
 
     pinBox.innerHTML = `
@@ -78,7 +98,7 @@ function renderPassengerDriverCard(ride) {
         driverCard = document.createElement('div');
         driverCard.id = 'passenger-driver-card';
         driverCard.className = 'bg-white border rounded p-3 mb-3 shadow-sm';
-        bottomSheetContainer.insertBefore(driverCard, document.getElementById('passenger-verification-pin-box') || document.getElementById('request-ride-btn'));
+        insertPassengerLifecycleCard(driverCard, document.getElementById('passenger-verification-pin-box') || document.getElementById('request-ride-btn'));
     }
 
     const driverName = ride.driver_name || "Assigned Driver";
