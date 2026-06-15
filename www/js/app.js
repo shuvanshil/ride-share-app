@@ -226,7 +226,14 @@ function inferVehicleTypeFromProfile(driver) {
 function driverMatchesRequestedVehicle(driver, requestedVehicleType) {
     if (!requestedVehicleType) return true;
     const driverVehicleType = inferVehicleTypeFromProfile(driver);
-    return driverVehicleType === requestedVehicleType;
+    return !driverVehicleType || driverVehicleType === requestedVehicleType;
+}
+
+function getVehicleMatchRank(driver, requestedVehicleType) {
+    if (!requestedVehicleType) return 0;
+    const driverVehicleType = inferVehicleTypeFromProfile(driver);
+    if (driverVehicleType === requestedVehicleType) return 0;
+    return driverVehicleType ? 2 : 1;
 }
 
 function serviceConfirmRideRequired(requestBtn) {
@@ -256,6 +263,7 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
         })
         .map((driver) => ({
             ...driver,
+            vehicleMatchRank: getVehicleMatchRank(driver, requestedVehicleType),
             dispatchDistanceKm: calculateDispatchDistanceKm(
                 Number(pickupLat),
                 Number(pickupLng),
@@ -263,7 +271,7 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
                 Number(driver.driverLocation.lng)
             )
         }))
-        .sort((a, b) => a.dispatchDistanceKm - b.dispatchDistanceKm);
+        .sort((a, b) => a.vehicleMatchRank - b.vehicleMatchRank || a.dispatchDistanceKm - b.dispatchDistanceKm);
 }
 
 async function buildInitialDispatchState(pickupLat, pickupLng, requestedVehicleType = "") {
@@ -693,8 +701,9 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
     const dropText = document.getElementById('drop-input').value;
     const fareText = document.getElementById('fare-amount').innerText;
     const requestBtn = document.getElementById('request-ride-btn');
+    const fareAmount = parseFloat(String(fareText).replace(/[^\d.]/g, ''));
 
-    if (!dropText || fareText === "₹0.00") {
+    if (!dropText || !Number.isFinite(fareAmount) || fareAmount <= 0) {
         alert("Please enter a valid destination to get a fare quote first.");
         return;
     }
@@ -711,7 +720,6 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
         }));
         return;
     }
-    const fareAmount = parseFloat(String(fareText).replace(/[^\d.]/g, ''));
     const requestedVehicleType = requestBtn.dataset.vehicleType || window.selectedServiceVehicleType || "";
     // Double-Booking Protection Check
     try {
@@ -776,9 +784,11 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
 
     } catch (error) {
         console.error("Database Write Failure:", error);
-        requestBtn.innerHTML = 'Confirm Request';
-        requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
+        requestBtn.innerHTML = 'Find Ride';
+        requestBtn.className = "gy-btn gy-btn-primary w-100";
         requestBtn.disabled = false;
+        delete requestBtn.dataset.serviceRideConfirmed;
+        alert(error.message || "Could not create this ride request. Please try again.");
     }
 });
 
