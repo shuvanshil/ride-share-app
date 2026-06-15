@@ -129,6 +129,9 @@ function resetPassengerBookingUi() {
     requestBtn.innerHTML = 'Find Ride';
     requestBtn.disabled = false;
     requestBtn.className = "gy-btn gy-btn-primary w-100";
+    delete requestBtn.dataset.serviceRideConfirmed;
+    delete requestBtn.dataset.vehicleType;
+    window.selectedServiceVehicleType = "";
 }
 
 function applyServiceBookingDraft() {
@@ -179,6 +182,8 @@ async function setDriverAvailability(status) {
             uid: currentUser.uid,
             driverAvailability: status,
             verificationStatus: currentUser.verificationStatus || "pending_review",
+            vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
+            vehicle_type: inferVehicleTypeFromProfile(currentUser),
             isConnected: status !== "offline",
             updatedAt: serverTimestamp()
         }, { merge: true });
@@ -221,7 +226,7 @@ function inferVehicleTypeFromProfile(driver) {
 function driverMatchesRequestedVehicle(driver, requestedVehicleType) {
     if (!requestedVehicleType) return true;
     const driverVehicleType = inferVehicleTypeFromProfile(driver);
-    return !driverVehicleType || driverVehicleType === requestedVehicleType;
+    return driverVehicleType === requestedVehicleType;
 }
 
 function serviceConfirmRideRequired(requestBtn) {
@@ -306,6 +311,8 @@ function startDriverPresenceTracking() {
                     driverLocation: { lat, lng },
                     driverAvailability: currentUser.driverAvailability || "searching",
                     verificationStatus: currentUser.verificationStatus || "pending_review",
+                    vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
+                    vehicle_type: inferVehicleTypeFromProfile(currentUser),
                     isConnected: true,
                     lastSeenAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
@@ -349,7 +356,7 @@ async function expandRideDispatch(rideId) {
         const alreadyNotified = ride.notified_driver_ids || [];
         const rejectedDrivers = ride.rejected_driver_ids || [];
         const excludedIds = [...alreadyNotified, ...rejectedDrivers];
-        const nearestDrivers = await fetchNearestAvailableDrivers(ride.pickup_lat, ride.pickup_lng, excludedIds);
+        const nearestDrivers = await fetchNearestAvailableDrivers(ride.pickup_lat, ride.pickup_lng, excludedIds, ride.vehicle_type || "");
         const nextBatch = nearestDrivers.slice(0, ride.dispatch_batch_size || DISPATCH_BATCH_SIZE);
         const nextBatchIds = nextBatch.map((driver) => driver.uid || driver.id);
 
@@ -685,15 +692,27 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
     const pickupText = document.getElementById('pickup-input').value;
     const dropText = document.getElementById('drop-input').value;
     const fareText = document.getElementById('fare-amount').innerText;
+    const requestBtn = document.getElementById('request-ride-btn');
 
     if (!dropText || fareText === "₹0.00") {
         alert("Please enter a valid destination to get a fare quote first.");
         return;
     }
 
-    const fareAmount = parseFloat(fareText.replace('₹', ''));
-    const requestBtn = document.getElementById('request-ride-btn');
 
+    if (serviceConfirmRideRequired(requestBtn)) {
+        window.dispatchEvent(new CustomEvent('service-confirm-ride-requested', {
+            detail: {
+                pickupText,
+                dropText,
+                fareText,
+                fareQuote: window.latestFareQuote || {}
+            }
+        }));
+        return;
+    }
+    const fareAmount = parseFloat(String(fareText).replace(/[^\d.]/g, ''));
+    const requestedVehicleType = requestBtn.dataset.vehicleType || window.selectedServiceVehicleType || "";
     // Double-Booking Protection Check
     try {
         const activeRideQuery = query(
@@ -721,7 +740,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
     try {
         const verificationPin = generateVerificationPin();
         const fareQuote = window.latestFareQuote || {};
-        const dispatchState = await buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng);
+        const dispatchState = await buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng, requestedVehicleType);
         const rideData = {
             passenger_id: currentUser.uid,
             passenger_name: currentUser.name,
@@ -735,6 +754,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             distance_km: fareQuote.distance_km || null,
             duration_minutes: fareQuote.duration_minutes || null,
             fare: fareAmount, 
+            vehicle_type: requestedVehicleType || "bike",
             status: "pending",
             driver_id: null,
             driver_name: null,
