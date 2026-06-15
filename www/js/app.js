@@ -798,6 +798,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             passenger_phone: currentUser.phone,
             pickup_name: pickupText,
             drop_name: dropText,
+            drop_full_address: fareQuote.drop_full_address || "",
             pickup_lat: fareQuote.pickup_lat || null,
             pickup_lng: fareQuote.pickup_lng || null,
             drop_lat: fareQuote.drop_lat || null,

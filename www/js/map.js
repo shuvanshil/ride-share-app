@@ -167,6 +167,81 @@ function injectMapStyles() {
         .global-driver-marker.auto .global-driver-shell {
             border: 2px solid #facc15;
         }
+
+        .destination-suggestions {
+            display: none;
+            width: 100%;
+            margin-top: 10px;
+            border: 1px solid #e7e7e7;
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 14px 34px rgba(17, 24, 39, 0.12);
+            overflow: hidden;
+            z-index: 1200;
+        }
+
+        .destination-suggestions.is-visible {
+            display: block;
+        }
+
+        .destination-suggestions-title {
+            padding: 12px 14px 4px;
+            color: #111;
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .destination-suggestion-item {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 42px 1fr;
+            gap: 12px;
+            align-items: center;
+            padding: 13px 14px;
+            border: 0;
+            border-top: 1px solid #f0f0f0;
+            background: #fff;
+            text-align: left;
+        }
+
+        .destination-suggestion-item:active,
+        .destination-suggestion-item:hover {
+            background: #f7fbf8;
+        }
+
+        .destination-suggestion-pin {
+            width: 38px;
+            height: 38px;
+            display: grid;
+            place-items: center;
+            border-radius: 10px;
+            color: #111;
+            background: #f5f5f5;
+            font-size: 18px;
+        }
+
+        .destination-suggestion-main {
+            display: block;
+            color: #111;
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+
+        .destination-suggestion-sub {
+            display: block;
+            margin-top: 4px;
+            color: #777;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+
+        .destination-suggestion-empty {
+            padding: 14px;
+            color: #777;
+            font-size: 13px;
+            font-weight: 700;
+        }
     `;
     document.head.appendChild(mapStyle);
 }
@@ -452,44 +527,53 @@ function setupFareEngineListeners() {
 
         if (query.length < 3) {
             resetDestinationFareState(fareQuoteBox);
-            return;
-        }
-
-        const localDestination = findLocalDestination(query);
-        if (localDestination) {
-            renderDestinationFare(localDestination, fareQuoteBox, fareAmountSpan);
+            hideDestinationSuggestions();
             return;
         }
 
         fareAmountSpan.innerText = "Searching...";
         fareQuoteBox.classList.remove('d-none');
         fareQuoteBox.classList.add('d-flex');
+        window.latestFareQuote = null;
 
         destinationSearchTimer = setTimeout(async () => {
-            const destination = await geocodeTripuraDestination(query);
-            if (destination) {
-                renderDestinationFare(destination, fareQuoteBox, fareAmountSpan);
+            const destinations = [
+                ...findLocalDestinations(query),
+                ...(await searchTripuraDestinations(query))
+            ].slice(0, 7);
+
+            if (destinations.length) {
+                showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan);
+                fareQuoteBox.classList.add('d-none');
+                fareQuoteBox.classList.remove('d-flex');
             } else {
                 resetDestinationFareState(fareQuoteBox);
+                showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan);
             }
         }, 650);
     });
 }
 
 function findLocalDestination(query) {
-    for (const key in localLandmarks) {
-        if (query.includes(key) || (key.includes(query) && query.length > 3)) {
-            return localLandmarks[key];
-        }
-    }
+    return findLocalDestinations(query)[0] || null;
+}
 
-    return null;
+function findLocalDestinations(query) {
+    return Object.entries(localLandmarks)
+        .filter(([key]) => query.includes(key) || (key.includes(query) && query.length > 3))
+        .map(([, destination]) => ({
+            ...destination,
+            mainName: destination.name,
+            fullAddress: `${destination.name}, Tripura, India`,
+            source: "local"
+        }));
 }
 
 function resetDestinationFareState(fareQuoteBox) {
     fareQuoteBox.classList.add('d-none');
     fareQuoteBox.classList.remove('d-flex');
     window.latestFareQuote = null;
+    window.selectedDestination = null;
     clearDestinationRoute();
 
     if (destinationSearchAbortController) {
@@ -524,7 +608,18 @@ function buildDestinationName(result, fallbackQuery) {
     return parts.length ? [...new Set(parts)].join(", ") : result.name || fallbackQuery;
 }
 
-async function geocodeTripuraDestination(query) {
+function splitDestinationDisplay(result, fallbackQuery) {
+    const displayParts = String(result.display_name || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const mainName = result.name || displayParts[0] || fallbackQuery;
+    const subAddress = displayParts.filter((part) => part.toLowerCase() !== String(mainName).toLowerCase()).join(", ");
+
+    return {
+        mainName,
+        fullAddress: subAddress || result.display_name || buildDestinationName(result, fallbackQuery)
+    };
+}
+
+async function searchTripuraDestinations(query) {
     if (destinationSearchAbortController) {
         destinationSearchAbortController.abort();
     }
@@ -547,23 +642,112 @@ async function geocodeTripuraDestination(query) {
         });
         const results = await response.json();
 
-        const bestResult = (Array.isArray(results) ? results : [])
+        return (Array.isArray(results) ? results : [])
             .filter((result) => Number.isFinite(Number(result.lat)) && Number.isFinite(Number(result.lon)))
-            .sort((a, b) => rankTripuraResult(b) - rankTripuraResult(a))[0];
-
-        if (!bestResult) return null;
-
-        return {
-            lat: Number(bestResult.lat),
-            lng: Number(bestResult.lon),
-            name: buildDestinationName(bestResult, query)
-        };
+            .sort((a, b) => rankTripuraResult(b) - rankTripuraResult(a))
+            .slice(0, 6)
+            .map((result) => {
+                const display = splitDestinationDisplay(result, query);
+                return {
+                    lat: Number(result.lat),
+                    lng: Number(result.lon),
+                    name: display.mainName,
+                    mainName: display.mainName,
+                    fullAddress: display.fullAddress
+                };
+            });
     } catch (error) {
         if (error.name !== "AbortError") {
             console.warn("Tripura destination geocoding failed:", error);
         }
-        return null;
+        return [];
     }
+}
+
+function ensureDestinationSuggestions(dropInput) {
+    let suggestions = document.getElementById('destination-suggestions');
+    if (suggestions) return suggestions;
+
+    suggestions = document.createElement('div');
+    suggestions.id = 'destination-suggestions';
+    suggestions.className = 'destination-suggestions';
+    suggestions.setAttribute('role', 'listbox');
+
+    const field = dropInput.closest('.location-field');
+    if (field) {
+        field.insertAdjacentElement('afterend', suggestions);
+    } else {
+        dropInput.insertAdjacentElement('afterend', suggestions);
+    }
+
+    document.addEventListener('click', (event) => {
+        if (!suggestions.contains(event.target) && event.target !== dropInput) {
+            hideDestinationSuggestions();
+        }
+    });
+
+    return suggestions;
+}
+
+function hideDestinationSuggestions() {
+    const suggestions = document.getElementById('destination-suggestions');
+    if (!suggestions) return;
+    suggestions.classList.remove('is-visible');
+}
+
+function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan) {
+    const suggestions = ensureDestinationSuggestions(dropInput);
+
+    if (!destinations.length) {
+        suggestions.innerHTML = `<div class="destination-suggestion-empty">No exact Tripura location found. Try village, market, road, or subdivision name.</div>`;
+        suggestions.classList.add('is-visible');
+        return;
+    }
+
+    suggestions.innerHTML = `
+        <div class="destination-suggestions-title">Search results</div>
+        ${destinations.map((destination, index) => `
+            <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
+                <span class="destination-suggestion-pin">⌖</span>
+                <span>
+                    <strong class="destination-suggestion-main">${escapeHtml(destination.mainName || destination.name)}</strong>
+                    <small class="destination-suggestion-sub">${escapeHtml(destination.fullAddress || "Tripura, India")}</small>
+                </span>
+            </button>
+        `).join("")}
+    `;
+
+    suggestions.querySelectorAll('.destination-suggestion-item').forEach((item) => {
+        item.addEventListener('click', () => {
+            const selected = destinations[Number(item.dataset.index)];
+            if (!selected) return;
+
+            dropInput.value = selected.mainName || selected.name;
+            window.selectedDestination = {
+                name: selected.mainName || selected.name,
+                fullAddress: selected.fullAddress || "",
+                lat: selected.lat,
+                lng: selected.lng
+            };
+            hideDestinationSuggestions();
+            renderDestinationFare(selected, fareQuoteBox, fareAmountSpan);
+        });
+    });
+
+    suggestions.classList.add('is-visible');
+}
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+async function geocodeTripuraDestination(query) {
+    return (await searchTripuraDestinations(query))[0] || null;
 }
 
 async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) {
@@ -578,6 +762,8 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         pickup_lng: userLongitude,
         drop_lat: destination.lat,
         drop_lng: destination.lng,
+        drop_name: destination.mainName || destination.name,
+        drop_full_address: destination.fullAddress || "",
         distance_km: Number(distance.toFixed(2)),
         duration_minutes: estimatedDurationMinutes
     };
