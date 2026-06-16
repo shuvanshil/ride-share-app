@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { createBaseTileLayer, initializeMapEngine } from './map.js';
+import { createRideMapSurface, initializeMapEngine } from './map.js';
 
 const authView = document.getElementById('auth-view');
 const dashboardView = document.getElementById('dashboard-view');
@@ -25,6 +25,7 @@ const vehicleOptions = Array.from(document.querySelectorAll('.service-vehicle-op
 
 let servicesSessionStarted = false;
 let confirmMapInstance = null;
+let confirmMapShell = null;
 let selectedVehicleType = "bike";
 let confirmFares = {
     bike: 0,
@@ -67,6 +68,13 @@ function hideConfirmRideView() {
 }
 
 function resetConfirmMap() {
+    if (confirmMapShell) {
+        confirmMapShell.destroy();
+        confirmMapShell = null;
+        confirmMapInstance = null;
+        return;
+    }
+
     if (confirmMapInstance) {
         confirmMapInstance.remove();
         confirmMapInstance = null;
@@ -149,7 +157,10 @@ async function renderConfirmRouteMap(fareQuote) {
     }
 
     resetConfirmMap();
-    confirmMapInstance = window.L.map(mapElement, {
+    confirmMapShell = await createRideMapSurface(mapElement, {
+        shellId: 'service-confirm-map-shell',
+        center: origin,
+        zoom: 15,
         zoomControl: false,
         attributionControl: false,
         dragging: true,
@@ -159,8 +170,7 @@ async function renderConfirmRouteMap(fareQuote) {
         minZoom: 10,
         maxZoom: 19
     });
-
-    createBaseTileLayer(window.L).addTo(confirmMapInstance);
+    confirmMapInstance = confirmMapShell.map;
 
     const routeCoords = await fetchConfirmRoute(origin, destination);
     const routeGlow = window.L.polyline(routeCoords, {

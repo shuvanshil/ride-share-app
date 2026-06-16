@@ -15,6 +15,7 @@ let destinationMarker = null;
 let globalDriversUnsubscribe = null;
 let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
+let mainMapShell = null;
 const globalDriverMarkers = new Map();
 
 // Fast shortcuts only. Unknown Tripura villages/streets are resolved through Nominatim geocoding below.
@@ -39,7 +40,6 @@ const RURAL_PRIORITY_TYPES = new Set([
 ]);
 
 const CARTO_TILE_CONFIG = {
-    provider: 'carto',
     url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     options: {
         subdomains: 'abcd',
@@ -52,73 +52,12 @@ function hasMapplsKey() {
     return MAPPLS_ENABLED && MAPPLS_STATIC_KEY.trim().length > 0;
 }
 
-function getMapplsTileConfig() {
-    if (!hasMapplsKey() || !MAPPLS_TILES_ENABLED) return null;
-
-    return {
-        provider: 'mappls',
-        url: `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/tiles/{z}/{x}/{y}.png`,
-        options: {
-            maxZoom: 19,
-            attribution: '&copy; Mappls'
-        }
-    };
+function canUseMapplsBasemap() {
+    return hasMapplsKey() && MAPPLS_TILES_ENABLED;
 }
 
 export function createBaseTileLayer(leafletInstance = window.L) {
-    const provider = getMapplsTileConfig() || CARTO_TILE_CONFIG;
-    const tileLayer = leafletInstance.tileLayer(provider.url, provider.options);
-
-    if (provider.provider === 'mappls') {
-        attachTileLayerFallback(tileLayer, leafletInstance);
-    }
-
-    return tileLayer;
-}
-
-function attachTileLayerFallback(tileLayer, leafletInstance) {
-    let hasLoadedAnyTile = false;
-    let hasFallenBack = false;
-    let fallbackTimer = null;
-
-    function clearFallbackTimer() {
-        if (fallbackTimer) {
-            clearTimeout(fallbackTimer);
-            fallbackTimer = null;
-        }
-    }
-
-    function swapToCartoFallback(reason) {
-        if (hasFallenBack) return;
-        hasFallenBack = true;
-        clearFallbackTimer();
-        console.warn(`Mappls tiles unavailable, switching to CARTO fallback (${reason}).`);
-
-        const map = tileLayer._map;
-        if (!map) return;
-
-        map.removeLayer(tileLayer);
-        leafletInstance.tileLayer(CARTO_TILE_CONFIG.url, CARTO_TILE_CONFIG.options).addTo(map);
-    }
-
-    tileLayer.on('tileload', () => {
-        hasLoadedAnyTile = true;
-        clearFallbackTimer();
-    });
-
-    tileLayer.on('tileerror', () => {
-        swapToCartoFallback('tile error');
-    });
-
-    tileLayer.on('add', () => {
-        fallbackTimer = setTimeout(() => {
-            if (!hasLoadedAnyTile) {
-                swapToCartoFallback('load timeout');
-            }
-        }, 4000);
-    });
-
-    tileLayer.on('remove', clearFallbackTimer);
+    return leafletInstance.tileLayer(CARTO_TILE_CONFIG.url, CARTO_TILE_CONFIG.options);
 }
 
 function buildReadableAddressFromObject(address = {}) {
@@ -413,6 +352,26 @@ function injectMapStyles() {
             font-size: 13px;
             font-weight: 700;
         }
+
+        .map-hybrid-host {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mappls-base-surface,
+        .leaflet-overlay-surface {
+            position: absolute;
+            inset: 0;
+        }
+
+        .leaflet-overlay-surface,
+        .leaflet-overlay-surface .leaflet-container {
+            background: transparent !important;
+        }
+
+        .leaflet-overlay-surface .leaflet-control-attribution {
+            display: none;
+        }
     `;
     document.head.appendChild(mapStyle);
 }
@@ -444,6 +403,221 @@ function loadLeaflet() {
         script.onerror = reject;
         document.body.appendChild(script);
     });
+}
+
+function loadMapplsSdk() {
+    return new Promise((resolve, reject) => {
+        if (!canUseMapplsBasemap()) {
+            resolve(null);
+            return;
+        }
+
+        if (window.mappls?.Map) {
+            resolve(window.mappls);
+            return;
+        }
+
+        const existingScript = document.querySelector('script[data-mappls-sdk="true"]');
+        if (existingScript) {
+            existingScript.addEventListener('load', () => resolve(window.mappls || null), { once: true });
+            existingScript.addEventListener('error', reject, { once: true });
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = `https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${encodeURIComponent(MAPPLS_STATIC_KEY)}`;
+        script.async = true;
+        script.dataset.mapplsSdk = 'true';
+        script.onload = () => resolve(window.mappls || null);
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+function syncBaseMapView(baseMap, leafletMap) {
+    if (!baseMap || !leafletMap) return;
+
+    const center = leafletMap.getCenter();
+    const zoom = leafletMap.getZoom();
+
+    try {
+        if (typeof baseMap.flyTo === 'function') {
+            baseMap.flyTo({
+                center: [center.lng, center.lat],
+                zoom,
+                duration: 0
+            });
+            return;
+        }
+
+        if (typeof baseMap.setCenter === 'function') {
+            baseMap.setCenter([center.lng, center.lat]);
+        } else if (typeof baseMap.panTo === 'function') {
+            baseMap.panTo({ lat: center.lat, lng: center.lng });
+        }
+
+        if (typeof baseMap.setZoom === 'function') {
+            baseMap.setZoom(zoom);
+        }
+    } catch (error) {
+        console.warn('Mappls base map sync failed:', error);
+    }
+}
+
+function createMapShellMarkup(hostElement, shellId) {
+    hostElement.innerHTML = `
+        <div id="${shellId}-base" class="mappls-base-surface"></div>
+        <div id="${shellId}-overlay" class="leaflet-overlay-surface"></div>
+    `;
+
+    return {
+        baseId: `${shellId}-base`,
+        overlayId: `${shellId}-overlay`
+    };
+}
+
+export async function createRideMapSurface(hostElementOrId, options = {}) {
+    const hostElement = typeof hostElementOrId === 'string'
+        ? document.getElementById(hostElementOrId)
+        : hostElementOrId;
+
+    if (!hostElement) {
+        throw new Error('Map host element not found.');
+    }
+
+    const center = options.center || { lat: userLatitude, lng: userLongitude };
+    const zoom = options.zoom ?? 15;
+    const useMapplsBasemap = canUseMapplsBasemap();
+    const shellId = options.shellId || `ride-map-${Date.now()}`;
+
+    if (!window.L) {
+        await loadLeaflet();
+    }
+
+    hostElement.classList.add('map-hybrid-host');
+
+    if (useMapplsBasemap) {
+        try {
+            await loadMapplsSdk();
+        } catch (error) {
+            console.warn('Mappls SDK failed to load, using Carto fallback:', error);
+            hostElement.innerHTML = '';
+            const fallbackMap = L.map(hostElement, {
+                zoomControl: options.zoomControl ?? false,
+                zoomAnimation: true,
+                minZoom: options.minZoom ?? 10,
+                maxZoom: options.maxZoom ?? 19,
+                attributionControl: options.attributionControl ?? true,
+                dragging: options.dragging ?? true,
+                scrollWheelZoom: options.scrollWheelZoom ?? true,
+                doubleClickZoom: options.doubleClickZoom ?? true,
+                touchZoom: options.touchZoom ?? true
+            }).setView([center.lat, center.lng], zoom);
+            createBaseTileLayer().addTo(fallbackMap);
+
+            return {
+                map: fallbackMap,
+                baseMap: null,
+                destroy() {
+                    fallbackMap.remove();
+                    hostElement.innerHTML = '';
+                }
+            };
+        }
+
+        const shell = createMapShellMarkup(hostElement, shellId);
+        const overlayMap = L.map(shell.overlayId, {
+            zoomControl: options.zoomControl ?? false,
+            zoomAnimation: true,
+            minZoom: options.minZoom ?? 10,
+            maxZoom: options.maxZoom ?? 19,
+            attributionControl: options.attributionControl ?? false,
+            dragging: options.dragging ?? true,
+            scrollWheelZoom: options.scrollWheelZoom ?? true,
+            doubleClickZoom: options.doubleClickZoom ?? true,
+            touchZoom: options.touchZoom ?? true
+        }).setView([center.lat, center.lng], zoom);
+
+        let baseMap = null;
+        try {
+            baseMap = new window.mappls.Map(shell.baseId, {
+                center: { lat: center.lat, lng: center.lng },
+                zoom,
+                zoomControl: false,
+                fullscreen_control: false,
+                geolocation: false
+            });
+        } catch (error) {
+            console.warn('Mappls base map creation failed, reverting to Carto base layer:', error);
+            hostElement.innerHTML = '';
+            const fallbackMap = L.map(hostElement, {
+                zoomControl: options.zoomControl ?? false,
+                zoomAnimation: true,
+                minZoom: options.minZoom ?? 10,
+                maxZoom: options.maxZoom ?? 19,
+                attributionControl: options.attributionControl ?? true,
+                dragging: options.dragging ?? true,
+                scrollWheelZoom: options.scrollWheelZoom ?? true,
+                doubleClickZoom: options.doubleClickZoom ?? true,
+                touchZoom: options.touchZoom ?? true
+            }).setView([center.lat, center.lng], zoom);
+            createBaseTileLayer().addTo(fallbackMap);
+
+            return {
+                map: fallbackMap,
+                baseMap: null,
+                destroy() {
+                    fallbackMap.remove();
+                    hostElement.innerHTML = '';
+                }
+            };
+        }
+
+        const syncHandler = () => syncBaseMapView(baseMap, overlayMap);
+        overlayMap.on('move zoom zoomend moveend resize', syncHandler);
+        setTimeout(syncHandler, 120);
+
+        return {
+            map: overlayMap,
+            baseMap,
+            destroy() {
+                overlayMap.off('move zoom zoomend moveend resize', syncHandler);
+                overlayMap.remove();
+                try {
+                    if (typeof baseMap?.remove === 'function') {
+                        baseMap.remove();
+                    }
+                } catch (error) {
+                    console.warn('Mappls base map cleanup failed:', error);
+                }
+                hostElement.innerHTML = '';
+            }
+        };
+    }
+
+    hostElement.innerHTML = '';
+    const map = L.map(hostElement, {
+        zoomControl: options.zoomControl ?? false,
+        zoomAnimation: true,
+        minZoom: options.minZoom ?? 10,
+        maxZoom: options.maxZoom ?? 19,
+        attributionControl: options.attributionControl ?? true,
+        dragging: options.dragging ?? true,
+        scrollWheelZoom: options.scrollWheelZoom ?? true,
+        doubleClickZoom: options.doubleClickZoom ?? true,
+        touchZoom: options.touchZoom ?? true
+    }).setView([center.lat, center.lng], zoom);
+
+    createBaseTileLayer().addTo(map);
+
+    return {
+        map,
+        baseMap: null,
+        destroy() {
+            map.remove();
+            hostElement.innerHTML = '';
+        }
+    };
 }
 
 function inferDriverVehicleType(driver) {
@@ -618,14 +792,22 @@ function startGlobalDriverPresenceListener() {
 export async function initializeMapEngine() {
     const coords = await getUserLocation();
     const mapContainer = document.getElementById('map-container');
-    mapContainer.innerHTML = "";
 
-    console.log("Loading standalone open-source mapping engine layer...");
+    console.log("Loading ride map surface...");
 
     await loadLeaflet();
     injectMapStyles();
 
-    if (window.mapInstance) {
+    if (mainMapShell) {
+        if (globalDriversUnsubscribe) {
+            globalDriversUnsubscribe();
+            globalDriversUnsubscribe = null;
+        }
+        clearGlobalDriverMarkers();
+        mainMapShell.destroy();
+        mainMapShell = null;
+        window.mapInstance = null;
+    } else if (window.mapInstance) {
         if (globalDriversUnsubscribe) {
             globalDriversUnsubscribe();
             globalDriversUnsubscribe = null;
@@ -635,19 +817,21 @@ export async function initializeMapEngine() {
         window.mapInstance = null;
     }
 
-    // Just add 'window.' in front of mapInstance to expose it globally!
-    window.mapInstance = L.map('map-container', {
-        zoomControl: false,
-        zoomAnimation: true,
-        minZoom: 10,
-        maxZoom: 19
-    }).setView([coords.lat, coords.lng], 15);
+    mapContainer.innerHTML = "";
 
+    mainMapShell = await createRideMapSurface(mapContainer, {
+        shellId: 'main-ride-map',
+        center: { lat: coords.lat, lng: coords.lng },
+        zoom: 15,
+        zoomControl: false,
+        minZoom: 10,
+        maxZoom: 19,
+        attributionControl: !canUseMapplsBasemap()
+    });
+    window.mapInstance = mainMapShell.map;
     mapInstance = window.mapInstance;
 
     L.control.zoom({ position: 'bottomright' }).addTo(window.mapInstance);
-
-    createBaseTileLayer().addTo(window.mapInstance);
 
     userMarker = L.marker([coords.lat, coords.lng], {
         icon: L.divIcon({
