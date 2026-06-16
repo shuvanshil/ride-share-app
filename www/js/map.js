@@ -13,6 +13,8 @@ let userMarker = null;
 let mapplsUserMarker = null;
 let routePolyline = null;
 let destinationMarker = null;
+let mapplsDestinationMarker = null;
+let mapplsRouteLayers = [];
 let globalDriversUnsubscribe = null;
 let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
@@ -868,6 +870,16 @@ function removeMapplsUserMarker(baseMap) {
     mapplsUserMarker = null;
 }
 
+function removeMapplsLayer(baseMap, layer) {
+    if (!layer || !baseMap || !window.mappls?.remove) return;
+
+    try {
+        window.mappls.remove({ map: baseMap, layer });
+    } catch (error) {
+        console.warn("Mappls layer cleanup failed:", error);
+    }
+}
+
 function createPickupMarkerHtml() {
     return `
         <div class="pickup-marker-icon">
@@ -909,6 +921,21 @@ function addPickupMarker(coords, mapShell) {
             <div class="map-popup-sub">Live GPS pickup point</div>
         `)
         .openPopup();
+}
+
+function createDestinationMarkerHtml() {
+    return `
+        <div class="destination-marker-icon">
+            <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 35C12 35 23 22.2 23 12.5C23 6.14873 18.0751 1 12 1C5.92487 1 1 6.14873 1 12.5C1 22.2 12 35 12 35Z" fill="#ef4444" stroke="white" stroke-width="2"/>
+                <circle cx="12" cy="12.5" r="4.5" fill="white"/>
+            </svg>
+        </div>
+    `;
+}
+
+function getActiveMapplsBaseMap() {
+    return mainMapShell?.baseMap || null;
 }
 
 // 2. Initialize Visual Map Window
@@ -1287,36 +1314,28 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
 
     clearDestinationRoute();
 
-    const destinationIcon = L.divIcon({
-        className: 'destination-marker-icon',
-        html: `
-            <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 35C12 35 23 22.2 23 12.5C23 6.14873 18.0751 1 12 1C5.92487 1 1 6.14873 1 12.5C1 22.2 12 35 12 35Z" fill="#ef4444" stroke="white" stroke-width="2"/>
-                <circle cx="12" cy="12.5" r="4.5" fill="white"/>
-            </svg>
-        `,
-        iconSize: [24, 36],
-        iconAnchor: [12, 36],
-        popupAnchor: [0, -32]
-    });
-
-    destinationMarker = L.marker([destination.lat, destination.lng], {
-        icon: destinationIcon
-    }).addTo(window.mapInstance)
-        .bindPopup(`
-            <div class="map-popup-title">${destination.name}</div>
-            <div class="map-popup-sub">Drop location</div>
-        `);
-
     const routeCoords = await fetchRoadRouteCoords(
         { lat: userLatitude, lng: userLongitude },
         { lat: destination.lat, lng: destination.lng }
     );
 
-    drawRoutePolyline(routeCoords);
+    if (drawMapplsDestinationAndRoute(destination, routeCoords)) {
+        return;
+    }
+
+    drawLeafletDestinationAndRoute(destination, routeCoords);
 }
 
 function clearDestinationRoute() {
+    const baseMap = getActiveMapplsBaseMap();
+
+    if (baseMap) {
+        removeMapplsLayer(baseMap, mapplsDestinationMarker);
+        mapplsDestinationMarker = null;
+        mapplsRouteLayers.forEach((layer) => removeMapplsLayer(baseMap, layer));
+        mapplsRouteLayers = [];
+    }
+
     if (!window.mapInstance) return;
 
     if (destinationMarker) {
@@ -1328,6 +1347,79 @@ function clearDestinationRoute() {
         window.mapInstance.removeLayer(routePolyline);
         routePolyline = null;
     }
+}
+
+function drawMapplsDestinationAndRoute(destination, routeCoords) {
+    const baseMap = getActiveMapplsBaseMap();
+    if (!baseMap || !window.mappls?.Marker || !window.mappls?.Polyline) {
+        return false;
+    }
+
+    try {
+        const destinationName = destination.mainName || destination.name || "Drop location";
+        mapplsDestinationMarker = new window.mappls.Marker({
+            map: baseMap,
+            position: { lat: destination.lat, lng: destination.lng },
+            html: createDestinationMarkerHtml(),
+            popupOptions: true,
+            popupHtml: `
+                <div class="map-popup-title">${destinationName}</div>
+                <div class="map-popup-sub">Drop location</div>
+            `,
+            width: 24,
+            height: 36,
+            offset: [0, -18]
+        });
+
+        const path = routeCoords.map(([lat, lng]) => ({ lat, lng }));
+        const routeGlow = new window.mappls.Polyline({
+            map: baseMap,
+            path,
+            paths: path,
+            strokeColor: '#ffffff',
+            strokeOpacity: 0.55,
+            strokeWeight: 10,
+            fitbounds: false
+        });
+        const routeLine = new window.mappls.Polyline({
+            map: baseMap,
+            path,
+            paths: path,
+            strokeColor: '#1a73e8',
+            strokeOpacity: 0.95,
+            strokeWeight: 5,
+            fitbounds: false
+        });
+
+        mapplsRouteLayers = [routeGlow, routeLine];
+        fitActiveMapToRoute(routeCoords);
+        return true;
+    } catch (error) {
+        console.warn("Mappls destination/route render failed, using Leaflet fallback:", error);
+        clearDestinationRoute();
+        return false;
+    }
+}
+
+function drawLeafletDestinationAndRoute(destination, routeCoords) {
+    const destinationName = destination.mainName || destination.name || "Drop location";
+    const destinationIcon = L.divIcon({
+        className: 'destination-marker-icon',
+        html: createDestinationMarkerHtml(),
+        iconSize: [24, 36],
+        iconAnchor: [12, 36],
+        popupAnchor: [0, -32]
+    });
+
+    destinationMarker = L.marker([destination.lat, destination.lng], {
+        icon: destinationIcon
+    }).addTo(window.mapInstance)
+        .bindPopup(`
+            <div class="map-popup-title">${destinationName}</div>
+            <div class="map-popup-sub">Drop location</div>
+        `);
+
+    drawRoutePolyline(routeCoords);
 }
 
 async function fetchRoadRouteCoords(origin, destination) {
@@ -1372,6 +1464,15 @@ function drawRoutePolyline(routeCoords) {
 
     routePolyline = L.layerGroup([routeUnderline, routeLine]).addTo(window.mapInstance);
     window.mapInstance.fitBounds(routeLine.getBounds(), { padding: [60, 60] });
+}
+
+function fitActiveMapToRoute(routeCoords) {
+    if (!window.mapInstance || !Array.isArray(routeCoords) || routeCoords.length < 2) {
+        return;
+    }
+
+    const bounds = L.latLngBounds(routeCoords.map(([lat, lng]) => [lat, lng]));
+    window.mapInstance.fitBounds(bounds, { padding: [60, 60] });
 }
 
 // Helper mathematical function to compute distance between two map coordinates
