@@ -486,11 +486,14 @@ function syncBaseMapView(baseMap, leafletMap) {
     }
 }
 
-function normalizeBaseMapDom(baseElement) {
-    if (!baseElement) return;
+function normalizeBaseMapDom(hostElement, baseElement) {
+    if (!hostElement || !baseElement) return;
+
+    const hostHeight = hostElement.clientHeight;
+    const explicitHeight = hostHeight > 0 ? `${hostHeight}px` : '100%';
 
     baseElement.style.width = '100%';
-    baseElement.style.height = '100%';
+    baseElement.style.height = explicitHeight;
 
     baseElement.querySelectorAll('div, canvas').forEach((node) => {
         node.style.maxWidth = '100%';
@@ -499,19 +502,19 @@ function normalizeBaseMapDom(baseElement) {
     const directChild = baseElement.firstElementChild;
     if (directChild) {
         directChild.style.width = '100%';
-        directChild.style.height = '100%';
+        directChild.style.height = explicitHeight;
     }
 
     const canvas = baseElement.querySelector('canvas');
     if (canvas) {
         canvas.style.width = '100%';
-        canvas.style.height = '100%';
+        canvas.style.height = explicitHeight;
     }
 }
 
-function refreshBaseMapLayout(baseMap, baseElement, overlayMap) {
+function refreshBaseMapLayout(hostElement, baseMap, baseElement, overlayMap) {
     const run = () => {
-        normalizeBaseMapDom(baseElement);
+        normalizeBaseMapDom(hostElement, baseElement);
         syncBaseMapView(baseMap, overlayMap);
 
         try {
@@ -644,7 +647,7 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
         const baseElement = document.getElementById(shell.baseId);
         const syncHandler = () => syncBaseMapView(baseMap, overlayMap);
         overlayMap.on('move zoom zoomend moveend resize', syncHandler);
-        refreshBaseMapLayout(baseMap, baseElement, overlayMap);
+        refreshBaseMapLayout(hostElement, baseMap, baseElement, overlayMap);
 
         return {
             map: overlayMap,
