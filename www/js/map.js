@@ -39,6 +39,7 @@ const RURAL_PRIORITY_TYPES = new Set([
 ]);
 
 const CARTO_TILE_CONFIG = {
+    provider: 'carto',
     url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     options: {
         subdomains: 'abcd',
@@ -55,6 +56,7 @@ function getMapplsTileConfig() {
     if (!hasMapplsKey() || !MAPPLS_TILES_ENABLED) return null;
 
     return {
+        provider: 'mappls',
         url: `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/tiles/{z}/{x}/{y}.png`,
         options: {
             maxZoom: 19,
@@ -65,7 +67,58 @@ function getMapplsTileConfig() {
 
 export function createBaseTileLayer(leafletInstance = window.L) {
     const provider = getMapplsTileConfig() || CARTO_TILE_CONFIG;
-    return leafletInstance.tileLayer(provider.url, provider.options);
+    const tileLayer = leafletInstance.tileLayer(provider.url, provider.options);
+
+    if (provider.provider === 'mappls') {
+        attachTileLayerFallback(tileLayer, leafletInstance);
+    }
+
+    return tileLayer;
+}
+
+function attachTileLayerFallback(tileLayer, leafletInstance) {
+    let hasLoadedAnyTile = false;
+    let hasFallenBack = false;
+    let fallbackTimer = null;
+
+    function clearFallbackTimer() {
+        if (fallbackTimer) {
+            clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+        }
+    }
+
+    function swapToCartoFallback(reason) {
+        if (hasFallenBack) return;
+        hasFallenBack = true;
+        clearFallbackTimer();
+        console.warn(`Mappls tiles unavailable, switching to CARTO fallback (${reason}).`);
+
+        const map = tileLayer._map;
+        if (!map) return;
+
+        map.removeLayer(tileLayer);
+        leafletInstance.tileLayer(CARTO_TILE_CONFIG.url, CARTO_TILE_CONFIG.options).addTo(map);
+    }
+
+    tileLayer.on('tileload', () => {
+        hasLoadedAnyTile = true;
+        clearFallbackTimer();
+    });
+
+    tileLayer.on('tileerror', () => {
+        swapToCartoFallback('tile error');
+    });
+
+    tileLayer.on('add', () => {
+        fallbackTimer = setTimeout(() => {
+            if (!hasLoadedAnyTile) {
+                swapToCartoFallback('load timeout');
+            }
+        }, 4000);
+    });
+
+    tileLayer.on('remove', clearFallbackTimer);
 }
 
 function buildReadableAddressFromObject(address = {}) {
