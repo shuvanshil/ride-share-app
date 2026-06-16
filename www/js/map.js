@@ -368,6 +368,7 @@ function injectMapStyles() {
 
         .mappls-base-surface {
             z-index: 1;
+            pointer-events: none;
         }
 
         .mappls-base-surface > div,
