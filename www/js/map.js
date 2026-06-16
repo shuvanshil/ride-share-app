@@ -532,6 +532,41 @@ function refreshBaseMapLayout(baseMap, baseElement, overlayMap) {
     setTimeout(run, 700);
 }
 
+function bindBaseMapRefreshLifecycle(hostElement, baseMap, baseElement, overlayMap) {
+    const refresh = () => refreshBaseMapLayout(baseMap, baseElement, overlayMap);
+    const cleanupTasks = [];
+
+    const windowEvents = ['resize', 'orientationchange', 'scroll'];
+    windowEvents.forEach((eventName) => {
+        window.addEventListener(eventName, refresh, { passive: true });
+        cleanupTasks.push(() => window.removeEventListener(eventName, refresh, { passive: true }));
+    });
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', refresh, { passive: true });
+        window.visualViewport.addEventListener('scroll', refresh, { passive: true });
+        cleanupTasks.push(() => window.visualViewport?.removeEventListener('resize', refresh, { passive: true }));
+        cleanupTasks.push(() => window.visualViewport?.removeEventListener('scroll', refresh, { passive: true }));
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+        const resizeObserver = new ResizeObserver(refresh);
+        resizeObserver.observe(hostElement);
+        resizeObserver.observe(baseElement);
+        cleanupTasks.push(() => resizeObserver.disconnect());
+    }
+
+    overlayMap.on('move zoom zoomend moveend resize', refresh);
+    cleanupTasks.push(() => overlayMap.off('move zoom zoomend moveend resize', refresh));
+
+    return {
+        refresh,
+        destroy() {
+            cleanupTasks.forEach((cleanup) => cleanup());
+        }
+    };
+}
+
 function createMapShellMarkup(hostElement, shellId) {
     hostElement.innerHTML = `
         <div id="${shellId}-base" class="mappls-base-surface"></div>
@@ -642,15 +677,14 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
         }
 
         const baseElement = document.getElementById(shell.baseId);
-        const syncHandler = () => syncBaseMapView(baseMap, overlayMap);
-        overlayMap.on('move zoom zoomend moveend resize', syncHandler);
-        refreshBaseMapLayout(baseMap, baseElement, overlayMap);
+        const refreshController = bindBaseMapRefreshLifecycle(hostElement, baseMap, baseElement, overlayMap);
+        refreshController.refresh();
 
         return {
             map: overlayMap,
             baseMap,
             destroy() {
-                overlayMap.off('move zoom zoomend moveend resize', syncHandler);
+                refreshController.destroy();
                 overlayMap.remove();
                 try {
                     if (typeof baseMap?.remove === 'function') {
