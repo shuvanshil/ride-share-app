@@ -3,6 +3,7 @@ import {
     collection,
     onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { MAPPLS_ENABLED, MAPPLS_STATIC_KEY, MAPPLS_TILES_ENABLED } from './map-provider-config.js';
 
 // Local state variables for tracking user position
 let userLatitude = 24.3124; // Default center fallback (Kailashahar center)
@@ -25,6 +26,7 @@ const localLandmarks = {
 };
 
 const TRIPURA_VIEWBOX = "91.0,24.7,92.6,22.8";
+const TRIPURA_BIAS_POINT = "91.9882,23.8315";
 const RURAL_PRIORITY_TYPES = new Set([
     "village",
     "hamlet",
@@ -35,6 +37,77 @@ const RURAL_PRIORITY_TYPES = new Set([
     "town",
     "city"
 ]);
+
+const CARTO_TILE_CONFIG = {
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    options: {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }
+};
+
+function hasMapplsKey() {
+    return MAPPLS_ENABLED && MAPPLS_STATIC_KEY.trim().length > 0;
+}
+
+function getMapplsTileConfig() {
+    if (!hasMapplsKey() || !MAPPLS_TILES_ENABLED) return null;
+
+    return {
+        url: `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/tiles/{z}/{x}/{y}.png`,
+        options: {
+            maxZoom: 19,
+            attribution: '&copy; Mappls'
+        }
+    };
+}
+
+export function createBaseTileLayer(leafletInstance = window.L) {
+    const provider = getMapplsTileConfig() || CARTO_TILE_CONFIG;
+    return leafletInstance.tileLayer(provider.url, provider.options);
+}
+
+function buildReadableAddressFromObject(address = {}) {
+    const parts = [
+        address.poi || address.houseName || address.house_number,
+        address.road || address.street || address.locality || address.subLocality || address.subLocalityName,
+        address.suburb || address.neighbourhood || address.village || address.hamlet || address.district || address.subDistrict,
+        address.city || address.town || address.state_district || address.state
+    ].filter(Boolean);
+
+    return [...new Set(parts)].join(", ");
+}
+
+function normalizeMapplsSuggestion(item) {
+    const latitude = Number(item?.latitude ?? item?.lat);
+    const longitude = Number(item?.longitude ?? item?.lng ?? item?.lon);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return null;
+    }
+
+    const mainName = item.placeName || item.place_name || item.placeAddress || item.name || item.keyword;
+    const fullAddress = item.placeAddress || item.address || buildReadableAddressFromObject(item) || "Tripura, India";
+    if (!mainName && !fullAddress) {
+        return null;
+    }
+
+    return {
+        lat: latitude,
+        lng: longitude,
+        name: mainName || fullAddress,
+        mainName: mainName || fullAddress,
+        fullAddress
+    };
+}
+
+async function fetchJsonWithGracefulFailure(url, options = {}) {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
+}
 
 // 1. Fetch live hardware GPS coordinates from the device
 export function getUserLocation() {
@@ -81,25 +154,70 @@ async function updatePickupInputField(lat, lng, isFallback) {
     pickupField.value = "Fetching your location...";
 
     try {
-        const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-            { headers: { "Accept-Language": "en" } }
-        );
-        const data = await response.json();
-        const addr = data.address || {};
-        const readableParts = [
-            addr.road,
-            addr.suburb,
-            addr.city || addr.town || addr.village
-        ].filter(Boolean);
-
-        pickupField.value = readableParts.length
-            ? readableParts.join(", ")
-            : `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+        const readableAddress = await reverseGeocodePickup(lat, lng);
+        pickupField.value = readableAddress || `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
     } catch (error) {
         console.warn("Reverse geocoding failed:", error);
         pickupField.value = `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
     }
+}
+
+async function reverseGeocodePickup(lat, lng) {
+    const mapplsAddress = await reverseGeocodeWithMappls(lat, lng);
+    if (mapplsAddress) {
+        return mapplsAddress;
+    }
+
+    const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+        { headers: { "Accept-Language": "en" } }
+    );
+    const data = await response.json();
+    const addr = data.address || {};
+    const readableParts = [
+        addr.road,
+        addr.suburb,
+        addr.city || addr.town || addr.village
+    ].filter(Boolean);
+
+    return readableParts.length
+        ? readableParts.join(", ")
+        : null;
+}
+
+async function reverseGeocodeWithMappls(lat, lng) {
+    if (!hasMapplsKey()) return null;
+
+    const reverseUrlCandidates = [
+        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/rev_geocode?lat=${lat}&lng=${lng}`,
+        `https://atlas.mappls.com/api/places/rev_geocode?lat=${lat}&lng=${lng}&access_token=${encodeURIComponent(MAPPLS_STATIC_KEY)}`
+    ];
+
+    for (const url of reverseUrlCandidates) {
+        try {
+            const data = await fetchJsonWithGracefulFailure(url, {
+                headers: { "Accept-Language": "en" }
+            });
+            const address = Array.isArray(data?.results)
+                ? data.results[0]
+                : Array.isArray(data?.items)
+                    ? data.items[0]
+                    : data;
+            const readableAddress = buildReadableAddressFromObject(address);
+
+            if (readableAddress) {
+                return readableAddress;
+            }
+
+            if (address?.formatted_address || address?.placeAddress) {
+                return address.formatted_address || address.placeAddress;
+            }
+        } catch (error) {
+            console.warn("Mappls reverse geocode attempt failed:", error);
+        }
+    }
+
+    return null;
 }
 
 function injectMapStyles() {
@@ -476,11 +594,7 @@ export async function initializeMapEngine() {
 
     L.control.zoom({ position: 'bottomright' }).addTo(window.mapInstance);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-    }).addTo(window.mapInstance); // Change to window.mapInstance
+    createBaseTileLayer().addTo(window.mapInstance);
 
     userMarker = L.marker([coords.lat, coords.lng], {
         icon: L.divIcon({
@@ -626,6 +740,55 @@ async function searchTripuraDestinations(query) {
 
     destinationSearchAbortController = new AbortController();
 
+    const mapplsResults = await searchTripuraDestinationsWithMappls(query, destinationSearchAbortController.signal);
+    if (mapplsResults.length) {
+        return mapplsResults;
+    }
+
+    return searchTripuraDestinationsWithNominatim(query, destinationSearchAbortController.signal);
+}
+
+async function searchTripuraDestinationsWithMappls(query, signal) {
+    if (!hasMapplsKey()) return [];
+
+    const urlCandidates = [
+        `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(`${query} Tripura`)}&region=IND&access_token=${encodeURIComponent(MAPPLS_STATIC_KEY)}`,
+        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/autosuggest?query=${encodeURIComponent(query)}&region=IND&pod=city&location=${encodeURIComponent(TRIPURA_BIAS_POINT)}`
+    ];
+
+    for (const url of urlCandidates) {
+        try {
+            const data = await fetchJsonWithGracefulFailure(url, {
+                headers: { "Accept-Language": "en" },
+                signal
+            });
+            const rawItems = Array.isArray(data?.suggestedLocations)
+                ? data.suggestedLocations
+                : Array.isArray(data?.items)
+                    ? data.items
+                    : Array.isArray(data?.results)
+                        ? data.results
+                        : [];
+            const normalized = rawItems
+                .map(normalizeMapplsSuggestion)
+                .filter(Boolean)
+                .filter((item) => `${item.mainName} ${item.fullAddress}`.toLowerCase().includes("tripura"))
+                .slice(0, 6);
+
+            if (normalized.length) {
+                return normalized;
+            }
+        } catch (error) {
+            if (error.name !== "AbortError") {
+                console.warn("Mappls destination search attempt failed:", error);
+            }
+        }
+    }
+
+    return [];
+}
+
+async function searchTripuraDestinationsWithNominatim(query, signal) {
     try {
         const params = new URLSearchParams({
             format: "jsonv2",
@@ -638,7 +801,7 @@ async function searchTripuraDestinations(query) {
         });
         const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
             headers: { "Accept-Language": "en" },
-            signal: destinationSearchAbortController.signal
+            signal
         });
         const results = await response.json();
 

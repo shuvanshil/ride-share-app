@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine } from './map.js';
+import { createBaseTileLayer, initializeMapEngine } from './map.js';
 
 const authView = document.getElementById('auth-view');
 const dashboardView = document.getElementById('dashboard-view');
@@ -160,10 +160,7 @@ async function renderConfirmRouteMap(fareQuote) {
         maxZoom: 19
     });
 
-    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19
-    }).addTo(confirmMapInstance);
+    createBaseTileLayer(window.L).addTo(confirmMapInstance);
 
     const routeCoords = await fetchConfirmRoute(origin, destination);
     const routeGlow = window.L.polyline(routeCoords, {
