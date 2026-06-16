@@ -10,6 +10,7 @@ let userLatitude = 24.3124; // Default center fallback (Kailashahar center)
 let userLongitude = 92.0135;
 let mapInstance = null;
 let userMarker = null;
+let mapplsUserMarker = null;
 let routePolyline = null;
 let destinationMarker = null;
 let globalDriversUnsubscribe = null;
@@ -852,6 +853,64 @@ function startGlobalDriverPresenceListener() {
     });
 }
 
+function removeMapplsUserMarker(baseMap) {
+    if (!mapplsUserMarker || !window.mappls?.remove || !baseMap) {
+        mapplsUserMarker = null;
+        return;
+    }
+
+    try {
+        window.mappls.remove({ map: baseMap, layer: mapplsUserMarker });
+    } catch (error) {
+        console.warn("Mappls pickup marker cleanup failed:", error);
+    }
+
+    mapplsUserMarker = null;
+}
+
+function createPickupMarkerHtml() {
+    return `
+        <div class="pickup-marker-icon">
+            <div class="pickup-pulse-dot"></div>
+        </div>
+    `;
+}
+
+function addPickupMarker(coords, mapShell) {
+    if (mapShell?.baseMap && window.mappls?.Marker) {
+        mapplsUserMarker = new window.mappls.Marker({
+            map: mapShell.baseMap,
+            position: { lat: coords.lat, lng: coords.lng },
+            html: createPickupMarkerHtml(),
+            popupOptions: true,
+            popupHtml: `
+                <div class="map-popup-title">Your Pickup Location</div>
+                <div class="map-popup-sub">Live GPS pickup point</div>
+            `,
+            width: 22,
+            height: 22,
+            offset: [0, 0]
+        });
+        userMarker = null;
+        return;
+    }
+
+    userMarker = L.marker([coords.lat, coords.lng], {
+        icon: L.divIcon({
+            className: 'pickup-marker-icon',
+            html: '<div class="pickup-pulse-dot"></div>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+            popupAnchor: [0, -14]
+        })
+    }).addTo(window.mapInstance)
+        .bindPopup(`
+            <div class="map-popup-title">Your Pickup Location</div>
+            <div class="map-popup-sub">Live GPS pickup point</div>
+        `)
+        .openPopup();
+}
+
 // 2. Initialize Visual Map Window
 export async function initializeMapEngine() {
     const coords = await getUserLocation();
@@ -868,6 +927,7 @@ export async function initializeMapEngine() {
             globalDriversUnsubscribe = null;
         }
         clearGlobalDriverMarkers();
+        removeMapplsUserMarker(mainMapShell.baseMap);
         mainMapShell.destroy();
         mainMapShell = null;
         window.mapInstance = null;
@@ -880,6 +940,7 @@ export async function initializeMapEngine() {
         window.mapInstance.remove();
         window.mapInstance = null;
     }
+    userMarker = null;
 
     mapContainer.innerHTML = "";
 
@@ -896,21 +957,7 @@ export async function initializeMapEngine() {
     mapInstance = window.mapInstance;
 
     L.control.zoom({ position: 'bottomright' }).addTo(window.mapInstance);
-
-    userMarker = L.marker([coords.lat, coords.lng], {
-        icon: L.divIcon({
-            className: 'pickup-marker-icon',
-            html: '<div class="pickup-pulse-dot"></div>',
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
-            popupAnchor: [0, -14]
-        })
-    }).addTo(window.mapInstance) // Change to window.mapInstance
-        .bindPopup(`
-            <div class="map-popup-title">Your Pickup Location</div>
-            <div class="map-popup-sub">Live GPS pickup point</div>
-        `)
-        .openPopup();
+    addPickupMarker(coords, mainMapShell);
 
     setTimeout(() => window.mapInstance.invalidateSize(), 100);
     setupFareEngineListeners();
