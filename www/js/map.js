@@ -370,6 +370,12 @@ function injectMapStyles() {
             z-index: 1;
         }
 
+        .mappls-base-surface > div,
+        .mappls-base-surface canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
         .mappls-base-surface .mappls-ctrl-top-left,
         .mappls-base-surface .mappls-ctrl-top-right,
         .mappls-base-surface .mappls-ctrl-bottom-left {
@@ -478,6 +484,52 @@ function syncBaseMapView(baseMap, leafletMap) {
     } catch (error) {
         console.warn('Mappls base map sync failed:', error);
     }
+}
+
+function normalizeBaseMapDom(baseElement) {
+    if (!baseElement) return;
+
+    baseElement.style.width = '100%';
+    baseElement.style.height = '100%';
+
+    baseElement.querySelectorAll('div, canvas').forEach((node) => {
+        node.style.maxWidth = '100%';
+    });
+
+    const directChild = baseElement.firstElementChild;
+    if (directChild) {
+        directChild.style.width = '100%';
+        directChild.style.height = '100%';
+    }
+
+    const canvas = baseElement.querySelector('canvas');
+    if (canvas) {
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+    }
+}
+
+function refreshBaseMapLayout(baseMap, baseElement, overlayMap) {
+    const run = () => {
+        normalizeBaseMapDom(baseElement);
+        syncBaseMapView(baseMap, overlayMap);
+
+        try {
+            if (typeof baseMap?.resize === 'function') {
+                baseMap.resize();
+            } else if (typeof baseMap?._onResize === 'function') {
+                baseMap._onResize();
+            }
+        } catch (error) {
+            console.warn('Mappls resize call failed:', error);
+        }
+    };
+
+    run();
+    requestAnimationFrame(run);
+    setTimeout(run, 120);
+    setTimeout(run, 320);
+    setTimeout(run, 700);
 }
 
 function createMapShellMarkup(hostElement, shellId) {
@@ -589,9 +641,10 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
             };
         }
 
+        const baseElement = document.getElementById(shell.baseId);
         const syncHandler = () => syncBaseMapView(baseMap, overlayMap);
         overlayMap.on('move zoom zoomend moveend resize', syncHandler);
-        setTimeout(syncHandler, 120);
+        refreshBaseMapLayout(baseMap, baseElement, overlayMap);
 
         return {
             map: overlayMap,
