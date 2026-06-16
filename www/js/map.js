@@ -362,6 +362,22 @@ function injectMapStyles() {
         .leaflet-overlay-surface {
             position: absolute;
             inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .mappls-base-surface {
+            z-index: 1;
+        }
+
+        .mappls-base-surface .mappls-ctrl-top-left,
+        .mappls-base-surface .mappls-ctrl-top-right,
+        .mappls-base-surface .mappls-ctrl-bottom-left {
+            display: none !important;
+        }
+
+        .leaflet-overlay-surface {
+            z-index: 2;
         }
 
         .leaflet-overlay-surface,
