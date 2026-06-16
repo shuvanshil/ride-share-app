@@ -464,15 +464,6 @@ function syncBaseMapView(baseMap, leafletMap) {
     const zoom = leafletMap.getZoom();
 
     try {
-        if (typeof baseMap.flyTo === 'function') {
-            baseMap.flyTo({
-                center: [center.lng, center.lat],
-                zoom,
-                duration: 0
-            });
-            return;
-        }
-
         if (typeof baseMap.setCenter === 'function') {
             baseMap.setCenter([center.lng, center.lat]);
         } else if (typeof baseMap.panTo === 'function') {
