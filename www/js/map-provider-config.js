@@ -3,4 +3,4 @@
 export const MAPPLS_STATIC_KEY = "zgvqxvnirufqyzfwamehbhugdyggterdygll";
 
 export const MAPPLS_ENABLED = MAPPLS_STATIC_KEY.trim().length > 0;
-export const MAPPLS_TILES_ENABLED = false;
+export const MAPPLS_TILES_ENABLED = true;
