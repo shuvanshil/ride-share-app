@@ -1983,6 +1983,16 @@ async function resolveDestinationCoordinates(destination) {
         console.warn("Mappls place detail coordinate lookup failed:", error);
     }
 
+    if (destination.eLoc) {
+        return {
+            ...destination,
+            lat: null,
+            lng: null,
+            source: destination.source || destination.provider || "mappls",
+            provider: destination.provider || destination.source || "mappls"
+        };
+    }
+
     return null;
 }
 
@@ -2112,7 +2122,10 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
                 eLoc: resolved.eLoc || "",
                 typeHint: resolved.typeHint || inferPlaceTypeHint(resolved)
             };
-            renderDestinationFare(resolved, fareQuoteBox, fareAmountSpan);
+            const fareRendered = await renderDestinationFare(resolved, fareQuoteBox, fareAmountSpan);
+            if (!fareRendered) {
+                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
+            }
         });
     });
 
@@ -2133,17 +2146,45 @@ async function geocodeTripuraDestination(query) {
 }
 
 async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) {
-    const distance = calculateDistance(userLatitude, userLongitude, destination.lat, destination.lng);
-    const estimatedDurationMinutes = Math.max(5, Math.round((distance / 25) * 60));
+    const destinationCoords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
+    const destinationForRoute = {
+        ...destination,
+        lat: destinationCoords.lat,
+        lng: destinationCoords.lng
+    };
+    const hasDestinationCoords = Number.isFinite(destinationCoords.lat) && Number.isFinite(destinationCoords.lng);
+    const routeDetails = await fetchRoadRouteDetails(
+        { lat: userLatitude, lng: userLongitude },
+        destinationForRoute
+    );
+    const distance = Number.isFinite(routeDetails?.distanceKm)
+        ? routeDetails.distanceKm
+        : hasDestinationCoords
+            ? calculateDistance(userLatitude, userLongitude, destinationCoords.lat, destinationCoords.lng)
+            : null;
+
+    if (!Number.isFinite(distance)) {
+        return false;
+    }
+
+    const estimatedDurationMinutes = routeDetails?.durationMinutes || Math.max(5, Math.round((distance / 25) * 60));
     const baseFare = 30;
     const perKmRate = 12;
     const finalFare = Math.round(baseFare + (distance * perKmRate));
+    const routeCoords = Array.isArray(routeDetails?.coordinates) ? routeDetails.coordinates : [];
+    const routedDestinationCoords = routeCoords.length >= 2
+        ? {
+            lat: routeCoords[routeCoords.length - 1][0],
+            lng: routeCoords[routeCoords.length - 1][1]
+        }
+        : destinationCoords;
+    const hasRoutedCoords = Number.isFinite(routedDestinationCoords.lat) && Number.isFinite(routedDestinationCoords.lng);
 
     window.latestFareQuote = {
         pickup_lat: userLatitude,
         pickup_lng: userLongitude,
-        drop_lat: destination.lat,
-        drop_lng: destination.lng,
+        drop_lat: hasRoutedCoords ? routedDestinationCoords.lat : null,
+        drop_lng: hasRoutedCoords ? routedDestinationCoords.lng : null,
         drop_name: destination.mainName || destination.name,
         drop_full_address: destination.fullAddress || "",
         drop_source: destination.source || destination.provider || "unknown",
@@ -2157,20 +2198,32 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
     fareQuoteBox.classList.remove('d-none');
     fareQuoteBox.classList.add('d-flex');
 
-    if (!window.mapInstance) return;
+    if (!window.mapInstance) return true;
 
     clearDestinationRoute();
 
-    const routeCoords = await fetchRoadRouteCoords(
-        { lat: userLatitude, lng: userLongitude },
-        { lat: destination.lat, lng: destination.lng }
-    );
-
-    if (drawMapplsDestinationAndRoute(destination, routeCoords)) {
-        return;
+    if (!hasRoutedCoords) {
+        return true;
     }
 
-    drawLeafletDestinationAndRoute(destination, routeCoords);
+    const drawableDestination = {
+        ...destination,
+        lat: routedDestinationCoords.lat,
+        lng: routedDestinationCoords.lng
+    };
+    const drawableRouteCoords = routeCoords.length >= 2
+        ? routeCoords
+        : [
+            [userLatitude, userLongitude],
+            [routedDestinationCoords.lat, routedDestinationCoords.lng]
+        ];
+
+    if (drawMapplsDestinationAndRoute(drawableDestination, drawableRouteCoords)) {
+        return true;
+    }
+
+    drawLeafletDestinationAndRoute(drawableDestination, drawableRouteCoords);
+    return true;
 }
 
 function clearDestinationRoute() {
@@ -2269,32 +2322,37 @@ function drawLeafletDestinationAndRoute(destination, routeCoords) {
     drawRoutePolyline(routeCoords);
 }
 
-async function fetchRoadRouteCoords(origin, destination) {
-    const fallbackCoords = [
-        [origin.lat, origin.lng],
-        [destination.lat, destination.lng]
-    ];
-
+async function fetchRoadRouteDetails(origin, destination) {
     try {
+        const destinationCoords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
         const params = new URLSearchParams({
             originLat: origin.lat,
-            originLng: origin.lng,
-            destinationLat: destination.lat,
-            destinationLng: destination.lng
+            originLng: origin.lng
         });
+        if (Number.isFinite(destinationCoords.lat) && Number.isFinite(destinationCoords.lng)) {
+            params.set("destinationLat", String(destinationCoords.lat));
+            params.set("destinationLng", String(destinationCoords.lng));
+        } else if (destination.eLoc) {
+            params.set("destinationELoc", destination.eLoc);
+        } else {
+            return null;
+        }
+
         const routeUrl = `/api/mappls-route?${params.toString()}`;
         const response = await fetch(routeUrl);
         const data = await response.json();
-        const coordinates = data.coordinates;
+        const coordinates = Array.isArray(data.coordinates) ? data.coordinates : [];
+        const distanceKm = Number(data.distanceKm);
+        const durationMinutes = Number(data.durationMinutes);
 
-        if (!Array.isArray(coordinates) || coordinates.length === 0) {
-            return fallbackCoords;
-        }
-
-        return coordinates;
+        return {
+            coordinates,
+            distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
+            durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : null
+        };
     } catch (error) {
-        console.warn("Mappls route fetch failed. Falling back to straight route line:", error);
-        return fallbackCoords;
+        console.warn("Mappls route fetch failed:", error);
+        return null;
     }
 }
 

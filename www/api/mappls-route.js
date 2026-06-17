@@ -64,9 +64,32 @@ function extractRouteCoordinates(data) {
     return [];
 }
 
+function extractRouteSummary(data) {
+    const route = data?.routes?.[0] || data?.route?.[0] || data?.results?.[0] || data;
+    const distanceMeters = Number(
+        route?.distance ??
+        route?.length ??
+        route?.summary?.distance ??
+        route?.routeLength
+    );
+    const durationSeconds = Number(
+        route?.duration ??
+        route?.time ??
+        route?.summary?.duration ??
+        route?.travelTime
+    );
+
+    return {
+        distanceKm: Number.isFinite(distanceMeters) ? distanceMeters / 1000 : null,
+        durationMinutes: Number.isFinite(durationSeconds) ? Math.max(1, Math.round(durationSeconds / 60)) : null
+    };
+}
+
 function buildRouteUrls(origin, destination, accessToken, restKey) {
     const originPair = `${origin.lng},${origin.lat}`;
-    const destinationPair = `${destination.lng},${destination.lat}`;
+    const destinationPair = destination.eLoc
+        ? encodeURIComponent(destination.eLoc)
+        : `${destination.lng},${destination.lat}`;
     const encodedToken = encodeURIComponent(accessToken);
     const encodedRestKey = encodeURIComponent(restKey || "");
     const urls = [
@@ -93,10 +116,14 @@ module.exports = async function handler(req, res) {
     };
     const destination = {
         lat: Number(req.query?.destinationLat),
-        lng: Number(req.query?.destinationLng)
+        lng: Number(req.query?.destinationLng),
+        eLoc: String(req.query?.destinationELoc || "").trim()
     };
 
-    if (![origin.lat, origin.lng, destination.lat, destination.lng].every(Number.isFinite)) {
+    const hasDestinationCoordinates = [destination.lat, destination.lng].every(Number.isFinite);
+    const hasDestinationELoc = Boolean(destination.eLoc);
+
+    if (![origin.lat, origin.lng].every(Number.isFinite) || (!hasDestinationCoordinates && !hasDestinationELoc)) {
         return json(res, 400, { error: "Missing route coordinates" });
     }
 
@@ -108,8 +135,13 @@ module.exports = async function handler(req, res) {
             try {
                 const data = await fetchJson(url);
                 const coordinates = extractRouteCoordinates(data);
-                if (coordinates.length >= 2) {
-                    return json(res, 200, { coordinates });
+                const summary = extractRouteSummary(data);
+                if (coordinates.length >= 2 || summary.distanceKm != null) {
+                    return json(res, 200, {
+                        coordinates,
+                        distanceKm: summary.distanceKm,
+                        durationMinutes: summary.durationMinutes
+                    });
                 }
             } catch (_) {
                 // Try next Mappls route endpoint variant.
