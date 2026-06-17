@@ -144,6 +144,34 @@ function numberOrNull(value) {
     return Number.isFinite(number) ? number : null;
 }
 
+function isLikelyTripuraCoordinate(lat, lng) {
+    return Number.isFinite(lat)
+        && Number.isFinite(lng)
+        && lat >= 22
+        && lat <= 25.5
+        && lng >= 90.5
+        && lng <= 93.5;
+}
+
+function normalizeCoordinatePair(rawLat, rawLng) {
+    let lat = numberOrNull(rawLat);
+    let lng = numberOrNull(rawLng);
+
+    if (lat == null || lng == null) {
+        return { lat: null, lng: null };
+    }
+
+    if (isLikelyTripuraCoordinate(lat, lng)) {
+        return { lat, lng };
+    }
+
+    if (isLikelyTripuraCoordinate(lng, lat)) {
+        return { lat: lng, lng: lat };
+    }
+
+    return { lat: null, lng: null };
+}
+
 function buildAddress(item = {}) {
     const address = item.address || item;
     const parts = [
@@ -193,15 +221,17 @@ function inferTypeHint(item = {}) {
 }
 
 function normalizeSuggestion(item = {}, fallbackQuery = "") {
-    const lat = numberOrNull(item.latitude ?? item.lat ?? item.y ?? item.entryLatitude);
-    const lng = numberOrNull(item.longitude ?? item.lng ?? item.lon ?? item.x ?? item.entryLongitude);
+    const coords = normalizeCoordinatePair(
+        item.latitude ?? item.lat ?? item.y ?? item.entryLatitude,
+        item.longitude ?? item.lng ?? item.lon ?? item.x ?? item.entryLongitude
+    );
     const mainName = item.placeName || item.place_name || item.name || item.poi || item.keyword || item.formatted_address || fallbackQuery;
     const fullAddress = buildAddress(item) || "Tripura, India";
     const eLoc = item.eLoc || item.eloc || item.placeId || item.place_id || item.mapplsPin || "";
 
     return {
-        lat,
-        lng,
+        lat: coords.lat,
+        lng: coords.lng,
         name: mainName || fullAddress,
         mainName: mainName || fullAddress,
         fullAddress,

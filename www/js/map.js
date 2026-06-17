@@ -275,6 +275,34 @@ function normalizeCoordinate(value) {
     return Number.isFinite(number) ? number : null;
 }
 
+function isLikelyTripuraCoordinate(lat, lng) {
+    return Number.isFinite(lat)
+        && Number.isFinite(lng)
+        && lat >= 22
+        && lat <= 25.5
+        && lng >= 90.5
+        && lng <= 93.5;
+}
+
+function normalizeDestinationCoordinatePair(latValue, lngValue) {
+    const lat = normalizeCoordinate(latValue);
+    const lng = normalizeCoordinate(lngValue);
+
+    if (lat == null || lng == null) {
+        return { lat: null, lng: null };
+    }
+
+    if (isLikelyTripuraCoordinate(lat, lng)) {
+        return { lat, lng };
+    }
+
+    if (isLikelyTripuraCoordinate(lng, lat)) {
+        return { lat: lng, lng: lat };
+    }
+
+    return { lat: null, lng: null };
+}
+
 function inferPlaceTypeHint(destination = {}) {
     const text = getResultText(destination);
     const explicitType = destination.type || destination.placeType || destination.poiType || destination.category;
@@ -295,25 +323,28 @@ function inferPlaceTypeHint(destination = {}) {
 }
 
 function getPickupDistanceLabel(destination = {}) {
+    const coords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
     if (
-        !Number.isFinite(Number(destination.lat)) ||
-        !Number.isFinite(Number(destination.lng)) ||
+        !Number.isFinite(coords.lat) ||
+        !Number.isFinite(coords.lng) ||
         !Number.isFinite(Number(userLatitude)) ||
         !Number.isFinite(Number(userLongitude))
     ) {
         return "";
     }
 
-    const distance = calculateDistance(userLatitude, userLongitude, Number(destination.lat), Number(destination.lng));
+    const distance = calculateDistance(userLatitude, userLongitude, coords.lat, coords.lng);
     return distance < 1
         ? `${Math.max(50, Math.round(distance * 1000 / 50) * 50)} m away`
         : `${distance.toFixed(1)} km away`;
 }
 
 function normalizeMapplsSuggestion(item, fallbackQuery = "") {
-    const latitude = normalizeCoordinate(item?.latitude ?? item?.lat ?? item?.y ?? item?.entryLatitude);
-    const longitude = normalizeCoordinate(item?.longitude ?? item?.lng ?? item?.lon ?? item?.x ?? item?.entryLongitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    const coords = normalizeDestinationCoordinatePair(
+        item?.latitude ?? item?.lat ?? item?.y ?? item?.entryLatitude,
+        item?.longitude ?? item?.lng ?? item?.lon ?? item?.x ?? item?.entryLongitude
+    );
+    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
         return null;
     }
 
@@ -324,8 +355,8 @@ function normalizeMapplsSuggestion(item, fallbackQuery = "") {
     }
 
     return {
-        lat: latitude,
-        lng: longitude,
+        lat: coords.lat,
+        lng: coords.lng,
         name: mainName || fullAddress,
         mainName: mainName || fullAddress,
         fullAddress,
@@ -1469,8 +1500,7 @@ async function searchTripuraDestinations(query) {
         return (Array.isArray(data?.results) ? data.results : [])
             .map((destination) => ({
                 ...destination,
-                lat: Number.isFinite(Number(destination.lat)) ? Number(destination.lat) : null,
-                lng: Number.isFinite(Number(destination.lng)) ? Number(destination.lng) : null,
+                ...normalizeDestinationCoordinatePair(destination.lat, destination.lng),
                 source: "mappls",
                 provider: "mappls"
             }));
@@ -1910,11 +1940,12 @@ function hideDestinationSuggestions() {
 }
 
 async function resolveDestinationCoordinates(destination) {
-    if (Number.isFinite(Number(destination.lat)) && Number.isFinite(Number(destination.lng))) {
+    const existingCoords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
+    if (Number.isFinite(existingCoords.lat) && Number.isFinite(existingCoords.lng)) {
         return {
             ...destination,
-            lat: Number(destination.lat),
-            lng: Number(destination.lng)
+            lat: existingCoords.lat,
+            lng: existingCoords.lng
         };
     }
 
@@ -1926,12 +1957,13 @@ async function resolveDestinationCoordinates(destination) {
         });
         const data = await response.json();
         const resolved = data?.result;
-        if (response.ok && Number.isFinite(Number(resolved?.lat)) && Number.isFinite(Number(resolved?.lng))) {
+        const resolvedCoords = normalizeDestinationCoordinatePair(resolved?.lat, resolved?.lng);
+        if (response.ok && Number.isFinite(resolvedCoords.lat) && Number.isFinite(resolvedCoords.lng)) {
             return {
                 ...destination,
                 ...resolved,
-                lat: Number(resolved.lat),
-                lng: Number(resolved.lng)
+                lat: resolvedCoords.lat,
+                lng: resolvedCoords.lng
             };
         }
     } catch (error) {
