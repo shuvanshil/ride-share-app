@@ -230,8 +230,7 @@ async function searchMappls(query) {
     }
 
     return {
-        results: dedupe(enriched)
-            .filter((item) => item.lat != null && item.lng != null)
+        results: dedupe([...enriched, ...rawResults])
             .slice(0, 8),
         debug
     };

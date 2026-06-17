@@ -19,6 +19,7 @@ let globalDriversUnsubscribe = null;
 let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
 let fareEngineListenersBound = false;
+let destinationMapPickMode = null;
 let mainMapShell = null;
 const globalDriverMarkers = new Map();
 
@@ -573,6 +574,18 @@ function injectMapStyles() {
             color: #777;
             font-size: 13px;
             font-weight: 700;
+        }
+
+        .destination-map-pick-btn {
+            min-height: 38px;
+            margin-top: 10px;
+            border: 0;
+            border-radius: 8px;
+            padding: 0 12px;
+            color: #fff;
+            background: #1A7A2E;
+            font-size: 12px;
+            font-weight: 800;
         }
 
         .map-hybrid-host {
@@ -1204,6 +1217,10 @@ export async function initializeMapEngine() {
 
     L.control.zoom({ position: 'bottomright' }).addTo(window.mapInstance);
     addPickupMarker(coords, mainMapShell);
+    window.mapInstance.on('click', (event) => {
+        if (!destinationMapPickMode) return;
+        completeDestinationMapPick(event.latlng.lat, event.latlng.lng);
+    });
 
     setTimeout(() => window.mapInstance.invalidateSize(), 100);
     setupFareEngineListeners();
@@ -1450,11 +1467,10 @@ async function searchTripuraDestinations(query) {
         }
 
         return (Array.isArray(data?.results) ? data.results : [])
-            .filter((destination) => Number.isFinite(Number(destination.lat)) && Number.isFinite(Number(destination.lng)))
             .map((destination) => ({
                 ...destination,
-                lat: Number(destination.lat),
-                lng: Number(destination.lng),
+                lat: Number.isFinite(Number(destination.lat)) ? Number(destination.lat) : null,
+                lng: Number.isFinite(Number(destination.lng)) ? Number(destination.lng) : null,
                 source: "mappls",
                 provider: "mappls"
             }));
@@ -1893,11 +1909,119 @@ function hideDestinationSuggestions() {
     suggestions.classList.remove('is-visible');
 }
 
+async function resolveDestinationCoordinates(destination) {
+    if (Number.isFinite(Number(destination.lat)) && Number.isFinite(Number(destination.lng))) {
+        return {
+            ...destination,
+            lat: Number(destination.lat),
+            lng: Number(destination.lng)
+        };
+    }
+
+    if (!destination.eLoc) return null;
+
+    try {
+        const response = await fetch(`/api/mappls-place-detail?eloc=${encodeURIComponent(destination.eLoc)}`, {
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json();
+        const resolved = data?.result;
+        if (response.ok && Number.isFinite(Number(resolved?.lat)) && Number.isFinite(Number(resolved?.lng))) {
+            return {
+                ...destination,
+                ...resolved,
+                lat: Number(resolved.lat),
+                lng: Number(resolved.lng)
+            };
+        }
+    } catch (error) {
+        console.warn("Mappls place detail coordinate lookup failed:", error);
+    }
+
+    return null;
+}
+
+function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmountSpan) {
+    if (!window.mapInstance) {
+        alert("Map is not ready yet. Please wait a moment and try again.");
+        return;
+    }
+
+    hideDestinationSuggestions();
+    fareAmountSpan.innerText = "Tap destination on map";
+    fareQuoteBox.classList.remove('d-none');
+    fareQuoteBox.classList.add('d-flex');
+
+    destinationMapPickMode = {
+        destination,
+        dropInput,
+        fareQuoteBox,
+        fareAmountSpan
+    };
+
+    dropInput.value = destination.mainName || destination.name || dropInput.value;
+}
+
+async function completeDestinationMapPick(lat, lng) {
+    if (!destinationMapPickMode) return;
+
+    const pickMode = destinationMapPickMode;
+    destinationMapPickMode = null;
+
+    const destination = {
+        ...pickMode.destination,
+        lat,
+        lng,
+        source: "mappls-map-pick",
+        provider: "mappls",
+        typeHint: pickMode.destination.typeHint || "Pinned location"
+    };
+
+    try {
+        const response = await fetch(`/api/mappls-reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, {
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json();
+        if (response.ok && data?.result?.fullAddress) {
+            destination.fullAddress = data.result.fullAddress;
+        }
+    } catch (error) {
+        console.warn("Mappls reverse geocode for selected destination failed:", error);
+    }
+
+    pickMode.dropInput.value = destination.mainName || destination.name || destination.fullAddress || "Pinned destination";
+    window.selectedDestination = {
+        name: destination.mainName || destination.name || "Pinned destination",
+        fullAddress: destination.fullAddress || "",
+        lat: destination.lat,
+        lng: destination.lng,
+        source: destination.source,
+        provider: destination.provider,
+        eLoc: destination.eLoc || "",
+        typeHint: destination.typeHint
+    };
+
+    renderDestinationFare(destination, pickMode.fareQuoteBox, pickMode.fareAmountSpan);
+}
+
 function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan) {
     const suggestions = ensureDestinationSuggestions(dropInput);
 
     if (!destinations.length) {
-        suggestions.innerHTML = `<div class="destination-suggestion-empty">No Mappls result found. Try a nearby landmark, road, market, village, or use map selection when available.</div>`;
+        suggestions.innerHTML = `
+            <div class="destination-suggestion-empty">
+                <div>No Mappls text result found for this name.</div>
+                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Choose destination on map</button>
+            </div>
+        `;
+        suggestions.querySelector('#choose-destination-on-map-btn')?.addEventListener('click', () => {
+            startDestinationMapPick({
+                name: dropInput.value.trim() || "Pinned destination",
+                mainName: dropInput.value.trim() || "Pinned destination",
+                fullAddress: "Selected on map",
+                typeHint: "Pinned location"
+            }, dropInput, fareQuoteBox, fareAmountSpan);
+        });
         suggestions.classList.add('is-visible');
         return;
     }
@@ -1920,23 +2044,30 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
     `;
 
     suggestions.querySelectorAll('.destination-suggestion-item').forEach((item) => {
-        item.addEventListener('click', () => {
+        item.addEventListener('click', async () => {
             const selected = destinations[Number(item.dataset.index)];
             if (!selected) return;
 
             dropInput.value = selected.mainName || selected.name;
-            window.selectedDestination = {
-                name: selected.mainName || selected.name,
-                fullAddress: selected.fullAddress || "",
-                lat: selected.lat,
-                lng: selected.lng,
-                source: selected.source || selected.provider || "unknown",
-                provider: selected.provider || selected.source || "unknown",
-                eLoc: selected.eLoc || "",
-                typeHint: selected.typeHint || inferPlaceTypeHint(selected)
-            };
             hideDestinationSuggestions();
-            renderDestinationFare(selected, fareQuoteBox, fareAmountSpan);
+
+            const resolved = await resolveDestinationCoordinates(selected);
+            if (!resolved) {
+                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
+                return;
+            }
+
+            window.selectedDestination = {
+                name: resolved.mainName || resolved.name,
+                fullAddress: resolved.fullAddress || "",
+                lat: resolved.lat,
+                lng: resolved.lng,
+                source: resolved.source || resolved.provider || "mappls",
+                provider: resolved.provider || resolved.source || "mappls",
+                eLoc: resolved.eLoc || "",
+                typeHint: resolved.typeHint || inferPlaceTypeHint(resolved)
+            };
+            renderDestinationFare(resolved, fareQuoteBox, fareAmountSpan);
         });
     });
 
