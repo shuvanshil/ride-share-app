@@ -18,6 +18,7 @@ let mapplsRouteLayers = [];
 let globalDriversUnsubscribe = null;
 let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
+let fareEngineListenersBound = false;
 let mainMapShell = null;
 const globalDriverMarkers = new Map();
 
@@ -41,6 +42,71 @@ const RURAL_PRIORITY_TYPES = new Set([
     "town",
     "city"
 ]);
+const DESTINATION_SEARCH_DEBOUNCE_MS = 420;
+const TRIPURA_DISTRICT_TERMS = [
+    "west tripura",
+    "sepahijala",
+    "khowai",
+    "gomati",
+    "south tripura",
+    "dhalai",
+    "unakoti",
+    "north tripura"
+];
+const TRIPURA_TOWN_TERMS = [
+    "agartala",
+    "kailashahar",
+    "kumarghat",
+    "dharmanagar",
+    "ambassa",
+    "udaipur",
+    "belonia",
+    "khowai",
+    "teliamura",
+    "sonamura",
+    "bishalgarh",
+    "kamalpur",
+    "santirbazar",
+    "panisagar",
+    "jampui"
+];
+const USEFUL_PLACE_TYPE_TERMS = [
+    "school",
+    "college",
+    "hospital",
+    "clinic",
+    "market",
+    "bazar",
+    "bazaar",
+    "police",
+    "mandir",
+    "temple",
+    "mosque",
+    "church",
+    "stand",
+    "station",
+    "office",
+    "bank",
+    "atm",
+    "shop",
+    "restaurant",
+    "hotel",
+    "court",
+    "road",
+    "village"
+];
+const PLACE_TYPE_HINTS = [
+    { label: "Hospital", terms: ["hospital", "clinic", "medical", "health"] },
+    { label: "School", terms: ["school", "college", "academy", "vidyalaya", "university"] },
+    { label: "Market", terms: ["market", "bazar", "bazaar", "chowmuhani", "shop"] },
+    { label: "Police", terms: ["police", "thana"] },
+    { label: "Temple", terms: ["mandir", "temple"] },
+    { label: "Station", terms: ["station", "stand", "bus", "railway"] },
+    { label: "Bank", terms: ["bank", "atm"] },
+    { label: "Office", terms: ["office", "court"] },
+    { label: "Village", terms: ["village", "para", "gaon"] },
+    { label: "Road", terms: ["road", "rd", "lane"] }
+];
 
 const CARTO_TILE_CONFIG = {
     url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
@@ -67,22 +133,80 @@ function buildReadableAddressFromObject(address = {}) {
     const parts = [
         address.poi || address.houseName || address.house_number,
         address.road || address.street || address.locality || address.subLocality || address.subLocalityName,
-        address.suburb || address.neighbourhood || address.village || address.hamlet || address.district || address.subDistrict,
-        address.city || address.town || address.state_district || address.state
+        address.suburb || address.neighbourhood || address.village || address.hamlet || address.district || address.subDistrict || address.districtName,
+        address.city || address.town || address.state_district || address.state || address.stateName
     ].filter(Boolean);
 
     return [...new Set(parts)].join(", ");
 }
 
-function normalizeMapplsSuggestion(item) {
-    const latitude = Number(item?.latitude ?? item?.lat);
-    const longitude = Number(item?.longitude ?? item?.lng ?? item?.lon);
+function getResultText(result) {
+    return [
+        result?.name,
+        result?.mainName,
+        result?.placeName,
+        result?.place_name,
+        result?.keyword,
+        result?.fullAddress,
+        result?.placeAddress,
+        result?.address,
+        result?.display_name,
+        result?.addressText,
+        result?.type,
+        result?.placeType,
+        result?.rawType
+    ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function normalizeCoordinate(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function inferPlaceTypeHint(destination = {}) {
+    const text = getResultText(destination);
+    const explicitType = destination.type || destination.placeType || destination.poiType || destination.category;
+
+    for (const hint of PLACE_TYPE_HINTS) {
+        if (hint.terms.some((term) => text.includes(term))) {
+            return hint.label;
+        }
+    }
+
+    if (explicitType) {
+        return String(explicitType)
+            .replace(/[_-]+/g, " ")
+            .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+
+    return "Place";
+}
+
+function getPickupDistanceLabel(destination = {}) {
+    if (
+        !Number.isFinite(Number(destination.lat)) ||
+        !Number.isFinite(Number(destination.lng)) ||
+        !Number.isFinite(Number(userLatitude)) ||
+        !Number.isFinite(Number(userLongitude))
+    ) {
+        return "";
+    }
+
+    const distance = calculateDistance(userLatitude, userLongitude, Number(destination.lat), Number(destination.lng));
+    return distance < 1
+        ? `${Math.max(50, Math.round(distance * 1000 / 50) * 50)} m away`
+        : `${distance.toFixed(1)} km away`;
+}
+
+function normalizeMapplsSuggestion(item, fallbackQuery = "") {
+    const latitude = normalizeCoordinate(item?.latitude ?? item?.lat ?? item?.y ?? item?.entryLatitude);
+    const longitude = normalizeCoordinate(item?.longitude ?? item?.lng ?? item?.lon ?? item?.x ?? item?.entryLongitude);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         return null;
     }
 
-    const mainName = item.placeName || item.place_name || item.placeAddress || item.name || item.keyword;
-    const fullAddress = item.placeAddress || item.address || buildReadableAddressFromObject(item) || "Tripura, India";
+    const mainName = item.placeName || item.place_name || item.poi || item.name || item.keyword || item.formatted_address || fallbackQuery;
+    const fullAddress = item.placeAddress || item.address || item.formatted_address || item.display_name || buildReadableAddressFromObject(item) || "Tripura, India";
     if (!mainName && !fullAddress) {
         return null;
     }
@@ -92,7 +216,12 @@ function normalizeMapplsSuggestion(item) {
         lng: longitude,
         name: mainName || fullAddress,
         mainName: mainName || fullAddress,
-        fullAddress
+        fullAddress,
+        typeHint: inferPlaceTypeHint(item),
+        source: "mappls",
+        provider: "mappls",
+        eLoc: item.eLoc || item.eloc || item.placeId || item.place_id || "",
+        rawType: item.type || item.placeType || item.poiType || item.category || ""
     };
 }
 
@@ -347,6 +476,25 @@ function injectMapStyles() {
             color: #777;
             font-size: 12px;
             line-height: 1.3;
+        }
+
+        .destination-suggestion-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 7px;
+        }
+
+        .destination-suggestion-meta span {
+            min-height: 22px;
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0 8px;
+            color: #22572F;
+            background: #EAF8ED;
+            font-size: 11px;
+            font-weight: 800;
         }
 
         .destination-suggestion-empty {
@@ -998,9 +1146,14 @@ export async function initializeMapEngine() {
 
 // 3. Dynamic Fare Calculation Engine (Straight-Line Haversine Approximation)
 function setupFareEngineListeners() {
+    if (fareEngineListenersBound) return;
+
     const dropInput = document.getElementById('drop-input');
     const fareQuoteBox = document.getElementById('fare-quote-box');
     const fareAmountSpan = document.getElementById('fare-amount');
+    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+
+    fareEngineListenersBound = true;
 
     dropInput.addEventListener('input', (e) => {
         const query = e.target.value.toLowerCase().trim();
@@ -1026,10 +1179,16 @@ function setupFareEngineListeners() {
         window.latestFareQuote = null;
 
         destinationSearchTimer = setTimeout(async () => {
-            const destinations = [
+            const destinations = dedupeDestinationResults([
                 ...findLocalDestinations(query),
                 ...(await searchTripuraDestinations(query))
-            ].slice(0, 7);
+            ])
+                .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query))
+                .slice(0, 8);
+
+            if (dropInput.value.toLowerCase().trim() !== query) {
+                return;
+            }
 
             if (destinations.length) {
                 showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan);
@@ -1039,7 +1198,7 @@ function setupFareEngineListeners() {
                 resetDestinationFareState(fareQuoteBox);
                 showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan);
             }
-        }, 650);
+        }, DESTINATION_SEARCH_DEBOUNCE_MS);
     });
 }
 
@@ -1054,6 +1213,7 @@ function findLocalDestinations(query) {
             ...destination,
             mainName: destination.name,
             fullAddress: `${destination.name}, Tripura, India`,
+            typeHint: inferPlaceTypeHint(destination),
             source: "local"
         }));
 }
@@ -1071,19 +1231,46 @@ function resetDestinationFareState(fareQuoteBox) {
     }
 }
 
+function scoreTripuraDestination(destination, query = "") {
+    const text = `${getResultText(destination)} ${query}`.toLowerCase();
+    let score = 0;
+
+    if (text.includes("tripura")) score += 120;
+    TRIPURA_DISTRICT_TERMS.forEach((term) => {
+        if (text.includes(term)) score += 70;
+    });
+    TRIPURA_TOWN_TERMS.forEach((term) => {
+        if (text.includes(term)) score += 48;
+    });
+    USEFUL_PLACE_TYPE_TERMS.forEach((term) => {
+        if (text.includes(term)) score += 20;
+    });
+
+    const normalizedQuery = query.toLowerCase().trim();
+    if (normalizedQuery) {
+        normalizedQuery.split(/\s+/).forEach((part) => {
+            if (part.length > 2 && text.includes(part)) score += 8;
+        });
+    }
+
+    if (destination.source === "mappls") score += 18;
+    if (destination.source === "local") score += 28;
+    if (destination.eLoc) score += 8;
+    if (Number.isFinite(Number(destination.lat)) && Number.isFinite(Number(destination.lng))) score += 12;
+
+    return score;
+}
+
 function rankTripuraResult(result) {
     const address = result.address || {};
     const type = result.type || "";
     const displayName = (result.display_name || "").toLowerCase();
-    let score = 0;
-
-    if (displayName.includes("tripura")) score += 100;
-    if (RURAL_PRIORITY_TYPES.has(type)) score += 35;
-    if (address.village || address.hamlet || address.locality) score += 30;
-    if (address.suburb || address.neighbourhood) score += 20;
-    if (address.town || address.city) score += 12;
-
-    return score;
+    return scoreTripuraDestination({
+        ...result,
+        fullAddress: result.display_name,
+        rawType: type,
+        addressText: buildReadableAddressFromObject(address)
+    });
 }
 
 function buildDestinationName(result, fallbackQuery) {
@@ -1114,21 +1301,154 @@ async function searchTripuraDestinations(query) {
     }
 
     destinationSearchAbortController = new AbortController();
+    const signal = destinationSearchAbortController.signal;
 
-    const mapplsResults = await searchTripuraDestinationsWithMappls(query, destinationSearchAbortController.signal);
-    if (mapplsResults.length) {
+    const mapplsResults = await searchTripuraDestinationsWithMappls(query, signal);
+    if (signal.aborted) return [];
+
+    if (mapplsResults.length >= 4) {
         return mapplsResults;
     }
 
-    return searchTripuraDestinationsWithNominatim(query, destinationSearchAbortController.signal);
+    const fallbackResults = await searchTripuraDestinationsWithNominatim(query, signal);
+    if (signal.aborted) return [];
+
+    return dedupeDestinationResults([...mapplsResults, ...fallbackResults])
+        .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query))
+        .slice(0, 8);
 }
 
 async function searchTripuraDestinationsWithMappls(query, signal) {
     if (!hasMapplsKey()) return [];
 
+    const results = [];
+    const queryVariants = buildMapplsQueryVariants(query);
+
+    for (const queryVariant of queryVariants) {
+        if (signal.aborted) return [];
+
+        const urlCandidates = buildMapplsSearchUrls(queryVariant);
+        for (const url of urlCandidates) {
+            if (signal.aborted) return [];
+
+            try {
+                const data = await fetchJsonWithGracefulFailure(url, {
+                    headers: { "Accept-Language": "en" },
+                    signal
+                });
+                const normalized = await normalizeMapplsResponseItems(data, queryVariant, signal);
+                results.push(...normalized);
+            } catch (error) {
+                if (error.name !== "AbortError") {
+                    console.warn("Mappls destination search attempt failed:", error);
+                }
+            }
+
+            const strongResults = dedupeDestinationResults(results)
+                .filter((item) => scoreTripuraDestination(item, query) >= 45)
+                .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query));
+            if (strongResults.length >= 8) {
+                return strongResults.slice(0, 8);
+            }
+        }
+    }
+
+    return dedupeDestinationResults(results)
+        .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query))
+        .slice(0, 8);
+}
+
+function buildMapplsQueryVariants(query) {
+    const cleanQuery = query.trim().replace(/\s+/g, " ");
+    const lowerQuery = cleanQuery.toLowerCase();
+    const variants = [
+        cleanQuery,
+        `${cleanQuery} Tripura`
+    ];
+
+    if (!TRIPURA_TOWN_TERMS.some((town) => lowerQuery.includes(town))) {
+        variants.push(`${cleanQuery} Agartala`);
+        variants.push(`${cleanQuery} Kailashahar`);
+        variants.push(`${cleanQuery} Kumarghat`);
+    }
+
+    if (!USEFUL_PLACE_TYPE_TERMS.some((term) => lowerQuery.includes(term))) {
+        variants.push(`${cleanQuery} market Tripura`);
+        variants.push(`${cleanQuery} road Tripura`);
+    }
+
+    return [...new Set(variants)].slice(0, 6);
+}
+
+function buildMapplsSearchUrls(queryVariant) {
+    const encodedQuery = encodeURIComponent(queryVariant);
+    const encodedKey = encodeURIComponent(MAPPLS_STATIC_KEY);
+    const encodedBias = encodeURIComponent(TRIPURA_BIAS_POINT);
+
+    return [
+        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/autosuggest?query=${encodedQuery}&region=IND&location=${encodedBias}`,
+        `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&access_token=${encodedKey}`,
+        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/geo_code?addr=${encodedQuery}&region=IND`
+    ];
+}
+
+function extractMapplsItems(data) {
+    const buckets = [
+        data?.suggestedLocations,
+        data?.results,
+        data?.items,
+        data?.places,
+        data?.copResults,
+        data?.response?.results,
+        data?.response?.suggestedLocations,
+        data?.data?.results,
+        data?.data?.suggestedLocations
+    ];
+
+    const items = [];
+    buckets.forEach((bucket) => {
+        if (Array.isArray(bucket)) {
+            items.push(...bucket);
+        }
+    });
+
+    if (!items.length && data && typeof data === "object" && !Array.isArray(data)) {
+        items.push(data);
+    }
+
+    return items;
+}
+
+async function normalizeMapplsResponseItems(data, queryVariant, signal) {
+    const rawItems = extractMapplsItems(data);
+    const normalized = [];
+
+    for (const item of rawItems) {
+        if (signal.aborted) return [];
+
+        let destination = normalizeMapplsSuggestion(item, queryVariant);
+        if (!destination && (item?.eLoc || item?.eloc || item?.placeId || item?.place_id)) {
+            destination = await fetchMapplsPlaceDetail(item.eLoc || item.eloc || item.placeId || item.place_id, signal, queryVariant);
+        }
+
+        if (destination) {
+            normalized.push(destination);
+        }
+    }
+
+    return normalized;
+}
+
+async function fetchMapplsPlaceDetail(placeId, signal, fallbackQuery = "") {
+    if (!placeId || !hasMapplsKey()) return null;
+
+    const encodedPlaceId = encodeURIComponent(placeId);
+    const encodedKey = encodeURIComponent(MAPPLS_STATIC_KEY);
     const urlCandidates = [
-        `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(`${query} Tripura`)}&region=IND&access_token=${encodeURIComponent(MAPPLS_STATIC_KEY)}`,
-        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/autosuggest?query=${encodeURIComponent(query)}&region=IND&pod=city&location=${encodeURIComponent(TRIPURA_BIAS_POINT)}`
+        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/place_detail?place_id=${encodedPlaceId}`,
+        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/place_detail?eloc=${encodedPlaceId}`,
+        `https://atlas.mappls.com/api/places/details/json?eloc=${encodedPlaceId}&access_token=${encodedKey}`,
+        `https://atlas.mappls.com/api/places/details/json?place_id=${encodedPlaceId}&access_token=${encodedKey}`
     ];
 
     for (const url of urlCandidates) {
@@ -1137,30 +1457,32 @@ async function searchTripuraDestinationsWithMappls(query, signal) {
                 headers: { "Accept-Language": "en" },
                 signal
             });
-            const rawItems = Array.isArray(data?.suggestedLocations)
-                ? data.suggestedLocations
-                : Array.isArray(data?.items)
-                    ? data.items
-                    : Array.isArray(data?.results)
-                        ? data.results
-                        : [];
-            const normalized = rawItems
-                .map(normalizeMapplsSuggestion)
-                .filter(Boolean)
-                .filter((item) => `${item.mainName} ${item.fullAddress}`.toLowerCase().includes("tripura"))
-                .slice(0, 6);
-
-            if (normalized.length) {
-                return normalized;
-            }
+            const detail = extractMapplsItems(data)[0] || data;
+            const normalized = normalizeMapplsSuggestion({ ...detail, eLoc: placeId }, fallbackQuery);
+            if (normalized) return normalized;
         } catch (error) {
             if (error.name !== "AbortError") {
-                console.warn("Mappls destination search attempt failed:", error);
+                console.warn("Mappls place detail lookup failed:", error);
             }
         }
     }
 
-    return [];
+    return null;
+}
+
+function dedupeDestinationResults(destinations) {
+    const seen = new Set();
+
+    return destinations.filter((destination) => {
+        if (!destination) return false;
+        const lat = Number(destination.lat).toFixed(5);
+        const lng = Number(destination.lng).toFixed(5);
+        const name = String(destination.mainName || destination.name || "").toLowerCase().trim();
+        const key = `${name}|${lat}|${lng}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 async function searchTripuraDestinationsWithNominatim(query, signal) {
@@ -1191,7 +1513,10 @@ async function searchTripuraDestinationsWithNominatim(query, signal) {
                     lng: Number(result.lon),
                     name: display.mainName,
                     mainName: display.mainName,
-                    fullAddress: display.fullAddress
+                    fullAddress: display.fullAddress,
+                    typeHint: inferPlaceTypeHint(result),
+                    source: "nominatim",
+                    provider: "nominatim"
                 };
             });
     } catch (error) {
@@ -1250,6 +1575,10 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
                 <span>
                     <strong class="destination-suggestion-main">${escapeHtml(destination.mainName || destination.name)}</strong>
                     <small class="destination-suggestion-sub">${escapeHtml(destination.fullAddress || "Tripura, India")}</small>
+                    <span class="destination-suggestion-meta">
+                        <span>${escapeHtml(destination.typeHint || inferPlaceTypeHint(destination))}</span>
+                        ${getPickupDistanceLabel(destination) ? `<span>${escapeHtml(getPickupDistanceLabel(destination))}</span>` : ""}
+                    </span>
                 </span>
             </button>
         `).join("")}
@@ -1265,7 +1594,11 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
                 name: selected.mainName || selected.name,
                 fullAddress: selected.fullAddress || "",
                 lat: selected.lat,
-                lng: selected.lng
+                lng: selected.lng,
+                source: selected.source || selected.provider || "unknown",
+                provider: selected.provider || selected.source || "unknown",
+                eLoc: selected.eLoc || "",
+                typeHint: selected.typeHint || inferPlaceTypeHint(selected)
             };
             hideDestinationSuggestions();
             renderDestinationFare(selected, fareQuoteBox, fareAmountSpan);
@@ -1302,6 +1635,9 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         drop_lng: destination.lng,
         drop_name: destination.mainName || destination.name,
         drop_full_address: destination.fullAddress || "",
+        drop_source: destination.source || destination.provider || "unknown",
+        drop_eloc: destination.eLoc || "",
+        drop_type_hint: destination.typeHint || inferPlaceTypeHint(destination),
         distance_km: Number(distance.toFixed(2)),
         duration_minutes: estimatedDurationMinutes
     };

@@ -36,6 +36,21 @@ let currentPassengerRideId = null;
 let pendingDriverPaymentRideId = null;
 let activeDriverRenderedStatus = null;
 
+function hasPassengerLifecycleSurface() {
+    return Boolean(
+        document.getElementById('request-ride-btn') &&
+        document.getElementById('fare-quote-box') &&
+        document.getElementById('drop-input')
+    );
+}
+
+function addOptionalClickListener(elementId, handler) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.addEventListener('click', handler);
+    }
+}
+
 function generateVerificationPin() {
     return String(Math.floor(1000 + Math.random() * 9000));
 }
@@ -655,6 +670,10 @@ window.addEventListener('user-session-ready', (e) => {
     } else {
         // User is a passenger; map initializations happen through map.js automatically
         console.log("Passenger architecture mapped via map.js pipeline context.");
+        if (!hasPassengerLifecycleSurface()) {
+            return;
+        }
+
         restorePassengerActiveRide().then((restoredActiveRide) => {
             if (restoredActiveRide) return;
             window.addEventListener('map-engine-ready', applyServiceBookingDraft, { once: true });
@@ -735,7 +754,9 @@ async function restoreDriverActiveRide() {
 // ==========================================
 // 2. PASSENGER ENGINE: SUBMIT REQUESTS
 // ==========================================
-document.getElementById('request-ride-btn').addEventListener('click', async () => {
+const requestRideButton = document.getElementById('request-ride-btn');
+if (requestRideButton) {
+requestRideButton.addEventListener('click', async () => {
     if (!currentUser) return;
 
     const pickupText = document.getElementById('pickup-input').value;
@@ -799,6 +820,9 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
             pickup_name: pickupText,
             drop_name: dropText,
             drop_full_address: fareQuote.drop_full_address || "",
+            drop_source: fareQuote.drop_source || "",
+            drop_eloc: fareQuote.drop_eloc || "",
+            drop_type_hint: fareQuote.drop_type_hint || "",
             pickup_lat: fareQuote.pickup_lat || null,
             pickup_lng: fareQuote.pickup_lng || null,
             drop_lat: fareQuote.drop_lat || null,
@@ -837,6 +861,7 @@ document.getElementById('request-ride-btn').addEventListener('click', async () =
         alert(error.message || "Could not create this ride request. Please try again.");
     }
 });
+}
 
 function listenToRideStatusUpdates(rideId) {
     const requestBtn = document.getElementById('request-ride-btn');
@@ -1401,18 +1426,18 @@ async function cancelRideByDriver(rideId) {
 // ==========================================
 // 4. GLOBAL UI EVENT LISTENERS
 // ==========================================
-document.getElementById('arrived-trip-btn').addEventListener('click', markDriverArrived);
-document.getElementById('start-trip-btn').addEventListener('click', startRideJob);
-document.getElementById('complete-trip-btn').addEventListener('click', completeRideJob);
-document.getElementById('cancel-driver-trip-btn').addEventListener('click', () => cancelRideByDriver());
-document.getElementById('passenger-cancel-ride-btn').addEventListener('click', () => cancelRideByPassenger());
+addOptionalClickListener('arrived-trip-btn', markDriverArrived);
+addOptionalClickListener('start-trip-btn', startRideJob);
+addOptionalClickListener('complete-trip-btn', completeRideJob);
+addOptionalClickListener('cancel-driver-trip-btn', () => cancelRideByDriver());
+addOptionalClickListener('passenger-cancel-ride-btn', () => cancelRideByPassenger());
 
-document.getElementById('close-passenger-payment-btn').addEventListener('click', () => {
+addOptionalClickListener('close-passenger-payment-btn', () => {
     document.getElementById('passenger-payment-view').classList.add('d-none');
     window.location.reload(); 
 });
 
-document.getElementById('close-driver-payment-btn').addEventListener('click', async () => {
+addOptionalClickListener('close-driver-payment-btn', async () => {
     const closeBtn = document.getElementById('close-driver-payment-btn');
     closeBtn.disabled = true;
     closeBtn.innerText = "Saving trip history...";
@@ -1427,10 +1452,10 @@ document.getElementById('close-driver-payment-btn').addEventListener('click', as
     document.getElementById('driver-payment-view').classList.add('d-none');
     window.location.reload();
 });
-document.getElementById('passenger-history-btn').addEventListener('click', () => {
+addOptionalClickListener('passenger-history-btn', () => {
     window.location.href = 'history.html';
 });
-document.getElementById('driver-history-btn').addEventListener('click', () => {
+addOptionalClickListener('driver-history-btn', () => {
     window.location.href = 'history.html';
 });
 window.addEventListener('beforeunload', () => {
