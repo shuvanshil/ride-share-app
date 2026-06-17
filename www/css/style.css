@@ -245,6 +245,9 @@ select {
     background: var(--gy-muted-bg);
     border-radius: 8px;
 }
+.location-field a {
+    text-decoration: none;
+}
 
 .location-field .gy-input {
     min-height: 48px;
