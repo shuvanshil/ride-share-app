@@ -38,12 +38,14 @@ select {
     overflow: hidden;
 }
 
+
 .brand-logo {
     font-size: 22px;
     line-height: 1;
     font-weight: 800;
     letter-spacing: 0;
 }
+
 
 .brand-logo span:first-child {
     color: #111;
@@ -185,6 +187,7 @@ select {
     background: #fff;
 }
 
+
 .hero-card {
     min-height: 200px;
     display: grid;
@@ -211,6 +214,11 @@ select {
 .hero-card h1 span {
     color: #14c22e;
 }
+
+
+
+
+
 
 .hero-card p {
     margin: 0;
