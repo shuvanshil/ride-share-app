@@ -1949,10 +1949,23 @@ async function resolveDestinationCoordinates(destination) {
         };
     }
 
-    if (!destination.eLoc) return null;
+    const lookupText = [
+        destination.mainName || destination.name,
+        destination.fullAddress
+    ].filter(Boolean).join(", ");
+
+    if (!destination.eLoc && !lookupText) return null;
 
     try {
-        const response = await fetch(`/api/mappls-place-detail?eloc=${encodeURIComponent(destination.eLoc)}`, {
+        const params = new URLSearchParams();
+        if (destination.eLoc) params.set("eloc", destination.eLoc);
+        if (lookupText) params.set("q", lookupText);
+        if (Number.isFinite(Number(userLatitude)) && Number.isFinite(Number(userLongitude))) {
+            params.set("pickupLat", String(userLatitude));
+            params.set("pickupLng", String(userLongitude));
+        }
+
+        const response = await fetch(`/api/mappls-place-detail?${params.toString()}`, {
             headers: { Accept: "application/json" }
         });
         const data = await response.json();
