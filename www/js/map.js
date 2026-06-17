@@ -398,61 +398,21 @@ async function updatePickupInputField(lat, lng, isFallback) {
 }
 
 async function reverseGeocodePickup(lat, lng) {
-    const mapplsAddress = await reverseGeocodeWithMappls(lat, lng);
-    if (mapplsAddress) {
-        return mapplsAddress;
-    }
-
-    const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-        { headers: { "Accept-Language": "en" } }
-    );
-    const data = await response.json();
-    const addr = data.address || {};
-    const readableParts = [
-        addr.road,
-        addr.suburb,
-        addr.city || addr.town || addr.village
-    ].filter(Boolean);
-
-    return readableParts.length
-        ? readableParts.join(", ")
-        : null;
+    return reverseGeocodeWithMappls(lat, lng);
 }
 
 async function reverseGeocodeWithMappls(lat, lng) {
-    if (!hasMapplsKey()) return null;
-
-    const reverseUrlCandidates = [
-        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/rev_geocode?lat=${lat}&lng=${lng}`,
-        `https://atlas.mappls.com/api/places/rev_geocode?lat=${lat}&lng=${lng}&access_token=${encodeURIComponent(MAPPLS_STATIC_KEY)}`
-    ];
-
-    for (const url of reverseUrlCandidates) {
-        try {
-            const data = await fetchJsonWithGracefulFailure(url, {
-                headers: { "Accept-Language": "en" }
-            });
-            const address = Array.isArray(data?.results)
-                ? data.results[0]
-                : Array.isArray(data?.items)
-                    ? data.items[0]
-                    : data;
-            const readableAddress = buildReadableAddressFromObject(address);
-
-            if (readableAddress) {
-                return readableAddress;
-            }
-
-            if (address?.formatted_address || address?.placeAddress) {
-                return address.formatted_address || address.placeAddress;
-            }
-        } catch (error) {
-            console.warn("Mappls reverse geocode attempt failed:", error);
-        }
+    try {
+        const response = await fetch(`/api/mappls-reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, {
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json();
+        if (!response.ok) return null;
+        return data?.result?.fullAddress || data?.result?.name || null;
+    } catch (error) {
+        console.warn("Mappls reverse geocode attempt failed:", error);
+        return null;
     }
-
-    return null;
 }
 
 function injectMapStyles() {
@@ -1290,9 +1250,7 @@ function setupFareEngineListeners() {
         window.latestFareQuote = null;
 
         destinationSearchTimer = setTimeout(async () => {
-            const providerDestinations = await searchTripuraDestinations(query);
-            const localDestinations = findLocalDestinations(query);
-            const destinations = mergeDestinationResults(providerDestinations, localDestinations, query);
+            const destinations = await searchTripuraDestinations(query);
 
             if (dropInput.value.toLowerCase().trim() !== query) {
                 return;
@@ -1315,21 +1273,7 @@ function findLocalDestination(query) {
 }
 
 function findLocalDestinations(query) {
-    const normalizedQuery = normalizeSearchText(query);
-    const queryTokens = getSearchTokens(normalizedQuery);
-
-    return Object.entries(localLandmarks)
-        .map(([key, destination]) => ({
-            ...destination,
-            _score: scoreLocalLandmark(normalizedQuery, queryTokens, key, destination),
-            mainName: destination.name,
-            fullAddress: destination.fullAddress || `${destination.name}, Tripura, India`,
-            typeHint: destination.typeHint || inferPlaceTypeHint(destination),
-            source: "local"
-        }))
-        .filter((destination) => destination._score > 0)
-        .sort((a, b) => b._score - a._score)
-        .slice(0, 6);
+    return [];
 }
 
 function normalizeSearchText(value) {
@@ -1495,16 +1439,31 @@ async function searchTripuraDestinations(query) {
     destinationSearchAbortController = new AbortController();
     const signal = destinationSearchAbortController.signal;
 
-    const [mapplsResults, overpassResults, fallbackResults] = await Promise.all([
-        searchTripuraDestinationsWithMappls(query, signal),
-        searchTripuraDestinationsWithOverpass(query, signal),
-        searchTripuraDestinationsWithNominatim(query, signal)
-    ]);
-    if (signal.aborted) return [];
+    try {
+        const response = await fetch(`/api/mappls-search?q=${encodeURIComponent(query)}`, {
+            headers: { Accept: "application/json" },
+            signal
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.message || data?.error || `HTTP ${response.status}`);
+        }
 
-    return dedupeDestinationResults([...mapplsResults, ...overpassResults, ...fallbackResults])
-        .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query))
-        .slice(0, 8);
+        return (Array.isArray(data?.results) ? data.results : [])
+            .filter((destination) => Number.isFinite(Number(destination.lat)) && Number.isFinite(Number(destination.lng)))
+            .map((destination) => ({
+                ...destination,
+                lat: Number(destination.lat),
+                lng: Number(destination.lng),
+                source: "mappls",
+                provider: "mappls"
+            }));
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            console.warn("Mappls destination search failed:", error);
+        }
+        return [];
+    }
 }
 
 async function searchTripuraDestinationsWithMappls(query, signal) {
@@ -1938,7 +1897,7 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
     const suggestions = ensureDestinationSuggestions(dropInput);
 
     if (!destinations.length) {
-        suggestions.innerHTML = `<div class="destination-suggestion-empty">No exact Tripura location found. Try village, market, road, or subdivision name.</div>`;
+        suggestions.innerHTML = `<div class="destination-suggestion-empty">No Mappls result found. Try a nearby landmark, road, market, village, or use map selection when available.</div>`;
         suggestions.classList.add('is-visible');
         return;
     }
@@ -2141,18 +2100,24 @@ async function fetchRoadRouteCoords(origin, destination) {
     ];
 
     try {
-        const routeUrl = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`;
+        const params = new URLSearchParams({
+            originLat: origin.lat,
+            originLng: origin.lng,
+            destinationLat: destination.lat,
+            destinationLng: destination.lng
+        });
+        const routeUrl = `/api/mappls-route?${params.toString()}`;
         const response = await fetch(routeUrl);
         const data = await response.json();
-        const coordinates = data.routes?.[0]?.geometry?.coordinates;
+        const coordinates = data.coordinates;
 
         if (!Array.isArray(coordinates) || coordinates.length === 0) {
             return fallbackCoords;
         }
 
-        return coordinates.map(([lng, lat]) => [lat, lng]);
+        return coordinates;
     } catch (error) {
-        console.warn("OSRM route fetch failed. Falling back to straight route line:", error);
+        console.warn("Mappls route fetch failed. Falling back to straight route line:", error);
         return fallbackCoords;
     }
 }
