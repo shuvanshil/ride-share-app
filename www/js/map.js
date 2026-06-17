@@ -22,12 +22,105 @@ let fareEngineListenersBound = false;
 let mainMapShell = null;
 const globalDriverMarkers = new Map();
 
-// Fast shortcuts only. Unknown Tripura villages/streets are resolved through Nominatim geocoding below.
+// Fast local safety net for Tripura places that large providers often miss or
+// return too broadly. Provider results still rank first when they are strong.
 const localLandmarks = {
-    "kumarghat station": { lat: 24.2415, lng: 92.0312, name: "Kumarghat Railway Station" },
-    "rgm hospital": { lat: 24.3210, lng: 92.0110, name: "Kailashahar RGM Hospital" },
-    "dharmanagar": { lat: 24.3667, lng: 92.1667, name: "Dharmanagar Town Center" },
-    "unakoti": { lat: 24.3236, lng: 92.0272, name: "Unakoti Heritage Site" }
+    "kumarghat station": {
+        lat: 24.2415,
+        lng: 92.0312,
+        name: "Kumarghat Railway Station",
+        fullAddress: "Kumarghat, Unakoti, Tripura",
+        typeHint: "Station",
+        aliases: ["kumarghat railway", "kumarghat rail station", "kugt station"]
+    },
+    "rgm hospital": {
+        lat: 24.3210,
+        lng: 92.0110,
+        name: "RGM Hospital Kailashahar",
+        fullAddress: "Kailashahar, Unakoti, Tripura",
+        typeHint: "Hospital",
+        aliases: ["rajib gandhi memorial hospital", "kailashahar hospital", "hospital kailashahar"]
+    },
+    "dharmanagar police station": {
+        lat: 24.3786,
+        lng: 92.1783,
+        name: "Dharmanagar Police Station",
+        fullAddress: "Dharmanagar, North Tripura, Tripura",
+        typeHint: "Police",
+        aliases: ["dharmanagar thana", "police station dharmanagar", "police dharmanagar"]
+    },
+    "dharmanagar": {
+        lat: 24.3785,
+        lng: 92.1783,
+        name: "Dharmanagar Town Center",
+        fullAddress: "Dharmanagar, North Tripura, Tripura",
+        typeHint: "Town",
+        aliases: ["dharma nagar", "dharmanagar town"]
+    },
+    "sbi kailashahar": {
+        lat: 24.3240,
+        lng: 92.0126,
+        name: "State Bank of India Kailashahar",
+        fullAddress: "Kailashahar, Unakoti, Tripura",
+        typeHint: "Bank",
+        aliases: ["state bank kailashahar", "state bank of india kailashahar", "sbi bank kailashahar", "kailashahar sbi"]
+    },
+    "kailashahar motor stand": {
+        lat: 24.3232,
+        lng: 92.0124,
+        name: "Kailashahar Motor Stand",
+        fullAddress: "Kailashahar, Unakoti, Tripura",
+        typeHint: "Station",
+        aliases: ["motor stand kailashahar", "kailashahar bus stand", "bus stand kailashahar", "kailashahar stand"]
+    },
+    "chandipur kailashahar": {
+        lat: 24.3066,
+        lng: 92.0018,
+        name: "Chandipur",
+        fullAddress: "Chandipur, Kailashahar, Unakoti, Tripura",
+        typeHint: "Village",
+        aliases: ["kailashahar chandipur", "chandipur unakoti", "chandipur tripura"]
+    },
+    "lake chowmuhani": {
+        lat: 23.8321,
+        lng: 91.2788,
+        name: "Lake Chowmuhani",
+        fullAddress: "Krishna Nagar, Agartala, West Tripura",
+        typeHint: "Market",
+        aliases: ["lake chowmuhani market", "lake chowmuhani agartala"]
+    },
+    "kumarghat school": {
+        lat: 24.2397,
+        lng: 92.0306,
+        name: "Kumarghat School",
+        fullAddress: "Kumarghat, Unakoti, Tripura",
+        typeHint: "School",
+        aliases: ["school kumarghat", "kumarghat h s school", "kumarghat high school"]
+    },
+    "unakoti district court": {
+        lat: 24.3229,
+        lng: 92.0122,
+        name: "District Court Unakoti",
+        fullAddress: "Kailashahar, Unakoti, Tripura",
+        typeHint: "Office",
+        aliases: ["unakoti court", "district court kailashahar", "kailashahar court"]
+    },
+    "tripura gramin bank kailashahar": {
+        lat: 24.3237,
+        lng: 92.0123,
+        name: "Tripura Gramin Bank Kailashahar",
+        fullAddress: "Kailashahar, Unakoti, Tripura",
+        typeHint: "Bank",
+        aliases: ["tgb kailashahar", "gramin bank kailashahar"]
+    },
+    "unakoti": {
+        lat: 24.3236,
+        lng: 92.0272,
+        name: "Unakoti Heritage Site",
+        fullAddress: "Unakoti, Tripura",
+        typeHint: "Temple",
+        aliases: ["unakoti hills", "unakoti heritage"]
+    }
 };
 
 const TRIPURA_VIEWBOX = "91.0,24.7,92.6,22.8";
@@ -87,6 +180,8 @@ const USEFUL_PLACE_TYPE_TERMS = [
     "station",
     "office",
     "bank",
+    "sbi",
+    "state bank",
     "atm",
     "shop",
     "restaurant",
@@ -102,7 +197,7 @@ const PLACE_TYPE_HINTS = [
     { label: "Police", terms: ["police", "thana"] },
     { label: "Temple", terms: ["mandir", "temple"] },
     { label: "Station", terms: ["station", "stand", "bus", "railway"] },
-    { label: "Bank", terms: ["bank", "atm"] },
+    { label: "Bank", terms: ["bank", "atm", "sbi", "state bank"] },
     { label: "Office", terms: ["office", "court"] },
     { label: "Village", terms: ["village", "para", "gaon"] },
     { label: "Road", terms: ["road", "rd", "lane"] }
@@ -1207,15 +1302,64 @@ function findLocalDestination(query) {
 }
 
 function findLocalDestinations(query) {
+    const normalizedQuery = normalizeSearchText(query);
+    const queryTokens = getSearchTokens(normalizedQuery);
+
     return Object.entries(localLandmarks)
-        .filter(([key]) => query.includes(key) || (key.includes(query) && query.length > 3))
-        .map(([, destination]) => ({
+        .map(([key, destination]) => ({
             ...destination,
+            _score: scoreLocalLandmark(normalizedQuery, queryTokens, key, destination),
             mainName: destination.name,
-            fullAddress: `${destination.name}, Tripura, India`,
-            typeHint: inferPlaceTypeHint(destination),
+            fullAddress: destination.fullAddress || `${destination.name}, Tripura, India`,
+            typeHint: destination.typeHint || inferPlaceTypeHint(destination),
             source: "local"
-        }));
+        }))
+        .filter((destination) => destination._score > 0)
+        .sort((a, b) => b._score - a._score)
+        .slice(0, 6);
+}
+
+function normalizeSearchText(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function getSearchTokens(value) {
+    return normalizeSearchText(value)
+        .split(" ")
+        .filter((token) => token.length > 1);
+}
+
+function scoreLocalLandmark(normalizedQuery, queryTokens, key, destination) {
+    const searchableText = normalizeSearchText([
+        key,
+        destination.name,
+        destination.fullAddress,
+        destination.typeHint,
+        ...(destination.aliases || [])
+    ].filter(Boolean).join(" "));
+
+    if (!normalizedQuery || !searchableText) return 0;
+    if (searchableText.includes(normalizedQuery)) return 260;
+    if (normalizedQuery.includes(normalizeSearchText(key))) return 240;
+
+    let score = 0;
+    queryTokens.forEach((token) => {
+        if (searchableText.includes(token)) {
+            score += token.length > 3 ? 34 : 18;
+        }
+    });
+
+    const importantMatches = USEFUL_PLACE_TYPE_TERMS.filter((term) => normalizedQuery.includes(term) && searchableText.includes(term)).length;
+    score += importantMatches * 38;
+
+    const townMatches = TRIPURA_TOWN_TERMS.filter((town) => normalizedQuery.includes(town) && searchableText.includes(town)).length;
+    score += townMatches * 42;
+
+    return score >= 52 ? score : 0;
 }
 
 function resetDestinationFareState(fareQuoteBox) {
