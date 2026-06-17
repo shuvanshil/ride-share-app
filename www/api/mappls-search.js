@@ -113,10 +113,13 @@ function getBucketCounts(data) {
         results: data?.results,
         items: data?.items,
         places: data?.places,
+        rowLocations: data?.rowLocations,
         responseSuggestedLocations: data?.response?.suggestedLocations,
         responseResults: data?.response?.results,
+        responseRowLocations: data?.response?.rowLocations,
         dataSuggestedLocations: data?.data?.suggestedLocations,
-        dataResults: data?.data?.results
+        dataResults: data?.data?.results,
+        dataRowLocations: data?.data?.rowLocations
     };
 
     return Object.fromEntries(
@@ -126,8 +129,39 @@ function getBucketCounts(data) {
     );
 }
 
+function getSearchItems(data) {
+    const suggested = Array.isArray(data?.suggestedLocations)
+        ? data.suggestedLocations
+        : Array.isArray(data?.response?.suggestedLocations)
+            ? data.response.suggestedLocations
+            : Array.isArray(data?.data?.suggestedLocations)
+                ? data.data.suggestedLocations
+                : [];
+    const rows = Array.isArray(data?.rowLocations)
+        ? data.rowLocations
+        : Array.isArray(data?.response?.rowLocations)
+            ? data.response.rowLocations
+            : Array.isArray(data?.data?.rowLocations)
+                ? data.data.rowLocations
+                : [];
+
+    if (suggested.length && rows.length) {
+        return suggested.map((item, index) => {
+            const eLoc = item.eLoc || item.eloc || item.placeId || item.place_id || item.mapplsPin || "";
+            const matchingRow = rows.find((row) => {
+                const rowELoc = row.eLoc || row.eloc || row.placeId || row.place_id || row.mapplsPin || "";
+                return eLoc && rowELoc && String(eLoc).toLowerCase() === String(rowELoc).toLowerCase();
+            }) || rows[index] || {};
+
+            return { ...matchingRow, ...item };
+        });
+    }
+
+    return extractItems(data);
+}
+
 function getFirstItem(data) {
-    return extractItems(data)[0] || null;
+    return getSearchItems(data)[0] || null;
 }
 
 function safeSample(item) {
@@ -165,7 +199,7 @@ async function searchMappls(query) {
                 });
 
                 if (meta.ok) {
-                    rawResults.push(...extractItems(meta.data).map((item) => normalizeSuggestion(item, queryVariant)));
+                    rawResults.push(...getSearchItems(meta.data).map((item) => normalizeSuggestion(item, queryVariant)));
                 }
             } catch (error) {
                 debug.push({

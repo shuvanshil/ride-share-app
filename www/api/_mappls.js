@@ -116,12 +116,15 @@ function extractItems(data) {
         data?.items,
         data?.places,
         data?.copResults,
+        data?.rowLocations,
         data?.response?.suggestedLocations,
         data?.response?.results,
         data?.response?.copResults,
+        data?.response?.rowLocations,
         data?.data?.suggestedLocations,
         data?.data?.results,
-        data?.data?.copResults
+        data?.data?.copResults,
+        data?.data?.rowLocations
     ];
 
     const items = [];
