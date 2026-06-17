@@ -91,6 +91,24 @@ async function fetchJson(url, options = {}) {
     return data;
 }
 
+async function fetchJsonWithMeta(url, options = {}) {
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            Accept: "application/json",
+            "Accept-Language": "en",
+            ...(options.headers || {})
+        }
+    });
+
+    const data = await response.json().catch(() => ({}));
+    return {
+        ok: response.ok,
+        status: response.status,
+        data
+    };
+}
+
 function extractItems(data) {
     const buckets = [
         data?.suggestedLocations,
@@ -210,6 +228,7 @@ module.exports = {
     getMapplsConfig,
     getAccessToken,
     fetchJson,
+    fetchJsonWithMeta,
     extractItems,
     normalizeSuggestion,
     dedupe

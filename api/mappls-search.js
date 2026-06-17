@@ -3,6 +3,7 @@ const {
     getMapplsConfig,
     getAccessToken,
     fetchJson,
+    fetchJsonWithMeta,
     extractItems,
     normalizeSuggestion,
     dedupe
@@ -40,24 +41,27 @@ function buildQueryVariants(query) {
     return [...new Set(variants)].filter(Boolean).slice(0, 5);
 }
 
-function buildSearchUrls(query, accessToken, restKey) {
+function buildSearchRequests(query, accessToken, restKey) {
     const encodedQuery = encodeURIComponent(query);
     const encodedToken = encodeURIComponent(accessToken);
     const encodedRestKey = encodeURIComponent(restKey || "");
     const bias = encodeURIComponent("91.9882,23.8315");
-    const urls = [
-        `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&location=${bias}&access_token=${encodedToken}`,
-        `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&access_token=${encodedToken}`,
-        `https://apis.mappls.com/advancedmaps/v1/${encodedToken}/autosuggest?query=${encodedQuery}&region=IND&location=${bias}`,
-        `https://apis.mappls.com/advancedmaps/v1/${encodedToken}/geo_code?addr=${encodedQuery}&region=IND`
+    const requests = [
+        { url: `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&location=${bias}&access_token=${encodedToken}` },
+        { url: `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&access_token=${encodedToken}` },
+        { url: `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&location=${bias}`, headers: { Authorization: `Bearer ${accessToken}` } },
+        { url: `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND`, headers: { Authorization: `Bearer ${accessToken}` } },
+        { url: `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&location=${bias}`, headers: { Authorization: accessToken } },
+        { url: `https://apis.mappls.com/advancedmaps/v1/${encodedToken}/autosuggest?query=${encodedQuery}&region=IND&location=${bias}` },
+        { url: `https://apis.mappls.com/advancedmaps/v1/${encodedToken}/geo_code?addr=${encodedQuery}&region=IND` }
     ];
 
     if (restKey) {
-        urls.push(`https://apis.mappls.com/advancedmaps/v1/${encodedRestKey}/autosuggest?query=${encodedQuery}&region=IND&location=${bias}`);
-        urls.push(`https://apis.mappls.com/advancedmaps/v1/${encodedRestKey}/geo_code?addr=${encodedQuery}&region=IND`);
+        requests.push({ url: `https://apis.mappls.com/advancedmaps/v1/${encodedRestKey}/autosuggest?query=${encodedQuery}&region=IND&location=${bias}` });
+        requests.push({ url: `https://apis.mappls.com/advancedmaps/v1/${encodedRestKey}/geo_code?addr=${encodedQuery}&region=IND` });
     }
 
-    return urls;
+    return requests;
 }
 
 function buildDetailUrls(eLoc, accessToken, restKey) {
@@ -98,17 +102,38 @@ async function fetchPlaceDetail(eLoc, accessToken, restKey, fallbackQuery) {
     return null;
 }
 
+function summarizeData(data) {
+    if (!data || typeof data !== "object") return "";
+    return data.error || data.message || data.responseMessage || data.status || "";
+}
+
 async function searchMappls(query) {
     const config = getMapplsConfig();
     const accessToken = await getAccessToken();
     const rawResults = [];
+    const debug = [];
 
     for (const queryVariant of buildQueryVariants(query)) {
-        for (const url of buildSearchUrls(queryVariant, accessToken, config.restKey)) {
+        for (const request of buildSearchRequests(queryVariant, accessToken, config.restKey)) {
             try {
-                const data = await fetchJson(url);
-                rawResults.push(...extractItems(data).map((item) => normalizeSuggestion(item, queryVariant)));
-            } catch (_) {
+                const meta = await fetchJsonWithMeta(request.url, { headers: request.headers || {} });
+                debug.push({
+                    status: meta.status,
+                    ok: meta.ok,
+                    host: new URL(request.url).host,
+                    path: new URL(request.url).pathname,
+                    message: summarizeData(meta.data)
+                });
+
+                if (meta.ok) {
+                    rawResults.push(...extractItems(meta.data).map((item) => normalizeSuggestion(item, queryVariant)));
+                }
+            } catch (error) {
+                debug.push({
+                    status: 0,
+                    ok: false,
+                    message: error.message
+                });
                 // Mappls accounts differ by endpoint/version; keep trying variants.
             }
 
@@ -131,9 +156,12 @@ async function searchMappls(query) {
         }
     }
 
-    return dedupe(enriched)
-        .filter((item) => item.lat != null && item.lng != null)
-        .slice(0, 8);
+    return {
+        results: dedupe(enriched)
+            .filter((item) => item.lat != null && item.lng != null)
+            .slice(0, 8),
+        debug
+    };
 }
 
 module.exports = async function handler(req, res) {
@@ -147,8 +175,12 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        const results = await searchMappls(query);
-        return json(res, 200, { results });
+        const output = await searchMappls(query);
+        const payload = { results: output.results };
+        if (req.query?.debug === "1") {
+            payload.debug = output.debug.slice(0, 30);
+        }
+        return json(res, 200, payload);
     } catch (error) {
         return json(res, 500, {
             error: "Mappls search failed",
