@@ -107,6 +107,42 @@ function summarizeData(data) {
     return data.error || data.message || data.responseMessage || data.status || "";
 }
 
+function getBucketCounts(data) {
+    const buckets = {
+        suggestedLocations: data?.suggestedLocations,
+        results: data?.results,
+        items: data?.items,
+        places: data?.places,
+        responseSuggestedLocations: data?.response?.suggestedLocations,
+        responseResults: data?.response?.results,
+        dataSuggestedLocations: data?.data?.suggestedLocations,
+        dataResults: data?.data?.results
+    };
+
+    return Object.fromEntries(
+        Object.entries(buckets)
+            .filter(([, value]) => Array.isArray(value))
+            .map(([key, value]) => [key, value.length])
+    );
+}
+
+function getFirstItem(data) {
+    return extractItems(data)[0] || null;
+}
+
+function safeSample(item) {
+    if (!item || typeof item !== "object") return null;
+
+    return {
+        keys: Object.keys(item).slice(0, 20),
+        placeName: item.placeName || item.place_name || item.name || item.poi || "",
+        placeAddress: item.placeAddress || item.formatted_address || item.address || "",
+        eLoc: item.eLoc || item.eloc || item.placeId || item.place_id || item.mapplsPin || "",
+        latitude: item.latitude ?? item.lat ?? item.y ?? item.entryLatitude ?? null,
+        longitude: item.longitude ?? item.lng ?? item.lon ?? item.x ?? item.entryLongitude ?? null
+    };
+}
+
 async function searchMappls(query) {
     const config = getMapplsConfig();
     const accessToken = await getAccessToken();
@@ -122,7 +158,10 @@ async function searchMappls(query) {
                     ok: meta.ok,
                     host: new URL(request.url).host,
                     path: new URL(request.url).pathname,
-                    message: summarizeData(meta.data)
+                    message: summarizeData(meta.data),
+                    topLevelKeys: meta.data && typeof meta.data === "object" ? Object.keys(meta.data).slice(0, 20) : [],
+                    bucketCounts: getBucketCounts(meta.data),
+                    sample: safeSample(getFirstItem(meta.data))
                 });
 
                 if (meta.ok) {
