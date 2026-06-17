@@ -163,6 +163,22 @@ const TRIPURA_TOWN_TERMS = [
     "panisagar",
     "jampui"
 ];
+const TRIPURA_TOWN_CENTERS = {
+    agartala: { lat: 23.8315, lng: 91.2868, radius: 12000 },
+    kailashahar: { lat: 24.3232, lng: 92.0124, radius: 8000 },
+    kumarghat: { lat: 24.2415, lng: 92.0312, radius: 8000 },
+    dharmanagar: { lat: 24.3785, lng: 92.1783, radius: 9000 },
+    ambassa: { lat: 23.9368, lng: 91.8542, radius: 9000 },
+    udaipur: { lat: 23.5332, lng: 91.4917, radius: 9000 },
+    belonia: { lat: 23.2510, lng: 91.4541, radius: 9000 },
+    khowai: { lat: 24.0619, lng: 91.6057, radius: 9000 },
+    teliamura: { lat: 23.8362, lng: 91.6186, radius: 9000 },
+    sonamura: { lat: 23.4751, lng: 91.2657, radius: 9000 },
+    bishalgarh: { lat: 23.6628, lng: 91.2756, radius: 9000 },
+    kamalpur: { lat: 24.1957, lng: 91.8336, radius: 9000 },
+    santirbazar: { lat: 23.3065, lng: 91.6440, radius: 9000 },
+    panisagar: { lat: 24.2522, lng: 92.1598, radius: 9000 }
+};
 const USEFUL_PLACE_TYPE_TERMS = [
     "school",
     "college",
@@ -1274,12 +1290,9 @@ function setupFareEngineListeners() {
         window.latestFareQuote = null;
 
         destinationSearchTimer = setTimeout(async () => {
-            const destinations = dedupeDestinationResults([
-                ...findLocalDestinations(query),
-                ...(await searchTripuraDestinations(query))
-            ])
-                .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query))
-                .slice(0, 8);
+            const providerDestinations = await searchTripuraDestinations(query);
+            const localDestinations = findLocalDestinations(query);
+            const destinations = mergeDestinationResults(providerDestinations, localDestinations, query);
 
             if (dropInput.value.toLowerCase().trim() !== query) {
                 return;
@@ -1333,7 +1346,27 @@ function getSearchTokens(value) {
         .filter((token) => token.length > 1);
 }
 
+function getSpecificSearchTokens(value) {
+    const genericTokens = new Set([
+        "tripura",
+        "india",
+        "near",
+        "road",
+        "rd",
+        "main",
+        "center",
+        "centre",
+        ...TRIPURA_TOWN_TERMS,
+        ...TRIPURA_DISTRICT_TERMS.flatMap((term) => term.split(" "))
+    ]);
+
+    return getSearchTokens(value)
+        .filter((token) => token.length > 2 && !genericTokens.has(token));
+}
+
 function scoreLocalLandmark(normalizedQuery, queryTokens, key, destination) {
+    const normalizedKey = normalizeSearchText(key);
+    const aliasTexts = (destination.aliases || []).map(normalizeSearchText);
     const searchableText = normalizeSearchText([
         key,
         destination.name,
@@ -1343,23 +1376,33 @@ function scoreLocalLandmark(normalizedQuery, queryTokens, key, destination) {
     ].filter(Boolean).join(" "));
 
     if (!normalizedQuery || !searchableText) return 0;
-    if (searchableText.includes(normalizedQuery)) return 260;
-    if (normalizedQuery.includes(normalizeSearchText(key))) return 240;
+    if (normalizedQuery === normalizedKey || aliasTexts.includes(normalizedQuery)) return 280;
+    if (normalizedQuery.includes(normalizedKey) || aliasTexts.some((alias) => normalizedQuery.includes(alias))) return 250;
+
+    const specificQueryTokens = getSpecificSearchTokens(normalizedQuery);
+    const specificMatches = specificQueryTokens.filter((token) => searchableText.includes(token));
+    const importantMatches = USEFUL_PLACE_TYPE_TERMS.filter((term) => normalizedQuery.includes(term) && searchableText.includes(term));
+    const townMatches = TRIPURA_TOWN_TERMS.filter((town) => normalizedQuery.includes(town) && searchableText.includes(town));
+
+    if (!specificMatches.length && !importantMatches.length) {
+        return 0;
+    }
+
+    if (specificMatches.length < 2 && !importantMatches.length) {
+        return 0;
+    }
 
     let score = 0;
-    queryTokens.forEach((token) => {
+    specificMatches.forEach((token) => {
         if (searchableText.includes(token)) {
             score += token.length > 3 ? 34 : 18;
         }
     });
 
-    const importantMatches = USEFUL_PLACE_TYPE_TERMS.filter((term) => normalizedQuery.includes(term) && searchableText.includes(term)).length;
-    score += importantMatches * 38;
+    score += importantMatches.length * 38;
+    score += townMatches.length * 12;
 
-    const townMatches = TRIPURA_TOWN_TERMS.filter((town) => normalizedQuery.includes(town) && searchableText.includes(town)).length;
-    score += townMatches * 42;
-
-    return score >= 52 ? score : 0;
+    return score >= 64 ? score : 0;
 }
 
 function resetDestinationFareState(fareQuoteBox) {
@@ -1376,7 +1419,10 @@ function resetDestinationFareState(fareQuoteBox) {
 }
 
 function scoreTripuraDestination(destination, query = "") {
-    const text = `${getResultText(destination)} ${query}`.toLowerCase();
+    const text = getResultText(destination);
+    const normalizedQuery = normalizeSearchText(query);
+    const specificQueryTokens = getSpecificSearchTokens(normalizedQuery);
+    const matchedSpecificTokens = specificQueryTokens.filter((part) => text.includes(part));
     let score = 0;
 
     if (text.includes("tripura")) score += 120;
@@ -1387,18 +1433,20 @@ function scoreTripuraDestination(destination, query = "") {
         if (text.includes(term)) score += 48;
     });
     USEFUL_PLACE_TYPE_TERMS.forEach((term) => {
-        if (text.includes(term)) score += 20;
+        if (normalizedQuery.includes(term) && text.includes(term)) score += 28;
     });
 
-    const normalizedQuery = query.toLowerCase().trim();
-    if (normalizedQuery) {
-        normalizedQuery.split(/\s+/).forEach((part) => {
-            if (part.length > 2 && text.includes(part)) score += 8;
-        });
-    }
+    matchedSpecificTokens.forEach((part) => {
+        score += part.length > 3 ? 18 : 9;
+    });
 
-    if (destination.source === "mappls") score += 18;
-    if (destination.source === "local") score += 28;
+    if (specificQueryTokens.length >= 2 && !matchedSpecificTokens.length) score -= 140;
+    if (specificQueryTokens.length >= 3 && matchedSpecificTokens.length < 2) score -= 80;
+
+    if (destination.source === "mappls") score += 45;
+    if (destination.source === "overpass") score += 45;
+    if (destination.source === "nominatim") score += 24;
+    if (destination.source === "local") score += 4;
     if (destination.eLoc) score += 8;
     if (Number.isFinite(Number(destination.lat)) && Number.isFinite(Number(destination.lng))) score += 12;
 
@@ -1447,17 +1495,14 @@ async function searchTripuraDestinations(query) {
     destinationSearchAbortController = new AbortController();
     const signal = destinationSearchAbortController.signal;
 
-    const mapplsResults = await searchTripuraDestinationsWithMappls(query, signal);
+    const [mapplsResults, overpassResults, fallbackResults] = await Promise.all([
+        searchTripuraDestinationsWithMappls(query, signal),
+        searchTripuraDestinationsWithOverpass(query, signal),
+        searchTripuraDestinationsWithNominatim(query, signal)
+    ]);
     if (signal.aborted) return [];
 
-    if (mapplsResults.length >= 4) {
-        return mapplsResults;
-    }
-
-    const fallbackResults = await searchTripuraDestinationsWithNominatim(query, signal);
-    if (signal.aborted) return [];
-
-    return dedupeDestinationResults([...mapplsResults, ...fallbackResults])
+    return dedupeDestinationResults([...mapplsResults, ...overpassResults, ...fallbackResults])
         .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query))
         .slice(0, 8);
 }
@@ -1505,6 +1550,14 @@ async function searchTripuraDestinationsWithMappls(query, signal) {
 function buildMapplsQueryVariants(query) {
     const cleanQuery = query.trim().replace(/\s+/g, " ");
     const lowerQuery = cleanQuery.toLowerCase();
+    const variants = buildSearchQueryVariants(cleanQuery);
+
+    return [...new Set(variants)].slice(0, 8);
+}
+
+function buildSearchQueryVariants(query) {
+    const cleanQuery = query.trim().replace(/\s+/g, " ");
+    const lowerQuery = cleanQuery.toLowerCase();
     const variants = [
         cleanQuery,
         `${cleanQuery} Tripura`
@@ -1521,7 +1574,26 @@ function buildMapplsQueryVariants(query) {
         variants.push(`${cleanQuery} road Tripura`);
     }
 
-    return [...new Set(variants)].slice(0, 6);
+    if (lowerQuery.includes("mandir")) {
+        variants.push(cleanQuery.replace(/\bmandir\b/gi, "temple"));
+        variants.push(`${cleanQuery.replace(/\bmandir\b/gi, "temple")} Tripura`);
+    }
+
+    if (lowerQuery.includes("temple")) {
+        variants.push(cleanQuery.replace(/\btemple\b/gi, "mandir"));
+        variants.push(`${cleanQuery.replace(/\btemple\b/gi, "mandir")} Tripura`);
+    }
+
+    if (lowerQuery.includes("sbi")) {
+        variants.push(cleanQuery.replace(/\bsbi\b/gi, "State Bank of India"));
+        variants.push(`${cleanQuery.replace(/\bsbi\b/gi, "State Bank of India")} Tripura`);
+    }
+
+    if (lowerQuery.includes("police") && !lowerQuery.includes("station")) {
+        variants.push(`${cleanQuery} police station`);
+    }
+
+    return [...new Set(variants)];
 }
 
 function buildMapplsSearchUrls(queryVariant) {
@@ -1629,27 +1701,192 @@ function dedupeDestinationResults(destinations) {
     });
 }
 
-async function searchTripuraDestinationsWithNominatim(query, signal) {
-    try {
-        const params = new URLSearchParams({
-            format: "jsonv2",
-            q: `${query}, Tripura, India`,
-            addressdetails: "1",
-            limit: "8",
-            countrycodes: "in",
-            viewbox: TRIPURA_VIEWBOX,
-            bounded: "1"
-        });
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-            headers: { "Accept-Language": "en" },
-            signal
-        });
-        const results = await response.json();
+function mergeDestinationResults(providerDestinations, localDestinations, query) {
+    const strongProviderResults = dedupeDestinationResults(providerDestinations)
+        .filter((destination) => scoreTripuraDestination(destination, query) >= 40)
+        .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query));
 
-        return (Array.isArray(results) ? results : [])
+    const strongLocalResults = dedupeDestinationResults(localDestinations)
+        .filter((destination) => Number(destination._score || 0) >= 90)
+        .sort((a, b) => Number(b._score || 0) - Number(a._score || 0));
+
+    if (strongProviderResults.length >= 5) {
+        return strongProviderResults.slice(0, 8);
+    }
+
+    return dedupeDestinationResults([
+        ...strongProviderResults,
+        ...strongLocalResults
+    ])
+        .sort((a, b) => {
+            const providerBoostA = a.source === "local" ? 0 : 35;
+            const providerBoostB = b.source === "local" ? 0 : 35;
+            return (scoreTripuraDestination(b, query) + providerBoostB) - (scoreTripuraDestination(a, query) + providerBoostA);
+        })
+        .slice(0, 8);
+}
+
+async function searchTripuraDestinationsWithOverpass(query, signal) {
+    const center = inferTripuraSearchCenter(query);
+    const filters = inferOverpassFilters(query);
+    const namePattern = buildOverpassNamePattern(query);
+
+    if (!center || (!filters.length && !namePattern)) {
+        return [];
+    }
+
+    const clauses = [];
+    const radius = Math.min(center.radius || 8000, 12000);
+
+    filters.forEach((filter) => {
+        clauses.push(`node(around:${radius},${center.lat},${center.lng})${filter};`);
+        clauses.push(`way(around:${radius},${center.lat},${center.lng})${filter};`);
+    });
+
+    if (namePattern) {
+        clauses.push(`node(around:${radius},${center.lat},${center.lng})[name~"${namePattern}",i];`);
+        clauses.push(`way(around:${radius},${center.lat},${center.lng})[name~"${namePattern}",i];`);
+    }
+
+    const overpassQuery = `[out:json][timeout:10];(${clauses.join("")});out center tags 12;`;
+    const endpoints = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter"
+    ];
+
+    for (const endpoint of endpoints) {
+        if (signal.aborted) return [];
+
+        try {
+            const response = await fetch(`${endpoint}?data=${encodeURIComponent(overpassQuery)}`, {
+                headers: { "Accept-Language": "en" },
+                signal
+            });
+            if (!response.ok) continue;
+
+            const data = await response.json();
+            const elements = Array.isArray(data?.elements) ? data.elements : [];
+            const results = elements
+                .map((item) => normalizeOverpassElement(item, query))
+                .filter(Boolean)
+                .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query));
+
+            if (results.length) {
+                return dedupeDestinationResults(results).slice(0, 8);
+            }
+        } catch (error) {
+            if (error.name !== "AbortError") {
+                console.warn("Overpass POI search failed:", error);
+            }
+        }
+    }
+
+    return [];
+}
+
+function inferTripuraSearchCenter(query) {
+    const normalizedQuery = normalizeSearchText(query);
+    const matchedTown = Object.keys(TRIPURA_TOWN_CENTERS).find((town) => normalizedQuery.includes(town));
+    if (matchedTown) return TRIPURA_TOWN_CENTERS[matchedTown];
+
+    if (Number.isFinite(Number(userLatitude)) && Number.isFinite(Number(userLongitude))) {
+        return { lat: userLatitude, lng: userLongitude, radius: 9000 };
+    }
+
+    return TRIPURA_TOWN_CENTERS.kailashahar;
+}
+
+function inferOverpassFilters(query) {
+    const normalizedQuery = normalizeSearchText(query);
+    const filters = [];
+
+    if (/\b(mandir|temple|kali|shiva|durga)\b/.test(normalizedQuery)) filters.push("[amenity=place_of_worship]");
+    if (/\b(sbi|bank|atm|state bank)\b/.test(normalizedQuery)) filters.push("[amenity~\"bank|atm\"]");
+    if (/\b(police|thana)\b/.test(normalizedQuery)) filters.push("[amenity=police]");
+    if (/\b(school|college|academy|vidyalaya)\b/.test(normalizedQuery)) filters.push("[amenity~\"school|college|university\"]");
+    if (/\b(hospital|clinic|medical)\b/.test(normalizedQuery)) filters.push("[amenity~\"hospital|clinic|doctors\"]");
+    if (/\b(market|bazar|bazaar|shop)\b/.test(normalizedQuery)) filters.push("[shop]");
+    if (/\b(stand|station|bus|railway)\b/.test(normalizedQuery)) filters.push("[amenity~\"bus_station|taxi\"]");
+
+    return [...new Set(filters)];
+}
+
+function buildOverpassNamePattern(query) {
+    const tokens = getSpecificSearchTokens(query)
+        .filter((token) => !USEFUL_PLACE_TYPE_TERMS.includes(token))
+        .slice(0, 4);
+
+    if (!tokens.length) return "";
+    return tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+}
+
+function normalizeOverpassElement(item, query) {
+    const lat = Number(item.lat ?? item.center?.lat);
+    const lng = Number(item.lon ?? item.center?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+    const tags = item.tags || {};
+    const name = tags.name || tags["name:en"] || query;
+    const town = tags["addr:city"] || tags["addr:town"] || tags["addr:village"] || "";
+    const addressParts = [
+        tags["addr:housename"],
+        tags["addr:street"],
+        town,
+        tags["addr:district"],
+        "Tripura"
+    ].filter(Boolean);
+
+    return {
+        lat,
+        lng,
+        name,
+        mainName: name,
+        fullAddress: [...new Set(addressParts)].join(", ") || "Tripura, India",
+        typeHint: inferPlaceTypeHint({
+            name,
+            type: tags.amenity || tags.shop || tags.tourism || tags.office || ""
+        }),
+        source: "overpass",
+        provider: "openstreetmap",
+        osmId: item.id || ""
+    };
+}
+
+async function searchTripuraDestinationsWithNominatim(query, signal) {
+    const results = [];
+    const queryVariants = buildSearchQueryVariants(query).slice(0, 6);
+
+    for (const queryVariant of queryVariants) {
+        if (signal.aborted) return [];
+
+        try {
+            const params = new URLSearchParams({
+                format: "jsonv2",
+                q: `${queryVariant}, Tripura, India`,
+                addressdetails: "1",
+                limit: "8",
+                countrycodes: "in",
+                viewbox: TRIPURA_VIEWBOX,
+                bounded: "1"
+            });
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+                headers: { "Accept-Language": "en" },
+                signal
+            });
+            const data = await response.json();
+
+            results.push(...(Array.isArray(data) ? data : []));
+        } catch (error) {
+            if (error.name !== "AbortError") {
+                console.warn("Tripura destination geocoding failed:", error);
+            }
+        }
+    }
+
+    return dedupeDestinationResults(
+        results
             .filter((result) => Number.isFinite(Number(result.lat)) && Number.isFinite(Number(result.lon)))
             .sort((a, b) => rankTripuraResult(b) - rankTripuraResult(a))
-            .slice(0, 6)
             .map((result) => {
                 const display = splitDestinationDisplay(result, query);
                 return {
@@ -1662,13 +1899,8 @@ async function searchTripuraDestinationsWithNominatim(query, signal) {
                     source: "nominatim",
                     provider: "nominatim"
                 };
-            });
-    } catch (error) {
-        if (error.name !== "AbortError") {
-            console.warn("Tripura destination geocoding failed:", error);
-        }
-        return [];
-    }
+            })
+    ).slice(0, 8);
 }
 
 function ensureDestinationSuggestions(dropInput) {
