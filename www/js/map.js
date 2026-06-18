@@ -657,44 +657,34 @@ function hideDestinationSuggestions() {
 }
 
 async function searchGoogleDestinations(query) {
-    await loadGoogleMaps();
-    const maps = getGoogleMaps();
-    if (!maps?.places?.AutocompleteService) return [];
-
     destinationSearchAbortController = new AbortController();
     const signal = destinationSearchAbortController.signal;
-    const service = new maps.places.AutocompleteService();
-
-    const request = {
-        input: query,
-        componentRestrictions: { country: "in" },
-        location: new maps.LatLng(userLatitude || TRIPURA_CENTER.lat, userLongitude || TRIPURA_CENTER.lng),
-        radius: 90000
-    };
 
     try {
-        const predictions = await new Promise((resolve) => {
-            service.getPlacePredictions(request, (items, status) => {
-                if (status !== maps.places.PlacesServiceStatus.OK || !Array.isArray(items)) {
-                    resolve([]);
-                    return;
-                }
-                resolve(items);
-            });
+        const params = new URLSearchParams({
+            q: query,
+            lat: String(userLatitude || TRIPURA_CENTER.lat),
+            lng: String(userLongitude || TRIPURA_CENTER.lng)
         });
-
+        const response = await fetch(`/api/google-autocomplete?${params.toString()}`, {
+            signal,
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json().catch(() => ({}));
         if (signal.aborted) return [];
+        if (!response.ok) {
+            console.warn("Google destination search failed:", data.error || response.statusText);
+            return [];
+        }
 
-        return predictions.slice(0, 8).map((prediction) => ({
-            placeId: prediction.place_id,
-            name: prediction.structured_formatting?.main_text || prediction.description,
-            mainName: prediction.structured_formatting?.main_text || prediction.description,
-            fullAddress: prediction.structured_formatting?.secondary_text || prediction.description,
-            typeHint: getPlaceTypeHint({ types: prediction.types, name: prediction.description }),
-            types: prediction.types || [],
-            source: "google",
-            provider: "google"
-        }));
+        return (Array.isArray(data.results) ? data.results : [])
+            .map((destination) => ({
+                ...destination,
+                ...normalizeCoordinatePair(destination.lat, destination.lng),
+                typeHint: destination.typeHint || getPlaceTypeHint(destination),
+                source: "google",
+                provider: "google"
+            }));
     } catch (error) {
         if (error.name !== "AbortError") {
             console.warn("Google destination search failed:", error);
