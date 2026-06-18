@@ -79,6 +79,20 @@ select {
     font-size: 14px;
 }
 
+.login-page {
+    background: #F7F8F7;
+}
+
+.auth-link-btn {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--gy-green);
+    font-size: 13px;
+    font-weight: 800;
+    text-align: center;
+}
+
 .form-label {
     color: #222;
     font-weight: 700;

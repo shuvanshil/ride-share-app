@@ -116,8 +116,9 @@
                 alert('Profile editing will be available from the account settings panel.');
             });
             document.getElementById('profile-logout-btn').addEventListener('click', async () => {
+                sessionStorage.removeItem('goyatra_user_profile');
                 await signOut(auth);
-                window.location.href = 'index.html';
+                window.location.href = 'login.html';
             });
         }
 

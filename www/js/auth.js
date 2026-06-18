@@ -1,252 +1,142 @@
 import { auth, db } from './firebase-init.js';
-import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import {
-    RecaptchaVerifier,
-    signInWithPhoneNumber,
-    onAuthStateChanged,
-    signOut
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-let confirmationResult = null;
-let verifiedFirebaseUser = null;
-let recaptchaVerifier = null;
+const PROFILE_CACHE_KEY = "goyatra_user_profile";
+let sessionReadyDispatched = false;
 
-// DOM Selectors
-const phoneInputContainer = document.getElementById('phone-input-container');
-const otpInputContainer = document.getElementById('otp-input-container');
-const registrationContainer = document.getElementById('registration-container');
-const userRoleSelect = document.getElementById('user-role');
-const driverVerificationFields = document.getElementById('driver-verification-fields');
-const logoutBtn = document.getElementById('logout-btn');
-
-function updateRegistrationFieldsForRole() {
-    if (!userRoleSelect || !driverVerificationFields) return;
-
-    if (userRoleSelect.value === "driver") {
-        driverVerificationFields.classList.remove('d-none');
-    } else {
-        driverVerificationFields.classList.add('d-none');
-    }
-}
-
-function getFormattedPhoneNumber() {
-    const rawPhone = document.getElementById('phone-number').value.trim();
-
-    if (!/^\d{10}$/.test(rawPhone)) {
-        alert("Please enter a valid 10-digit mobile number.");
+function getCachedProfile() {
+    try {
+        const cached = JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || "null");
+        if (!cached?.uid || Date.now() - Number(cached.cachedAt || 0) > 6 * 60 * 60 * 1000) {
+            return null;
+        }
+        return cached;
+    } catch {
         return null;
     }
-
-    return `+91${rawPhone}`;
 }
 
-function ensureRecaptchaVerifier() {
-    if (recaptchaVerifier) return recaptchaVerifier;
-
-    recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {
-            console.log("reCAPTCHA verification completed.");
-        }
-    });
-
-    return recaptchaVerifier;
-}
-
-// 1. Trigger Verification Code SMS
-async function sendOTP() {
-    const phoneNumber = getFormattedPhoneNumber();
-    if (!phoneNumber) return;
-
-    const sendBtn = document.getElementById('send-otp-btn');
-    sendBtn.disabled = true;
-    sendBtn.innerText = "Sending OTP...";
-
+function cacheProfile(profile) {
+    const { createdAt, cachedAt, ...cacheableProfile } = profile;
     try {
-        confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, ensureRecaptchaVerifier());
-        console.log(`Firebase OTP sent to ${phoneNumber}`);
-        phoneInputContainer.classList.add('d-none');
-        otpInputContainer.classList.remove('d-none');
+        sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
+            ...cacheableProfile,
+            cachedAt: Date.now()
+        }));
     } catch (error) {
-        console.error("Firebase phone sign-in failed:", error);
-        alert(error.message || "Failed to send OTP. Check Firebase Phone Auth setup.");
-        sendBtn.disabled = false;
-        sendBtn.innerText = "Send OTP";
+        console.warn("Could not cache profile for fast navigation:", error);
     }
 }
 
-// 2. Validate Code Token and Route User
-async function verifyOTP() {
-    const code = document.getElementById('otp-code').value.trim();
-
-    if (code.length !== 6) {
-        alert("Enter the full 6-digit confirmation pin.");
-        return;
-    }
-
-    if (!confirmationResult) {
-        alert("Please request an OTP first.");
-        return;
-    }
-
-    const verifyBtn = document.getElementById('verify-otp-btn');
-    verifyBtn.disabled = true;
-    verifyBtn.innerText = "Verifying...";
-
+function clearCachedProfile() {
     try {
-        const result = await confirmationResult.confirm(code);
-        verifiedFirebaseUser = result.user;
+        sessionStorage.removeItem(PROFILE_CACHE_KEY);
+    } catch {
+        // Ignore storage failures; Firebase sign-out is the important operation.
+    }
+}
 
-        const userDocRef = doc(db, "users", verifiedFirebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
+function showPassengerHome() {
+    document.getElementById('dashboard-view')?.classList.remove('d-none');
+    document.getElementById('dashboard-view')?.classList.add('d-flex');
+    document.getElementById('driver-view')?.classList.add('d-none');
+    document.getElementById('driver-view')?.classList.remove('d-flex');
+    document.getElementById('driver-review-view')?.classList.add('d-none');
+    document.getElementById('driver-review-view')?.classList.remove('d-flex');
+}
 
-        if (userDocSnap.exists()) {
-            handleUserRouting(userDocSnap.data());
+function showDriverReview(profile) {
+    document.getElementById('dashboard-view')?.classList.add('d-none');
+    document.getElementById('dashboard-view')?.classList.remove('d-flex');
+    document.getElementById('driver-view')?.classList.add('d-none');
+    document.getElementById('driver-view')?.classList.remove('d-flex');
+
+    const vehicleModel = profile.vehicleModel || profile.vehicle_model || "";
+    const vehicleNumber = profile.vehicleNumber || profile.vehicle_number || "";
+    const vehicleSummary = [vehicleModel, vehicleNumber].filter(Boolean).join(" - ") || "Not submitted";
+
+    const statusEl = document.getElementById('driver-review-status');
+    const vehicleEl = document.getElementById('driver-review-vehicle');
+    const licenseEl = document.getElementById('driver-review-license');
+    if (statusEl) statusEl.innerText = profile.verificationStatus || "pending_review";
+    if (vehicleEl) vehicleEl.innerText = vehicleSummary;
+    if (licenseEl) licenseEl.innerText = profile.drivingLicenseNumber || "Not submitted";
+
+    document.getElementById('driver-review-view')?.classList.remove('d-none');
+    document.getElementById('driver-review-view')?.classList.add('d-flex');
+}
+
+function showDriverHome(profile) {
+    document.getElementById('dashboard-view')?.classList.add('d-none');
+    document.getElementById('dashboard-view')?.classList.remove('d-flex');
+    document.getElementById('driver-review-view')?.classList.add('d-none');
+    document.getElementById('driver-review-view')?.classList.remove('d-flex');
+    document.getElementById('driver-view')?.classList.remove('d-none');
+    document.getElementById('driver-view')?.classList.add('d-flex');
+
+    const welcomeName = document.getElementById('driver-welcome-name');
+    if (welcomeName) welcomeName.innerText = `Welcome, ${profile.name || "Driver"}`;
+}
+
+function renderSession(profile) {
+    if (profile.role === "driver") {
+        if (profile.verificationStatus === "approved") {
+            showDriverHome(profile);
         } else {
-            otpInputContainer.classList.add('d-none');
-            registrationContainer.classList.remove('d-none');
-        }
-    } catch (error) {
-        console.error("OTP verification failed:", error);
-        alert("Incorrect OTP or expired verification. Please try again.");
-        verifyBtn.disabled = false;
-        verifyBtn.innerText = "Verify & Login";
-    }
-}
-
-// 3. Complete Registration Profile Documents
-async function finalizeRegistration() {
-    const name = document.getElementById('user-name').value.trim();
-    const email = document.getElementById('user-email').value.trim();
-    const role = document.getElementById('user-role').value;
-    const currentAuthUser = verifiedFirebaseUser || auth.currentUser;
-
-    if (!currentAuthUser) {
-        alert("Your login session is missing. Please verify OTP again.");
-        return;
-    }
-
-    if (!name) {
-        alert("Name field cannot be blank.");
-        return;
-    }
-
-    if (!email || !email.includes("@")) {
-        alert("Please enter a valid email address.");
-        return;
-    }
-
-    const profileData = {
-        uid: currentAuthUser.uid,
-        name: name,
-        phone: currentAuthUser.phoneNumber,
-        email: email,
-        role: role,
-        profileCompleted: true,
-        createdAt: serverTimestamp()
-    };
-
-    if (role === "driver") {
-        const profilePhotoUrl = document.getElementById('driver-profile-photo').value.trim();
-        const vehicleNumber = document.getElementById('driver-vehicle-number').value.trim().toUpperCase();
-        const vehicleModel = document.getElementById('driver-vehicle-model').value.trim();
-        const licenseNumber = document.getElementById('driver-license-number').value.trim().toUpperCase();
-        const upiId = document.getElementById('driver-upi-id').value.trim();
-
-        if (!profilePhotoUrl || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
-            alert("Drivers must add profile photo, vehicle number, vehicle model, driving licence number, and UPI ID.");
-            return;
-        }
-
-        Object.assign(profileData, {
-            profilePhotoUrl: profilePhotoUrl,
-            vehicleNumber: vehicleNumber,
-            vehicle_number: vehicleNumber,
-            vehicleModel: vehicleModel,
-            vehicle_model: vehicleModel,
-            drivingLicenseNumber: licenseNumber,
-            upiId: upiId,
-            verificationStatus: "pending_review",
-            driverAvailability: "searching",
-            lifetime_earnings: 0,
-            total_completed_trips: 0
-        });
-    }
-
-    try {
-        await setDoc(doc(db, "users", currentAuthUser.uid), profileData);
-        console.log(`Saved profile to Firestore: ${name} as ${role}`);
-        handleUserRouting(profileData);
-    } catch (error) {
-        console.error("Firestore Write Exception:", error);
-        alert("Failed to save profile registration.");
-    }
-}
-
-function handleUserRouting(userData) {
-    document.getElementById('auth-view').classList.add('d-none');
-    document.getElementById('dashboard-view').classList.add('d-none');
-    document.getElementById('dashboard-view').classList.remove('d-flex');
-    document.getElementById('driver-view').classList.add('d-none');
-    document.getElementById('driver-view').classList.remove('d-flex');
-    document.getElementById('driver-review-view').classList.add('d-none');
-    document.getElementById('driver-review-view').classList.remove('d-flex');
-    logoutBtn.classList.remove('d-none');
-    
-    // Check role to unveil correct visual layout framework
-    if (userData.role === "driver") {
-        if (userData.verificationStatus === "approved") {
-            document.getElementById('driver-view').classList.remove('d-none');
-            document.getElementById('driver-view').classList.add('d-flex');
-        } else {
-            const vehicleModel = userData.vehicleModel || userData.vehicle_model || "";
-            const vehicleNumber = userData.vehicleNumber || userData.vehicle_number || "";
-            const vehicleSummary = [vehicleModel, vehicleNumber].filter(Boolean).join(" • ") || "Not submitted";
-
-            document.getElementById('driver-review-status').innerText = userData.verificationStatus || "pending_review";
-            document.getElementById('driver-review-vehicle').innerText = vehicleSummary;
-            document.getElementById('driver-review-license').innerText = userData.drivingLicenseNumber || "Not submitted";
-            document.getElementById('driver-review-view').classList.remove('d-none');
-            document.getElementById('driver-review-view').classList.add('d-flex');
+            showDriverReview(profile);
         }
     } else {
-        document.getElementById('dashboard-view').classList.remove('d-none');
-        document.getElementById('dashboard-view').classList.add('d-flex');
+        showPassengerHome();
     }
-
-    window.dispatchEvent(new CustomEvent('user-session-ready', { detail: userData }));
 }
 
-// Attach Event Handlers
-document.getElementById('send-otp-btn').addEventListener('click', sendOTP);
-document.getElementById('verify-otp-btn').addEventListener('click', verifyOTP);
-document.getElementById('register-btn').addEventListener('click', finalizeRegistration);
-userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
-logoutBtn.addEventListener('click', async () => {
+function dispatchSessionReady(profile) {
+    if (sessionReadyDispatched) return;
+    sessionReadyDispatched = true;
+    window.dispatchEvent(new CustomEvent('user-session-ready', { detail: profile }));
+}
+
+function bootstrapFromCache() {
+    const cachedProfile = getCachedProfile();
+    if (!cachedProfile) return;
+    renderSession(cachedProfile);
+    dispatchSessionReady(cachedProfile);
+}
+
+bootstrapFromCache();
+
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
     try {
+        clearCachedProfile();
         await signOut(auth);
-        window.location.reload();
+        window.location.href = "login.html";
     } catch (error) {
         console.error("Logout failed:", error);
         alert("Could not logout. Please try again.");
     }
 });
-updateRegistrationFieldsForRole();
 
 onAuthStateChanged(auth, async (user) => {
-    if (!user || currentUserHasSession()) return;
+    if (!user) {
+        clearCachedProfile();
+        window.location.replace("login.html");
+        return;
+    }
 
     try {
         const userDocSnap = await getDoc(doc(db, "users", user.uid));
-        if (userDocSnap.exists()) {
-            verifiedFirebaseUser = user;
-            handleUserRouting(userDocSnap.data());
+        if (!userDocSnap.exists()) {
+            clearCachedProfile();
+            window.location.replace("login.html");
+            return;
         }
+
+        const profile = userDocSnap.data();
+        cacheProfile(profile);
+        renderSession(profile);
+        dispatchSessionReady(profile);
     } catch (error) {
         console.warn("Existing auth session lookup failed:", error);
     }
 });
-
-function currentUserHasSession() {
-    return document.getElementById('auth-view').classList.contains('d-none');
-}

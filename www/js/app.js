@@ -654,7 +654,7 @@ window.addEventListener('user-session-ready', (e) => {
         }
 
         // Route directly to Driver Console Dashboard
-        document.getElementById('auth-view').classList.add('d-none');
+        document.getElementById('auth-view')?.classList.add('d-none');
         document.getElementById('driver-review-view').classList.add('d-none');
         document.getElementById('driver-review-view').classList.remove('d-flex');
         document.getElementById('driver-view').classList.remove('d-none');

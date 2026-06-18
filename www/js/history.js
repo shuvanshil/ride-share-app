@@ -271,8 +271,8 @@ onAuthStateChanged(auth, async (user) => {
             <div class="history-empty-card">
                 <div class="history-empty-icon">○</div>
                 <h3>You are not logged in</h3>
-                <p>Please login from the home page to view your ride history.</p>
-                <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='index.html'">Go to Login</button>
+                <p>Please login to view your ride history.</p>
+                <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='login.html'">Go to Login</button>
             </div>
         `;
         renderSummary([]);
