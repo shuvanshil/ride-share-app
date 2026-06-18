@@ -756,20 +756,9 @@ select {
     height: 180px;
 }
 
-.leaflet-container {
-    font-family: "Inter", system-ui, sans-serif;
-}
-
-.map-hybrid-host,
-.mappls-base-surface,
-.leaflet-overlay-surface,
-.leaflet-overlay-surface .leaflet-container {
+.google-map-host {
     width: 100%;
     height: 100%;
-}
-
-.mappls-base-surface {
-    pointer-events: none;
 }
 
 @media (min-width: 768px) {

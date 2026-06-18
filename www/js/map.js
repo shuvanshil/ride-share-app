@@ -3,272 +3,25 @@ import {
     collection,
     onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { MAPPLS_ENABLED, MAPPLS_STATIC_KEY, MAPPLS_TILES_ENABLED } from './map-provider-config.js';
 
-// Local state variables for tracking user position
-let userLatitude = 24.3124; // Default center fallback (Kailashahar center)
-let userLongitude = 92.0135;
-let mapInstance = null;
+const DEFAULT_PICKUP = { lat: 24.3124, lng: 92.0135 };
+const TRIPURA_CENTER = { lat: 23.8315, lng: 91.9882 };
+const DESTINATION_SEARCH_DEBOUNCE_MS = 420;
+const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
+const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
+
+let userLatitude = DEFAULT_PICKUP.lat;
+let userLongitude = DEFAULT_PICKUP.lng;
+let mainMapShell = null;
 let userMarker = null;
-let mapplsUserMarker = null;
-let routePolyline = null;
 let destinationMarker = null;
-let mapplsDestinationMarker = null;
-let mapplsRouteLayers = [];
-let globalDriversUnsubscribe = null;
+let routePolyline = null;
 let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
-let fareEngineListenersBound = false;
 let destinationMapPickMode = null;
-let mainMapShell = null;
+let fareEngineListenersBound = false;
+let globalDriversUnsubscribe = null;
 const globalDriverMarkers = new Map();
-
-// Fast local safety net for Tripura places that large providers often miss or
-// return too broadly. Provider results still rank first when they are strong.
-const localLandmarks = {
-    "kumarghat station": {
-        lat: 24.2415,
-        lng: 92.0312,
-        name: "Kumarghat Railway Station",
-        fullAddress: "Kumarghat, Unakoti, Tripura",
-        typeHint: "Station",
-        aliases: ["kumarghat railway", "kumarghat rail station", "kugt station"]
-    },
-    "rgm hospital": {
-        lat: 24.3210,
-        lng: 92.0110,
-        name: "RGM Hospital Kailashahar",
-        fullAddress: "Kailashahar, Unakoti, Tripura",
-        typeHint: "Hospital",
-        aliases: ["rajib gandhi memorial hospital", "kailashahar hospital", "hospital kailashahar"]
-    },
-    "dharmanagar police station": {
-        lat: 24.3786,
-        lng: 92.1783,
-        name: "Dharmanagar Police Station",
-        fullAddress: "Dharmanagar, North Tripura, Tripura",
-        typeHint: "Police",
-        aliases: ["dharmanagar thana", "police station dharmanagar", "police dharmanagar"]
-    },
-    "dharmanagar": {
-        lat: 24.3785,
-        lng: 92.1783,
-        name: "Dharmanagar Town Center",
-        fullAddress: "Dharmanagar, North Tripura, Tripura",
-        typeHint: "Town",
-        aliases: ["dharma nagar", "dharmanagar town"]
-    },
-    "sbi kailashahar": {
-        lat: 24.3240,
-        lng: 92.0126,
-        name: "State Bank of India Kailashahar",
-        fullAddress: "Kailashahar, Unakoti, Tripura",
-        typeHint: "Bank",
-        aliases: ["state bank kailashahar", "state bank of india kailashahar", "sbi bank kailashahar", "kailashahar sbi"]
-    },
-    "kailashahar motor stand": {
-        lat: 24.3232,
-        lng: 92.0124,
-        name: "Kailashahar Motor Stand",
-        fullAddress: "Kailashahar, Unakoti, Tripura",
-        typeHint: "Station",
-        aliases: ["motor stand kailashahar", "kailashahar bus stand", "bus stand kailashahar", "kailashahar stand"]
-    },
-    "chandipur kailashahar": {
-        lat: 24.3066,
-        lng: 92.0018,
-        name: "Chandipur",
-        fullAddress: "Chandipur, Kailashahar, Unakoti, Tripura",
-        typeHint: "Village",
-        aliases: ["kailashahar chandipur", "chandipur unakoti", "chandipur tripura"]
-    },
-    "lake chowmuhani": {
-        lat: 23.8321,
-        lng: 91.2788,
-        name: "Lake Chowmuhani",
-        fullAddress: "Krishna Nagar, Agartala, West Tripura",
-        typeHint: "Market",
-        aliases: ["lake chowmuhani market", "lake chowmuhani agartala"]
-    },
-    "kumarghat school": {
-        lat: 24.2397,
-        lng: 92.0306,
-        name: "Kumarghat School",
-        fullAddress: "Kumarghat, Unakoti, Tripura",
-        typeHint: "School",
-        aliases: ["school kumarghat", "kumarghat h s school", "kumarghat high school"]
-    },
-    "unakoti district court": {
-        lat: 24.3229,
-        lng: 92.0122,
-        name: "District Court Unakoti",
-        fullAddress: "Kailashahar, Unakoti, Tripura",
-        typeHint: "Office",
-        aliases: ["unakoti court", "district court kailashahar", "kailashahar court"]
-    },
-    "tripura gramin bank kailashahar": {
-        lat: 24.3237,
-        lng: 92.0123,
-        name: "Tripura Gramin Bank Kailashahar",
-        fullAddress: "Kailashahar, Unakoti, Tripura",
-        typeHint: "Bank",
-        aliases: ["tgb kailashahar", "gramin bank kailashahar"]
-    },
-    "unakoti": {
-        lat: 24.3236,
-        lng: 92.0272,
-        name: "Unakoti Heritage Site",
-        fullAddress: "Unakoti, Tripura",
-        typeHint: "Temple",
-        aliases: ["unakoti hills", "unakoti heritage"]
-    }
-};
-
-const TRIPURA_VIEWBOX = "91.0,24.7,92.6,22.8";
-const TRIPURA_BIAS_POINT = "91.9882,23.8315";
-const RURAL_PRIORITY_TYPES = new Set([
-    "village",
-    "hamlet",
-    "locality",
-    "suburb",
-    "neighbourhood",
-    "residential",
-    "town",
-    "city"
-]);
-const DESTINATION_SEARCH_DEBOUNCE_MS = 420;
-const TRIPURA_DISTRICT_TERMS = [
-    "west tripura",
-    "sepahijala",
-    "khowai",
-    "gomati",
-    "south tripura",
-    "dhalai",
-    "unakoti",
-    "north tripura"
-];
-const TRIPURA_TOWN_TERMS = [
-    "agartala",
-    "kailashahar",
-    "kumarghat",
-    "dharmanagar",
-    "ambassa",
-    "udaipur",
-    "belonia",
-    "khowai",
-    "teliamura",
-    "sonamura",
-    "bishalgarh",
-    "kamalpur",
-    "santirbazar",
-    "panisagar",
-    "jampui"
-];
-const TRIPURA_TOWN_CENTERS = {
-    agartala: { lat: 23.8315, lng: 91.2868, radius: 12000 },
-    kailashahar: { lat: 24.3232, lng: 92.0124, radius: 8000 },
-    kumarghat: { lat: 24.2415, lng: 92.0312, radius: 8000 },
-    dharmanagar: { lat: 24.3785, lng: 92.1783, radius: 9000 },
-    ambassa: { lat: 23.9368, lng: 91.8542, radius: 9000 },
-    udaipur: { lat: 23.5332, lng: 91.4917, radius: 9000 },
-    belonia: { lat: 23.2510, lng: 91.4541, radius: 9000 },
-    khowai: { lat: 24.0619, lng: 91.6057, radius: 9000 },
-    teliamura: { lat: 23.8362, lng: 91.6186, radius: 9000 },
-    sonamura: { lat: 23.4751, lng: 91.2657, radius: 9000 },
-    bishalgarh: { lat: 23.6628, lng: 91.2756, radius: 9000 },
-    kamalpur: { lat: 24.1957, lng: 91.8336, radius: 9000 },
-    santirbazar: { lat: 23.3065, lng: 91.6440, radius: 9000 },
-    panisagar: { lat: 24.2522, lng: 92.1598, radius: 9000 }
-};
-const USEFUL_PLACE_TYPE_TERMS = [
-    "school",
-    "college",
-    "hospital",
-    "clinic",
-    "market",
-    "bazar",
-    "bazaar",
-    "police",
-    "mandir",
-    "temple",
-    "mosque",
-    "church",
-    "stand",
-    "station",
-    "office",
-    "bank",
-    "sbi",
-    "state bank",
-    "atm",
-    "shop",
-    "restaurant",
-    "hotel",
-    "court",
-    "road",
-    "village"
-];
-const PLACE_TYPE_HINTS = [
-    { label: "Hospital", terms: ["hospital", "clinic", "medical", "health"] },
-    { label: "School", terms: ["school", "college", "academy", "vidyalaya", "university"] },
-    { label: "Market", terms: ["market", "bazar", "bazaar", "chowmuhani", "shop"] },
-    { label: "Police", terms: ["police", "thana"] },
-    { label: "Temple", terms: ["mandir", "temple"] },
-    { label: "Station", terms: ["station", "stand", "bus", "railway"] },
-    { label: "Bank", terms: ["bank", "atm", "sbi", "state bank"] },
-    { label: "Office", terms: ["office", "court"] },
-    { label: "Village", terms: ["village", "para", "gaon"] },
-    { label: "Road", terms: ["road", "rd", "lane"] }
-];
-
-const CARTO_TILE_CONFIG = {
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    options: {
-        subdomains: 'abcd',
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-    }
-};
-
-function hasMapplsKey() {
-    return MAPPLS_ENABLED && MAPPLS_STATIC_KEY.trim().length > 0;
-}
-
-function canUseMapplsBasemap() {
-    return hasMapplsKey() && MAPPLS_TILES_ENABLED;
-}
-
-export function createBaseTileLayer(leafletInstance = window.L) {
-    return leafletInstance.tileLayer(CARTO_TILE_CONFIG.url, CARTO_TILE_CONFIG.options);
-}
-
-function buildReadableAddressFromObject(address = {}) {
-    const parts = [
-        address.poi || address.houseName || address.house_number,
-        address.road || address.street || address.locality || address.subLocality || address.subLocalityName,
-        address.suburb || address.neighbourhood || address.village || address.hamlet || address.district || address.subDistrict || address.districtName,
-        address.city || address.town || address.state_district || address.state || address.stateName
-    ].filter(Boolean);
-
-    return [...new Set(parts)].join(", ");
-}
-
-function getResultText(result) {
-    return [
-        result?.name,
-        result?.mainName,
-        result?.placeName,
-        result?.place_name,
-        result?.keyword,
-        result?.fullAddress,
-        result?.placeAddress,
-        result?.address,
-        result?.display_name,
-        result?.addressText,
-        result?.type,
-        result?.placeType,
-        result?.rawType
-    ].filter(Boolean).join(" ").toLowerCase();
-}
 
 function normalizeCoordinate(value) {
     const number = Number(value);
@@ -284,7 +37,7 @@ function isLikelyTripuraCoordinate(lat, lng) {
         && lng <= 93.5;
 }
 
-function normalizeDestinationCoordinatePair(latValue, lngValue) {
+function normalizeCoordinatePair(latValue, lngValue) {
     const lat = normalizeCoordinate(latValue);
     const lng = normalizeCoordinate(lngValue);
 
@@ -303,226 +56,76 @@ function normalizeDestinationCoordinatePair(latValue, lngValue) {
     return { lat: null, lng: null };
 }
 
-function inferPlaceTypeHint(destination = {}) {
-    const text = getResultText(destination);
-    const explicitType = destination.type || destination.placeType || destination.poiType || destination.category;
-
-    for (const hint of PLACE_TYPE_HINTS) {
-        if (hint.terms.some((term) => text.includes(term))) {
-            return hint.label;
-        }
-    }
-
-    if (explicitType) {
-        return String(explicitType)
-            .replace(/[_-]+/g, " ")
-            .replace(/\b\w/g, (letter) => letter.toUpperCase());
-    }
-
-    return "Place";
+function getGoogleMaps() {
+    return window.google?.maps || null;
 }
 
-function getPickupDistanceLabel(destination = {}) {
-    const coords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
-    if (
-        !Number.isFinite(coords.lat) ||
-        !Number.isFinite(coords.lng) ||
-        !Number.isFinite(Number(userLatitude)) ||
-        !Number.isFinite(Number(userLongitude))
-    ) {
-        return "";
-    }
-
-    const distance = calculateDistance(userLatitude, userLongitude, coords.lat, coords.lng);
-    return distance < 1
-        ? `${Math.max(50, Math.round(distance * 1000 / 50) * 50)} m away`
-        : `${distance.toFixed(1)} km away`;
-}
-
-function normalizeMapplsSuggestion(item, fallbackQuery = "") {
-    const coords = normalizeDestinationCoordinatePair(
-        item?.latitude ?? item?.lat ?? item?.y ?? item?.entryLatitude,
-        item?.longitude ?? item?.lng ?? item?.lon ?? item?.x ?? item?.entryLongitude
-    );
-    if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
-        return null;
-    }
-
-    const mainName = item.placeName || item.place_name || item.poi || item.name || item.keyword || item.formatted_address || fallbackQuery;
-    const fullAddress = item.placeAddress || item.address || item.formatted_address || item.display_name || buildReadableAddressFromObject(item) || "Tripura, India";
-    if (!mainName && !fullAddress) {
-        return null;
-    }
-
-    return {
-        lat: coords.lat,
-        lng: coords.lng,
-        name: mainName || fullAddress,
-        mainName: mainName || fullAddress,
-        fullAddress,
-        typeHint: inferPlaceTypeHint(item),
-        source: "mappls",
-        provider: "mappls",
-        eLoc: item.eLoc || item.eloc || item.placeId || item.place_id || "",
-        rawType: item.type || item.placeType || item.poiType || item.category || ""
-    };
-}
-
-async function fetchJsonWithGracefulFailure(url, options = {}) {
-    const response = await fetch(url, options);
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-    }
-    return response.json();
-}
-
-// 1. Fetch live hardware GPS coordinates from the device
-export function getUserLocation() {
-    return new Promise((resolve) => {
-        if (!navigator.geolocation) {
-            updatePickupInputField(userLatitude, userLongitude, true);
-            resolve({ lat: userLatitude, lng: userLongitude });
-            return;
-        }
-
-        const geoOptions = {
-            enableHighAccuracy: true,
-            timeout: 5000, // 5 seconds timeout before fallback
-            maximumAge: 0
-        };
-
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                userLatitude = position.coords.latitude;
-                userLongitude = position.coords.longitude;
-                console.log(`GPS Lock Acquired: Lat ${userLatitude}, Lng ${userLongitude}`);
-                updatePickupInputField(userLatitude, userLongitude, false);
-                resolve({ lat: userLatitude, lng: userLongitude });
-            },
-            (error) => {
-                console.warn(`GPS Fallback Active (${error.message}). Using regional defaults.`);
-                updatePickupInputField(userLatitude, userLongitude, true);
-                resolve({ lat: userLatitude, lng: userLongitude });
-            },
-            geoOptions
-        );
+async function getGoogleBrowserKey() {
+    const response = await fetch("/api/google-config", {
+        headers: { Accept: "application/json" }
     });
-}
+    const data = await response.json().catch(() => ({}));
 
-async function updatePickupInputField(lat, lng, isFallback) {
-    const pickupField = document.getElementById('pickup-input');
-    if (!pickupField) return;
-
-    if (isFallback) {
-        pickupField.value = "Kailashahar Center (Simulation)";
-        return;
+    if (!response.ok || !data.browserKey) {
+        throw new Error(data.error || "Google Maps browser key is not configured.");
     }
 
-    pickupField.value = "Fetching your location...";
+    return data.browserKey;
+}
 
-    try {
-        const readableAddress = await reverseGeocodePickup(lat, lng);
-        pickupField.value = readableAddress || `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
-    } catch (error) {
-        console.warn("Reverse geocoding failed:", error);
-        pickupField.value = `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+async function loadGoogleMaps() {
+    if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
+        return getGoogleMaps();
     }
-}
 
-async function reverseGeocodePickup(lat, lng) {
-    return reverseGeocodeWithMappls(lat, lng);
-}
-
-async function reverseGeocodeWithMappls(lat, lng) {
-    try {
-        const response = await fetch(`/api/mappls-reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, {
-            headers: { Accept: "application/json" }
+    const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
+    if (existingScript) {
+        await new Promise((resolve, reject) => {
+            existingScript.addEventListener("load", resolve, { once: true });
+            existingScript.addEventListener("error", reject, { once: true });
         });
-        const data = await response.json();
-        if (!response.ok) return null;
-        return data?.result?.fullAddress || data?.result?.name || null;
-    } catch (error) {
-        console.warn("Mappls reverse geocode attempt failed:", error);
-        return null;
+        return getGoogleMaps();
     }
+
+    const browserKey = await getGoogleBrowserKey();
+    await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.id = GOOGLE_MAP_SCRIPT_ID;
+        script.async = true;
+        script.defer = true;
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}`;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+
+    if (!getGoogleMaps()?.Map) {
+        throw new Error("Google Maps SDK did not load.");
+    }
+
+    return getGoogleMaps();
 }
 
-function injectMapStyles() {
-    if (document.getElementById('rideshare-map-styles')) return;
+function addGoogleMapStyles() {
+    if (document.getElementById("google-map-engine-styles")) return;
 
-    const mapStyle = document.createElement('style');
-    mapStyle.id = 'rideshare-map-styles';
-    mapStyle.textContent = `
-        .pickup-pulse-dot {
-            width: 16px;
-            height: 16px;
-            background: #22c55e;
-            border: 3px solid #fff;
-            border-radius: 50%;
-            box-shadow: 0 0 0 rgba(34, 197, 94, 0.45);
-            animation: pickupPulse 1.6s infinite;
-        }
-
-        @keyframes pickupPulse {
-            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55); }
-            70% { box-shadow: 0 0 0 18px rgba(34, 197, 94, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-        }
-
-        .leaflet-popup-content-wrapper {
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-        }
-
-        .leaflet-popup-tip {
-            display: none;
-        }
-
-        .map-popup-title {
-            font-weight: 600;
-            font-size: 14px;
-            color: #111;
-        }
-
-        .map-popup-sub {
-            font-size: 12px;
-            color: #666;
-        }
-
-        .global-driver-marker {
-            background: transparent;
-            border: 0;
-        }
-
-        .global-driver-shell {
-            width: 38px;
-            height: 38px;
-            display: grid;
-            place-items: center;
-            border-radius: 50%;
-            background: #fff;
-            box-shadow: 0 8px 18px rgba(17, 24, 39, 0.25);
-            transform: translateZ(0);
-        }
-
-        .global-driver-marker.bike .global-driver-shell {
-            border: 2px solid #1A7A2E;
-        }
-
-        .global-driver-marker.auto .global-driver-shell {
-            border: 2px solid #facc15;
+    const style = document.createElement("style");
+    style.id = "google-map-engine-styles";
+    style.textContent = `
+        .google-map-host {
+            width: 100%;
+            height: 100%;
+            min-height: 180px;
         }
 
         .destination-suggestions {
-            display: none;
-            width: 100%;
-            margin-top: 10px;
-            border: 1px solid #e7e7e7;
-            border-radius: 12px;
+            margin-top: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
             background: #fff;
-            box-shadow: 0 14px 34px rgba(17, 24, 39, 0.12);
             overflow: hidden;
-            z-index: 1200;
+            box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+            display: none;
         }
 
         .destination-suggestions.is-visible {
@@ -530,54 +133,53 @@ function injectMapStyles() {
         }
 
         .destination-suggestions-title {
-            padding: 12px 14px 4px;
-            color: #111;
-            font-size: 14px;
+            padding: 14px 14px 8px;
             font-weight: 800;
+            font-size: 0.9rem;
+            color: #111827;
         }
 
         .destination-suggestion-item {
             width: 100%;
             display: grid;
-            grid-template-columns: 42px 1fr;
+            grid-template-columns: 40px 1fr;
             gap: 12px;
             align-items: center;
-            padding: 13px 14px;
+            padding: 14px;
             border: 0;
-            border-top: 1px solid #f0f0f0;
+            border-top: 1px solid #eef2f1;
             background: #fff;
             text-align: left;
         }
 
-        .destination-suggestion-item:active,
-        .destination-suggestion-item:hover {
-            background: #f7fbf8;
+        .destination-suggestion-item:hover,
+        .destination-suggestion-item:active {
+            background: #f3faf4;
         }
 
         .destination-suggestion-pin {
             width: 38px;
             height: 38px;
+            border-radius: 8px;
             display: grid;
             place-items: center;
-            border-radius: 10px;
-            color: #111;
-            background: #f5f5f5;
-            font-size: 18px;
+            background: #f3f4f6;
+            color: #14532d;
+            font-weight: 800;
         }
 
         .destination-suggestion-main {
             display: block;
-            color: #111;
-            font-size: 14px;
-            font-weight: 800;
+            font-size: 0.94rem;
+            color: #111827;
             line-height: 1.25;
         }
 
         .destination-suggestion-sub {
             display: block;
-            margin-top: 4px;
-            color: #777;
-            font-size: 12px;
+            margin-top: 3px;
+            color: #6b7280;
+            font-size: 0.8rem;
             line-height: 1.3;
         }
 
@@ -585,369 +187,205 @@ function injectMapStyles() {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            margin-top: 7px;
+            margin-top: 8px;
         }
 
         .destination-suggestion-meta span {
-            min-height: 22px;
             display: inline-flex;
             align-items: center;
+            min-height: 22px;
+            padding: 3px 8px;
             border-radius: 999px;
-            padding: 0 8px;
-            color: #22572F;
-            background: #EAF8ED;
-            font-size: 11px;
+            background: #dcfce7;
+            color: #14532d;
+            font-size: 0.74rem;
             font-weight: 800;
         }
 
         .destination-suggestion-empty {
-            padding: 14px;
-            color: #777;
-            font-size: 13px;
+            padding: 16px 14px;
+            color: #6b7280;
+            font-size: 0.86rem;
             font-weight: 700;
+            line-height: 1.45;
         }
 
         .destination-map-pick-btn {
-            min-height: 38px;
-            margin-top: 10px;
+            margin-top: 12px;
             border: 0;
             border-radius: 8px;
-            padding: 0 12px;
+            background: #15803d;
             color: #fff;
-            background: #1A7A2E;
-            font-size: 12px;
             font-weight: 800;
-        }
-
-        .map-hybrid-host {
-            position: relative;
-            overflow: hidden;
-        }
-
-        .mappls-base-surface,
-        .leaflet-overlay-surface {
-            position: absolute;
-            inset: 0;
+            padding: 10px 12px;
             width: 100%;
-            height: 100%;
-        }
-
-        .mappls-base-surface {
-            z-index: 1;
-            pointer-events: none;
-        }
-
-        .mappls-base-surface > div,
-        .mappls-base-surface canvas {
-            width: 100% !important;
-            height: 100% !important;
-        }
-
-        .mappls-base-surface .mappls-ctrl-top-left,
-        .mappls-base-surface .mappls-ctrl-top-right,
-        .mappls-base-surface .mappls-ctrl-bottom-left {
-            display: none !important;
-        }
-
-        .leaflet-overlay-surface {
-            z-index: 2;
-        }
-
-        .leaflet-overlay-surface,
-        .leaflet-overlay-surface .leaflet-container {
-            background: transparent !important;
-        }
-
-        .leaflet-overlay-surface .leaflet-control-attribution {
-            display: none;
         }
     `;
-    document.head.appendChild(mapStyle);
+    document.head.appendChild(style);
 }
 
-function loadLeaflet() {
-    return new Promise((resolve, reject) => {
-        if (window.L) {
-            resolve();
-            return;
-        }
-
-        if (!document.querySelector('link[href*="leaflet.css"]')) {
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-            document.head.appendChild(link);
-        }
-
-        const existingScript = document.querySelector('script[src*="leaflet.js"]');
-        if (existingScript) {
-            existingScript.addEventListener('load', resolve, { once: true });
-            existingScript.addEventListener('error', reject, { once: true });
-            return;
-        }
-
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.body.appendChild(script);
-    });
+function googleLatLngLiteral(coords) {
+    return { lat: Number(coords.lat), lng: Number(coords.lng) };
 }
 
-function loadMapplsSdk() {
-    return new Promise((resolve, reject) => {
-        if (!canUseMapplsBasemap()) {
-            resolve(null);
-            return;
-        }
-
-        if (window.mappls?.Map) {
-            resolve(window.mappls);
-            return;
-        }
-
-        const existingScript = document.querySelector('script[data-mappls-sdk="true"]');
-        if (existingScript) {
-            existingScript.addEventListener('load', () => resolve(window.mappls || null), { once: true });
-            existingScript.addEventListener('error', reject, { once: true });
-            return;
-        }
-
-        const script = document.createElement('script');
-        script.src = `https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${encodeURIComponent(MAPPLS_STATIC_KEY)}`;
-        script.async = true;
-        script.dataset.mapplsSdk = 'true';
-        script.onload = () => resolve(window.mappls || null);
-        script.onerror = reject;
-        document.head.appendChild(script);
-    });
+function makeMarker(options) {
+    const maps = getGoogleMaps();
+    return new maps.Marker(options);
 }
 
-function syncBaseMapView(baseMap, leafletMap) {
-    if (!baseMap || !leafletMap) return;
-
-    const center = leafletMap.getCenter();
-    const zoom = leafletMap.getZoom();
-
-    try {
-        if (typeof baseMap.setCenter === 'function') {
-            baseMap.setCenter([center.lng, center.lat]);
-        } else if (typeof baseMap.panTo === 'function') {
-            baseMap.panTo({ lat: center.lat, lng: center.lng });
-        }
-
-        if (typeof baseMap.setZoom === 'function') {
-            baseMap.setZoom(zoom);
-        }
-    } catch (error) {
-        console.warn('Mappls base map sync failed:', error);
+function removeMarker(marker) {
+    if (marker?.setMap) {
+        marker.setMap(null);
     }
 }
 
-function normalizeBaseMapDom(hostElement, baseElement) {
-    if (!hostElement || !baseElement) return;
+function clearRouteAndDestination() {
+    removeMarker(destinationMarker);
+    destinationMarker = null;
 
-    const hostHeight = hostElement.clientHeight;
-    const explicitHeight = hostHeight > 0 ? `${hostHeight}px` : '100%';
-
-    baseElement.style.width = '100%';
-    baseElement.style.height = explicitHeight;
-
-    baseElement.querySelectorAll('div, canvas').forEach((node) => {
-        node.style.maxWidth = '100%';
-    });
-
-    const directChild = baseElement.firstElementChild;
-    if (directChild) {
-        directChild.style.width = '100%';
-        directChild.style.height = explicitHeight;
+    if (routePolyline?.setMap) {
+        routePolyline.setMap(null);
     }
-
-    const canvas = baseElement.querySelector('canvas');
-    if (canvas) {
-        canvas.style.width = '100%';
-        canvas.style.height = explicitHeight;
-    }
+    routePolyline = null;
 }
 
-function refreshBaseMapLayout(hostElement, baseMap, baseElement, overlayMap) {
-    const run = () => {
-        normalizeBaseMapDom(hostElement, baseElement);
-        syncBaseMapView(baseMap, overlayMap);
-
-        try {
-            if (typeof baseMap?.resize === 'function') {
-                baseMap.resize();
-            } else if (typeof baseMap?._onResize === 'function') {
-                baseMap._onResize();
-            }
-        } catch (error) {
-            console.warn('Mappls resize call failed:', error);
-        }
-    };
-
-    run();
-    requestAnimationFrame(run);
-    setTimeout(run, 120);
-    setTimeout(run, 320);
-    setTimeout(run, 700);
-}
-
-function createMapShellMarkup(hostElement, shellId) {
-    hostElement.innerHTML = `
-        <div id="${shellId}-base" class="mappls-base-surface"></div>
-        <div id="${shellId}-overlay" class="leaflet-overlay-surface"></div>
-    `;
-
-    return {
-        baseId: `${shellId}-base`,
-        overlayId: `${shellId}-overlay`
-    };
+function clearPickupMarker() {
+    removeMarker(userMarker);
+    userMarker = null;
 }
 
 export async function createRideMapSurface(hostElementOrId, options = {}) {
-    const hostElement = typeof hostElementOrId === 'string'
+    const maps = await loadGoogleMaps();
+    addGoogleMapStyles();
+
+    const hostElement = typeof hostElementOrId === "string"
         ? document.getElementById(hostElementOrId)
         : hostElementOrId;
 
     if (!hostElement) {
-        throw new Error('Map host element not found.');
+        throw new Error("Map host element not found.");
     }
 
     const center = options.center || { lat: userLatitude, lng: userLongitude };
-    const zoom = options.zoom ?? 15;
-    const useMapplsBasemap = canUseMapplsBasemap();
-    const shellId = options.shellId || `ride-map-${Date.now()}`;
+    hostElement.innerHTML = "";
+    hostElement.classList.add("google-map-host");
 
-    if (!window.L) {
-        await loadLeaflet();
-    }
-
-    hostElement.classList.add('map-hybrid-host');
-
-    if (useMapplsBasemap) {
-        try {
-            await loadMapplsSdk();
-        } catch (error) {
-            console.warn('Mappls SDK failed to load, using Carto fallback:', error);
-            hostElement.innerHTML = '';
-            const fallbackMap = L.map(hostElement, {
-                zoomControl: options.zoomControl ?? false,
-                zoomAnimation: true,
-                minZoom: options.minZoom ?? 10,
-                maxZoom: options.maxZoom ?? 19,
-                attributionControl: options.attributionControl ?? true,
-                dragging: options.dragging ?? true,
-                scrollWheelZoom: options.scrollWheelZoom ?? true,
-                doubleClickZoom: options.doubleClickZoom ?? true,
-                touchZoom: options.touchZoom ?? true
-            }).setView([center.lat, center.lng], zoom);
-            createBaseTileLayer().addTo(fallbackMap);
-
-            return {
-                map: fallbackMap,
-                baseMap: null,
-                destroy() {
-                    fallbackMap.remove();
-                    hostElement.innerHTML = '';
-                }
-            };
-        }
-
-        const shell = createMapShellMarkup(hostElement, shellId);
-        const overlayMap = L.map(shell.overlayId, {
-            zoomControl: options.zoomControl ?? false,
-            zoomAnimation: true,
-            minZoom: options.minZoom ?? 10,
-            maxZoom: options.maxZoom ?? 19,
-            attributionControl: options.attributionControl ?? false,
-            dragging: options.dragging ?? true,
-            scrollWheelZoom: options.scrollWheelZoom ?? true,
-            doubleClickZoom: options.doubleClickZoom ?? true,
-            touchZoom: options.touchZoom ?? true
-        }).setView([center.lat, center.lng], zoom);
-
-        let baseMap = null;
-        try {
-            baseMap = new window.mappls.Map(shell.baseId, {
-                center: { lat: center.lat, lng: center.lng },
-                zoom,
-                zoomControl: false,
-                fullscreen_control: false,
-                geolocation: false
-            });
-        } catch (error) {
-            console.warn('Mappls base map creation failed, reverting to Carto base layer:', error);
-            hostElement.innerHTML = '';
-            const fallbackMap = L.map(hostElement, {
-                zoomControl: options.zoomControl ?? false,
-                zoomAnimation: true,
-                minZoom: options.minZoom ?? 10,
-                maxZoom: options.maxZoom ?? 19,
-                attributionControl: options.attributionControl ?? true,
-                dragging: options.dragging ?? true,
-                scrollWheelZoom: options.scrollWheelZoom ?? true,
-                doubleClickZoom: options.doubleClickZoom ?? true,
-                touchZoom: options.touchZoom ?? true
-            }).setView([center.lat, center.lng], zoom);
-            createBaseTileLayer().addTo(fallbackMap);
-
-            return {
-                map: fallbackMap,
-                baseMap: null,
-                destroy() {
-                    fallbackMap.remove();
-                    hostElement.innerHTML = '';
-                }
-            };
-        }
-
-        const baseElement = document.getElementById(shell.baseId);
-        const syncHandler = () => syncBaseMapView(baseMap, overlayMap);
-        overlayMap.on('move zoom zoomend moveend resize', syncHandler);
-        refreshBaseMapLayout(hostElement, baseMap, baseElement, overlayMap);
-
-        return {
-            map: overlayMap,
-            baseMap,
-            destroy() {
-                overlayMap.off('move zoom zoomend moveend resize', syncHandler);
-                overlayMap.remove();
-                try {
-                    if (typeof baseMap?.remove === 'function') {
-                        baseMap.remove();
-                    }
-                } catch (error) {
-                    console.warn('Mappls base map cleanup failed:', error);
-                }
-                hostElement.innerHTML = '';
-            }
-        };
-    }
-
-    hostElement.innerHTML = '';
-    const map = L.map(hostElement, {
-        zoomControl: options.zoomControl ?? false,
-        zoomAnimation: true,
-        minZoom: options.minZoom ?? 10,
-        maxZoom: options.maxZoom ?? 19,
-        attributionControl: options.attributionControl ?? true,
-        dragging: options.dragging ?? true,
-        scrollWheelZoom: options.scrollWheelZoom ?? true,
-        doubleClickZoom: options.doubleClickZoom ?? true,
-        touchZoom: options.touchZoom ?? true
-    }).setView([center.lat, center.lng], zoom);
-
-    createBaseTileLayer().addTo(map);
+    const map = new maps.Map(hostElement, {
+        center: googleLatLngLiteral(center),
+        zoom: options.zoom ?? 15,
+        minZoom: options.minZoom ?? 8,
+        maxZoom: options.maxZoom ?? 20,
+        disableDefaultUI: options.disableDefaultUI ?? false,
+        zoomControl: options.zoomControl ?? true,
+        fullscreenControl: options.fullscreenControl ?? true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        gestureHandling: options.gestureHandling || "greedy",
+        clickableIcons: true
+    });
 
     return {
         map,
-        baseMap: null,
         destroy() {
-            map.remove();
-            hostElement.innerHTML = '';
+            maps.event.clearInstanceListeners(map);
+            hostElement.innerHTML = "";
+            hostElement.classList.remove("google-map-host");
         }
     };
+}
+
+function decodePolyline(encoded = "") {
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
+    const coordinates = [];
+
+    while (index < encoded.length) {
+        let result = 0;
+        let shift = 0;
+        let byte = null;
+
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+
+        lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+        result = 0;
+        shift = 0;
+
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+
+        lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+        coordinates.push({ lat: lat / 1e5, lng: lng / 1e5 });
+    }
+
+    return coordinates;
+}
+
+async function getUserLocation() {
+    const pickupInput = document.getElementById("pickup-input");
+
+    const fallback = {
+        lat: DEFAULT_PICKUP.lat,
+        lng: DEFAULT_PICKUP.lng,
+        label: "Kailashahar Center (Simulation)"
+    };
+
+    if (!navigator.geolocation) {
+        userLatitude = fallback.lat;
+        userLongitude = fallback.lng;
+        if (pickupInput) pickupInput.value = fallback.label;
+        return fallback;
+    }
+
+    return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const coords = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                    label: "Current location"
+                };
+                userLatitude = coords.lat;
+                userLongitude = coords.lng;
+                if (pickupInput) pickupInput.value = coords.label;
+                resolve(coords);
+            },
+            () => {
+                userLatitude = fallback.lat;
+                userLongitude = fallback.lng;
+                if (pickupInput) pickupInput.value = fallback.label;
+                resolve(fallback);
+            },
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+        );
+    });
+}
+
+function addPickupMarker(coords) {
+    const maps = getGoogleMaps();
+    clearPickupMarker();
+
+    userMarker = makeMarker({
+        map: window.mapInstance,
+        position: googleLatLngLiteral(coords),
+        title: "Your pickup location",
+        icon: {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 9,
+            fillColor: "#22c55e",
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 3
+        },
+        zIndex: 1000
+    });
 }
 
 function inferDriverVehicleType(driver) {
@@ -963,39 +401,18 @@ function inferDriverVehicleType(driver) {
     return "bike";
 }
 
-function createLiveDriverIcon(driver) {
-    const vehicleType = inferDriverVehicleType(driver);
-    const isAuto = vehicleType === "auto";
-
-    return L.divIcon({
-        className: `global-driver-marker ${vehicleType}`,
-        html: `
-            <div class="global-driver-shell" title="${isAuto ? "Online auto driver" : "Online bike driver"}">
-                ${isAuto ? `
-                    <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
-                        <rect x="7" y="12" width="24" height="15" rx="5" fill="#15803d"/>
-                        <rect x="11" y="8" width="15" height="10" rx="4" fill="#facc15"/>
-                        <rect x="13" y="10" width="9" height="6" rx="2" fill="#e0f2fe"/>
-                        <circle cx="12" cy="28" r="4" fill="#111827"/>
-                        <circle cx="27" cy="28" r="4" fill="#111827"/>
-                        <circle cx="12" cy="28" r="1.7" fill="#fff"/>
-                        <circle cx="27" cy="28" r="1.7" fill="#fff"/>
-                    </svg>
-                ` : `
-                    <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
-                        <circle cx="12" cy="27" r="5" fill="#111827"/>
-                        <circle cx="28" cy="27" r="5" fill="#111827"/>
-                        <path d="M12 27L18 18H24L28 27" stroke="#15803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M17 18L14 14H20L23 18" stroke="#111827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M22 15H29" stroke="#15803d" stroke-width="3" stroke-linecap="round"/>
-                        <circle cx="19" cy="11" r="3" fill="#facc15"/>
-                    </svg>
-                `}
-            </div>
-        `,
-        iconSize: [38, 38],
-        iconAnchor: [19, 19]
-    });
+function createDriverMarkerIcon(driver) {
+    const maps = getGoogleMaps();
+    const isAuto = inferDriverVehicleType(driver) === "auto";
+    return {
+        path: "M12 2C7.03 2 3 6.03 3 11c0 6.75 9 15 9 15s9-8.25 9-15c0-4.97-4.03-9-9-9z",
+        fillColor: isAuto ? "#f59e0b" : "#15803d",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 2,
+        scale: 1.35,
+        labelOrigin: new maps.Point(12, 11)
+    };
 }
 
 function isLiveDriverVisible(driver) {
@@ -1006,85 +423,53 @@ function isLiveDriverVisible(driver) {
         && Number.isFinite(Number(location.lng));
 }
 
-function animateDriverMarker(markerState, nextLatLng) {
-    const marker = markerState.marker;
-    const start = marker.getLatLng();
-    const end = L.latLng(nextLatLng);
-    const duration = 900;
-    const startedAt = performance.now();
-
-    if (markerState.animationFrame) {
-        cancelAnimationFrame(markerState.animationFrame);
-    }
-
-    function step(now) {
-        const progress = Math.min(1, (now - startedAt) / duration);
-        const eased = progress < 0.5
-            ? 2 * progress * progress
-            : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-        marker.setLatLng([
-            start.lat + (end.lat - start.lat) * eased,
-            start.lng + (end.lng - start.lng) * eased
-        ]);
-
-        if (progress < 1) {
-            markerState.animationFrame = requestAnimationFrame(step);
-        } else {
-            markerState.animationFrame = null;
-        }
-    }
-
-    markerState.animationFrame = requestAnimationFrame(step);
-}
-
 function upsertGlobalDriverMarker(driverId, driver) {
     if (!window.mapInstance) return;
 
     const location = driver.driverLocation || {};
-    const nextLatLng = [Number(location.lat), Number(location.lng)];
+    const position = {
+        lat: Number(location.lat),
+        lng: Number(location.lng)
+    };
+    const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
 
     if (!existing) {
-        const marker = L.marker(nextLatLng, {
-            icon: createLiveDriverIcon(driver),
-            zIndexOffset: 500
-        }).addTo(window.mapInstance);
-
-        marker.bindPopup(`
-            <div class="map-popup-title">${driver.name || "Online Driver"}</div>
-            <div class="map-popup-sub">${inferDriverVehicleType(driver) === "auto" ? "Auto" : "Bike"} available nearby</div>
-        `);
-
-        globalDriverMarkers.set(driverId, {
-            marker,
-            vehicleType: inferDriverVehicleType(driver),
-            animationFrame: null
+        const marker = makeMarker({
+            map: window.mapInstance,
+            position,
+            title: `${driver.name || "Online Driver"} - ${vehicleType}`,
+            icon: createDriverMarkerIcon(driver),
+            label: {
+                text: vehicleType === "auto" ? "A" : "B",
+                color: "#ffffff",
+                fontSize: "11px",
+                fontWeight: "800"
+            },
+            zIndex: 500
         });
+
+        globalDriverMarkers.set(driverId, { marker, vehicleType });
         return;
     }
 
-    const nextVehicleType = inferDriverVehicleType(driver);
-    if (existing.vehicleType !== nextVehicleType) {
-        existing.marker.setIcon(createLiveDriverIcon(driver));
-        existing.vehicleType = nextVehicleType;
+    existing.marker.setPosition(position);
+    if (existing.vehicleType !== vehicleType) {
+        existing.marker.setIcon(createDriverMarkerIcon(driver));
+        existing.marker.setLabel({
+            text: vehicleType === "auto" ? "A" : "B",
+            color: "#ffffff",
+            fontSize: "11px",
+            fontWeight: "800"
+        });
+        existing.vehicleType = vehicleType;
     }
-
-    animateDriverMarker(existing, nextLatLng);
 }
 
 function removeGlobalDriverMarker(driverId) {
     const existing = globalDriverMarkers.get(driverId);
     if (!existing) return;
-
-    if (existing.animationFrame) {
-        cancelAnimationFrame(existing.animationFrame);
-    }
-
-    if (window.mapInstance) {
-        window.mapInstance.removeLayer(existing.marker);
-    }
-
+    removeMarker(existing.marker);
     globalDriverMarkers.delete(driverId);
 }
 
@@ -1099,8 +484,8 @@ function startGlobalDriverPresenceListener() {
         globalDriversUnsubscribe();
         globalDriversUnsubscribe = null;
     }
-    clearGlobalDriverMarkers();
 
+    clearGlobalDriverMarkers();
     globalDriversUnsubscribe = onSnapshot(collection(db, "driverPresence"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             const driverId = change.doc.id;
@@ -1118,164 +503,60 @@ function startGlobalDriverPresenceListener() {
     });
 }
 
-function removeMapplsUserMarker(baseMap) {
-    if (!mapplsUserMarker || !window.mappls?.remove || !baseMap) {
-        mapplsUserMarker = null;
-        return;
-    }
-
-    try {
-        window.mappls.remove({ map: baseMap, layer: mapplsUserMarker });
-    } catch (error) {
-        console.warn("Mappls pickup marker cleanup failed:", error);
-    }
-
-    mapplsUserMarker = null;
-}
-
-function removeMapplsLayer(baseMap, layer) {
-    if (!layer || !baseMap || !window.mappls?.remove) return;
-
-    try {
-        window.mappls.remove({ map: baseMap, layer });
-    } catch (error) {
-        console.warn("Mappls layer cleanup failed:", error);
-    }
-}
-
-function createPickupMarkerHtml() {
-    return `
-        <div class="pickup-marker-icon">
-            <div class="pickup-pulse-dot"></div>
-        </div>
-    `;
-}
-
-function addPickupMarker(coords, mapShell) {
-    if (mapShell?.baseMap && window.mappls?.Marker) {
-        mapplsUserMarker = new window.mappls.Marker({
-            map: mapShell.baseMap,
-            position: { lat: coords.lat, lng: coords.lng },
-            html: createPickupMarkerHtml(),
-            popupOptions: true,
-            popupHtml: `
-                <div class="map-popup-title">Your Pickup Location</div>
-                <div class="map-popup-sub">Live GPS pickup point</div>
-            `,
-            width: 22,
-            height: 22,
-            offset: [0, 0]
-        });
-        userMarker = null;
-        return;
-    }
-
-    userMarker = L.marker([coords.lat, coords.lng], {
-        icon: L.divIcon({
-            className: 'pickup-marker-icon',
-            html: '<div class="pickup-pulse-dot"></div>',
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
-            popupAnchor: [0, -14]
-        })
-    }).addTo(window.mapInstance)
-        .bindPopup(`
-            <div class="map-popup-title">Your Pickup Location</div>
-            <div class="map-popup-sub">Live GPS pickup point</div>
-        `)
-        .openPopup();
-}
-
-function createDestinationMarkerHtml() {
-    return `
-        <div class="destination-marker-icon">
-            <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 35C12 35 23 22.2 23 12.5C23 6.14873 18.0751 1 12 1C5.92487 1 1 6.14873 1 12.5C1 22.2 12 35 12 35Z" fill="#ef4444" stroke="white" stroke-width="2"/>
-                <circle cx="12" cy="12.5" r="4.5" fill="white"/>
-            </svg>
-        </div>
-    `;
-}
-
-function getActiveMapplsBaseMap() {
-    return mainMapShell?.baseMap || null;
-}
-
-// 2. Initialize Visual Map Window
 export async function initializeMapEngine() {
     const coords = await getUserLocation();
-    const mapContainer = document.getElementById('map-container');
+    const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
 
-    console.log("Loading ride map surface...");
+    await loadGoogleMaps();
+    addGoogleMapStyles();
 
-    await loadLeaflet();
-    injectMapStyles();
+    if (globalDriversUnsubscribe) {
+        globalDriversUnsubscribe();
+        globalDriversUnsubscribe = null;
+    }
+    clearGlobalDriverMarkers();
+    clearRouteAndDestination();
+    clearPickupMarker();
 
     if (mainMapShell) {
-        if (globalDriversUnsubscribe) {
-            globalDriversUnsubscribe();
-            globalDriversUnsubscribe = null;
-        }
-        clearGlobalDriverMarkers();
-        removeMapplsUserMarker(mainMapShell.baseMap);
         mainMapShell.destroy();
         mainMapShell = null;
-        window.mapInstance = null;
-    } else if (window.mapInstance) {
-        if (globalDriversUnsubscribe) {
-            globalDriversUnsubscribe();
-            globalDriversUnsubscribe = null;
-        }
-        clearGlobalDriverMarkers();
-        window.mapInstance.remove();
-        window.mapInstance = null;
     }
-    userMarker = null;
-
-    mapContainer.innerHTML = "";
 
     mainMapShell = await createRideMapSurface(mapContainer, {
-        shellId: 'main-ride-map',
-        center: { lat: coords.lat, lng: coords.lng },
+        center: coords,
         zoom: 15,
-        zoomControl: false,
-        minZoom: 10,
-        maxZoom: 19,
-        attributionControl: !canUseMapplsBasemap()
+        zoomControl: true,
+        fullscreenControl: true
     });
+
     window.mapInstance = mainMapShell.map;
-    mapInstance = window.mapInstance;
+    addPickupMarker(coords);
 
-    L.control.zoom({ position: 'bottomright' }).addTo(window.mapInstance);
-    addPickupMarker(coords, mainMapShell);
-    window.mapInstance.on('click', (event) => {
-        if (!destinationMapPickMode) return;
-        completeDestinationMapPick(event.latlng.lat, event.latlng.lng);
+    window.mapInstance.addListener("click", (event) => {
+        if (!destinationMapPickMode || !event.latLng) return;
+        completeDestinationMapPick(event.latLng.lat(), event.latLng.lng());
     });
 
-    setTimeout(() => window.mapInstance.invalidateSize(), 100);
     setupFareEngineListeners();
     startGlobalDriverPresenceListener();
-    window.dispatchEvent(new CustomEvent('map-engine-ready', {
-        detail: {
-            pickup: { lat: coords.lat, lng: coords.lng }
-        }
+    window.dispatchEvent(new CustomEvent("map-engine-ready", {
+        detail: { pickup: { lat: coords.lat, lng: coords.lng } }
     }));
 }
 
-// 3. Dynamic Fare Calculation Engine (Straight-Line Haversine Approximation)
 function setupFareEngineListeners() {
     if (fareEngineListenersBound) return;
 
-    const dropInput = document.getElementById('drop-input');
-    const fareQuoteBox = document.getElementById('fare-quote-box');
-    const fareAmountSpan = document.getElementById('fare-amount');
+    const dropInput = document.getElementById("drop-input");
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
     if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
 
     fareEngineListenersBound = true;
-
-    dropInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase().trim();
+    dropInput.addEventListener("input", (event) => {
+        const query = event.target.value.trim();
 
         if (destinationSearchTimer) {
             clearTimeout(destinationSearchTimer);
@@ -1293,21 +574,21 @@ function setupFareEngineListeners() {
         }
 
         fareAmountSpan.innerText = "Searching...";
-        fareQuoteBox.classList.remove('d-none');
-        fareQuoteBox.classList.add('d-flex');
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
         window.latestFareQuote = null;
 
         destinationSearchTimer = setTimeout(async () => {
-            const destinations = await searchTripuraDestinations(query);
+            const destinations = await searchGoogleDestinations(query);
 
-            if (dropInput.value.toLowerCase().trim() !== query) {
+            if (dropInput.value.trim() !== query) {
                 return;
             }
 
             if (destinations.length) {
                 showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan);
-                fareQuoteBox.classList.add('d-none');
-                fareQuoteBox.classList.remove('d-flex');
+                fareQuoteBox.classList.add("d-none");
+                fareQuoteBox.classList.remove("d-flex");
             } else {
                 resetDestinationFareState(fareQuoteBox);
                 showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan);
@@ -1316,684 +597,233 @@ function setupFareEngineListeners() {
     });
 }
 
-function findLocalDestination(query) {
-    return findLocalDestinations(query)[0] || null;
-}
-
-function findLocalDestinations(query) {
-    return [];
-}
-
-function normalizeSearchText(value) {
-    return String(value || "")
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-}
-
-function getSearchTokens(value) {
-    return normalizeSearchText(value)
-        .split(" ")
-        .filter((token) => token.length > 1);
-}
-
-function getSpecificSearchTokens(value) {
-    const genericTokens = new Set([
-        "tripura",
-        "india",
-        "near",
-        "road",
-        "rd",
-        "main",
-        "center",
-        "centre",
-        ...TRIPURA_TOWN_TERMS,
-        ...TRIPURA_DISTRICT_TERMS.flatMap((term) => term.split(" "))
-    ]);
-
-    return getSearchTokens(value)
-        .filter((token) => token.length > 2 && !genericTokens.has(token));
-}
-
-function scoreLocalLandmark(normalizedQuery, queryTokens, key, destination) {
-    const normalizedKey = normalizeSearchText(key);
-    const aliasTexts = (destination.aliases || []).map(normalizeSearchText);
-    const searchableText = normalizeSearchText([
-        key,
-        destination.name,
-        destination.fullAddress,
-        destination.typeHint,
-        ...(destination.aliases || [])
-    ].filter(Boolean).join(" "));
-
-    if (!normalizedQuery || !searchableText) return 0;
-    if (normalizedQuery === normalizedKey || aliasTexts.includes(normalizedQuery)) return 280;
-    if (normalizedQuery.includes(normalizedKey) || aliasTexts.some((alias) => normalizedQuery.includes(alias))) return 250;
-
-    const specificQueryTokens = getSpecificSearchTokens(normalizedQuery);
-    const specificMatches = specificQueryTokens.filter((token) => searchableText.includes(token));
-    const importantMatches = USEFUL_PLACE_TYPE_TERMS.filter((term) => normalizedQuery.includes(term) && searchableText.includes(term));
-    const townMatches = TRIPURA_TOWN_TERMS.filter((town) => normalizedQuery.includes(town) && searchableText.includes(town));
-
-    if (!specificMatches.length && !importantMatches.length) {
-        return 0;
-    }
-
-    if (specificMatches.length < 2 && !importantMatches.length) {
-        return 0;
-    }
-
-    let score = 0;
-    specificMatches.forEach((token) => {
-        if (searchableText.includes(token)) {
-            score += token.length > 3 ? 34 : 18;
-        }
-    });
-
-    score += importantMatches.length * 38;
-    score += townMatches.length * 12;
-
-    return score >= 64 ? score : 0;
-}
-
 function resetDestinationFareState(fareQuoteBox) {
-    fareQuoteBox.classList.add('d-none');
-    fareQuoteBox.classList.remove('d-flex');
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.add("d-none");
+        fareQuoteBox.classList.remove("d-flex");
+    }
     window.latestFareQuote = null;
     window.selectedDestination = null;
-    clearDestinationRoute();
-
-    if (destinationSearchAbortController) {
-        destinationSearchAbortController.abort();
-        destinationSearchAbortController = null;
-    }
+    clearRouteAndDestination();
 }
 
-function scoreTripuraDestination(destination, query = "") {
-    const text = getResultText(destination);
-    const normalizedQuery = normalizeSearchText(query);
-    const specificQueryTokens = getSpecificSearchTokens(normalizedQuery);
-    const matchedSpecificTokens = specificQueryTokens.filter((part) => text.includes(part));
-    let score = 0;
+function getPlaceTypeHint(place = {}) {
+    const text = [
+        place.typeHint,
+        ...(place.types || []),
+        place.name,
+        place.mainName,
+        place.fullAddress
+    ].filter(Boolean).join(" ").toLowerCase();
 
-    if (text.includes("tripura")) score += 120;
-    TRIPURA_DISTRICT_TERMS.forEach((term) => {
-        if (text.includes(term)) score += 70;
-    });
-    TRIPURA_TOWN_TERMS.forEach((term) => {
-        if (text.includes(term)) score += 48;
-    });
-    USEFUL_PLACE_TYPE_TERMS.forEach((term) => {
-        if (normalizedQuery.includes(term) && text.includes(term)) score += 28;
-    });
-
-    matchedSpecificTokens.forEach((part) => {
-        score += part.length > 3 ? 18 : 9;
-    });
-
-    if (specificQueryTokens.length >= 2 && !matchedSpecificTokens.length) score -= 140;
-    if (specificQueryTokens.length >= 3 && matchedSpecificTokens.length < 2) score -= 80;
-
-    if (destination.source === "mappls") score += 45;
-    if (destination.source === "overpass") score += 45;
-    if (destination.source === "nominatim") score += 24;
-    if (destination.source === "local") score += 4;
-    if (destination.eLoc) score += 8;
-    if (Number.isFinite(Number(destination.lat)) && Number.isFinite(Number(destination.lng))) score += 12;
-
-    return score;
+    if (/(hospital|clinic|medical|health)/.test(text)) return "Hospital";
+    if (/(school|college|academy|vidyalaya|university)/.test(text)) return "School";
+    if (/(market|bazar|bazaar|chowmuhani|shop|store|mall)/.test(text)) return "Market";
+    if (/(police|thana)/.test(text)) return "Police";
+    if (/(hindu_temple|mandir|temple|place_of_worship)/.test(text)) return "Temple";
+    if (/(station|stand|bus|railway|transit_station)/.test(text)) return "Station";
+    if (/(bank|atm|sbi|state bank)/.test(text)) return "Bank";
+    if (/(office|court|local_government_office)/.test(text)) return "Office";
+    if (/(village|locality|sublocality|neighborhood)/.test(text)) return "Locality";
+    if (/(route|road|street)/.test(text)) return "Road";
+    return "Place";
 }
 
-function rankTripuraResult(result) {
-    const address = result.address || {};
-    const type = result.type || "";
-    const displayName = (result.display_name || "").toLowerCase();
-    return scoreTripuraDestination({
-        ...result,
-        fullAddress: result.display_name,
-        rawType: type,
-        addressText: buildReadableAddressFromObject(address)
-    });
-}
-
-function buildDestinationName(result, fallbackQuery) {
-    const address = result.address || {};
-    const parts = [
-        address.road,
-        address.village || address.hamlet || address.locality || address.suburb || address.neighbourhood,
-        address.town || address.city || address.county || address.state_district
-    ].filter(Boolean);
-
-    return parts.length ? [...new Set(parts)].join(", ") : result.name || fallbackQuery;
-}
-
-function splitDestinationDisplay(result, fallbackQuery) {
-    const displayParts = String(result.display_name || "").split(",").map((part) => part.trim()).filter(Boolean);
-    const mainName = result.name || displayParts[0] || fallbackQuery;
-    const subAddress = displayParts.filter((part) => part.toLowerCase() !== String(mainName).toLowerCase()).join(", ");
-
-    return {
-        mainName,
-        fullAddress: subAddress || result.display_name || buildDestinationName(result, fallbackQuery)
-    };
-}
-
-async function searchTripuraDestinations(query) {
-    if (destinationSearchAbortController) {
-        destinationSearchAbortController.abort();
-    }
-
-    destinationSearchAbortController = new AbortController();
-    const signal = destinationSearchAbortController.signal;
-
-    try {
-        const response = await fetch(`/api/mappls-search?q=${encodeURIComponent(query)}`, {
-            headers: { Accept: "application/json" },
-            signal
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data?.message || data?.error || `HTTP ${response.status}`);
-        }
-
-        return (Array.isArray(data?.results) ? data.results : [])
-            .map((destination) => ({
-                ...destination,
-                ...normalizeDestinationCoordinatePair(destination.lat, destination.lng),
-                source: "mappls",
-                provider: "mappls"
-            }));
-    } catch (error) {
-        if (error.name !== "AbortError") {
-            console.warn("Mappls destination search failed:", error);
-        }
-        return [];
-    }
-}
-
-async function searchTripuraDestinationsWithMappls(query, signal) {
-    if (!hasMapplsKey()) return [];
-
-    const results = [];
-    const queryVariants = buildMapplsQueryVariants(query);
-
-    for (const queryVariant of queryVariants) {
-        if (signal.aborted) return [];
-
-        const urlCandidates = buildMapplsSearchUrls(queryVariant);
-        for (const url of urlCandidates) {
-            if (signal.aborted) return [];
-
-            try {
-                const data = await fetchJsonWithGracefulFailure(url, {
-                    headers: { "Accept-Language": "en" },
-                    signal
-                });
-                const normalized = await normalizeMapplsResponseItems(data, queryVariant, signal);
-                results.push(...normalized);
-            } catch (error) {
-                if (error.name !== "AbortError") {
-                    console.warn("Mappls destination search attempt failed:", error);
-                }
-            }
-
-            const strongResults = dedupeDestinationResults(results)
-                .filter((item) => scoreTripuraDestination(item, query) >= 45)
-                .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query));
-            if (strongResults.length >= 8) {
-                return strongResults.slice(0, 8);
-            }
-        }
-    }
-
-    return dedupeDestinationResults(results)
-        .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query))
-        .slice(0, 8);
-}
-
-function buildMapplsQueryVariants(query) {
-    const cleanQuery = query.trim().replace(/\s+/g, " ");
-    const lowerQuery = cleanQuery.toLowerCase();
-    const variants = buildSearchQueryVariants(cleanQuery);
-
-    return [...new Set(variants)].slice(0, 8);
-}
-
-function buildSearchQueryVariants(query) {
-    const cleanQuery = query.trim().replace(/\s+/g, " ");
-    const lowerQuery = cleanQuery.toLowerCase();
-    const variants = [
-        cleanQuery,
-        `${cleanQuery} Tripura`
-    ];
-
-    if (!TRIPURA_TOWN_TERMS.some((town) => lowerQuery.includes(town))) {
-        variants.push(`${cleanQuery} Agartala`);
-        variants.push(`${cleanQuery} Kailashahar`);
-        variants.push(`${cleanQuery} Kumarghat`);
-    }
-
-    if (!USEFUL_PLACE_TYPE_TERMS.some((term) => lowerQuery.includes(term))) {
-        variants.push(`${cleanQuery} market Tripura`);
-        variants.push(`${cleanQuery} road Tripura`);
-    }
-
-    if (lowerQuery.includes("mandir")) {
-        variants.push(cleanQuery.replace(/\bmandir\b/gi, "temple"));
-        variants.push(`${cleanQuery.replace(/\bmandir\b/gi, "temple")} Tripura`);
-    }
-
-    if (lowerQuery.includes("temple")) {
-        variants.push(cleanQuery.replace(/\btemple\b/gi, "mandir"));
-        variants.push(`${cleanQuery.replace(/\btemple\b/gi, "mandir")} Tripura`);
-    }
-
-    if (lowerQuery.includes("sbi")) {
-        variants.push(cleanQuery.replace(/\bsbi\b/gi, "State Bank of India"));
-        variants.push(`${cleanQuery.replace(/\bsbi\b/gi, "State Bank of India")} Tripura`);
-    }
-
-    if (lowerQuery.includes("police") && !lowerQuery.includes("station")) {
-        variants.push(`${cleanQuery} police station`);
-    }
-
-    return [...new Set(variants)];
-}
-
-function buildMapplsSearchUrls(queryVariant) {
-    const encodedQuery = encodeURIComponent(queryVariant);
-    const encodedKey = encodeURIComponent(MAPPLS_STATIC_KEY);
-    const encodedBias = encodeURIComponent(TRIPURA_BIAS_POINT);
-
-    return [
-        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/autosuggest?query=${encodedQuery}&region=IND&location=${encodedBias}`,
-        `https://atlas.mappls.com/api/places/search/json?query=${encodedQuery}&region=IND&access_token=${encodedKey}`,
-        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/geo_code?addr=${encodedQuery}&region=IND`
-    ];
-}
-
-function extractMapplsItems(data) {
-    const buckets = [
-        data?.suggestedLocations,
-        data?.results,
-        data?.items,
-        data?.places,
-        data?.copResults,
-        data?.response?.results,
-        data?.response?.suggestedLocations,
-        data?.data?.results,
-        data?.data?.suggestedLocations
-    ];
-
-    const items = [];
-    buckets.forEach((bucket) => {
-        if (Array.isArray(bucket)) {
-            items.push(...bucket);
-        }
-    });
-
-    if (!items.length && data && typeof data === "object" && !Array.isArray(data)) {
-        items.push(data);
-    }
-
-    return items;
-}
-
-async function normalizeMapplsResponseItems(data, queryVariant, signal) {
-    const rawItems = extractMapplsItems(data);
-    const normalized = [];
-
-    for (const item of rawItems) {
-        if (signal.aborted) return [];
-
-        let destination = normalizeMapplsSuggestion(item, queryVariant);
-        if (!destination && (item?.eLoc || item?.eloc || item?.placeId || item?.place_id)) {
-            destination = await fetchMapplsPlaceDetail(item.eLoc || item.eloc || item.placeId || item.place_id, signal, queryVariant);
-        }
-
-        if (destination) {
-            normalized.push(destination);
-        }
-    }
-
-    return normalized;
-}
-
-async function fetchMapplsPlaceDetail(placeId, signal, fallbackQuery = "") {
-    if (!placeId || !hasMapplsKey()) return null;
-
-    const encodedPlaceId = encodeURIComponent(placeId);
-    const encodedKey = encodeURIComponent(MAPPLS_STATIC_KEY);
-    const urlCandidates = [
-        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/place_detail?place_id=${encodedPlaceId}`,
-        `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_STATIC_KEY}/place_detail?eloc=${encodedPlaceId}`,
-        `https://atlas.mappls.com/api/places/details/json?eloc=${encodedPlaceId}&access_token=${encodedKey}`,
-        `https://atlas.mappls.com/api/places/details/json?place_id=${encodedPlaceId}&access_token=${encodedKey}`
-    ];
-
-    for (const url of urlCandidates) {
-        try {
-            const data = await fetchJsonWithGracefulFailure(url, {
-                headers: { "Accept-Language": "en" },
-                signal
-            });
-            const detail = extractMapplsItems(data)[0] || data;
-            const normalized = normalizeMapplsSuggestion({ ...detail, eLoc: placeId }, fallbackQuery);
-            if (normalized) return normalized;
-        } catch (error) {
-            if (error.name !== "AbortError") {
-                console.warn("Mappls place detail lookup failed:", error);
-            }
-        }
-    }
-
-    return null;
-}
-
-function dedupeDestinationResults(destinations) {
-    const seen = new Set();
-
-    return destinations.filter((destination) => {
-        if (!destination) return false;
-        const lat = Number(destination.lat).toFixed(5);
-        const lng = Number(destination.lng).toFixed(5);
-        const name = String(destination.mainName || destination.name || "").toLowerCase().trim();
-        const key = `${name}|${lat}|${lng}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-}
-
-function mergeDestinationResults(providerDestinations, localDestinations, query) {
-    const strongProviderResults = dedupeDestinationResults(providerDestinations)
-        .filter((destination) => scoreTripuraDestination(destination, query) >= 40)
-        .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query));
-
-    const strongLocalResults = dedupeDestinationResults(localDestinations)
-        .filter((destination) => Number(destination._score || 0) >= 90)
-        .sort((a, b) => Number(b._score || 0) - Number(a._score || 0));
-
-    if (strongProviderResults.length >= 5) {
-        return strongProviderResults.slice(0, 8);
-    }
-
-    return dedupeDestinationResults([
-        ...strongProviderResults,
-        ...strongLocalResults
-    ])
-        .sort((a, b) => {
-            const providerBoostA = a.source === "local" ? 0 : 35;
-            const providerBoostB = b.source === "local" ? 0 : 35;
-            return (scoreTripuraDestination(b, query) + providerBoostB) - (scoreTripuraDestination(a, query) + providerBoostA);
-        })
-        .slice(0, 8);
-}
-
-async function searchTripuraDestinationsWithOverpass(query, signal) {
-    const center = inferTripuraSearchCenter(query);
-    const filters = inferOverpassFilters(query);
-    const namePattern = buildOverpassNamePattern(query);
-
-    if (!center || (!filters.length && !namePattern)) {
-        return [];
-    }
-
-    const clauses = [];
-    const radius = Math.min(center.radius || 8000, 12000);
-
-    filters.forEach((filter) => {
-        clauses.push(`node(around:${radius},${center.lat},${center.lng})${filter};`);
-        clauses.push(`way(around:${radius},${center.lat},${center.lng})${filter};`);
-    });
-
-    if (namePattern) {
-        clauses.push(`node(around:${radius},${center.lat},${center.lng})[name~"${namePattern}",i];`);
-        clauses.push(`way(around:${radius},${center.lat},${center.lng})[name~"${namePattern}",i];`);
-    }
-
-    const overpassQuery = `[out:json][timeout:10];(${clauses.join("")});out center tags 12;`;
-    const endpoints = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter"
-    ];
-
-    for (const endpoint of endpoints) {
-        if (signal.aborted) return [];
-
-        try {
-            const response = await fetch(`${endpoint}?data=${encodeURIComponent(overpassQuery)}`, {
-                headers: { "Accept-Language": "en" },
-                signal
-            });
-            if (!response.ok) continue;
-
-            const data = await response.json();
-            const elements = Array.isArray(data?.elements) ? data.elements : [];
-            const results = elements
-                .map((item) => normalizeOverpassElement(item, query))
-                .filter(Boolean)
-                .sort((a, b) => scoreTripuraDestination(b, query) - scoreTripuraDestination(a, query));
-
-            if (results.length) {
-                return dedupeDestinationResults(results).slice(0, 8);
-            }
-        } catch (error) {
-            if (error.name !== "AbortError") {
-                console.warn("Overpass POI search failed:", error);
-            }
-        }
-    }
-
-    return [];
-}
-
-function inferTripuraSearchCenter(query) {
-    const normalizedQuery = normalizeSearchText(query);
-    const matchedTown = Object.keys(TRIPURA_TOWN_CENTERS).find((town) => normalizedQuery.includes(town));
-    if (matchedTown) return TRIPURA_TOWN_CENTERS[matchedTown];
-
-    if (Number.isFinite(Number(userLatitude)) && Number.isFinite(Number(userLongitude))) {
-        return { lat: userLatitude, lng: userLongitude, radius: 9000 };
-    }
-
-    return TRIPURA_TOWN_CENTERS.kailashahar;
-}
-
-function inferOverpassFilters(query) {
-    const normalizedQuery = normalizeSearchText(query);
-    const filters = [];
-
-    if (/\b(mandir|temple|kali|shiva|durga)\b/.test(normalizedQuery)) filters.push("[amenity=place_of_worship]");
-    if (/\b(sbi|bank|atm|state bank)\b/.test(normalizedQuery)) filters.push("[amenity~\"bank|atm\"]");
-    if (/\b(police|thana)\b/.test(normalizedQuery)) filters.push("[amenity=police]");
-    if (/\b(school|college|academy|vidyalaya)\b/.test(normalizedQuery)) filters.push("[amenity~\"school|college|university\"]");
-    if (/\b(hospital|clinic|medical)\b/.test(normalizedQuery)) filters.push("[amenity~\"hospital|clinic|doctors\"]");
-    if (/\b(market|bazar|bazaar|shop)\b/.test(normalizedQuery)) filters.push("[shop]");
-    if (/\b(stand|station|bus|railway)\b/.test(normalizedQuery)) filters.push("[amenity~\"bus_station|taxi\"]");
-
-    return [...new Set(filters)];
-}
-
-function buildOverpassNamePattern(query) {
-    const tokens = getSpecificSearchTokens(query)
-        .filter((token) => !USEFUL_PLACE_TYPE_TERMS.includes(token))
-        .slice(0, 4);
-
-    if (!tokens.length) return "";
-    return tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-}
-
-function normalizeOverpassElement(item, query) {
-    const lat = Number(item.lat ?? item.center?.lat);
-    const lng = Number(item.lon ?? item.center?.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-    const tags = item.tags || {};
-    const name = tags.name || tags["name:en"] || query;
-    const town = tags["addr:city"] || tags["addr:town"] || tags["addr:village"] || "";
-    const addressParts = [
-        tags["addr:housename"],
-        tags["addr:street"],
-        town,
-        tags["addr:district"],
-        "Tripura"
-    ].filter(Boolean);
-
-    return {
-        lat,
-        lng,
-        name,
-        mainName: name,
-        fullAddress: [...new Set(addressParts)].join(", ") || "Tripura, India",
-        typeHint: inferPlaceTypeHint({
-            name,
-            type: tags.amenity || tags.shop || tags.tourism || tags.office || ""
-        }),
-        source: "overpass",
-        provider: "openstreetmap",
-        osmId: item.id || ""
-    };
-}
-
-async function searchTripuraDestinationsWithNominatim(query, signal) {
-    const results = [];
-    const queryVariants = buildSearchQueryVariants(query).slice(0, 6);
-
-    for (const queryVariant of queryVariants) {
-        if (signal.aborted) return [];
-
-        try {
-            const params = new URLSearchParams({
-                format: "jsonv2",
-                q: `${queryVariant}, Tripura, India`,
-                addressdetails: "1",
-                limit: "8",
-                countrycodes: "in",
-                viewbox: TRIPURA_VIEWBOX,
-                bounded: "1"
-            });
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-                headers: { "Accept-Language": "en" },
-                signal
-            });
-            const data = await response.json();
-
-            results.push(...(Array.isArray(data) ? data : []));
-        } catch (error) {
-            if (error.name !== "AbortError") {
-                console.warn("Tripura destination geocoding failed:", error);
-            }
-        }
-    }
-
-    return dedupeDestinationResults(
-        results
-            .filter((result) => Number.isFinite(Number(result.lat)) && Number.isFinite(Number(result.lon)))
-            .sort((a, b) => rankTripuraResult(b) - rankTripuraResult(a))
-            .map((result) => {
-                const display = splitDestinationDisplay(result, query);
-                return {
-                    lat: Number(result.lat),
-                    lng: Number(result.lon),
-                    name: display.mainName,
-                    mainName: display.mainName,
-                    fullAddress: display.fullAddress,
-                    typeHint: inferPlaceTypeHint(result),
-                    source: "nominatim",
-                    provider: "nominatim"
-                };
-            })
-    ).slice(0, 8);
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 function ensureDestinationSuggestions(dropInput) {
-    let suggestions = document.getElementById('destination-suggestions');
+    let suggestions = document.getElementById("destination-suggestions");
     if (suggestions) return suggestions;
 
-    suggestions = document.createElement('div');
-    suggestions.id = 'destination-suggestions';
-    suggestions.className = 'destination-suggestions';
-    suggestions.setAttribute('role', 'listbox');
-
-    const field = dropInput.closest('.location-field');
-    if (field) {
-        field.insertAdjacentElement('afterend', suggestions);
-    } else {
-        dropInput.insertAdjacentElement('afterend', suggestions);
-    }
-
-    document.addEventListener('click', (event) => {
-        if (!suggestions.contains(event.target) && event.target !== dropInput) {
-            hideDestinationSuggestions();
-        }
-    });
-
+    suggestions = document.createElement("div");
+    suggestions.id = "destination-suggestions";
+    suggestions.className = "destination-suggestions";
+    suggestions.setAttribute("role", "listbox");
+    dropInput.closest(".services-location-card")?.after(suggestions);
     return suggestions;
 }
 
 function hideDestinationSuggestions() {
-    const suggestions = document.getElementById('destination-suggestions');
+    const suggestions = document.getElementById("destination-suggestions");
     if (!suggestions) return;
-    suggestions.classList.remove('is-visible');
+    suggestions.classList.remove("is-visible");
 }
 
-async function resolveDestinationCoordinates(destination) {
-    const existingCoords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
+async function searchGoogleDestinations(query) {
+    await loadGoogleMaps();
+    const maps = getGoogleMaps();
+    if (!maps?.places?.AutocompleteService) return [];
+
+    destinationSearchAbortController = new AbortController();
+    const signal = destinationSearchAbortController.signal;
+    const service = new maps.places.AutocompleteService();
+
+    const request = {
+        input: query,
+        componentRestrictions: { country: "in" },
+        location: new maps.LatLng(userLatitude || TRIPURA_CENTER.lat, userLongitude || TRIPURA_CENTER.lng),
+        radius: 90000
+    };
+
+    try {
+        const predictions = await new Promise((resolve) => {
+            service.getPlacePredictions(request, (items, status) => {
+                if (status !== maps.places.PlacesServiceStatus.OK || !Array.isArray(items)) {
+                    resolve([]);
+                    return;
+                }
+                resolve(items);
+            });
+        });
+
+        if (signal.aborted) return [];
+
+        return predictions.slice(0, 8).map((prediction) => ({
+            placeId: prediction.place_id,
+            name: prediction.structured_formatting?.main_text || prediction.description,
+            mainName: prediction.structured_formatting?.main_text || prediction.description,
+            fullAddress: prediction.structured_formatting?.secondary_text || prediction.description,
+            typeHint: getPlaceTypeHint({ types: prediction.types, name: prediction.description }),
+            types: prediction.types || [],
+            source: "google",
+            provider: "google"
+        }));
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            console.warn("Google destination search failed:", error);
+        }
+        return [];
+    }
+}
+
+async function resolveGooglePlace(destination) {
+    const existingCoords = normalizeCoordinatePair(destination.lat, destination.lng);
     if (Number.isFinite(existingCoords.lat) && Number.isFinite(existingCoords.lng)) {
         return {
             ...destination,
             lat: existingCoords.lat,
-            lng: existingCoords.lng
+            lng: existingCoords.lng,
+            source: "google",
+            provider: "google"
         };
     }
 
-    const lookupText = [
-        destination.mainName || destination.name,
-        destination.fullAddress
-    ].filter(Boolean).join(", ");
-
-    if (!destination.eLoc && !lookupText) return null;
+    if (!destination.placeId) return null;
 
     try {
-        const params = new URLSearchParams();
-        if (destination.eLoc) params.set("eloc", destination.eLoc);
-        if (lookupText) params.set("q", lookupText);
-        if (Number.isFinite(Number(userLatitude)) && Number.isFinite(Number(userLongitude))) {
-            params.set("pickupLat", String(userLatitude));
-            params.set("pickupLng", String(userLongitude));
-        }
-
-        const response = await fetch(`/api/mappls-place-detail?${params.toString()}`, {
+        const params = new URLSearchParams({ placeId: destination.placeId });
+        const response = await fetch(`/api/google-place-detail?${params.toString()}`, {
             headers: { Accept: "application/json" }
         });
-        const data = await response.json();
-        const resolved = data?.result;
-        const resolvedCoords = normalizeDestinationCoordinatePair(resolved?.lat, resolved?.lng);
-        if (response.ok && Number.isFinite(resolvedCoords.lat) && Number.isFinite(resolvedCoords.lng)) {
-            return {
-                ...destination,
-                ...resolved,
-                lat: resolvedCoords.lat,
-                lng: resolvedCoords.lng
-            };
-        }
-    } catch (error) {
-        console.warn("Mappls place detail coordinate lookup failed:", error);
-    }
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.result) return null;
 
-    if (destination.eLoc) {
+        const coords = normalizeCoordinatePair(data.result.lat, data.result.lng);
+        if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
+            return null;
+        }
+
         return {
             ...destination,
-            lat: null,
-            lng: null,
-            source: destination.source || destination.provider || "mappls",
-            provider: destination.provider || destination.source || "mappls"
+            ...data.result,
+            lat: coords.lat,
+            lng: coords.lng,
+            placeId: data.result.placeId || destination.placeId,
+            source: "google",
+            provider: "google"
         };
+    } catch (error) {
+        console.warn("Google place detail lookup failed:", error);
+        return null;
+    }
+}
+
+function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan) {
+    const suggestions = ensureDestinationSuggestions(dropInput);
+
+    if (!destinations.length) {
+        suggestions.innerHTML = `
+            <div class="destination-suggestion-empty">
+                <div>No Google result found for this name.</div>
+                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Choose destination on map</button>
+            </div>
+        `;
+        suggestions.querySelector("#choose-destination-on-map-btn")?.addEventListener("click", () => {
+            startDestinationMapPick({
+                name: dropInput.value.trim() || "Pinned destination",
+                mainName: dropInput.value.trim() || "Pinned destination",
+                source: "google-map-pick",
+                provider: "google",
+                typeHint: "Pinned location"
+            }, dropInput, fareQuoteBox, fareAmountSpan);
+        });
+        suggestions.classList.add("is-visible");
+        return;
     }
 
-    return null;
+    suggestions.innerHTML = `
+        <div class="destination-suggestions-title">Search results</div>
+        ${destinations.map((destination, index) => `
+            <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
+                <span class="destination-suggestion-pin">⌖</span>
+                <span>
+                    <strong class="destination-suggestion-main">${escapeHtml(destination.mainName || destination.name)}</strong>
+                    <small class="destination-suggestion-sub">${escapeHtml(destination.fullAddress || "Tripura, India")}</small>
+                    <span class="destination-suggestion-meta">
+                        <span>${escapeHtml(destination.typeHint || getPlaceTypeHint(destination))}</span>
+                    </span>
+                </span>
+            </button>
+        `).join("")}
+    `;
+
+    suggestions.querySelectorAll(".destination-suggestion-item").forEach((item) => {
+        item.addEventListener("click", async () => {
+            const selected = destinations[Number(item.dataset.index)];
+            if (!selected) return;
+
+            dropInput.value = selected.mainName || selected.name;
+            hideDestinationSuggestions();
+            fareAmountSpan.innerText = "Calculating...";
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+
+            const resolved = await resolveGooglePlace(selected);
+            if (!resolved) {
+                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
+                return;
+            }
+
+            window.selectedDestination = buildSelectedDestination(resolved);
+            const fareRendered = await renderDestinationFare(resolved, fareQuoteBox, fareAmountSpan);
+            if (!fareRendered) {
+                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
+            }
+        });
+    });
+
+    suggestions.classList.add("is-visible");
+}
+
+function buildSelectedDestination(destination) {
+    return {
+        name: destination.mainName || destination.name,
+        fullAddress: destination.fullAddress || "",
+        lat: destination.lat,
+        lng: destination.lng,
+        source: "google",
+        provider: "google",
+        placeId: destination.placeId || "",
+        eLoc: "",
+        typeHint: destination.typeHint || getPlaceTypeHint(destination)
+    };
 }
 
 function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmountSpan) {
@@ -2004,8 +834,8 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
 
     hideDestinationSuggestions();
     fareAmountSpan.innerText = "Tap destination on map";
-    fareQuoteBox.classList.remove('d-none');
-    fareQuoteBox.classList.add('d-flex');
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
 
     destinationMapPickMode = {
         destination,
@@ -2027,440 +857,216 @@ async function completeDestinationMapPick(lat, lng) {
         ...pickMode.destination,
         lat,
         lng,
-        source: "mappls-map-pick",
-        provider: "mappls",
+        source: "google-map-pick",
+        provider: "google",
         typeHint: pickMode.destination.typeHint || "Pinned location"
     };
 
     try {
-        const response = await fetch(`/api/mappls-reverse-geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`, {
+        const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+        const response = await fetch(`/api/google-reverse-geocode?${params.toString()}`, {
             headers: { Accept: "application/json" }
         });
-        const data = await response.json();
-        if (response.ok && data?.result?.fullAddress) {
-            destination.fullAddress = data.result.fullAddress;
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.result) {
+            destination.name = data.result.name || destination.name;
+            destination.mainName = data.result.name || destination.mainName;
+            destination.fullAddress = data.result.fullAddress || destination.fullAddress;
+            destination.placeId = data.result.placeId || destination.placeId || "";
         }
     } catch (error) {
-        console.warn("Mappls reverse geocode for selected destination failed:", error);
+        console.warn("Google reverse geocode for selected destination failed:", error);
     }
 
     pickMode.dropInput.value = destination.mainName || destination.name || destination.fullAddress || "Pinned destination";
-    window.selectedDestination = {
-        name: destination.mainName || destination.name || "Pinned destination",
-        fullAddress: destination.fullAddress || "",
-        lat: destination.lat,
-        lng: destination.lng,
-        source: destination.source,
-        provider: destination.provider,
-        eLoc: destination.eLoc || "",
-        typeHint: destination.typeHint
-    };
-
+    window.selectedDestination = buildSelectedDestination(destination);
     renderDestinationFare(destination, pickMode.fareQuoteBox, pickMode.fareAmountSpan);
 }
 
-function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan) {
-    const suggestions = ensureDestinationSuggestions(dropInput);
+async function fetchRoadRouteDetails(origin, destination) {
+    const originCoords = normalizeCoordinatePair(origin.lat, origin.lng);
+    const destinationCoords = normalizeCoordinatePair(destination.lat, destination.lng);
 
-    if (!destinations.length) {
-        suggestions.innerHTML = `
-            <div class="destination-suggestion-empty">
-                <div>No Mappls text result found for this name.</div>
-                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Choose destination on map</button>
-            </div>
-        `;
-        suggestions.querySelector('#choose-destination-on-map-btn')?.addEventListener('click', () => {
-            startDestinationMapPick({
-                name: dropInput.value.trim() || "Pinned destination",
-                mainName: dropInput.value.trim() || "Pinned destination",
-                fullAddress: "Selected on map",
-                typeHint: "Pinned location"
-            }, dropInput, fareQuoteBox, fareAmountSpan);
-        });
-        suggestions.classList.add('is-visible');
-        return;
+    if (
+        !Number.isFinite(originCoords.lat) ||
+        !Number.isFinite(originCoords.lng) ||
+        !Number.isFinite(destinationCoords.lat) ||
+        !Number.isFinite(destinationCoords.lng)
+    ) {
+        return null;
     }
 
-    suggestions.innerHTML = `
-        <div class="destination-suggestions-title">Search results</div>
-        ${destinations.map((destination, index) => `
-            <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
-                <span class="destination-suggestion-pin">⌖</span>
-                <span>
-                    <strong class="destination-suggestion-main">${escapeHtml(destination.mainName || destination.name)}</strong>
-                    <small class="destination-suggestion-sub">${escapeHtml(destination.fullAddress || "Tripura, India")}</small>
-                    <span class="destination-suggestion-meta">
-                        <span>${escapeHtml(destination.typeHint || inferPlaceTypeHint(destination))}</span>
-                        ${getPickupDistanceLabel(destination) ? `<span>${escapeHtml(getPickupDistanceLabel(destination))}</span>` : ""}
-                    </span>
-                </span>
-            </button>
-        `).join("")}
-    `;
-
-    suggestions.querySelectorAll('.destination-suggestion-item').forEach((item) => {
-        item.addEventListener('click', async () => {
-            const selected = destinations[Number(item.dataset.index)];
-            if (!selected) return;
-
-            dropInput.value = selected.mainName || selected.name;
-            hideDestinationSuggestions();
-
-            const resolved = await resolveDestinationCoordinates(selected);
-            if (!resolved) {
-                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
-                return;
-            }
-
-            window.selectedDestination = {
-                name: resolved.mainName || resolved.name,
-                fullAddress: resolved.fullAddress || "",
-                lat: resolved.lat,
-                lng: resolved.lng,
-                source: resolved.source || resolved.provider || "mappls",
-                provider: resolved.provider || resolved.source || "mappls",
-                eLoc: resolved.eLoc || "",
-                typeHint: resolved.typeHint || inferPlaceTypeHint(resolved)
-            };
-            const fareRendered = await renderDestinationFare(resolved, fareQuoteBox, fareAmountSpan);
-            if (!fareRendered) {
-                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
-            }
+    try {
+        const params = new URLSearchParams({
+            originLat: String(originCoords.lat),
+            originLng: String(originCoords.lng),
+            destinationLat: String(destinationCoords.lat),
+            destinationLng: String(destinationCoords.lng)
         });
-    });
+        const response = await fetch(`/api/google-route?${params.toString()}`, {
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) return null;
 
-    suggestions.classList.add('is-visible');
-}
-
-function escapeHtml(value) {
-    return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-async function geocodeTripuraDestination(query) {
-    return (await searchTripuraDestinations(query))[0] || null;
+        return {
+            distanceKm: Number.isFinite(Number(data.distanceKm)) ? Number(data.distanceKm) : null,
+            durationMinutes: Number.isFinite(Number(data.durationMinutes)) ? Number(data.durationMinutes) : null,
+            routePath: data.encodedPolyline ? decodePolyline(data.encodedPolyline) : []
+        };
+    } catch (error) {
+        console.warn("Google route fetch failed:", error);
+        return null;
+    }
 }
 
 async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) {
-    const destinationCoords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
-    const destinationForRoute = {
-        ...destination,
-        lat: destinationCoords.lat,
-        lng: destinationCoords.lng
-    };
-    const hasDestinationCoords = Number.isFinite(destinationCoords.lat) && Number.isFinite(destinationCoords.lng);
-    const routeDetails = await fetchRoadRouteDetails(
-        { lat: userLatitude, lng: userLongitude },
-        destinationForRoute
-    );
-    const distance = Number.isFinite(routeDetails?.distanceKm)
-        ? routeDetails.distanceKm
-        : hasDestinationCoords
-            ? calculateDistance(userLatitude, userLongitude, destinationCoords.lat, destinationCoords.lng)
-            : null;
-
-    if (!Number.isFinite(distance)) {
+    const destinationCoords = normalizeCoordinatePair(destination.lat, destination.lng);
+    if (!Number.isFinite(destinationCoords.lat) || !Number.isFinite(destinationCoords.lng)) {
         return false;
     }
 
+    const routeDetails = await fetchRoadRouteDetails(
+        { lat: userLatitude, lng: userLongitude },
+        destinationCoords
+    );
+    const straightLineDistance = calculateDistance(userLatitude, userLongitude, destinationCoords.lat, destinationCoords.lng);
+    const distance = Number.isFinite(routeDetails?.distanceKm) ? routeDetails.distanceKm : straightLineDistance;
     const estimatedDurationMinutes = routeDetails?.durationMinutes || Math.max(5, Math.round((distance / 25) * 60));
     const baseFare = 30;
     const perKmRate = 12;
     const finalFare = Math.round(baseFare + (distance * perKmRate));
-    const routeCoords = Array.isArray(routeDetails?.coordinates) ? routeDetails.coordinates : [];
-    const routedDestinationCoords = routeCoords.length >= 2
-        ? {
-            lat: routeCoords[routeCoords.length - 1][0],
-            lng: routeCoords[routeCoords.length - 1][1]
-        }
-        : destinationCoords;
-    const hasRoutedCoords = Number.isFinite(routedDestinationCoords.lat) && Number.isFinite(routedDestinationCoords.lng);
 
     window.latestFareQuote = {
         pickup_lat: userLatitude,
         pickup_lng: userLongitude,
-        drop_lat: hasRoutedCoords ? routedDestinationCoords.lat : null,
-        drop_lng: hasRoutedCoords ? routedDestinationCoords.lng : null,
+        drop_lat: destinationCoords.lat,
+        drop_lng: destinationCoords.lng,
         drop_name: destination.mainName || destination.name,
         drop_full_address: destination.fullAddress || "",
-        drop_source: destination.source || destination.provider || "unknown",
-        drop_eloc: destination.eLoc || "",
-        drop_type_hint: destination.typeHint || inferPlaceTypeHint(destination),
+        drop_source: "google",
+        drop_provider: "google",
+        drop_place_id: destination.placeId || "",
+        drop_eloc: "",
+        drop_type_hint: destination.typeHint || getPlaceTypeHint(destination),
         distance_km: Number(distance.toFixed(2)),
         duration_minutes: estimatedDurationMinutes
     };
 
     fareAmountSpan.innerText = `\u20B9${finalFare}.00`;
-    fareQuoteBox.classList.remove('d-none');
-    fareQuoteBox.classList.add('d-flex');
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
 
-    if (!window.mapInstance) return true;
-
-    clearDestinationRoute();
-
-    if (!hasRoutedCoords) {
-        return true;
-    }
-
-    const drawableDestination = {
-        ...destination,
-        lat: routedDestinationCoords.lat,
-        lng: routedDestinationCoords.lng
-    };
-    const drawableRouteCoords = routeCoords.length >= 2
-        ? routeCoords
-        : [
-            [userLatitude, userLongitude],
-            [routedDestinationCoords.lat, routedDestinationCoords.lng]
-        ];
-
-    if (drawMapplsDestinationAndRoute(drawableDestination, drawableRouteCoords)) {
-        return true;
-    }
-
-    drawLeafletDestinationAndRoute(drawableDestination, drawableRouteCoords);
+    drawDestinationAndRoute(destination, routeDetails?.routePath || []);
     return true;
 }
 
-function clearDestinationRoute() {
-    const baseMap = getActiveMapplsBaseMap();
-
-    if (baseMap) {
-        removeMapplsLayer(baseMap, mapplsDestinationMarker);
-        mapplsDestinationMarker = null;
-        mapplsRouteLayers.forEach((layer) => removeMapplsLayer(baseMap, layer));
-        mapplsRouteLayers = [];
-    }
-
+function drawDestinationAndRoute(destination, routePath = []) {
     if (!window.mapInstance) return;
 
-    if (destinationMarker) {
-        window.mapInstance.removeLayer(destinationMarker);
-        destinationMarker = null;
-    }
+    const maps = getGoogleMaps();
+    const destinationCoords = normalizeCoordinatePair(destination.lat, destination.lng);
+    if (!Number.isFinite(destinationCoords.lat) || !Number.isFinite(destinationCoords.lng)) return;
 
-    if (routePolyline) {
-        window.mapInstance.removeLayer(routePolyline);
-        routePolyline = null;
-    }
-}
+    clearRouteAndDestination();
 
-function drawMapplsDestinationAndRoute(destination, routeCoords) {
-    const baseMap = getActiveMapplsBaseMap();
-    if (!baseMap || !window.mappls?.Marker || !window.mappls?.Polyline) {
-        return false;
-    }
-
-    try {
-        const destinationName = destination.mainName || destination.name || "Drop location";
-        mapplsDestinationMarker = new window.mappls.Marker({
-            map: baseMap,
-            position: { lat: destination.lat, lng: destination.lng },
-            html: createDestinationMarkerHtml(),
-            popupOptions: true,
-            popupHtml: `
-                <div class="map-popup-title">${destinationName}</div>
-                <div class="map-popup-sub">Drop location</div>
-            `,
-            width: 24,
-            height: 36,
-            offset: [0, -18]
-        });
-
-        const path = routeCoords.map(([lat, lng]) => ({ lat, lng }));
-        const routeGlow = new window.mappls.Polyline({
-            map: baseMap,
-            path,
-            paths: path,
-            strokeColor: '#ffffff',
-            strokeOpacity: 0.55,
-            strokeWeight: 10,
-            fitbounds: false
-        });
-        const routeLine = new window.mappls.Polyline({
-            map: baseMap,
-            path,
-            paths: path,
-            strokeColor: '#1a73e8',
-            strokeOpacity: 0.95,
-            strokeWeight: 5,
-            fitbounds: false
-        });
-
-        mapplsRouteLayers = [routeGlow, routeLine];
-        fitActiveMapToRoute(routeCoords);
-        return true;
-    } catch (error) {
-        console.warn("Mappls destination/route render failed, using Leaflet fallback:", error);
-        clearDestinationRoute();
-        return false;
-    }
-}
-
-function drawLeafletDestinationAndRoute(destination, routeCoords) {
-    const destinationName = destination.mainName || destination.name || "Drop location";
-    const destinationIcon = L.divIcon({
-        className: 'destination-marker-icon',
-        html: createDestinationMarkerHtml(),
-        iconSize: [24, 36],
-        iconAnchor: [12, 36],
-        popupAnchor: [0, -32]
+    destinationMarker = makeMarker({
+        map: window.mapInstance,
+        position: googleLatLngLiteral(destinationCoords),
+        title: destination.mainName || destination.name || "Drop location",
+        zIndex: 900
     });
 
-    destinationMarker = L.marker([destination.lat, destination.lng], {
-        icon: destinationIcon
-    }).addTo(window.mapInstance)
-        .bindPopup(`
-            <div class="map-popup-title">${destinationName}</div>
-            <div class="map-popup-sub">Drop location</div>
-        `);
+    const path = Array.isArray(routePath) && routePath.length >= 2
+        ? routePath
+        : [
+            { lat: userLatitude, lng: userLongitude },
+            { lat: destinationCoords.lat, lng: destinationCoords.lng }
+        ];
 
-    drawRoutePolyline(routeCoords);
+    routePolyline = new maps.Polyline({
+        map: window.mapInstance,
+        path,
+        strokeColor: "#1a73e8",
+        strokeOpacity: 0.92,
+        strokeWeight: 5
+    });
+
+    const bounds = new maps.LatLngBounds();
+    path.forEach((point) => bounds.extend(point));
+    bounds.extend({ lat: userLatitude, lng: userLongitude });
+    bounds.extend(destinationCoords);
+    window.mapInstance.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
 }
 
-async function fetchRoadRouteDetails(origin, destination) {
-    try {
-        const destinationCoords = normalizeDestinationCoordinatePair(destination.lat, destination.lng);
-        const params = new URLSearchParams({
-            originLat: origin.lat,
-            originLng: origin.lng
-        });
-        if (Number.isFinite(destinationCoords.lat) && Number.isFinite(destinationCoords.lng)) {
-            params.set("destinationLat", String(destinationCoords.lat));
-            params.set("destinationLng", String(destinationCoords.lng));
-        } else if (destination.eLoc) {
-            params.set("destinationELoc", destination.eLoc);
-        } else {
-            return null;
-        }
-
-        const routeUrl = `/api/mappls-route?${params.toString()}`;
-        const response = await fetch(routeUrl);
-        const data = await response.json();
-        const coordinates = Array.isArray(data.coordinates) ? data.coordinates : [];
-        const distanceKm = Number(data.distanceKm);
-        const durationMinutes = Number(data.durationMinutes);
-
-        return {
-            coordinates,
-            distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
-            durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : null
-        };
-    } catch (error) {
-        console.warn("Mappls route fetch failed:", error);
+export async function renderGoogleRoutePreview(hostElementOrId, fareQuote = {}) {
+    const origin = normalizeCoordinatePair(fareQuote.pickup_lat, fareQuote.pickup_lng);
+    const destination = normalizeCoordinatePair(fareQuote.drop_lat, fareQuote.drop_lng);
+    if (
+        !Number.isFinite(origin.lat) ||
+        !Number.isFinite(origin.lng) ||
+        !Number.isFinite(destination.lat) ||
+        !Number.isFinite(destination.lng)
+    ) {
         return null;
     }
-}
 
-function drawRoutePolyline(routeCoords) {
-    const routeUnderline = L.polyline(routeCoords, {
-        color: '#fff',
-        weight: 10,
-        opacity: 0.35,
-        lineCap: 'round',
-        lineJoin: 'round'
+    const shell = await createRideMapSurface(hostElementOrId, {
+        center: origin,
+        zoom: 15,
+        zoomControl: false,
+        fullscreenControl: false,
+        gestureHandling: "cooperative",
+        disableDefaultUI: true
     });
 
-    const routeLine = L.polyline(routeCoords, {
-        color: '#1a73e8',
-        weight: 5,
-        opacity: 0.9,
-        lineCap: 'round',
-        lineJoin: 'round'
+    const maps = getGoogleMaps();
+    const routeDetails = await fetchRoadRouteDetails(origin, destination);
+    const path = routeDetails?.routePath?.length >= 2
+        ? routeDetails.routePath
+        : [origin, destination];
+
+    new maps.Marker({
+        map: shell.map,
+        position: origin,
+        title: "Pickup"
+    });
+    new maps.Marker({
+        map: shell.map,
+        position: destination,
+        title: "Drop"
     });
 
-    routePolyline = L.layerGroup([routeUnderline, routeLine]).addTo(window.mapInstance);
-    window.mapInstance.fitBounds(routeLine.getBounds(), { padding: [60, 60] });
+    new maps.Polyline({
+        map: shell.map,
+        path,
+        strokeColor: "#1A7A2E",
+        strokeOpacity: 0.95,
+        strokeWeight: 5
+    });
+
+    const bounds = new maps.LatLngBounds();
+    path.forEach((point) => bounds.extend(point));
+    shell.map.fitBounds(bounds, { top: 42, right: 42, bottom: 42, left: 42 });
+    return shell;
 }
 
-function fitActiveMapToRoute(routeCoords) {
-    if (!window.mapInstance || !Array.isArray(routeCoords) || routeCoords.length < 2) {
-        return;
-    }
-
-    const bounds = L.latLngBounds(routeCoords.map(([lat, lng]) => [lat, lng]));
-    window.mapInstance.fitBounds(bounds, { padding: [60, 60] });
-}
-
-// Helper mathematical function to compute distance between two map coordinates
 function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Earth radius in km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+        + Math.cos(lat1 * Math.PI / 180)
+        * Math.cos(lat2 * Math.PI / 180)
+        * Math.sin(dLon / 2)
+        * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 }
 
-// Listen for custom login trigger
-window.addEventListener('user-session-ready', (e) => {
-    initializeMapEngine();
-});
-
-
-
-
-// Variable to hold the driver's map marker
-let driverMarker = null;
-
-// Listen for live GPS pings from the app.js Firestore snapshot
-window.addEventListener('driver-location-updated', (e) => {
-    const coords = e.detail; // Contains { lat, lng }
-
-    // Check if your window-scoped map instance is ready
-    if (!window.mapInstance) {
-        console.error("Map instance not found on window scope.");
-        return;
-    }
-
-    console.log("Passenger map received driver location:", coords);
-
-    if (!driverMarker) {
-        // Create the driver marker
-        driverMarker = L.marker([coords.lat, coords.lng], {
-            icon: L.divIcon({
-                className: 'taxi-floating-icon',
-                html: `
-                    <div style="width:36px;height:36px;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.35));">
-                        <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="10" y="6" width="16" height="24" rx="5" fill="#111827"/>
-                            <rect x="13" y="9" width="10" height="6" rx="1.5" fill="#60a5fa"/>
-                            <rect x="13" y="20" width="10" height="5" rx="1.5" fill="#2563eb"/>
-                            <circle cx="9" cy="12" r="2" fill="#6b7280"/>
-                            <circle cx="27" cy="12" r="2" fill="#6b7280"/>
-                            <circle cx="9" cy="24" r="2" fill="#6b7280"/>
-                            <circle cx="27" cy="24" r="2" fill="#6b7280"/>
-                            <rect x="12" y="4" width="4" height="2" rx="1" fill="#facc15"/>
-                            <rect x="20" y="4" width="4" height="2" rx="1" fill="#facc15"/>
-                            <rect x="12" y="30" width="4" height="2" rx="1" fill="#ef4444"/>
-                            <rect x="20" y="30" width="4" height="2" rx="1" fill="#ef4444"/>
-                            <path d="M12 17H24" stroke="#374151" stroke-width="1"/>
-                        </svg>
-                    </div>
-                `,
-                iconSize: [36, 36],
-                iconAnchor: [18, 18]
-            })
-        }).addTo(window.mapInstance); // Changed to window.mapInstance
-
-        // Pan the map smoothly to center on the approaching driver
-        window.mapInstance.setView([coords.lat, coords.lng], 15); // Changed to window.mapInstance
-    } else {
-        // Smoothly update the coordinates of the existing marker
-        driverMarker.setLatLng([coords.lat, coords.lng]);
-    }
-});
-
-// Clean up the map marker when the trip ends
-window.addEventListener('ride-completed-clear-map', () => {
-    if (driverMarker && window.mapInstance) {
-        window.mapInstance.removeLayer(driverMarker); // Changed to window.mapInstance
-        driverMarker = null;
-    }
+window.addEventListener("user-session-ready", () => {
+    if (!document.getElementById("map-container")) return;
+    initializeMapEngine().catch((error) => {
+        console.error("Google map engine initialization failed:", error);
+    });
 });

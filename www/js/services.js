@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { createRideMapSurface, initializeMapEngine } from './map.js';
+import { initializeMapEngine, renderGoogleRoutePreview } from './map.js';
 
 const authView = document.getElementById('auth-view');
 const dashboardView = document.getElementById('dashboard-view');
@@ -76,7 +76,9 @@ function resetConfirmMap() {
     }
 
     if (confirmMapInstance) {
-        confirmMapInstance.remove();
+        if (typeof confirmMapInstance.remove === "function") {
+            confirmMapInstance.remove();
+        }
         confirmMapInstance = null;
     }
 }
@@ -101,47 +103,9 @@ function updateVehicleSelection(vehicleType) {
     });
 }
 
-function createConfirmIcon(type) {
-    const isPickup = type === "pickup";
-    return window.L.divIcon({
-        className: `service-confirm-marker ${type}`,
-        html: isPickup
-            ? '<span class="confirm-pickup-dot"></span>'
-            : `<svg width="28" height="34" viewBox="0 0 28 34" aria-hidden="true">
-                <path d="M14 33C14 33 26 20.7 26 12.8C26 6.3 20.6 1 14 1C7.4 1 2 6.3 2 12.8C2 20.7 14 33 14 33Z" fill="#EF4444" stroke="#fff" stroke-width="3"/>
-                <circle cx="14" cy="12.8" r="4.2" fill="#fff"/>
-            </svg>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-    });
-}
-
-async function fetchConfirmRoute(origin, destination) {
-    const fallback = [
-        [origin.lat, origin.lng],
-        [destination.lat, destination.lng]
-    ];
-
-    try {
-        const routeUrl = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`;
-        const response = await fetch(routeUrl);
-        const data = await response.json();
-        const coordinates = data.routes?.[0]?.geometry?.coordinates;
-
-        if (!Array.isArray(coordinates) || !coordinates.length) {
-            return fallback;
-        }
-
-        return coordinates.map(([lng, lat]) => [lat, lng]);
-    } catch (error) {
-        console.warn("Confirm route fetch failed, using direct fallback:", error);
-        return fallback;
-    }
-}
-
 async function renderConfirmRouteMap(fareQuote) {
     const mapElement = document.getElementById('service-confirm-map');
-    if (!mapElement || !window.L) return;
+    if (!mapElement) return;
 
     const origin = {
         lat: Number(fareQuote?.pickup_lat),
@@ -157,46 +121,8 @@ async function renderConfirmRouteMap(fareQuote) {
     }
 
     resetConfirmMap();
-    confirmMapShell = await createRideMapSurface(mapElement, {
-        shellId: 'service-confirm-map-shell',
-        center: origin,
-        zoom: 15,
-        zoomControl: false,
-        attributionControl: false,
-        dragging: true,
-        scrollWheelZoom: false,
-        doubleClickZoom: false,
-        touchZoom: true,
-        minZoom: 10,
-        maxZoom: 19
-    });
-    confirmMapInstance = confirmMapShell.map;
-
-    const routeCoords = await fetchConfirmRoute(origin, destination);
-    const routeGlow = window.L.polyline(routeCoords, {
-        color: '#fff',
-        weight: 10,
-        opacity: 0.75,
-        lineCap: 'round',
-        lineJoin: 'round'
-    }).addTo(confirmMapInstance);
-
-    const routeLine = window.L.polyline(routeCoords, {
-        color: '#1A7A2E',
-        weight: 5,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round'
-    }).addTo(confirmMapInstance);
-
-    window.L.marker([origin.lat, origin.lng], { icon: createConfirmIcon("pickup") }).addTo(confirmMapInstance);
-    window.L.marker([destination.lat, destination.lng], { icon: createConfirmIcon("drop") }).addTo(confirmMapInstance);
-    confirmMapInstance.fitBounds(routeLine.getBounds(), { padding: [42, 42] });
-
-    setTimeout(() => {
-        confirmMapInstance?.invalidateSize();
-        confirmMapInstance?.fitBounds(routeGlow.getBounds(), { padding: [42, 42] });
-    }, 80);
+    confirmMapShell = await renderGoogleRoutePreview(mapElement, fareQuote);
+    confirmMapInstance = confirmMapShell?.map || null;
 }
 
 function openConfirmRide(detail) {

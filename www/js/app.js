@@ -821,6 +821,8 @@ requestRideButton.addEventListener('click', async () => {
             drop_name: dropText,
             drop_full_address: fareQuote.drop_full_address || "",
             drop_source: fareQuote.drop_source || "",
+            drop_provider: fareQuote.drop_provider || fareQuote.drop_source || "",
+            drop_place_id: fareQuote.drop_place_id || "",
             drop_eloc: fareQuote.drop_eloc || "",
             drop_type_hint: fareQuote.drop_type_hint || "",
             pickup_lat: fareQuote.pickup_lat || null,
