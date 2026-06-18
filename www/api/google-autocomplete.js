@@ -65,7 +65,7 @@ async function fetchAutocomplete(input, key, lat, lng) {
                     latitude: Number.isFinite(lat) ? lat : 23.8315,
                     longitude: Number.isFinite(lng) ? lng : 91.9882
                 },
-                radius: 100000
+                radius: 50000
             }
         }
     };
@@ -96,7 +96,7 @@ async function fetchTextSearch(input, key, lat, lng) {
                     latitude: Number.isFinite(lat) ? lat : 23.8315,
                     longitude: Number.isFinite(lng) ? lng : 91.9882
                 },
-                radius: 100000
+                radius: 50000
             }
         }
     };
