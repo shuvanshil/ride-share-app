@@ -1,5 +1,23 @@
 const { json, requireServerKey, fetchJson, numberOrNull } = require("./_google");
 
+function buildQueryVariants(query) {
+    const clean = String(query || "").trim().replace(/\s+/g, " ");
+    const lower = clean.toLowerCase();
+    const variants = [
+        clean,
+        `${clean} Tripura`,
+        `${clean} India`
+    ];
+
+    if (!/(agartala|kailashahar|kumarghat|dharmanagar|ambassa|udaipur|belonia|khowai|teliamura|unakoti|tripura)/.test(lower)) {
+        variants.push(`${clean} Kailashahar Tripura`);
+        variants.push(`${clean} Unakoti Tripura`);
+        variants.push(`${clean} Agartala Tripura`);
+    }
+
+    return [...new Set(variants)].filter(Boolean).slice(0, 6);
+}
+
 function normalizePrediction(prediction = {}) {
     const structured = prediction.structuredFormat || {};
     const mainName = structured.mainText?.text || prediction.text?.text || "";
@@ -97,6 +115,50 @@ async function fetchTextSearch(input, key, lat, lng) {
         .map(normalizeTextSearchPlace);
 }
 
+async function fetchGeocode(input, key) {
+    const params = new URLSearchParams({
+        address: input,
+        region: "in",
+        key
+    });
+    const data = await fetchJson(`https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`);
+    const results = Array.isArray(data.results) ? data.results : [];
+
+    return results.map((item) => {
+        const location = item.geometry?.location || {};
+        const fullAddress = item.formatted_address || "";
+        const mainName = item.address_components?.[0]?.long_name || fullAddress;
+
+        return {
+            placeId: item.place_id || "",
+            name: mainName,
+            mainName,
+            fullAddress,
+            types: Array.isArray(item.types) ? item.types : [],
+            lat: numberOrNull(location.lat),
+            lng: numberOrNull(location.lng),
+            source: "google",
+            provider: "google"
+        };
+    });
+}
+
+async function collectSafe(label, debug, task) {
+    try {
+        const results = await task();
+        debug.push({ label, ok: true, count: results.length });
+        return results;
+    } catch (error) {
+        debug.push({
+            label,
+            ok: false,
+            status: error.status || 0,
+            message: error.data?.error?.message || error.data?.error_message || error.message
+        });
+        return [];
+    }
+}
+
 function dedupe(items) {
     const seen = new Set();
     return items.filter((item) => {
@@ -126,14 +188,28 @@ module.exports = async function handler(req, res) {
 
     try {
         const key = requireServerKey();
-        const autocomplete = await fetchAutocomplete(query, key, lat, lng).catch(() => []);
-        const textSearch = autocomplete.length
-            ? []
-            : await fetchTextSearch(query, key, lat, lng).catch(() => []);
+        const debug = [];
+        const results = [];
 
-        return json(res, 200, {
-            results: dedupe([...autocomplete, ...textSearch]).slice(0, 8)
-        });
+        for (const variant of buildQueryVariants(query)) {
+            results.push(...await collectSafe(`autocomplete:${variant}`, debug, () => fetchAutocomplete(variant, key, lat, lng)));
+            if (results.length >= 8) break;
+
+            results.push(...await collectSafe(`text:${variant}`, debug, () => fetchTextSearch(variant, key, lat, lng)));
+            if (results.length >= 8) break;
+
+            results.push(...await collectSafe(`geocode:${variant}`, debug, () => fetchGeocode(variant, key)));
+            if (results.length >= 8) break;
+        }
+
+        const payload = {
+            results: dedupe(results).slice(0, 8)
+        };
+        if (req.query?.debug === "1") {
+            payload.debug = debug;
+        }
+
+        return json(res, 200, payload);
     } catch (error) {
         return json(res, 500, {
             error: "Google autocomplete failed",
