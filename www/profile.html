@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="canonical" href="https://ride-share-app.vercel.app/">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -157,6 +158,25 @@
     </div>
 
     <div id="profile-save-notice" class="profile-save-notice d-none" role="status">Profile updated successfully</div>
+
+    <div id="profile-share-layer" class="profile-share-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-share-title">
+        <button id="profile-share-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close sharing options"></button>
+        <section class="profile-share-sheet">
+            <header class="profile-share-head">
+                <div>
+                    <span>Refer GoYatra</span>
+                    <h2 id="profile-share-title">Share with friends</h2>
+                </div>
+                <button id="profile-share-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
+            </header>
+            <div class="profile-share-options">
+                <button type="button" data-share-channel="whatsapp"><strong>WA</strong><span>WhatsApp</span></button>
+                <button type="button" data-share-channel="facebook"><strong>f</strong><span>Facebook</span></button>
+                <button type="button" data-share-channel="email"><strong>@</strong><span>Email</span></button>
+                <button type="button" data-share-channel="copy"><strong>⧉</strong><span>Copy link</span></button>
+            </div>
+        </section>
+    </div>
 
     <script src="js/navigation.js"></script>
     <script type="module" src="js/profile.js"></script>

@@ -9,6 +9,9 @@ import {
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const PROFILE_CACHE_KEY = "goyatra_user_profile";
+const APP_SHARE_URL = "https://ride-share-app.vercel.app/";
+const APP_SHARE_TITLE = "GoYatra";
+const APP_SHARE_TEXT = "Book reliable local rides with GoYatra. Join me and travel easily across Tripura.";
 const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_SAVED_IMAGE_LENGTH = 650000;
 
@@ -28,6 +31,7 @@ const removePhotoButton = document.getElementById('profile-photo-remove-btn');
 const saveButton = document.getElementById('profile-save-btn');
 const errorBox = document.getElementById('profile-edit-error');
 const saveNotice = document.getElementById('profile-save-notice');
+const shareLayer = document.getElementById('profile-share-layer');
 
 const inputs = {
     name: document.getElementById('profile-edit-name'),
@@ -108,6 +112,81 @@ function showSaveNotice() {
     if (noticeTimer) window.clearTimeout(noticeTimer);
     saveNotice.classList.remove('d-none');
     noticeTimer = window.setTimeout(() => saveNotice.classList.add('d-none'), 2600);
+}
+
+function openFallbackShareSheet() {
+    shareLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+}
+
+function closeFallbackShareSheet() {
+    shareLayer.classList.add('d-none');
+    if (editLayer.classList.contains('d-none')) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
+async function copyShareLink() {
+    try {
+        await navigator.clipboard.writeText(APP_SHARE_URL);
+    } catch {
+        const temporaryInput = document.createElement('textarea');
+        temporaryInput.value = APP_SHARE_URL;
+        temporaryInput.setAttribute('readonly', '');
+        temporaryInput.style.position = 'fixed';
+        temporaryInput.style.opacity = '0';
+        document.body.appendChild(temporaryInput);
+        temporaryInput.select();
+        document.execCommand('copy');
+        temporaryInput.remove();
+    }
+
+    closeFallbackShareSheet();
+    saveNotice.innerText = "GoYatra link copied";
+    showSaveNotice();
+    window.setTimeout(() => {
+        saveNotice.innerText = "Profile updated successfully";
+    }, 2700);
+}
+
+function openShareChannel(channel) {
+    const message = `${APP_SHARE_TEXT} ${APP_SHARE_URL}`;
+    const urls = {
+        whatsapp: `https://wa.me/?text=${encodeURIComponent(message)}`,
+        facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_SHARE_URL)}`,
+        email: `mailto:?subject=${encodeURIComponent(APP_SHARE_TITLE)}&body=${encodeURIComponent(message)}`
+    };
+
+    if (channel === 'copy') {
+        copyShareLink();
+        return;
+    }
+
+    const target = urls[channel];
+    if (target) {
+        window.open(target, '_blank', 'noopener,noreferrer');
+        closeFallbackShareSheet();
+    }
+}
+
+async function shareGoYatra() {
+    const shareData = {
+        title: APP_SHARE_TITLE,
+        text: APP_SHARE_TEXT,
+        url: APP_SHARE_URL
+    };
+
+    if (typeof navigator.share === 'function') {
+        try {
+            await navigator.share(shareData);
+            return;
+        } catch (error) {
+            if (error?.name === 'AbortError') return;
+            console.warn("Native app sharing failed; showing fallback options:", error);
+        }
+    }
+
+    openFallbackShareSheet();
 }
 
 function setSavingState(isSaving) {
@@ -319,9 +398,7 @@ function bindProfileActions() {
     document.querySelector('[data-action="safety"]').addEventListener('click', () => {
         alert('Safety center coming soon.');
     });
-    document.querySelector('[data-action="refer"]').addEventListener('click', () => {
-        alert('Referral program coming soon.');
-    });
+    document.querySelector('[data-action="refer"]').addEventListener('click', shareGoYatra);
     document.querySelector('[data-action="about"]').addEventListener('click', () => {
         alert('GoYatra is a local ride-hailing platform for Tripura.');
     });
@@ -330,6 +407,11 @@ function bindProfileActions() {
     document.getElementById('profile-edit-close-btn').addEventListener('click', closeEditor);
     document.getElementById('profile-edit-cancel-btn').addEventListener('click', closeEditor);
     document.getElementById('profile-edit-backdrop').addEventListener('click', closeEditor);
+    document.getElementById('profile-share-close-btn').addEventListener('click', closeFallbackShareSheet);
+    document.getElementById('profile-share-backdrop').addEventListener('click', closeFallbackShareSheet);
+    document.querySelectorAll('[data-share-channel]').forEach((button) => {
+        button.addEventListener('click', () => openShareChannel(button.dataset.shareChannel));
+    });
     editForm.addEventListener('submit', saveProfile);
 
     inputs.name.addEventListener('input', () => {
@@ -370,7 +452,12 @@ function bindProfileActions() {
     });
 
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !editLayer.classList.contains('d-none')) closeEditor();
+        if (event.key !== 'Escape') return;
+        if (!shareLayer.classList.contains('d-none')) {
+            closeFallbackShareSheet();
+        } else if (!editLayer.classList.contains('d-none')) {
+            closeEditor();
+        }
     });
 
     document.getElementById('profile-logout-btn').addEventListener('click', async () => {
