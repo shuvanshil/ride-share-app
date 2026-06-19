@@ -1,0 +1,420 @@
+import { auth, db } from './firebase-init.js';
+import {
+    doc,
+    getDoc,
+    serverTimestamp,
+    setDoc,
+    updateDoc
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+const PROFILE_CACHE_KEY = "goyatra_user_profile";
+const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_SAVED_IMAGE_LENGTH = 650000;
+
+const nameEl = document.getElementById('profile-user-name');
+const phoneEl = document.getElementById('profile-user-phone');
+const emailEl = document.getElementById('profile-user-email');
+const avatarEl = document.getElementById('profile-avatar');
+const editButton = document.getElementById('profile-edit-btn');
+const editLayer = document.getElementById('profile-edit-layer');
+const editForm = document.getElementById('profile-edit-form');
+const editAvatar = document.getElementById('profile-edit-avatar');
+const roleBadge = document.getElementById('profile-edit-role');
+const driverFields = document.getElementById('profile-driver-fields');
+const photoFileInput = document.getElementById('profile-photo-file');
+const photoUrlInput = document.getElementById('profile-photo-url');
+const removePhotoButton = document.getElementById('profile-photo-remove-btn');
+const saveButton = document.getElementById('profile-save-btn');
+const errorBox = document.getElementById('profile-edit-error');
+const saveNotice = document.getElementById('profile-save-notice');
+
+const inputs = {
+    name: document.getElementById('profile-edit-name'),
+    email: document.getElementById('profile-edit-email'),
+    phone: document.getElementById('profile-edit-phone'),
+    vehicleModel: document.getElementById('profile-edit-vehicle-model'),
+    vehicleNumber: document.getElementById('profile-edit-vehicle-number'),
+    license: document.getElementById('profile-edit-license'),
+    upi: document.getElementById('profile-edit-upi')
+};
+
+let currentAuthUser = null;
+let currentProfile = null;
+let pendingPhotoValue = "";
+let saveInProgress = false;
+let noticeTimer = null;
+
+function getInitials(name) {
+    return String(name || "G")
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() || "")
+        .join("") || "G";
+}
+
+function renderAvatar(container, name, photoUrl) {
+    container.replaceChildren();
+
+    if (!photoUrl) {
+        container.innerText = getInitials(name);
+        return;
+    }
+
+    const photo = document.createElement('img');
+    photo.src = photoUrl;
+    photo.alt = `${name || "GoYatra user"} profile photo`;
+    photo.addEventListener('error', () => {
+        container.replaceChildren();
+        container.innerText = getInitials(name);
+    }, { once: true });
+    container.appendChild(photo);
+}
+
+function renderProfileSummary(profile = {}) {
+    const displayName = profile.name || currentAuthUser?.displayName || "GoYatra User";
+    const phone = profile.phone || currentAuthUser?.phoneNumber || "Phone number unavailable";
+
+    nameEl.innerText = displayName;
+    phoneEl.innerText = phone;
+    emailEl.innerText = profile.email || "";
+    renderAvatar(avatarEl, displayName, profile.profilePhotoUrl || "");
+}
+
+function cacheProfile(profile) {
+    const { createdAt, updatedAt, cachedAt, ...cacheableProfile } = profile;
+    try {
+        sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
+            ...cacheableProfile,
+            cachedAt: Date.now()
+        }));
+    } catch (error) {
+        console.warn("Could not cache updated profile:", error);
+    }
+}
+
+function showError(message) {
+    errorBox.innerText = message;
+    errorBox.classList.remove('d-none');
+}
+
+function clearError() {
+    errorBox.innerText = "";
+    errorBox.classList.add('d-none');
+}
+
+function showSaveNotice() {
+    if (noticeTimer) window.clearTimeout(noticeTimer);
+    saveNotice.classList.remove('d-none');
+    noticeTimer = window.setTimeout(() => saveNotice.classList.add('d-none'), 2600);
+}
+
+function setSavingState(isSaving) {
+    saveInProgress = isSaving;
+    saveButton.disabled = isSaving;
+    saveButton.innerText = isSaving ? "Saving..." : "Save Changes";
+    editForm.querySelectorAll('input, button').forEach((control) => {
+        if (control !== saveButton) control.disabled = isSaving;
+    });
+}
+
+function populateEditForm() {
+    if (!currentProfile || !currentAuthUser) return;
+
+    const isDriver = currentProfile.role === "driver";
+    const photoUrl = currentProfile.profilePhotoUrl || "";
+
+    inputs.name.value = currentProfile.name || currentAuthUser.displayName || "";
+    inputs.email.value = currentProfile.email || "";
+    inputs.phone.value = currentProfile.phone || currentAuthUser.phoneNumber || "";
+    inputs.vehicleModel.value = currentProfile.vehicleModel || currentProfile.vehicle_model || "";
+    inputs.vehicleNumber.value = currentProfile.vehicleNumber || currentProfile.vehicle_number || "";
+    inputs.license.value = currentProfile.drivingLicenseNumber || "";
+    inputs.upi.value = currentProfile.upiId || "";
+    photoUrlInput.value = /^https?:\/\//i.test(photoUrl) ? photoUrl : "";
+    photoFileInput.value = "";
+    pendingPhotoValue = photoUrl;
+
+    roleBadge.innerText = isDriver ? "Driver account" : "Passenger account";
+    driverFields.classList.toggle('d-none', !isDriver);
+    removePhotoButton.classList.toggle('d-none', !photoUrl);
+    renderAvatar(editAvatar, inputs.name.value, photoUrl);
+    clearError();
+}
+
+function openEditor() {
+    if (!currentProfile || !currentAuthUser) return;
+    populateEditForm();
+    editLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => inputs.name.focus(), 80);
+}
+
+function closeEditor() {
+    if (saveInProgress) return;
+    editLayer.classList.add('d-none');
+    document.body.classList.remove('profile-editor-open');
+    clearError();
+}
+
+function loadImage(file) {
+    return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(image);
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("The selected image could not be read."));
+        };
+        image.src = objectUrl;
+    });
+}
+
+async function compressProfilePhoto(file) {
+    if (!file.type.startsWith('image/')) {
+        throw new Error("Choose a JPG, PNG, or WebP image.");
+    }
+    if (file.size > MAX_SOURCE_IMAGE_BYTES) {
+        throw new Error("Choose an image smaller than 10 MB.");
+    }
+
+    const image = await loadImage(file);
+    const maxDimension = 480;
+    const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    let quality = 0.8;
+    let dataUrl = canvas.toDataURL('image/jpeg', quality);
+    while (dataUrl.length > MAX_SAVED_IMAGE_LENGTH && quality > 0.45) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+    }
+
+    if (dataUrl.length > MAX_SAVED_IMAGE_LENGTH) {
+        throw new Error("This image is still too large after resizing. Choose a smaller photo.");
+    }
+
+    return dataUrl;
+}
+
+function validateProfileForm() {
+    const name = inputs.name.value.trim();
+    const email = inputs.email.value.trim();
+    const photoUrl = photoUrlInput.value.trim();
+    const isDriver = currentProfile?.role === "driver";
+
+    if (name.length < 2) return "Enter your full name.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email address.";
+    if (photoUrl && !/^https?:\/\/[^\s]+$/i.test(photoUrl)) return "Enter a valid profile photo URL.";
+
+    if (isDriver) {
+        const vehicleModel = inputs.vehicleModel.value.trim();
+        const vehicleNumber = inputs.vehicleNumber.value.trim();
+        const license = inputs.license.value.trim();
+        const upi = inputs.upi.value.trim();
+
+        if (!pendingPhotoValue) return "A profile photo is required for driver accounts.";
+        if (vehicleModel.length < 2) return "Enter the registered vehicle model.";
+        if (!/^[A-Z0-9 -]{4,20}$/i.test(vehicleNumber)) return "Enter a valid vehicle number.";
+        if (!/^[A-Z0-9 -]{5,30}$/i.test(license)) return "Enter a valid driving licence number.";
+        if (!/^[a-z0-9._-]{2,}@[a-z0-9.-]{2,}$/i.test(upi)) return "Enter a valid UPI ID.";
+    }
+
+    return "";
+}
+
+async function saveProfile(event) {
+    event.preventDefault();
+    if (!currentAuthUser || !currentProfile || saveInProgress) return;
+
+    if (photoUrlInput.value.trim()) {
+        pendingPhotoValue = photoUrlInput.value.trim();
+    }
+
+    const validationError = validateProfileForm();
+    if (validationError) {
+        showError(validationError);
+        return;
+    }
+
+    clearError();
+    setSavingState(true);
+
+    const name = inputs.name.value.trim();
+    const email = inputs.email.value.trim().toLowerCase();
+    const updates = {
+        name,
+        email,
+        profilePhotoUrl: pendingPhotoValue,
+        updatedAt: serverTimestamp()
+    };
+
+    if (currentProfile.role === "driver") {
+        const vehicleModel = inputs.vehicleModel.value.trim();
+        const vehicleNumber = inputs.vehicleNumber.value.trim().toUpperCase();
+        Object.assign(updates, {
+            vehicleModel,
+            vehicle_model: vehicleModel,
+            vehicleNumber,
+            vehicle_number: vehicleNumber,
+            drivingLicenseNumber: inputs.license.value.trim().toUpperCase(),
+            upiId: inputs.upi.value.trim().toLowerCase()
+        });
+    }
+
+    try {
+        await updateDoc(doc(db, "users", currentAuthUser.uid), updates);
+
+        if (currentProfile.role === "driver") {
+            try {
+                await setDoc(doc(db, "driverPresence", currentAuthUser.uid), {
+                    name: updates.name,
+                    phone: currentProfile.phone || currentAuthUser.phoneNumber || "",
+                    profilePhotoUrl: updates.profilePhotoUrl,
+                    vehicle_model: updates.vehicle_model,
+                    vehicle_number: updates.vehicle_number,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            } catch (presenceError) {
+                console.warn("Driver presence profile sync will retry from the driver console:", presenceError);
+            }
+        }
+
+        currentProfile = { ...currentProfile, ...updates };
+        cacheProfile(currentProfile);
+        renderProfileSummary(currentProfile);
+        setSavingState(false);
+        closeEditor();
+        showSaveNotice();
+    } catch (error) {
+        console.error("Profile update failed:", error);
+        setSavingState(false);
+        showError("Could not save your profile. Check your connection and try again.");
+    }
+}
+
+function bindProfileActions() {
+    document.querySelector('[data-action="rides"]').addEventListener('click', () => {
+        window.location.href = 'history.html';
+    });
+    document.querySelector('[data-action="contact"]').addEventListener('click', () => {
+        window.location.href = 'mailto:support@goyatra.app';
+    });
+    document.querySelector('[data-action="help"]').addEventListener('click', () => {
+        alert('GoYatra support will be connected here.');
+    });
+    document.querySelector('[data-action="safety"]').addEventListener('click', () => {
+        alert('Safety center coming soon.');
+    });
+    document.querySelector('[data-action="refer"]').addEventListener('click', () => {
+        alert('Referral program coming soon.');
+    });
+    document.querySelector('[data-action="about"]').addEventListener('click', () => {
+        alert('GoYatra is a local ride-hailing platform for Tripura.');
+    });
+
+    editButton.addEventListener('click', openEditor);
+    document.getElementById('profile-edit-close-btn').addEventListener('click', closeEditor);
+    document.getElementById('profile-edit-cancel-btn').addEventListener('click', closeEditor);
+    document.getElementById('profile-edit-backdrop').addEventListener('click', closeEditor);
+    editForm.addEventListener('submit', saveProfile);
+
+    inputs.name.addEventListener('input', () => {
+        renderAvatar(editAvatar, inputs.name.value, pendingPhotoValue);
+    });
+
+    photoUrlInput.addEventListener('change', () => {
+        const value = photoUrlInput.value.trim();
+        if (!value) return;
+        pendingPhotoValue = value;
+        photoFileInput.value = "";
+        removePhotoButton.classList.remove('d-none');
+        renderAvatar(editAvatar, inputs.name.value, value);
+    });
+
+    photoFileInput.addEventListener('change', async () => {
+        const file = photoFileInput.files?.[0];
+        if (!file) return;
+
+        clearError();
+        try {
+            pendingPhotoValue = await compressProfilePhoto(file);
+            photoUrlInput.value = "";
+            removePhotoButton.classList.remove('d-none');
+            renderAvatar(editAvatar, inputs.name.value, pendingPhotoValue);
+        } catch (error) {
+            photoFileInput.value = "";
+            showError(error.message || "Could not prepare this photo.");
+        }
+    });
+
+    removePhotoButton.addEventListener('click', () => {
+        pendingPhotoValue = "";
+        photoUrlInput.value = "";
+        photoFileInput.value = "";
+        removePhotoButton.classList.add('d-none');
+        renderAvatar(editAvatar, inputs.name.value, "");
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !editLayer.classList.contains('d-none')) closeEditor();
+    });
+
+    document.getElementById('profile-logout-btn').addEventListener('click', async () => {
+        sessionStorage.removeItem(PROFILE_CACHE_KEY);
+        await signOut(auth);
+        window.location.href = 'login.html';
+    });
+}
+
+bindProfileActions();
+
+onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+        currentAuthUser = null;
+        currentProfile = null;
+        nameEl.innerText = "Guest User";
+        phoneEl.innerText = "Login to view your profile";
+        emailEl.innerText = "";
+        avatarEl.innerText = "G";
+        editButton.disabled = true;
+        return;
+    }
+
+    currentAuthUser = user;
+    editButton.disabled = false;
+
+    try {
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+        currentProfile = userSnap.exists() ? userSnap.data() : {
+            uid: user.uid,
+            name: user.displayName || "GoYatra User",
+            phone: user.phoneNumber || "",
+            role: "passenger"
+        };
+        renderProfileSummary(currentProfile);
+        cacheProfile(currentProfile);
+    } catch (error) {
+        console.error("Profile load failed:", error);
+        currentProfile = {
+            uid: user.uid,
+            name: user.displayName || "GoYatra User",
+            phone: user.phoneNumber || "",
+            role: "passenger"
+        };
+        renderProfileSummary(currentProfile);
+    }
+});

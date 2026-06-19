@@ -26,8 +26,9 @@
             <div class="profile-user-copy">
                 <h2 id="profile-user-name">GoYatra User</h2>
                 <p id="profile-user-phone">Loading phone number...</p>
+                <small id="profile-user-email" class="profile-user-email"></small>
             </div>
-            <button id="profile-edit-btn" class="profile-edit-btn" type="button">Edit</button>
+            <button id="profile-edit-btn" class="profile-edit-btn" type="button" aria-haspopup="dialog" disabled>Edit</button>
         </section>
 
         <section class="profile-menu" aria-label="Profile menu">
@@ -75,89 +76,89 @@
         </nav>
     </main>
 
+    <div id="profile-edit-layer" class="profile-edit-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-edit-title">
+        <button id="profile-edit-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close profile editor"></button>
+        <section class="profile-edit-sheet">
+            <header class="profile-edit-head">
+                <div>
+                    <span id="profile-edit-role" class="profile-role-badge">Account</span>
+                    <h2 id="profile-edit-title">Edit Profile</h2>
+                </div>
+                <button id="profile-edit-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
+            </header>
+
+            <form id="profile-edit-form" class="profile-edit-form" novalidate>
+                <section class="profile-photo-editor" aria-label="Profile photo">
+                    <div id="profile-edit-avatar" class="profile-avatar profile-edit-avatar">G</div>
+                    <div class="profile-photo-actions">
+                        <label class="profile-photo-upload" for="profile-photo-file">Choose photo</label>
+                        <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+                        <button id="profile-photo-remove-btn" class="profile-photo-remove" type="button">Remove</button>
+                        <small>JPG, PNG or WebP. The image is resized before saving.</small>
+                    </div>
+                </section>
+
+                <div class="profile-form-field">
+                    <label for="profile-edit-name">Full name</label>
+                    <input id="profile-edit-name" class="form-control gy-input" type="text" maxlength="80" autocomplete="name" required>
+                </div>
+
+                <div class="profile-form-field">
+                    <label for="profile-edit-email">Email</label>
+                    <input id="profile-edit-email" class="form-control gy-input" type="email" maxlength="120" autocomplete="email" required>
+                </div>
+
+                <div class="profile-form-field">
+                    <label for="profile-edit-phone">Mobile number</label>
+                    <input id="profile-edit-phone" class="form-control gy-input" type="tel" readonly aria-readonly="true">
+                    <small>Mobile number is secured by phone authentication and cannot be changed here.</small>
+                </div>
+
+                <div class="profile-form-field">
+                    <label for="profile-photo-url">Profile photo URL <span>Optional</span></label>
+                    <input id="profile-photo-url" class="form-control gy-input" type="url" maxlength="1500" placeholder="https://example.com/photo.jpg">
+                </div>
+
+                <section id="profile-driver-fields" class="profile-driver-fields d-none">
+                    <div class="profile-form-section-title">
+                        <h3>Driver Details</h3>
+                        <p>Keep these details identical to your registered documents.</p>
+                    </div>
+
+                    <div class="profile-form-field">
+                        <label for="profile-edit-vehicle-model">Vehicle model</label>
+                        <input id="profile-edit-vehicle-model" class="form-control gy-input" type="text" maxlength="80">
+                    </div>
+
+                    <div class="profile-form-field">
+                        <label for="profile-edit-vehicle-number">Vehicle number</label>
+                        <input id="profile-edit-vehicle-number" class="form-control gy-input text-uppercase" type="text" maxlength="20">
+                    </div>
+
+                    <div class="profile-form-field">
+                        <label for="profile-edit-license">Driving licence number</label>
+                        <input id="profile-edit-license" class="form-control gy-input text-uppercase" type="text" maxlength="30">
+                    </div>
+
+                    <div class="profile-form-field">
+                        <label for="profile-edit-upi">UPI ID</label>
+                        <input id="profile-edit-upi" class="form-control gy-input" type="text" maxlength="100" inputmode="email" placeholder="drivername@upi">
+                    </div>
+                </section>
+
+                <div id="profile-edit-error" class="profile-edit-error d-none" role="alert"></div>
+
+                <footer class="profile-edit-footer">
+                    <button id="profile-edit-cancel-btn" class="gy-btn profile-cancel-btn" type="button">Cancel</button>
+                    <button id="profile-save-btn" class="gy-btn gy-btn-primary" type="submit">Save Changes</button>
+                </footer>
+            </form>
+        </section>
+    </div>
+
+    <div id="profile-save-notice" class="profile-save-notice d-none" role="status">Profile updated successfully</div>
+
     <script src="js/navigation.js"></script>
-    <script type="module">
-        import { auth, db } from './js/firebase-init.js';
-        import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
-        const nameEl = document.getElementById('profile-user-name');
-        const phoneEl = document.getElementById('profile-user-phone');
-        const avatarEl = document.getElementById('profile-avatar');
-
-        function getInitials(name) {
-            return String(name || "G")
-                .trim()
-                .split(/\s+/)
-                .slice(0, 2)
-                .map((part) => part[0]?.toUpperCase() || "")
-                .join("") || "G";
-        }
-
-        function bindProfileActions() {
-            document.querySelector('[data-action="rides"]').addEventListener('click', () => {
-                window.location.href = 'history.html';
-            });
-            document.querySelector('[data-action="contact"]').addEventListener('click', () => {
-                window.location.href = 'mailto:support@goyatra.app';
-            });
-            document.querySelector('[data-action="help"]').addEventListener('click', () => {
-                alert('GoYatra support will be connected here.');
-            });
-            document.querySelector('[data-action="safety"]').addEventListener('click', () => {
-                alert('Safety center coming soon.');
-            });
-            document.querySelector('[data-action="refer"]').addEventListener('click', () => {
-                alert('Referral program coming soon.');
-            });
-            document.querySelector('[data-action="about"]').addEventListener('click', () => {
-                alert('GoYatra is a local ride-hailing platform for Tripura.');
-            });
-            document.getElementById('profile-edit-btn').addEventListener('click', () => {
-                alert('Profile editing will be available from the account settings panel.');
-            });
-            document.getElementById('profile-logout-btn').addEventListener('click', async () => {
-                sessionStorage.removeItem('goyatra_user_profile');
-                await signOut(auth);
-                window.location.href = 'login.html';
-            });
-        }
-
-        bindProfileActions();
-
-        onAuthStateChanged(auth, async (user) => {
-            if (!user) {
-                nameEl.innerText = "Guest User";
-                phoneEl.innerText = "Login to view your profile";
-                avatarEl.innerText = "G";
-                return;
-            }
-
-            try {
-                const userSnap = await getDoc(doc(db, "users", user.uid));
-                const profile = userSnap.exists() ? userSnap.data() : {};
-                const displayName = profile.name || user.displayName || "GoYatra User";
-                const phone = profile.phone || user.phoneNumber || "Phone number unavailable";
-
-                nameEl.innerText = displayName;
-                phoneEl.innerText = phone;
-
-                if (profile.profilePhotoUrl) {
-                    avatarEl.replaceChildren();
-                    const photo = document.createElement('img');
-                    photo.src = profile.profilePhotoUrl;
-                    photo.alt = displayName;
-                    avatarEl.appendChild(photo);
-                } else {
-                    avatarEl.innerText = getInitials(displayName);
-                }
-            } catch (error) {
-                console.error("Profile load failed:", error);
-                nameEl.innerText = "GoYatra User";
-                phoneEl.innerText = user.phoneNumber || "Phone number unavailable";
-                avatarEl.innerText = "G";
-            }
-        });
-    </script>
+    <script type="module" src="js/profile.js"></script>
 </body>
 </html>
