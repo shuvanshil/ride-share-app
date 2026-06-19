@@ -68,13 +68,14 @@
         </section>
 
         <nav class="bottom-nav profile-bottom-nav">
-            <button type="button" onclick="window.location.href='index.html'"><span>⌂</span>Home</button>
+            <button type="button" data-home-link><span>⌂</span>Home</button>
             <button type="button" onclick="window.location.href='services.html'"><span>▦</span>Services</button>
             <button type="button" onclick="window.location.href='history.html'"><span>◷</span>History</button>
             <button class="active" type="button"><span>○</span>Profile</button>
         </nav>
     </main>
 
+    <script src="js/navigation.js"></script>
     <script type="module">
         import { auth, db } from './js/firebase-init.js';
         import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -160,3 +161,4 @@
     </script>
 </body>
 </html>
+

@@ -13,7 +13,6 @@
 </head>
 <body>
     <div id="app-container" class="app-root">
-
         <button id="logout-btn" class="logout-chip d-none">Logout</button>
 
         <div id="dashboard-view" class="screen-shell flex-column">
@@ -27,41 +26,23 @@
                         <h1>Your Everyday<br>Ride,<span> Anytime</span><br>Anywhere</h1>
                         <p>Quick rides, great price, always on time.</p>
                     </div>
-                    <!-- <div class="auto-hero" aria-hidden="true">
-                        <svg viewBox="0 0 180 120" role="img">
-                            <circle cx="142" cy="28" r="18" fill="#83C96A"/>
-                            <circle cx="156" cy="42" r="22" fill="#A7DB8D"/>
-                            <rect x="26" y="55" width="102" height="36" rx="16" fill="#FFC928"/>
-                            <path d="M42 55h48l17 20H30c1-11 5-18 12-20z" fill="#111"/>
-                            <rect x="50" y="60" width="28" height="16" rx="4" fill="#E8F8EF"/>
-                            <rect x="83" y="60" width="20" height="16" rx="4" fill="#E8F8EF"/>
-                            <circle cx="54" cy="92" r="12" fill="#111"/>
-                            <circle cx="112" cy="92" r="12" fill="#111"/>
-                            <circle cx="54" cy="92" r="5" fill="#fff"/>
-                            <circle cx="112" cy="92" r="5" fill="#fff"/>
-                            <path d="M128 66h22c8 0 14 6 14 14v4h-36V66z" fill="#1A7A2E"/>
-                            <path d="M19 91h145" stroke="#1A7A2E" stroke-width="4" stroke-linecap="round"/>
-                        </svg>
-                    </div> -->
                 </section>
 
                 <section id="bottom-sheet" class="booking-panel">
                     <div class="container p-0">
                         <div class="location-stack">
-                            
                             <div class="location-field">
                                 <span class="drop-pin">📍</span>
-                                <a href="services.html"> <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where are you going?">
+                                <a href="services.html">
+                                    <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where are you going?" readonly>
                                 </a>
                             </div>
                         </div>
 
-                        
-
                         <div class="feature-row">
-                            <div><span>🛡️</span><small>Safe rides</small></div>
-                            <div><span>⚡</span><small>Fast pickup</small></div>
-                            <div><span>₹</span><small>Fair fares</small></div>
+                            <div><span>🏍</span><small>Safe rides</small></div>
+                            <div><span>🛺</span><small>Fast pickup</small></div>
+                            <div><span>●</span><small>Fair fares</small></div>
                         </div>
 
                         <div class="heritage-card unakoti">
@@ -77,65 +58,7 @@
             <nav class="bottom-nav">
                 <button class="active" type="button"><span>⌂</span>Home</button>
                 <button type="button" onclick="window.location.href='services.html'"><span>▦</span>Services</button>
-                <button id="passenger-history-btn" type="button"><span>◷</span>History</button>
-                <button type="button" onclick="window.location.href='profile.html'"><span>○</span>Profile</button>
-            </nav>
-        </div>
-
-        <div id="driver-review-view" class="review-screen d-none flex-column justify-content-center align-items-center p-4">
-            <div class="review-card">
-                <div class="shield-icon">🛡️</div>
-                <h4>Account Under Review</h4>
-                <p>Your driver profile has been submitted. You can start accepting rides after admin approval.</p>
-                <div class="review-data">
-                    <div><strong>Status</strong><span id="driver-review-status">pending_review</span></div>
-                    <div><strong>Vehicle</strong><span id="driver-review-vehicle">Not submitted</span></div>
-                    <div><strong>Licence</strong><span id="driver-review-license">Not submitted</span></div>
-                </div>
-            </div>
-        </div>
-
-        <div id="driver-view" class="screen-shell driver-shell d-none flex-column">
-            <header class="app-bar">
-                <div>
-                    <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
-                    <small id="driver-welcome-name">Welcome, Driver</small>
-                </div>
-                <span class="online-pill">● Online</span>
-            </header>
-
-            <main class="driver-main">
-                <section class="driver-status-card">
-                    <div>
-                        <h4>Driver Duty Console</h4>
-                        <p>Nearby requests assigned to your live zone.</p>
-                    </div>
-                    <button id="driver-history-btn" class="mini-action" type="button">History</button>
-                </section>
-
-                <h6 class="section-title">Incoming Local Ride Requests</h6>
-                <div id="available-rides-list" class="ride-list">
-                    <div id="no-rides-msg" class="empty-state">
-                        <span>📡</span>
-                        <strong>Searching nearby passengers</strong>
-                        <p>Keep location enabled to receive targeted requests.</p>
-                    </div>
-                </div>
-
-                <div id="active-trip-container" class="active-trip-card d-none">
-                    <h6>Active Trip Lifecycle</h6>
-                    <div id="active-trip-details" class="trip-details-text"></div>
-                    <button id="arrived-trip-btn" class="gy-btn gy-btn-outline w-100 mb-2">Mark Arrived at Pickup</button>
-                    <button id="start-trip-btn" class="gy-btn gy-btn-primary w-100 mb-2" disabled>Start Trip</button>
-                    <button id="complete-trip-btn" class="gy-btn gy-btn-dark w-100 mb-2" disabled>Drop off Passenger & Complete Trip</button>
-                    <button id="cancel-driver-trip-btn" class="gy-btn gy-btn-danger-outline w-100">Cancel Active Trip</button>
-                </div>
-            </main>
-
-            <nav class="bottom-nav">
-                <button class="active" type="button"><span>⌂</span>Home</button>
-                <button type="button" onclick="window.location.href='services.html'"><span>▦</span>Services</button>
-                <button type="button" onclick="document.getElementById('driver-history-btn').click()"><span>◷</span>History</button>
+                <button id="passenger-history-btn" type="button"><span>◇</span>History</button>
                 <button type="button" onclick="window.location.href='profile.html'"><span>○</span>Profile</button>
             </nav>
         </div>
@@ -143,7 +66,7 @@
 
     <div id="passenger-payment-view" class="modal-layer d-none">
         <div class="receipt-card">
-            <div class="success-mark">✓</div>
+            <div class="success-mark">OK</div>
             <h4>Ride Completed</h4>
             <p>Your GoYatra trip has ended safely.</p>
             <div class="receipt-table">
@@ -152,22 +75,9 @@
                 <div><span>Distance</span><strong>8.2 km</strong></div>
                 <div><span>Duration</span><strong>18 mins</strong></div>
             </div>
-            <div class="price-total" id="passenger-final-fare">₹0.00</div>
-            <div class="paid-badge">Paid via UPI ✓</div>
+            <div class="price-total" id="passenger-final-fare">Rs 0.00</div>
+            <div class="paid-badge">Paid via UPI</div>
             <button id="close-passenger-payment-btn" class="gy-btn gy-btn-primary w-100">Book Again</button>
-        </div>
-    </div>
-
-    <div id="driver-payment-view" class="modal-layer d-none">
-        <div class="receipt-card">
-            <div class="success-mark">₹</div>
-            <h4>Collect Your Fare</h4>
-            <p>Show this screen to the passenger for easy collection.</p>
-            <div class="price-total" id="driver-final-fare">₹0.00</div>
-            <div class="qr-frame">
-                <img id="upi-qr-image" src="" alt="UPI QR Code">
-            </div>
-            <button id="close-driver-payment-btn" class="gy-btn gy-btn-dark w-100">Fare Received & Clear</button>
         </div>
     </div>
 

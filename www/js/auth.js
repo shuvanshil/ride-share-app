@@ -40,52 +40,11 @@ function clearCachedProfile() {
 function showPassengerHome() {
     document.getElementById('dashboard-view')?.classList.remove('d-none');
     document.getElementById('dashboard-view')?.classList.add('d-flex');
-    document.getElementById('driver-view')?.classList.add('d-none');
-    document.getElementById('driver-view')?.classList.remove('d-flex');
-    document.getElementById('driver-review-view')?.classList.add('d-none');
-    document.getElementById('driver-review-view')?.classList.remove('d-flex');
-}
-
-function showDriverReview(profile) {
-    document.getElementById('dashboard-view')?.classList.add('d-none');
-    document.getElementById('dashboard-view')?.classList.remove('d-flex');
-    document.getElementById('driver-view')?.classList.add('d-none');
-    document.getElementById('driver-view')?.classList.remove('d-flex');
-
-    const vehicleModel = profile.vehicleModel || profile.vehicle_model || "";
-    const vehicleNumber = profile.vehicleNumber || profile.vehicle_number || "";
-    const vehicleSummary = [vehicleModel, vehicleNumber].filter(Boolean).join(" - ") || "Not submitted";
-
-    const statusEl = document.getElementById('driver-review-status');
-    const vehicleEl = document.getElementById('driver-review-vehicle');
-    const licenseEl = document.getElementById('driver-review-license');
-    if (statusEl) statusEl.innerText = profile.verificationStatus || "pending_review";
-    if (vehicleEl) vehicleEl.innerText = vehicleSummary;
-    if (licenseEl) licenseEl.innerText = profile.drivingLicenseNumber || "Not submitted";
-
-    document.getElementById('driver-review-view')?.classList.remove('d-none');
-    document.getElementById('driver-review-view')?.classList.add('d-flex');
-}
-
-function showDriverHome(profile) {
-    document.getElementById('dashboard-view')?.classList.add('d-none');
-    document.getElementById('dashboard-view')?.classList.remove('d-flex');
-    document.getElementById('driver-review-view')?.classList.add('d-none');
-    document.getElementById('driver-review-view')?.classList.remove('d-flex');
-    document.getElementById('driver-view')?.classList.remove('d-none');
-    document.getElementById('driver-view')?.classList.add('d-flex');
-
-    const welcomeName = document.getElementById('driver-welcome-name');
-    if (welcomeName) welcomeName.innerText = `Welcome, ${profile.name || "Driver"}`;
 }
 
 function renderSession(profile) {
     if (profile.role === "driver") {
-        if (profile.verificationStatus === "approved") {
-            showDriverHome(profile);
-        } else {
-            showDriverReview(profile);
-        }
+        window.location.replace("driver.html");
     } else {
         showPassengerHome();
     }

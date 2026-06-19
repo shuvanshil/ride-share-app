@@ -37,7 +37,7 @@ function cacheUserProfile(profile) {
 
 function routeToHome(profile) {
     cacheUserProfile(profile);
-    window.location.replace("index.html");
+    window.location.replace(profile.role === "driver" ? "driver.html" : "index.html");
 }
 
 function updateRegistrationFieldsForRole() {
