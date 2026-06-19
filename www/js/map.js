@@ -873,7 +873,7 @@ async function completeDestinationMapPick(lat, lng) {
     renderDestinationFare(destination, pickMode.fareQuoteBox, pickMode.fareAmountSpan);
 }
 
-async function fetchRoadRouteDetails(origin, destination) {
+export async function fetchRoadRouteDetails(origin, destination) {
     const originCoords = normalizeCoordinatePair(origin.lat, origin.lng);
     const destinationCoords = normalizeCoordinatePair(destination.lat, destination.lng);
 

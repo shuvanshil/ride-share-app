@@ -13,10 +13,20 @@ function getRoleHomeUrl() {
     return getCachedRole() === "driver" ? "driver.html" : "index.html";
 }
 
+function getRoleServiceUrl() {
+    return getCachedRole() === "driver" ? "driver-service.html" : "services.html";
+}
+
 window.goYatraGoHome = function goYatraGoHome() {
     window.location.href = getRoleHomeUrl();
 };
 
 document.querySelectorAll('[data-home-link]').forEach((button) => {
     button.addEventListener('click', window.goYatraGoHome);
+});
+
+document.querySelectorAll('[data-service-link]').forEach((button) => {
+    button.addEventListener('click', () => {
+        window.location.href = getRoleServiceUrl();
+    });
 });

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GoYatra Driver Navigation</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/driver-service.css">
+</head>
+<body>
+    <div id="app-container" class="app-root driver-service-app-root">
+        <div class="screen-shell driver-shell driver-service-page">
+            <header class="app-bar driver-service-header">
+                <div>
+                    <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
+                    <small id="driver-service-status">Connecting to driver service...</small>
+                </div>
+                <span id="driver-service-live-pill" class="online-pill driver-live-pill" data-state="loading">GPS</span>
+            </header>
+
+            <section class="driver-map-stage" aria-label="Live driver navigation">
+                <div id="driver-service-map" class="driver-service-map">
+                    <div class="driver-map-loading">Preparing live map...</div>
+                </div>
+
+                <section id="driver-route-panel" class="driver-route-panel d-none" aria-live="polite">
+                    <div>
+                        <span id="driver-route-label">Next stop</span>
+                        <strong id="driver-route-place">Waiting for ride details</strong>
+                    </div>
+                    <div class="driver-route-metrics">
+                        <strong id="driver-route-distance">-- km</strong>
+                        <span id="driver-route-duration">-- min</span>
+                    </div>
+                </section>
+
+                <section id="driver-map-message" class="driver-map-message d-none" aria-live="assertive">
+                    <strong id="driver-map-message-title">Location unavailable</strong>
+                    <p id="driver-map-message-copy">Allow location access to use live navigation.</p>
+                    <button id="driver-location-retry-btn" class="gy-btn gy-btn-primary" type="button">Retry Location</button>
+                </section>
+
+                <div id="driver-route-warning" class="driver-route-warning d-none" role="status">
+                    Route unavailable. Live markers will remain visible while we retry.
+                </div>
+            </section>
+
+            <section class="driver-service-actions">
+                <button id="driver-open-console-btn" class="gy-btn gy-btn-dark w-100 d-none" type="button">
+                    Open Duty Console
+                </button>
+            </section>
+
+            <nav class="bottom-nav driver-service-nav">
+                <button type="button" onclick="window.location.href='driver.html'"><span>⌂</span>Home</button>
+                <button class="active" type="button"><span>▦</span>Services</button>
+                <button type="button" onclick="window.location.href='history.html'"><span>◇</span>History</button>
+                <button type="button" onclick="window.location.href='profile.html'"><span>○</span>Profile</button>
+            </nav>
+        </div>
+    </div>
+
+    <script type="module" src="js/firebase-init.js"></script>
+    <script type="module" src="js/driver-service.js"></script>
+</body>
+</html>
