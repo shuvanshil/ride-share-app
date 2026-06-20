@@ -86,65 +86,6 @@
             </nav>
         </main>
 
-        <section id="service-confirm-ride-view" class="service-confirm-view d-none" aria-label="Confirm ride">
-            <header class="service-confirm-head">
-                <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
-                <button id="service-confirm-back-btn" class="service-back-btn" type="button" aria-label="Back to booking">←</button>
-            </header>
-
-            <div class="service-confirm-route-card">
-                <div class="service-route-line">
-                    <span class="pickup-dot">●</span>
-                    <div>
-                        <small>Pickup Location</small>
-                        <strong id="confirm-pickup-text">Pickup location</strong>
-                    </div>
-                </div>
-                <div class="service-route-line">
-                    <span class="drop-pin">📍</span>
-                    <div>
-                        <small>Drop Location</small>
-                        <strong id="confirm-drop-text">Drop location</strong>
-                    </div>
-                </div>
-                <button class="service-swap-btn" type="button" aria-label="Swap locations">↕</button>
-            </div>
-
-            <div class="service-route-preview">
-                <div id="service-confirm-map" class="service-confirm-map" aria-label="Selected route map"></div>
-                <div class="service-route-metric">
-                    <strong id="confirm-distance-text">0 km</strong>
-                    <span>•</span>
-                    <strong id="confirm-duration-text">0 mins</strong>
-                </div>
-                <button class="service-locate-btn" type="button" aria-label="Current map center">⌖</button>
-            </div>
-
-            <section class="service-vehicle-panel">
-                <h2>Choose a Vehicle</h2>
-                <button class="service-vehicle-option active" type="button" data-vehicle="bike">
-                    <span class="service-vehicle-art">🏍</span>
-                    <span>
-                        <strong>Bike</strong>
-                        <small>3 mins away</small>
-                    </span>
-                    <b id="confirm-bike-fare">₹0</b>
-                    <i>✓</i>
-                </button>
-                <button class="service-vehicle-option" type="button" data-vehicle="auto">
-                    <span class="service-vehicle-art">🛺</span>
-                    <span>
-                        <strong>Auto</strong>
-                        <small>4 mins away</small>
-                    </span>
-                    <b id="confirm-auto-fare">₹0</b>
-                    <i></i>
-                </button>
-                <button id="service-confirm-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Confirm Ride</button>
-            </section>
-        </section>
-
-
         <div id="passenger-payment-view" class="modal-layer d-none">
             <div class="receipt-card">
                 <div class="success-mark">✓</div>
@@ -162,8 +103,8 @@
     <script type="module" src="js/map.js?v=20260620-route-metrics"></script>
     <script src="js/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
-    <script type="module" src="js/app.js"></script>
-    <script type="module" src="js/services.js"></script>
+    <script type="module" src="js/app.js?v=20260620-direct-booking"></script>
+    <script type="module" src="js/services.js?v=20260620-direct-booking"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

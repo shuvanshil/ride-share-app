@@ -179,9 +179,6 @@ function resetPassengerBookingUi() {
     requestBtn.innerHTML = 'Find Ride';
     requestBtn.disabled = false;
     requestBtn.className = "gy-btn gy-btn-primary w-100";
-    delete requestBtn.dataset.serviceRideConfirmed;
-    delete requestBtn.dataset.vehicleType;
-    window.selectedServiceVehicleType = "";
 }
 
 function applyServiceBookingDraft() {
@@ -262,13 +259,6 @@ function getVehicleMatchRank(driver, requestedVehicleType) {
     const driverVehicleType = inferVehicleTypeFromProfile(driver);
     if (driverVehicleType === requestedVehicleType) return 0;
     return driverVehicleType ? 2 : 1;
-}
-
-function serviceConfirmRideRequired(requestBtn) {
-    // Services owns a dedicated confirm screen. Home does not have this element,
-    // so Home keeps the original direct "Find Ride" behavior.
-    return Boolean(document.getElementById('service-confirm-ride-view'))
-        && requestBtn?.dataset.serviceRideConfirmed !== "true";
 }
 
 async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriverIds = [], requestedVehicleType = "") {
@@ -503,20 +493,7 @@ requestRideButton.addEventListener('click', async () => {
     }
 
 
-    if (serviceConfirmRideRequired(requestBtn)) {
-        // Let services.js render the vehicle selection/confirm view, then it will
-        // re-click this same button with data-service-ride-confirmed set to true.
-        window.dispatchEvent(new CustomEvent('service-confirm-ride-requested', {
-            detail: {
-                pickupText,
-                dropText,
-                fareText,
-                fareQuote: window.latestFareQuote || {}
-            }
-        }));
-        return;
-    }
-    const requestedVehicleType = requestBtn.dataset.vehicleType || window.selectedServiceVehicleType || "";
+    const requestedVehicleType = "bike";
     // Double-Booking Protection Check
     try {
         const activeRideQuery = query(
@@ -593,7 +570,6 @@ requestRideButton.addEventListener('click', async () => {
         requestBtn.innerHTML = 'Find Ride';
         requestBtn.className = "gy-btn gy-btn-primary w-100";
         requestBtn.disabled = false;
-        delete requestBtn.dataset.serviceRideConfirmed;
         alert(error.message || "Could not create this ride request. Please try again.");
     }
 });

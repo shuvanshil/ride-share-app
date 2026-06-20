@@ -1016,58 +1016,6 @@ function drawDestinationAndRoute(destination, routePath = [], routeMetrics = {})
     renderRouteMetric(routeMetrics.distanceKm, routeMetrics.durationMinutes);
 }
 
-export async function renderGoogleRoutePreview(hostElementOrId, fareQuote = {}) {
-    const origin = normalizeCoordinatePair(fareQuote.pickup_lat, fareQuote.pickup_lng);
-    const destination = normalizeCoordinatePair(fareQuote.drop_lat, fareQuote.drop_lng);
-    if (
-        !Number.isFinite(origin.lat) ||
-        !Number.isFinite(origin.lng) ||
-        !Number.isFinite(destination.lat) ||
-        !Number.isFinite(destination.lng)
-    ) {
-        return null;
-    }
-
-    const shell = await createRideMapSurface(hostElementOrId, {
-        center: origin,
-        zoom: 15,
-        zoomControl: false,
-        fullscreenControl: false,
-        gestureHandling: "cooperative",
-        disableDefaultUI: true
-    });
-
-    const maps = getGoogleMaps();
-    const routeDetails = await fetchRoadRouteDetails(origin, destination);
-    const path = routeDetails?.routePath?.length >= 2
-        ? routeDetails.routePath
-        : [origin, destination];
-
-    new maps.Marker({
-        map: shell.map,
-        position: origin,
-        title: "Pickup"
-    });
-    new maps.Marker({
-        map: shell.map,
-        position: destination,
-        title: "Drop"
-    });
-
-    new maps.Polyline({
-        map: shell.map,
-        path,
-        strokeColor: "#1A7A2E",
-        strokeOpacity: 0.95,
-        strokeWeight: 5
-    });
-
-    const bounds = new maps.LatLngBounds();
-    path.forEach((point) => bounds.extend(point));
-    shell.map.fitBounds(bounds, { top: 42, right: 42, bottom: 42, left: 42 });
-    return shell;
-}
-
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
