@@ -29,15 +29,20 @@
                 <label class="form-label">Mobile Number</label>
                 <div class="input-group gy-input-group mb-3">
                     <span class="input-group-text">+91</span>
-                    <input type="tel" id="phone-number" class="form-control" placeholder="9999999999" maxlength="10" inputmode="numeric" autocomplete="tel">
+                    <input type="tel" id="phone-number" class="form-control" placeholder="9999999999" maxlength="10" inputmode="numeric" autocomplete="tel-national" aria-describedby="sms-consent-text">
                 </div>
                 <button id="send-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Send OTP</button>
+                <p id="sms-consent-text" class="auth-consent-text mt-3 mb-0">
+                    By continuing, you agree to receive a one-time verification SMS. Message and data rates may apply.
+                </p>
             </div>
 
             <div id="otp-input-container" class="d-none">
                 <label class="form-label">Enter OTP</label>
+                <p id="otp-destination" class="auth-step-text mb-3"></p>
                 <input type="text" id="otp-code" class="form-control gy-input text-center mb-3" placeholder="******" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
                 <button id="verify-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Verify & Login</button>
+                <button id="resend-otp-btn" class="auth-link-btn mt-3" type="button" disabled>Resend OTP</button>
                 <button id="change-phone-btn" class="auth-link-btn mt-3" type="button">Use another number</button>
             </div>
 
@@ -84,6 +89,7 @@
             </div>
 
             <div id="recaptcha-container" class="mt-3 d-flex justify-content-center"></div>
+            <div id="auth-status" class="auth-status d-none mt-3" role="status" aria-live="polite"></div>
         </section>
     </main>
 

@@ -93,6 +93,39 @@ select {
     text-align: center;
 }
 
+.auth-link-btn:disabled {
+    color: var(--gy-muted);
+    cursor: not-allowed;
+}
+
+.auth-consent-text,
+.auth-step-text,
+.auth-status {
+    color: var(--gy-muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.auth-step-text {
+    font-size: 13px;
+}
+
+.auth-status {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--gy-muted-bg);
+}
+
+.auth-status.is-error {
+    color: var(--gy-danger);
+    background: rgba(211, 47, 47, 0.08);
+}
+
+.auth-card .gy-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
 .form-label {
     color: #222;
     font-weight: 700;
