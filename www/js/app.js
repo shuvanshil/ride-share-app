@@ -51,6 +51,18 @@ function setPassengerDestinationLocked(locked, destinationName = "") {
     }));
 }
 
+function setPassengerServiceLocked(locked, ride = {}) {
+    window.dispatchEvent(new CustomEvent('passenger-service-lock-changed', {
+        detail: {
+            locked,
+            vehicleType: ride.vehicle_type || ride.id || "",
+            serviceName: ride.service_name || ride.name || "",
+            fare: Number(ride.fare),
+            distanceKm: Number(ride.distance_km)
+        }
+    }));
+}
+
 function hasPassengerLifecycleSurface() {
     return Boolean(
         document.getElementById('request-ride-btn') &&
@@ -176,6 +188,7 @@ function resetPassengerBookingUi() {
     hidePassengerDriverCard();
     hidePassengerCancelButton();
     setPassengerDestinationLocked(false);
+    setPassengerServiceLocked(false);
 
     const requestBtn = document.getElementById('request-ride-btn');
     requestBtn.innerHTML = 'Find Ride';
@@ -449,6 +462,7 @@ async function restorePassengerActiveRide() {
         console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
         showPassengerCancelButton(activeRideDoc.id);
         setPassengerDestinationLocked(true, activeRide.drop_name || "");
+        setPassengerServiceLocked(true, activeRide);
         renderPassengerDriverCard(activeRide);
         renderPassengerVerificationPin(activeRide.verification_pin);
         if (activeRide.fare) {
@@ -520,6 +534,12 @@ requestRideButton.addEventListener('click', async () => {
 
     // UI updates only happen if the user has no active bookings
     setPassengerDestinationLocked(true, dropText);
+    setPassengerServiceLocked(true, {
+        ...service,
+        vehicle_type: requestedVehicleType,
+        fare: fareAmount,
+        distance_km: fareQuote.distance_km
+    });
     requestBtn.innerHTML = '⏳ Waiting for a driver to accept...';
     requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
     requestBtn.disabled = true;
@@ -574,6 +594,7 @@ requestRideButton.addEventListener('click', async () => {
     } catch (error) {
         console.error("Database Write Failure:", error);
         setPassengerDestinationLocked(false);
+        setPassengerServiceLocked(false);
         requestBtn.innerHTML = 'Find Ride';
         requestBtn.className = "gy-btn gy-btn-primary w-100";
         requestBtn.disabled = false;
@@ -592,6 +613,7 @@ function listenToRideStatusUpdates(rideId) {
 
         if (ACTIVE_RIDE_STATUSES.includes(ride.status)) {
             setPassengerDestinationLocked(true, ride.drop_name || "");
+            setPassengerServiceLocked(true, ride);
         }
 
         // FIXED: Added handling for when a driver cancels mid-trip
@@ -670,6 +692,7 @@ function listenToRideStatusUpdates(rideId) {
         } else if (ride.status === "completed") {
             clearDispatchExpansionTimer();
             setPassengerDestinationLocked(false);
+            setPassengerServiceLocked(false);
             requestBtn.innerHTML = '🎉 Trip Completed! Safe travels.';
             requestBtn.className = "btn btn-dark w-100 fw-bold py-2";
             hidePassengerVerificationPin();

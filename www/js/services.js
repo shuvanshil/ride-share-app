@@ -18,8 +18,10 @@ const distanceLabel = document.getElementById('ride-distance-label');
 
 let servicesSessionStarted = false;
 let selectedServiceType = "bike";
+let serviceSelectionLocked = false;
 
 function selectRideService(serviceType) {
+    if (serviceSelectionLocked) return;
     const service = getRideService(serviceType);
     const fare = window.latestFareQuote?.fare_options?.[serviceType];
     if (!service || !Number.isFinite(fare)) return;
@@ -46,10 +48,48 @@ function renderFareOptions(quote) {
 }
 
 function resetFareOptions() {
+    if (serviceSelectionLocked) return;
     window.selectedRideService = null;
     serviceOptions.classList.add('d-none');
     findRideBtn.innerText = "Calculating route...";
     findRideBtn.disabled = true;
+}
+
+function setServiceSelectionLocked(detail = {}) {
+    serviceSelectionLocked = Boolean(detail.locked);
+    serviceOptions.classList.toggle('is-locked', serviceSelectionLocked);
+
+    const headingCopy = serviceOptions.querySelector('.ride-service-heading p');
+    if (headingCopy) {
+        headingCopy.innerText = serviceSelectionLocked
+            ? "Vehicle locked for your active ride."
+            : "Fares use the calculated road distance.";
+    }
+
+    document.querySelectorAll('[data-service-type]').forEach((card) => {
+        const selected = serviceSelectionLocked && card.dataset.serviceType === detail.vehicleType;
+        card.disabled = serviceSelectionLocked;
+        if (serviceSelectionLocked) {
+            card.classList.toggle('is-selected', selected);
+            card.setAttribute('aria-pressed', String(selected));
+        }
+    });
+
+    if (!serviceSelectionLocked) return;
+
+    selectedServiceType = detail.vehicleType;
+    const service = getRideService(selectedServiceType);
+    if (!service) return;
+
+    serviceOptions.classList.remove('d-none');
+    window.selectedRideService = { ...service, fare: detail.fare };
+    if (Number.isFinite(detail.fare)) {
+        document.getElementById(`${selectedServiceType}-fare`).innerText = `₹${detail.fare}`;
+        document.getElementById('fare-amount').innerText = `₹${detail.fare}`;
+    }
+    if (Number.isFinite(detail.distanceKm)) {
+        distanceLabel.innerText = `${detail.distanceKm.toFixed(1)} km`;
+    }
 }
 
 function setStatus(message, state = "loading") {
@@ -106,6 +146,7 @@ function bindServicesControls() {
 
     window.addEventListener('fare-quote-updated', (event) => renderFareOptions(event.detail));
     window.addEventListener('fare-quote-reset', resetFareOptions);
+    window.addEventListener('passenger-service-lock-changed', (event) => setServiceSelectionLocked(event.detail));
 
     window.addEventListener('map-engine-ready', () => {
         setStatus(pickupInput.value || "Pickup location detected.", "ready");

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "goyatra-shell-v5-services";
+const CACHE_VERSION = "goyatra-shell-v6-service-lock";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [

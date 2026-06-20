@@ -2113,6 +2113,20 @@ body.profile-editor-open {
     box-shadow: 0 6px 18px rgba(26, 122, 46, 0.12);
 }
 
+.ride-service-card:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.ride-service-card.is-selected:disabled {
+    opacity: 1;
+}
+
+.ride-service-options.is-locked .ride-service-heading > span::after {
+    content: " · Locked";
+    color: var(--gy-green);
+}
+
 .ride-service-icon {
     width: 52px;
     height: 42px;
