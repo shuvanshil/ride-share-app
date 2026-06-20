@@ -1,4 +1,5 @@
 import { db } from './firebase-init.js';
+import { calculateFareOptions } from './fare-policy.js';
 import {
     collection,
     onSnapshot
@@ -627,6 +628,7 @@ function resetDestinationFareState(fareQuoteBox) {
     }
     window.latestFareQuote = null;
     window.selectedDestination = null;
+    window.dispatchEvent(new CustomEvent("fare-quote-reset"));
     clearRouteAndDestination();
 }
 
@@ -804,6 +806,8 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
 
             dropInput.value = selected.mainName || selected.name;
             hideDestinationSuggestions();
+            window.latestFareQuote = null;
+            window.dispatchEvent(new CustomEvent("fare-quote-reset"));
             fareAmountSpan.innerText = "Calculating...";
             fareQuoteBox.classList.remove("d-none");
             fareQuoteBox.classList.add("d-flex");
@@ -846,6 +850,8 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
     }
 
     hideDestinationSuggestions();
+    window.latestFareQuote = null;
+    window.dispatchEvent(new CustomEvent("fare-quote-reset"));
     fareAmountSpan.innerText = "Tap destination on map";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
@@ -943,12 +949,19 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         { lat: userLatitude, lng: userLongitude },
         destinationCoords
     );
-    const straightLineDistance = calculateDistance(userLatitude, userLongitude, destinationCoords.lat, destinationCoords.lng);
-    const distance = Number.isFinite(routeDetails?.distanceKm) ? routeDetails.distanceKm : straightLineDistance;
+    const distance = Number(routeDetails?.distanceKm);
+    if (!Number.isFinite(distance) || distance < 0) {
+        window.latestFareQuote = null;
+        window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+        fareAmountSpan.innerText = "Road route unavailable";
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+        return true;
+    }
+
+    const billedDistanceKm = Number(distance.toFixed(2));
     const estimatedDurationMinutes = routeDetails?.durationMinutes || Math.max(5, Math.round((distance / 25) * 60));
-    const baseFare = 30;
-    const perKmRate = 12;
-    const finalFare = Math.round(baseFare + (distance * perKmRate));
+    const fareOptions = calculateFareOptions(billedDistanceKm);
 
     window.latestFareQuote = {
         pickup_lat: userLatitude,
@@ -962,11 +975,12 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         drop_place_id: destination.placeId || "",
         drop_eloc: "",
         drop_type_hint: destination.typeHint || getPlaceTypeHint(destination),
-        distance_km: Number(distance.toFixed(2)),
-        duration_minutes: estimatedDurationMinutes
+        distance_km: billedDistanceKm,
+        duration_minutes: estimatedDurationMinutes,
+        fare_options: fareOptions
     };
 
-    fareAmountSpan.innerText = `\u20B9${finalFare}.00`;
+    fareAmountSpan.innerText = "Choose a ride";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
 
@@ -974,6 +988,9 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         distanceKm: routeDetails?.distanceKm,
         durationMinutes: routeDetails?.durationMinutes
     });
+    window.dispatchEvent(new CustomEvent("fare-quote-updated", {
+        detail: window.latestFareQuote
+    }));
     return true;
 }
 

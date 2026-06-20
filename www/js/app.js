@@ -11,6 +11,7 @@ import {
     onSnapshot, 
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { calculateServiceFare, getRideService } from './fare-policy.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -134,12 +135,13 @@ function renderPassengerDriverCard(ride) {
     const vehicleModel = ride.vehicle_model || "Vehicle";
     const vehicleNumber = ride.vehicle_number || "Number pending";
     const driverPhone = ride.driver_phone || "";
+    const serviceLabel = ride.service_name || (ride.vehicle_type === "auto" ? "Auto" : "Bike / Scooty");
 
     driverCard.innerHTML = `
         <div class="d-flex justify-content-between align-items-start gap-3">
             <div>
                 <div class="fw-bold text-dark">${driverName}</div>
-                <div class="small text-muted">🚗 ${vehicleModel} • ${vehicleNumber}</div>
+                <div class="small text-muted">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
             </div>
             ${driverPhone ? `
                 <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
@@ -249,9 +251,7 @@ function inferVehicleTypeFromProfile(driver) {
 function driverMatchesRequestedVehicle(driver, requestedVehicleType) {
     if (!requestedVehicleType) return true;
     const driverVehicleType = inferVehicleTypeFromProfile(driver);
-    // Services adds vehicle choice before booking. Older driverPresence docs may not
-    // have a vehicle type yet, so keep them eligible while ranking exact matches first.
-    return !driverVehicleType || driverVehicleType === requestedVehicleType;
+    return driverVehicleType === requestedVehicleType;
 }
 
 function getVehicleMatchRank(driver, requestedVehicleType) {
@@ -483,17 +483,22 @@ requestRideButton.addEventListener('click', async () => {
 
     const pickupText = document.getElementById('pickup-input').value;
     const dropText = document.getElementById('drop-input').value;
-    const fareText = document.getElementById('fare-amount').innerText;
     const requestBtn = document.getElementById('request-ride-btn');
-    const fareAmount = parseFloat(String(fareText).replace(/[^\d.]/g, ''));
+    const fareQuote = window.latestFareQuote || {};
+    const requestedVehicleType = window.selectedRideService?.id || "";
+    const service = getRideService(requestedVehicleType);
+    const fareAmount = calculateServiceFare(requestedVehicleType, fareQuote.distance_km);
 
-    if (!dropText || !Number.isFinite(fareAmount) || fareAmount <= 0) {
-        alert("Please enter a Tripura pickup/drop location and wait for the fare quote to calculate.");
+    const hasValidRoute = Number.isFinite(Number(fareQuote.pickup_lat))
+        && Number.isFinite(Number(fareQuote.pickup_lng))
+        && Number.isFinite(Number(fareQuote.drop_lat))
+        && Number.isFinite(Number(fareQuote.drop_lng));
+
+    if (!dropText || !service || !hasValidRoute || !Number.isFinite(fareAmount) || fareAmount <= 0) {
+        alert("Please select a destination and choose Bike or Auto before confirming your ride.");
         return;
     }
 
-
-    const requestedVehicleType = "bike";
     // Double-Booking Protection Check
     try {
         const activeRideQuery = query(
@@ -521,7 +526,6 @@ requestRideButton.addEventListener('click', async () => {
 
     try {
         const verificationPin = generateVerificationPin();
-        const fareQuote = window.latestFareQuote || {};
         const dispatchState = await buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng, requestedVehicleType);
         const rideData = {
             passenger_id: currentUser.uid,
@@ -541,10 +545,13 @@ requestRideButton.addEventListener('click', async () => {
             drop_lng: fareQuote.drop_lng || null,
             distance_km: fareQuote.distance_km || null,
             duration_minutes: fareQuote.duration_minutes || null,
-            fare: fareAmount, 
-            // Saved with the ride so dispatch expansion and driver filtering can
-            // continue honoring the passenger's Services vehicle choice.
-            vehicle_type: requestedVehicleType || "bike",
+            fare: fareAmount,
+            fare_base: service.baseFare,
+            fare_per_km: service.perKmRate,
+            fare_currency: "INR",
+            vehicle_type: requestedVehicleType,
+            service_name: service.name,
+            passenger_capacity: service.capacity,
             status: "pending",
             driver_id: null,
             driver_name: null,

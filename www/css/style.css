@@ -2053,6 +2053,98 @@ body.profile-editor-open {
     margin: 0;
 }
 
+.ride-service-options {
+    margin-top: 14px;
+}
+
+.ride-service-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.ride-service-heading h2,
+.ride-service-heading p {
+    margin: 0;
+}
+
+.ride-service-heading h2 {
+    font-size: 17px;
+    font-weight: 800;
+}
+
+.ride-service-heading p,
+.ride-service-heading > span {
+    color: var(--gy-muted);
+    font-size: 12px;
+}
+
+.ride-service-heading > span {
+    flex: 0 0 auto;
+    font-weight: 800;
+}
+
+.ride-service-list {
+    display: grid;
+    gap: 10px;
+}
+
+.ride-service-card {
+    width: 100%;
+    min-height: 76px;
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--gy-border);
+    border-radius: 10px;
+    color: var(--gy-text);
+    background: #fff;
+    text-align: left;
+}
+
+.ride-service-card.is-selected {
+    border: 2px solid var(--gy-green);
+    padding: 11px;
+    background: var(--gy-green-soft);
+    box-shadow: 0 6px 18px rgba(26, 122, 46, 0.12);
+}
+
+.ride-service-icon {
+    width: 52px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--gy-green);
+    background: #EAF8ED;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.ride-service-copy {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.ride-service-copy strong {
+    font-size: 15px;
+}
+
+.ride-service-copy small {
+    color: var(--gy-muted);
+    font-size: 11px;
+}
+
+.ride-service-fare {
+    font-size: 18px;
+    white-space: nowrap;
+}
+
 .services-ride-actions {
     position: static;
     display: grid;

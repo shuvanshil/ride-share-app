@@ -287,18 +287,21 @@ async function finalizeRegistration() {
 
     if (role === "driver") {
         const profilePhotoUrl = document.getElementById('driver-profile-photo').value.trim();
+        const vehicleType = document.getElementById('driver-vehicle-type').value;
         const vehicleNumber = document.getElementById('driver-vehicle-number').value.trim().toUpperCase();
         const vehicleModel = document.getElementById('driver-vehicle-model').value.trim();
         const licenseNumber = document.getElementById('driver-license-number').value.trim().toUpperCase();
         const upiId = document.getElementById('driver-upi-id').value.trim();
 
-        if (!profilePhotoUrl || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
-            alert("Drivers must add profile photo, vehicle number, vehicle model, driving licence number, and UPI ID.");
+        if (!profilePhotoUrl || !vehicleType || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
+            alert("Drivers must select Bike or Auto and add all required vehicle and payment details.");
             return;
         }
 
         Object.assign(profileData, {
             profilePhotoUrl,
+            vehicleType,
+            vehicle_type: vehicleType,
             vehicleNumber,
             vehicle_number: vehicleNumber,
             vehicleModel,

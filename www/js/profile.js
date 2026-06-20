@@ -37,6 +37,7 @@ const inputs = {
     name: document.getElementById('profile-edit-name'),
     email: document.getElementById('profile-edit-email'),
     phone: document.getElementById('profile-edit-phone'),
+    vehicleType: document.getElementById('profile-edit-vehicle-type'),
     vehicleModel: document.getElementById('profile-edit-vehicle-model'),
     vehicleNumber: document.getElementById('profile-edit-vehicle-number'),
     license: document.getElementById('profile-edit-license'),
@@ -207,6 +208,9 @@ function populateEditForm() {
     inputs.name.value = currentProfile.name || currentAuthUser.displayName || "";
     inputs.email.value = currentProfile.email || "";
     inputs.phone.value = currentProfile.phone || currentAuthUser.phoneNumber || "";
+    const vehicleText = `${currentProfile.vehicleModel || currentProfile.vehicle_model || ""}`.toLowerCase();
+    inputs.vehicleType.value = currentProfile.vehicleType || currentProfile.vehicle_type
+        || (/auto|rickshaw|tuk/.test(vehicleText) ? "auto" : /bike|scooter|activa|motorcycle/.test(vehicleText) ? "bike" : "");
     inputs.vehicleModel.value = currentProfile.vehicleModel || currentProfile.vehicle_model || "";
     inputs.vehicleNumber.value = currentProfile.vehicleNumber || currentProfile.vehicle_number || "";
     inputs.license.value = currentProfile.drivingLicenseNumber || "";
@@ -300,12 +304,14 @@ function validateProfileForm() {
     if (photoUrl && !/^https?:\/\/[^\s]+$/i.test(photoUrl)) return "Enter a valid profile photo URL.";
 
     if (isDriver) {
+        const vehicleType = inputs.vehicleType.value;
         const vehicleModel = inputs.vehicleModel.value.trim();
         const vehicleNumber = inputs.vehicleNumber.value.trim();
         const license = inputs.license.value.trim();
         const upi = inputs.upi.value.trim();
 
         if (!pendingPhotoValue) return "A profile photo is required for driver accounts.";
+        if (!vehicleType) return "Select Bike / Scooty or Auto as your ride service.";
         if (vehicleModel.length < 2) return "Enter the registered vehicle model.";
         if (!/^[A-Z0-9 -]{4,20}$/i.test(vehicleNumber)) return "Enter a valid vehicle number.";
         if (!/^[A-Z0-9 -]{5,30}$/i.test(license)) return "Enter a valid driving licence number.";
@@ -342,9 +348,12 @@ async function saveProfile(event) {
     };
 
     if (currentProfile.role === "driver") {
+        const vehicleType = inputs.vehicleType.value;
         const vehicleModel = inputs.vehicleModel.value.trim();
         const vehicleNumber = inputs.vehicleNumber.value.trim().toUpperCase();
         Object.assign(updates, {
+            vehicleType,
+            vehicle_type: vehicleType,
             vehicleModel,
             vehicle_model: vehicleModel,
             vehicleNumber,
@@ -363,6 +372,7 @@ async function saveProfile(event) {
                     name: updates.name,
                     phone: currentProfile.phone || currentAuthUser.phoneNumber || "",
                     profilePhotoUrl: updates.profilePhotoUrl,
+                    vehicle_type: updates.vehicle_type,
                     vehicle_model: updates.vehicle_model,
                     vehicle_number: updates.vehicle_number,
                     updatedAt: serverTimestamp()

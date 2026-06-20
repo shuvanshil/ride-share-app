@@ -65,13 +65,41 @@
                             <div class="services-map-loading">Loading map...</div>
                         </div>
                         <div id="fare-quote-box" class="fare-pill services-fare-pill d-none justify-content-between align-items-center">
-                            <span>Estimated fare</span>
-                            <strong id="fare-amount">₹0.00</strong>
+                            <span>Route calculated</span>
+                            <strong id="fare-amount">Choose a ride</strong>
+                        </div>
+                    </section>
+
+                    <section id="ride-service-options" class="ride-service-options d-none" aria-labelledby="ride-service-title">
+                        <div class="ride-service-heading">
+                            <div>
+                                <h2 id="ride-service-title">Choose your ride</h2>
+                                <p>Fares use the calculated road distance.</p>
+                            </div>
+                            <span id="ride-distance-label">0 km</span>
+                        </div>
+                        <div class="ride-service-list">
+                            <button class="ride-service-card is-selected" type="button" data-service-type="bike" aria-pressed="true">
+                                <span class="ride-service-icon" aria-hidden="true">BIKE</span>
+                                <span class="ride-service-copy">
+                                    <strong>Bike / Scooty</strong>
+                                    <small>1 passenger · ₹20 base + ₹7/km</small>
+                                </span>
+                                <strong class="ride-service-fare" id="bike-fare">₹0</strong>
+                            </button>
+                            <button class="ride-service-card" type="button" data-service-type="auto" aria-pressed="false">
+                                <span class="ride-service-icon" aria-hidden="true">AUTO</span>
+                                <span class="ride-service-copy">
+                                    <strong>Auto</strong>
+                                    <small>Up to 4 passengers · ₹30 base + ₹11/km</small>
+                                </span>
+                                <strong class="ride-service-fare" id="auto-fare">₹0</strong>
+                            </button>
                         </div>
                     </section>
 
                     <section class="services-ride-actions">
-                        <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Find Ride</button>
+                        <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Select a destination</button>
                         <button id="passenger-cancel-ride-btn" class="gy-btn gy-btn-danger-outline w-100 d-none" type="button">Cancel Ride</button>
                         <p id="services-action-hint">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>
@@ -100,11 +128,10 @@
     </div>
 
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/map.js?v=20260620-route-metrics"></script>
     <script src="js/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
-    <script type="module" src="js/app.js?v=20260620-direct-booking"></script>
-    <script type="module" src="js/services.js?v=20260620-direct-booking"></script>
+    <script type="module" src="js/app.js?v=20260620-multi-service"></script>
+    <script type="module" src="js/services.js?v=20260620-multi-service"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

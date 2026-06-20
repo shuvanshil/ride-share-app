@@ -1,4 +1,4 @@
-const CACHE_VERSION = "goyatra-shell-v4";
+const CACHE_VERSION = "goyatra-shell-v5-services";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -23,6 +23,7 @@ const APP_SHELL = [
     "js/history.js",
     "js/login.js",
     "js/map.js",
+    "js/fare-policy.js",
     "js/navigation.js",
     "js/pwa.js",
     "assets/icons/goyatra-icon-180.png",

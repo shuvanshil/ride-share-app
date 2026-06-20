@@ -81,6 +81,10 @@ function inferVehicleTypeFromProfile(driver) {
     return "";
 }
 
+function getServiceLabel(vehicleType) {
+    return vehicleType === "auto" ? "Auto" : "Bike / Scooty";
+}
+
 function showDriverReview(profile) {
     document.getElementById('driver-view')?.classList.add('d-none');
     document.getElementById('driver-view')?.classList.remove('d-flex');
@@ -266,6 +270,9 @@ function buildTripHistoryRecord(rideId, rideData) {
         vehicle_model: rideData.vehicle_model || "Vehicle",
         vehicle_number: rideData.vehicle_number || "Number not recorded",
         vehicle_details: `${rideData.vehicle_model || "Vehicle"} - ${rideData.vehicle_number || "Number not recorded"}`,
+        vehicle_type: rideData.vehicle_type || "",
+        service_name: rideData.service_name || getServiceLabel(rideData.vehicle_type),
+        passenger_capacity: Number(rideData.passenger_capacity || (rideData.vehicle_type === "auto" ? 4 : 1)),
         source: "client_payment_confirmation",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -369,6 +376,7 @@ function initDriverJobsStream() {
             const ride = docSnapshot.data();
 
             if (ride.status !== "pending" || ride.driver_id) return;
+            if (ride.vehicle_type && ride.vehicle_type !== inferVehicleTypeFromProfile(currentUser)) return;
             renderedRideCount += 1;
 
             const card = document.createElement('div');
@@ -377,6 +385,7 @@ function initDriverJobsStream() {
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <h6 class="fw-bold mb-1 text-dark">${ride.passenger_name}</h6>
+                        <span class="badge bg-light text-dark border mb-2">${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${ride.passenger_capacity || (ride.vehicle_type === "auto" ? 4 : 1)} passenger${Number(ride.passenger_capacity || 1) === 1 ? "" : "s"}</span>
                         <p class="mb-1 text-muted small"><strong>From:</strong> ${ride.pickup_name}</p>
                         <p class="mb-2 text-muted small"><strong>To:</strong> ${ride.drop_name}</p>
                     </div>
@@ -487,6 +496,11 @@ async function acceptRideJob(rideId) {
                 throw new Error("This ride was already accepted by another driver.");
             }
 
+            const driverVehicleType = inferVehicleTypeFromProfile(currentUser);
+            if (!driverVehicleType || rideData.vehicle_type !== driverVehicleType) {
+                throw new Error(`This ${getServiceLabel(rideData.vehicle_type)} request requires a matching registered vehicle.`);
+            }
+
             if (!Array.isArray(rideData.eligible_driver_ids) || !rideData.eligible_driver_ids.includes(currentUser.uid)) {
                 throw new Error("This ride request is no longer available for you.");
             }
@@ -498,6 +512,7 @@ async function acceptRideJob(rideId) {
                 driver_phone: currentUser.phone,
                 vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || currentUser.vehicleName || "Registered Vehicle",
                 vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || currentUser.vehicleNo || "Vehicle number pending",
+                vehicle_type: driverVehicleType,
                 acceptedAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
             });

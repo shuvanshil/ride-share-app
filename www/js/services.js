@@ -2,6 +2,7 @@ import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { initializeMapEngine } from './map.js';
+import { getRideService } from './fare-policy.js';
 
 const authView = document.getElementById('auth-view');
 const dashboardView = document.getElementById('dashboard-view');
@@ -12,8 +13,44 @@ const refreshLocationBtn = document.getElementById('refresh-location-btn');
 const clearDropBtn = document.getElementById('clear-drop-btn');
 const locationStatus = document.getElementById('services-location-status');
 const gpsPill = document.getElementById('services-gps-pill');
+const serviceOptions = document.getElementById('ride-service-options');
+const distanceLabel = document.getElementById('ride-distance-label');
 
 let servicesSessionStarted = false;
+let selectedServiceType = "bike";
+
+function selectRideService(serviceType) {
+    const service = getRideService(serviceType);
+    const fare = window.latestFareQuote?.fare_options?.[serviceType];
+    if (!service || !Number.isFinite(fare)) return;
+
+    selectedServiceType = serviceType;
+    window.selectedRideService = { ...service, fare };
+    document.querySelectorAll('[data-service-type]').forEach((card) => {
+        const selected = card.dataset.serviceType === serviceType;
+        card.classList.toggle('is-selected', selected);
+        card.setAttribute('aria-pressed', String(selected));
+    });
+    document.getElementById('fare-amount').innerText = `₹${fare}`;
+    findRideBtn.innerText = `Confirm ${service.shortName} · ₹${fare}`;
+    findRideBtn.disabled = false;
+}
+
+function renderFareOptions(quote) {
+    if (!quote?.fare_options) return;
+    document.getElementById('bike-fare').innerText = `₹${quote.fare_options.bike}`;
+    document.getElementById('auto-fare').innerText = `₹${quote.fare_options.auto}`;
+    distanceLabel.innerText = `${Number(quote.distance_km).toFixed(1)} km`;
+    serviceOptions.classList.remove('d-none');
+    selectRideService(selectedServiceType);
+}
+
+function resetFareOptions() {
+    window.selectedRideService = null;
+    serviceOptions.classList.add('d-none');
+    findRideBtn.innerText = "Calculating route...";
+    findRideBtn.disabled = true;
+}
 
 function setStatus(message, state = "loading") {
     if (locationStatus) locationStatus.innerText = message;
@@ -60,8 +97,15 @@ function bindServicesControls() {
     });
 
     dropInput.addEventListener('input', () => {
-        findRideBtn.disabled = !dropInput.value.trim();
+        resetFareOptions();
     });
+
+    document.querySelectorAll('[data-service-type]').forEach((card) => {
+        card.addEventListener('click', () => selectRideService(card.dataset.serviceType));
+    });
+
+    window.addEventListener('fare-quote-updated', (event) => renderFareOptions(event.detail));
+    window.addEventListener('fare-quote-reset', resetFareOptions);
 
     window.addEventListener('map-engine-ready', () => {
         setStatus(pickupInput.value || "Pickup location detected.", "ready");

@@ -168,7 +168,7 @@ function renderTripCard(trip) {
             <div class="history-trip-meta">
                 <span>${formatDistance(trip.distance_km)}</span>
                 <span>${formatDuration(trip.duration_minutes)}</span>
-                <span>${escapeHtml(trip.payment_status || "paid")}</span>
+                <span>${escapeHtml(trip.service_name || (trip.vehicle_type === "auto" ? "Auto" : "Bike / Scooty"))}</span>
             </div>
 
             <div class="history-trip-footer">
@@ -209,6 +209,7 @@ function openTripDetail(trip) {
         <div class="history-detail-row"><span>Passenger</span><strong>${escapeHtml(trip.passenger_name || "Passenger")}</strong></div>
         <div class="history-detail-row"><span>Driver</span><strong>${escapeHtml(trip.driver_name || "Driver")}</strong></div>
         <div class="history-detail-row"><span>Vehicle</span><strong>${escapeHtml(vehicleDetails)}</strong></div>
+        <div class="history-detail-row"><span>Service</span><strong>${escapeHtml(trip.service_name || (trip.vehicle_type === "auto" ? "Auto" : "Bike / Scooty"))}</strong></div>
         <div class="history-detail-row"><span>Pickup</span><strong>${escapeHtml(trip.pickup_location || "Pickup not recorded")}</strong></div>
         <div class="history-detail-row"><span>Drop</span><strong>${escapeHtml(trip.drop_location || "Drop not recorded")}</strong></div>
         <div class="history-detail-row"><span>Distance</span><strong>${formatDistance(trip.distance_km)}</strong></div>
