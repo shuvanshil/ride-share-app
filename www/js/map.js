@@ -20,6 +20,7 @@ let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
 let destinationMapPickMode = null;
 let fareEngineListenersBound = false;
+let passengerDestinationLocked = false;
 let globalDriversUnsubscribe = null;
 const globalDriverMarkers = new Map();
 
@@ -556,6 +557,8 @@ function setupFareEngineListeners() {
 
     fareEngineListenersBound = true;
     dropInput.addEventListener("input", (event) => {
+        if (passengerDestinationLocked || dropInput.readOnly) return;
+
         const query = event.target.value.trim();
 
         if (destinationSearchTimer) {
@@ -581,7 +584,7 @@ function setupFareEngineListeners() {
         destinationSearchTimer = setTimeout(async () => {
             const destinations = await searchGoogleDestinations(query);
 
-            if (dropInput.value.trim() !== query) {
+            if (passengerDestinationLocked || dropInput.readOnly || dropInput.value.trim() !== query) {
                 return;
             }
 
@@ -1059,4 +1062,20 @@ window.addEventListener("user-session-ready", () => {
     initializeMapEngine().catch((error) => {
         console.error("Google map engine initialization failed:", error);
     });
+});
+
+window.addEventListener("passenger-destination-lock-changed", (event) => {
+    passengerDestinationLocked = Boolean(event.detail?.locked);
+    if (!passengerDestinationLocked) return;
+
+    destinationMapPickMode = null;
+    if (destinationSearchTimer) {
+        clearTimeout(destinationSearchTimer);
+        destinationSearchTimer = null;
+    }
+    if (destinationSearchAbortController) {
+        destinationSearchAbortController.abort();
+        destinationSearchAbortController = null;
+    }
+    hideDestinationSuggestions();
 });

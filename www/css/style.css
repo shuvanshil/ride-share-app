@@ -2366,3 +2366,8 @@ body.profile-editor-open {
     }
 
 }
+.gy-input.destination-locked {
+    cursor: not-allowed;
+    background-color: #f3f4f6;
+    color: #374151;
+}

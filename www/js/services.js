@@ -163,6 +163,7 @@ function bindServicesControls() {
     refreshLocationBtn.addEventListener('click', refreshServicesMap);
 
     clearDropBtn.addEventListener('click', () => {
+        if (dropInput.readOnly) return;
         dropInput.value = "";
         dropInput.dispatchEvent(new Event('input', { bubbles: true }));
         dropInput.focus();

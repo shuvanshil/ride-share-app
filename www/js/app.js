@@ -24,6 +24,32 @@ let activeDispatchExpansionTimer = null;
 
 let currentPassengerRideId = null;
 
+function setPassengerDestinationLocked(locked, destinationName = "") {
+    const dropInput = document.getElementById('drop-input');
+    if (!dropInput) return;
+
+    if (locked && destinationName) {
+        dropInput.value = destinationName;
+    }
+
+    dropInput.readOnly = locked;
+    dropInput.setAttribute('aria-readonly', String(locked));
+    dropInput.classList.toggle('destination-locked', locked);
+    dropInput.title = locked
+        ? "Destination is fixed for this ride. Cancel the ride to choose another destination."
+        : "";
+
+    const clearDropBtn = document.getElementById('clear-drop-btn');
+    if (clearDropBtn) {
+        clearDropBtn.disabled = locked;
+        clearDropBtn.classList.toggle('d-none', locked);
+    }
+
+    window.dispatchEvent(new CustomEvent('passenger-destination-lock-changed', {
+        detail: { locked }
+    }));
+}
+
 function hasPassengerLifecycleSurface() {
     return Boolean(
         document.getElementById('request-ride-btn') &&
@@ -147,6 +173,7 @@ function resetPassengerBookingUi() {
     hidePassengerVerificationPin();
     hidePassengerDriverCard();
     hidePassengerCancelButton();
+    setPassengerDestinationLocked(false);
 
     const requestBtn = document.getElementById('request-ride-btn');
     requestBtn.innerHTML = 'Find Ride';
@@ -431,7 +458,7 @@ async function restorePassengerActiveRide() {
 
         console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
         showPassengerCancelButton(activeRideDoc.id);
-        document.getElementById('drop-input').value = activeRide.drop_name || "";
+        setPassengerDestinationLocked(true, activeRide.drop_name || "");
         renderPassengerDriverCard(activeRide);
         renderPassengerVerificationPin(activeRide.verification_pin);
         if (activeRide.fare) {
@@ -510,6 +537,7 @@ requestRideButton.addEventListener('click', async () => {
     }
 
     // UI updates only happen if the user has no active bookings
+    setPassengerDestinationLocked(true, dropText);
     requestBtn.innerHTML = '⏳ Waiting for a driver to accept...';
     requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
     requestBtn.disabled = true;
@@ -561,6 +589,7 @@ requestRideButton.addEventListener('click', async () => {
 
     } catch (error) {
         console.error("Database Write Failure:", error);
+        setPassengerDestinationLocked(false);
         requestBtn.innerHTML = 'Find Ride';
         requestBtn.className = "gy-btn gy-btn-primary w-100";
         requestBtn.disabled = false;
@@ -577,6 +606,10 @@ function listenToRideStatusUpdates(rideId) {
     activeRideListener = onSnapshot(doc(db, "rides", rideId), (docSnap) => {
         if (!docSnap.exists()) return;
         const ride = docSnap.data();
+
+        if (ACTIVE_RIDE_STATUSES.includes(ride.status)) {
+            setPassengerDestinationLocked(true, ride.drop_name || "");
+        }
 
         // FIXED: Added handling for when a driver cancels mid-trip
         if (ride.status === "cancelled_by_driver") {
@@ -653,6 +686,7 @@ function listenToRideStatusUpdates(rideId) {
             }
         } else if (ride.status === "completed") {
             clearDispatchExpansionTimer();
+            setPassengerDestinationLocked(false);
             requestBtn.innerHTML = '🎉 Trip Completed! Safe travels.';
             requestBtn.className = "btn btn-dark w-100 fw-bold py-2";
             hidePassengerVerificationPin();
