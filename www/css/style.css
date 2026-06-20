@@ -269,6 +269,23 @@ select {
     flex: 0 0 auto;
 }
 
+.guest-login-btn {
+    min-height: 38px;
+    padding: 0 15px;
+    border: 1px solid var(--gy-green);
+    border-radius: 8px;
+    color: var(--gy-green);
+    background: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.guest-login-btn:hover {
+    color: #fff;
+    background: var(--gy-green);
+}
+
 .pwa-install-btn {
     min-height: 38px;
     display: inline-flex;
@@ -1047,7 +1064,8 @@ select {
     min-height: 42px;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
+    gap: 12px;
 }
 
 .profile-title-block {
@@ -1549,6 +1567,39 @@ body.profile-editor-open {
     background: transparent;
     color: #E53958;
     font-size: 22px;
+    font-weight: 800;
+}
+
+.profile-logout-btn.is-login {
+    color: var(--gy-green);
+}
+
+.login-gate-card {
+    text-align: center;
+}
+
+.login-gate-card h2 {
+    margin: 14px 0 8px;
+    font-size: 23px;
+    font-weight: 800;
+}
+
+.login-gate-card p {
+    margin: 0 0 22px;
+    color: var(--gy-muted);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.login-gate-mark {
+    width: 54px;
+    height: 54px;
+    display: grid;
+    place-items: center;
+    margin: 0 auto;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--gy-green);
     font-weight: 800;
 }
 

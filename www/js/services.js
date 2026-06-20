@@ -4,7 +4,6 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/fi
 import { initializeMapEngine } from './map.js';
 import { getRideService } from './fare-policy.js';
 
-const authView = document.getElementById('auth-view');
 const dashboardView = document.getElementById('dashboard-view');
 const pickupInput = document.getElementById('pickup-input');
 const dropInput = document.getElementById('drop-input');
@@ -15,10 +14,12 @@ const locationStatus = document.getElementById('services-location-status');
 const gpsPill = document.getElementById('services-gps-pill');
 const serviceOptions = document.getElementById('ride-service-options');
 const distanceLabel = document.getElementById('ride-distance-label');
+const bookingLoginGate = document.getElementById('booking-login-gate');
 
 let servicesSessionStarted = false;
 let selectedServiceType = "bike";
 let serviceSelectionLocked = false;
+let isAuthenticatedPassenger = false;
 
 function selectRideService(serviceType) {
     if (serviceSelectionLocked) return;
@@ -100,19 +101,35 @@ function setStatus(message, state = "loading") {
     gpsPill.innerText = state === "ready" ? "Live" : state === "error" ? "Check" : "GPS";
 }
 
-function showAuthGuard(title, message) {
-    dashboardView.classList.add('d-none');
-    authView.classList.remove('d-none');
-
-    const heading = authView.querySelector('h1');
-    const copy = authView.querySelector('p');
-    if (heading) heading.innerText = title;
-    if (copy) copy.innerText = message;
+function showPassengerServices() {
+    dashboardView.classList.remove('d-none');
 }
 
-function showPassengerServices() {
-    authView.classList.add('d-none');
-    dashboardView.classList.remove('d-none');
+function setGuestLoginVisibility(visible) {
+    document.querySelectorAll('.guest-login-btn').forEach((button) => {
+        button.classList.toggle('d-none', !visible);
+    });
+}
+
+function openBookingLoginGate() {
+    bookingLoginGate.classList.remove('d-none');
+}
+
+function closeBookingLoginGate() {
+    bookingLoginGate.classList.add('d-none');
+}
+
+function startGuestServices() {
+    isAuthenticatedPassenger = false;
+    setGuestLoginVisibility(true);
+    showPassengerServices();
+    if (!servicesSessionStarted) {
+        servicesSessionStarted = true;
+        initializeMapEngine().catch((error) => {
+            console.error("Guest map initialization failed:", error);
+            setStatus("Could not load the map. Check location permission.", "error");
+        });
+    }
 }
 
 async function refreshServicesMap() {
@@ -151,6 +168,24 @@ function bindServicesControls() {
     window.addEventListener('map-engine-ready', () => {
         setStatus(pickupInput.value || "Pickup location detected.", "ready");
     });
+
+    findRideBtn.addEventListener('click', () => {
+        if (!isAuthenticatedPassenger && window.selectedRideService) {
+            openBookingLoginGate();
+        }
+    });
+    document.getElementById('booking-login-btn').addEventListener('click', () => {
+        window.location.href = 'login.html';
+    });
+    document.getElementById('booking-login-close-btn').addEventListener('click', closeBookingLoginGate);
+    bookingLoginGate.addEventListener('click', (event) => {
+        if (event.target === bookingLoginGate) closeBookingLoginGate();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !bookingLoginGate.classList.contains('d-none')) {
+            closeBookingLoginGate();
+        }
+    });
 }
 
 bindServicesControls();
@@ -158,23 +193,25 @@ findRideBtn.disabled = true;
 
 onAuthStateChanged(auth, async (firebaseUser) => {
     if (!firebaseUser) {
-        showAuthGuard("Login required", "Please login before booking your ride.");
+        startGuestServices();
         return;
     }
 
     try {
         const userSnap = await getDoc(doc(db, "users", firebaseUser.uid));
         if (!userSnap.exists()) {
-            showAuthGuard("Profile incomplete", "Please complete your GoYatra profile before booking.");
+            startGuestServices();
             return;
         }
 
         const profile = userSnap.data();
         if (profile.role === "driver") {
-            showAuthGuard("Passenger service only", "Drivers can manage ride requests from the Home duty console.");
+            window.location.replace('driver.html');
             return;
         }
 
+        isAuthenticatedPassenger = true;
+        setGuestLoginVisibility(false);
         showPassengerServices();
 
         if (!servicesSessionStarted) {
@@ -183,6 +220,6 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         }
     } catch (error) {
         console.error("Services auth bootstrap failed:", error);
-        showAuthGuard("Could not load account", "Please check your internet connection and try again.");
+        startGuestServices();
     }
 });

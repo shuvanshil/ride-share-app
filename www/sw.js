@@ -1,4 +1,4 @@
-const CACHE_VERSION = "goyatra-shell-v7-auth-modes";
+const CACHE_VERSION = "goyatra-shell-v8-guest-browsing";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [

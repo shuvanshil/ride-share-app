@@ -267,6 +267,7 @@ document.getElementById('history-detail-close-btn').addEventListener('click', ()
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
+        document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.remove('d-none'));
         userContext.innerText = "Login to view your completed trips";
         historyList.innerHTML = `
             <div class="history-empty-card">
@@ -279,6 +280,8 @@ onAuthStateChanged(auth, async (user) => {
         renderSummary([]);
         return;
     }
+
+    document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
 
     historyState.user = user;
     setLoadingState();

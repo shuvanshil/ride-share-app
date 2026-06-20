@@ -26,9 +26,12 @@
         <div id="dashboard-view" class="screen-shell flex-column">
             <header class="app-bar">
                 <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
-                <button class="pwa-install-btn d-none" type="button" aria-label="Install GoYatra">
-                    <span aria-hidden="true">↓</span> Install
-                </button>
+                <div class="app-bar-actions">
+                    <button class="guest-login-btn d-none" type="button" onclick="window.location.href='login.html'">Login</button>
+                    <button class="pwa-install-btn d-none" type="button" aria-label="Install GoYatra">
+                        <span aria-hidden="true">↓</span> Install
+                    </button>
+                </div>
             </header>
 
             <main class="passenger-home">
@@ -96,7 +99,7 @@
     <script type="module" src="js/firebase-init.js"></script>
     <script type="module" src="js/map.js?v=20260618-google-search-fallback"></script>
     <script type="module" src="js/app.js"></script>
-    <script type="module" src="js/auth.js"></script>
+    <script type="module" src="js/auth.js?v=20260621-guest-browsing"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

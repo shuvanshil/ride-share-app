@@ -24,6 +24,7 @@
     <main class="profile-page">
         <header class="profile-app-head">
             <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
+            <button class="guest-login-btn d-none" type="button" onclick="window.location.href='login.html'">Login</button>
         </header>
 
         <section class="profile-title-block">
@@ -74,7 +75,7 @@
         </section>
 
         <section class="profile-footer-actions">
-            <button id="profile-logout-btn" class="profile-logout-btn" type="button">Log out</button>
+            <button id="profile-logout-btn" class="profile-logout-btn d-none" type="button">Account</button>
         </section>
 
         <nav class="bottom-nav profile-bottom-nav">
@@ -196,7 +197,7 @@
     </div>
 
     <script src="js/navigation.js"></script>
-    <script type="module" src="js/profile.js"></script>
+    <script type="module" src="js/profile.js?v=20260621-guest-browsing"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

@@ -42,7 +42,14 @@ function showPassengerHome() {
     document.getElementById('dashboard-view')?.classList.add('d-flex');
 }
 
+function setGuestLoginVisibility(visible) {
+    document.querySelectorAll('.guest-login-btn').forEach((button) => {
+        button.classList.toggle('d-none', !visible);
+    });
+}
+
 function renderSession(profile) {
+    setGuestLoginVisibility(false);
     if (profile.role === "driver") {
         window.location.replace("driver.html");
     } else {
@@ -79,7 +86,8 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         clearCachedProfile();
-        window.location.replace("login.html");
+        setGuestLoginVisibility(true);
+        showPassengerHome();
         return;
     }
 
@@ -87,7 +95,8 @@ onAuthStateChanged(auth, async (user) => {
         const userDocSnap = await getDoc(doc(db, "users", user.uid));
         if (!userDocSnap.exists()) {
             clearCachedProfile();
-            window.location.replace("login.html");
+            setGuestLoginVisibility(true);
+            showPassengerHome();
             return;
         }
 

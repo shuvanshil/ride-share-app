@@ -17,20 +17,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260620-route-metrics">
+    <link rel="stylesheet" href="css/style.css?v=20260621-guest-browsing">
 </head>
 <body>
     <div id="app-container" class="app-root services-app-root">
-        <div id="auth-view" class="services-auth-guard d-none">
-            <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
-            <h1>Login required</h1>
-            <p>Please login before booking your ride.</p>
-            <button class="gy-btn gy-btn-primary w-100" type="button" onclick="window.location.href='login.html'">Go to Login</button>
-        </div>
-
         <main id="dashboard-view" class="services-page">
             <header class="services-app-head">
                 <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
+                <button class="guest-login-btn d-none" type="button" onclick="window.location.href='login.html'">Login</button>
             </header>
 
             <section class="services-title-block">
@@ -125,13 +119,23 @@
             </div>
         </div>
 
+        <div id="booking-login-gate" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="booking-login-title">
+            <div class="gy-modal login-gate-card">
+                <div class="login-gate-mark">GO</div>
+                <h2 id="booking-login-title">Login to book this ride</h2>
+                <p>You can explore routes and fares as a guest. Login or register to confirm your selected ride.</p>
+                <button id="booking-login-btn" class="gy-btn gy-btn-primary w-100" type="button">Login / Register</button>
+                <button id="booking-login-close-btn" class="auth-link-btn mt-3" type="button">Continue exploring</button>
+            </div>
+        </div>
+
     </div>
 
     <script type="module" src="js/firebase-init.js"></script>
     <script src="js/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
     <script type="module" src="js/app.js?v=20260620-service-lock"></script>
-    <script type="module" src="js/services.js?v=20260620-service-lock"></script>
+    <script type="module" src="js/services.js?v=20260621-guest-browsing"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

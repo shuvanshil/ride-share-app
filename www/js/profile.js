@@ -32,6 +32,7 @@ const saveButton = document.getElementById('profile-save-btn');
 const errorBox = document.getElementById('profile-edit-error');
 const saveNotice = document.getElementById('profile-save-notice');
 const shareLayer = document.getElementById('profile-share-layer');
+const profileSessionButton = document.getElementById('profile-logout-btn');
 
 const inputs = {
     name: document.getElementById('profile-edit-name'),
@@ -470,7 +471,11 @@ function bindProfileActions() {
         }
     });
 
-    document.getElementById('profile-logout-btn').addEventListener('click', async () => {
+    profileSessionButton.addEventListener('click', async () => {
+        if (!currentAuthUser) {
+            window.location.href = 'login.html';
+            return;
+        }
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
         await signOut(auth);
         window.location.href = 'login.html';
@@ -488,11 +493,19 @@ onAuthStateChanged(auth, async (user) => {
         emailEl.innerText = "";
         avatarEl.innerText = "G";
         editButton.disabled = true;
+        profileSessionButton.innerText = "Login / Register";
+        profileSessionButton.classList.add('is-login');
+        profileSessionButton.classList.remove('d-none');
+        document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.remove('d-none'));
         return;
     }
 
     currentAuthUser = user;
     editButton.disabled = false;
+    profileSessionButton.innerText = "Log out";
+    profileSessionButton.classList.remove('is-login');
+    profileSessionButton.classList.remove('d-none');
+    document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
 
     try {
         const userSnap = await getDoc(doc(db, "users", user.uid));

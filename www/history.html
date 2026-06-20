@@ -23,7 +23,10 @@
     <main class="history-page">
         <header class="history-app-head">
             <div class="brand-logo"><span>Go</span><span>Yatra</span></div>
-            <button id="history-refresh-btn" class="mini-action" type="button">Refresh</button>
+            <div class="app-bar-actions">
+                <button class="guest-login-btn d-none" type="button" onclick="window.location.href='login.html'">Login</button>
+                <button id="history-refresh-btn" class="mini-action" type="button">Refresh</button>
+            </div>
         </header>
 
         <section class="history-title-block">
@@ -75,7 +78,7 @@
     </main>
 
     <script src="js/navigation.js"></script>
-    <script type="module" src="js/history.js"></script>
+    <script type="module" src="js/history.js?v=20260621-guest-browsing"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>
