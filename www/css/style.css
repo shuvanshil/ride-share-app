@@ -597,6 +597,10 @@ select {
     font-size: 11px;
 }
 
+.feature-row a {
+    text-decoration: none;
+}
+
 .heritage-card {
     min-height: 118px;
     margin-bottom: 12px;
