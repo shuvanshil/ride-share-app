@@ -3,7 +3,8 @@ import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/fi
 import {
     RecaptchaVerifier,
     signInWithPhoneNumber,
-    onAuthStateChanged
+    onAuthStateChanged,
+    signOut
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const PROFILE_CACHE_KEY = "goyatra_user_profile";
@@ -16,6 +17,7 @@ let loginFlowStarted = false;
 let requestedPhoneNumber = null;
 let resendTimerId = null;
 let otpRequestInProgress = false;
+let authMode = "login";
 
 const phoneInputContainer = document.getElementById('phone-input-container');
 const otpInputContainer = document.getElementById('otp-input-container');
@@ -28,6 +30,31 @@ const registerBtn = document.getElementById('register-btn');
 const changePhoneBtn = document.getElementById('change-phone-btn');
 const resendOtpBtn = document.getElementById('resend-otp-btn');
 const authStatus = document.getElementById('auth-status');
+const loginModeBtn = document.getElementById('login-mode-btn');
+const registerModeBtn = document.getElementById('register-mode-btn');
+const authEntryTitle = document.getElementById('auth-entry-title');
+const authEntryCopy = document.getElementById('auth-entry-copy');
+
+function updateAuthModeUi() {
+    const isRegistration = authMode === "register";
+    loginModeBtn.classList.toggle('active', !isRegistration);
+    registerModeBtn.classList.toggle('active', isRegistration);
+    loginModeBtn.setAttribute('aria-selected', String(!isRegistration));
+    registerModeBtn.setAttribute('aria-selected', String(isRegistration));
+    authEntryTitle.textContent = isRegistration ? "Create your account" : "Welcome back";
+    authEntryCopy.textContent = isRegistration
+        ? "Verify your mobile number, then complete your passenger or driver profile."
+        : "Login with the mobile number linked to your account.";
+    sendOtpBtn.textContent = isRegistration ? "Register with OTP" : "Send Login OTP";
+    verifyOtpBtn.textContent = isRegistration ? "Verify & Continue" : "Verify & Login";
+}
+
+function setAuthMode(mode) {
+    if (mode !== "login" && mode !== "register") return;
+    authMode = mode;
+    resetToPhoneStep();
+    updateAuthModeUi();
+}
 
 function setAuthStatus(message = "", isError = false) {
     authStatus.textContent = message;
@@ -127,9 +154,9 @@ function resetToPhoneStep() {
     registrationContainer.classList.add('d-none');
     phoneInputContainer.classList.remove('d-none');
     sendOtpBtn.disabled = false;
-    sendOtpBtn.textContent = "Send OTP";
+    sendOtpBtn.textContent = authMode === "register" ? "Register with OTP" : "Send Login OTP";
     verifyOtpBtn.disabled = false;
-    verifyOtpBtn.textContent = "Verify & Login";
+    verifyOtpBtn.textContent = authMode === "register" ? "Verify & Continue" : "Verify & Login";
     resendOtpBtn.disabled = true;
     resendOtpBtn.textContent = "Resend OTP";
     setAuthStatus();
@@ -185,7 +212,7 @@ async function sendOTP() {
         phoneInputContainer.classList.add('d-none');
         otpInputContainer.classList.remove('d-none');
         document.getElementById('otp-destination').textContent = `We sent a 6-digit OTP to ${maskPhoneNumber(phoneNumber)}.`;
-        sendOtpBtn.textContent = "Send OTP";
+        sendOtpBtn.textContent = authMode === "register" ? "Register with OTP" : "Send Login OTP";
         setAuthStatus("OTP sent. It may take a few moments to arrive.");
         startResendTimer();
         document.getElementById('otp-code').focus();
@@ -196,7 +223,7 @@ async function sendOTP() {
         setAuthStatus(message, true);
         alert(message);
         sendOtpBtn.disabled = false;
-        sendOtpBtn.textContent = "Send OTP";
+        sendOtpBtn.textContent = authMode === "register" ? "Register with OTP" : "Send Login OTP";
         resendOtpBtn.disabled = false;
         resendOtpBtn.textContent = "Resend OTP";
     } finally {
@@ -236,11 +263,21 @@ async function verifyOTP() {
 
         const userDocSnap = await getDoc(doc(db, "users", verifiedFirebaseUser.uid));
         if (userDocSnap.exists()) {
+            if (authMode === "register") {
+                alert("An account already exists for this mobile number. Logging you in instead.");
+            }
             routeToHome(userDocSnap.data());
-        } else {
+        } else if (authMode === "register") {
             otpInputContainer.classList.add('d-none');
             registrationContainer.classList.remove('d-none');
+            authEntryTitle.textContent = "Complete your profile";
+            authEntryCopy.textContent = "Tell us whether you will ride as a passenger or drive with GoYatra.";
             document.getElementById('user-name').focus();
+        } else {
+            await signOut(auth);
+            alert("No GoYatra account was found for this number. Please register first.");
+            setAuthMode("register");
+            setAuthStatus("No account found. Register this mobile number to continue.");
         }
     } catch (error) {
         console.error("OTP verification failed:", error);
@@ -248,7 +285,7 @@ async function verifyOTP() {
         setAuthStatus(message, true);
         alert(message);
         verifyOtpBtn.disabled = false;
-        verifyOtpBtn.textContent = "Verify & Login";
+        verifyOtpBtn.textContent = authMode === "register" ? "Verify & Continue" : "Verify & Login";
     }
 }
 
@@ -338,6 +375,8 @@ verifyOtpBtn.addEventListener('click', verifyOTP);
 registerBtn.addEventListener('click', finalizeRegistration);
 resendOtpBtn.addEventListener('click', resendOTP);
 changePhoneBtn.addEventListener('click', resetToPhoneStep);
+loginModeBtn.addEventListener('click', () => setAuthMode("login"));
+registerModeBtn.addEventListener('click', () => setAuthMode("register"));
 userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
 document.getElementById('phone-number').addEventListener('input', (event) => {
     event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10);
@@ -352,6 +391,7 @@ document.getElementById('otp-code').addEventListener('keydown', (event) => {
     if (event.key === "Enter") verifyOTP();
 });
 updateRegistrationFieldsForRole();
+updateAuthModeUi();
 
 onAuthStateChanged(auth, async (user) => {
     if (!user || loginFlowStarted) return;
@@ -362,9 +402,13 @@ onAuthStateChanged(auth, async (user) => {
             routeToHome(userDocSnap.data());
         } else {
             verifiedFirebaseUser = user;
+            authMode = "register";
+            updateAuthModeUi();
             phoneInputContainer.classList.add('d-none');
             otpInputContainer.classList.add('d-none');
             registrationContainer.classList.remove('d-none');
+            authEntryTitle.textContent = "Complete your profile";
+            authEntryCopy.textContent = "Finish creating your GoYatra account.";
         }
     } catch (error) {
         console.warn("Existing auth session lookup failed:", error);

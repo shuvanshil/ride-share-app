@@ -83,6 +83,49 @@ select {
     background: #F7F8F7;
 }
 
+.auth-mode-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 22px;
+    padding: 4px;
+    border-radius: 10px;
+    background: var(--gy-muted-bg);
+}
+
+.auth-mode-btn {
+    min-height: 42px;
+    border: 0;
+    border-radius: 8px;
+    color: var(--gy-muted);
+    background: transparent;
+    font-weight: 800;
+}
+
+.auth-mode-btn.active {
+    color: #fff;
+    background: var(--gy-green);
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.2);
+}
+
+.auth-entry-heading {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.auth-entry-heading h1 {
+    margin: 0 0 6px;
+    font-size: 21px;
+    font-weight: 800;
+}
+
+.auth-entry-heading p {
+    margin: 0;
+    color: var(--gy-muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
 .auth-link-btn {
     width: 100%;
     border: 0;

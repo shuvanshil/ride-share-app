@@ -25,13 +25,23 @@
             <div class="brand-logo text-center mb-4"><span>Go</span><span>Yatra</span></div>
             <p class="auth-subtitle text-center mb-4">Fast local rides across Tripura</p>
 
+            <div class="auth-mode-switch" role="tablist" aria-label="Choose login or registration">
+                <button id="login-mode-btn" class="auth-mode-btn active" type="button" role="tab" aria-selected="true">Login</button>
+                <button id="register-mode-btn" class="auth-mode-btn" type="button" role="tab" aria-selected="false">Register</button>
+            </div>
+
+            <div class="auth-entry-heading">
+                <h1 id="auth-entry-title">Welcome back</h1>
+                <p id="auth-entry-copy">Login with the mobile number linked to your account.</p>
+            </div>
+
             <div id="phone-input-container">
                 <label class="form-label">Mobile Number</label>
                 <div class="input-group gy-input-group mb-3">
                     <span class="input-group-text">+91</span>
                     <input type="tel" id="phone-number" class="form-control" placeholder="9999999999" maxlength="10" inputmode="numeric" autocomplete="tel-national" aria-describedby="sms-consent-text">
                 </div>
-                <button id="send-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Send OTP</button>
+                <button id="send-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Send Login OTP</button>
                 <p id="sms-consent-text" class="auth-consent-text mt-3 mb-0">
                     By continuing, you agree to receive a one-time verification SMS. Message and data rates may apply.
                 </p>
@@ -102,7 +112,7 @@
     </main>
 
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/login.js"></script>
+    <script type="module" src="js/login.js?v=20260621-auth-modes"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>
