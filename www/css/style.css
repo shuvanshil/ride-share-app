@@ -568,27 +568,8 @@ select {
     font-size: 13px;
     font-weight: 800;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
-}
-
-#map-container::after {
-    content: "8.2 km • 18 mins";
-    position: absolute;
-    left: 50%;
-    top: 14px;
-    z-index: 700;
-    transform: translateX(-50%);
-    padding: 8px 14px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.94);
-    color: #111;
-    font-size: 13px;
-    font-weight: 800;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
     pointer-events: none;
-}
-
-#map-container.map-hybrid-host::after {
-    display: none;
+    white-space: nowrap;
 }
 
 .feature-row {

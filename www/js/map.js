@@ -16,6 +16,7 @@ let mainMapShell = null;
 let userMarker = null;
 let destinationMarker = null;
 let routePolyline = null;
+let routeMetricElement = null;
 let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
 let destinationMapPickMode = null;
@@ -248,6 +249,25 @@ function clearRouteAndDestination() {
         routePolyline.setMap(null);
     }
     routePolyline = null;
+
+    if (routeMetricElement) {
+        routeMetricElement.remove();
+        routeMetricElement = null;
+    }
+}
+
+function renderRouteMetric(distanceKm, durationMinutes) {
+    if (!window.mapInstance || !Number.isFinite(distanceKm) || !Number.isFinite(durationMinutes)) return;
+
+    const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
+
+    routeMetricElement = document.createElement("div");
+    routeMetricElement.className = "map-metric";
+    routeMetricElement.setAttribute("role", "status");
+    routeMetricElement.setAttribute("aria-live", "polite");
+    routeMetricElement.textContent = `${distanceKm.toFixed(1)} km \u2022 ${Math.round(durationMinutes)} mins`;
+    mapContainer.appendChild(routeMetricElement);
 }
 
 function clearPickupMarker() {
@@ -950,11 +970,14 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
 
-    drawDestinationAndRoute(destination, routeDetails?.routePath || []);
+    drawDestinationAndRoute(destination, routeDetails?.routePath || [], {
+        distanceKm: routeDetails?.distanceKm,
+        durationMinutes: routeDetails?.durationMinutes
+    });
     return true;
 }
 
-function drawDestinationAndRoute(destination, routePath = []) {
+function drawDestinationAndRoute(destination, routePath = [], routeMetrics = {}) {
     if (!window.mapInstance) return;
 
     const maps = getGoogleMaps();
@@ -990,6 +1013,7 @@ function drawDestinationAndRoute(destination, routePath = []) {
     bounds.extend({ lat: userLatitude, lng: userLongitude });
     bounds.extend(destinationCoords);
     window.mapInstance.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+    renderRouteMetric(routeMetrics.distanceKm, routeMetrics.durationMinutes);
 }
 
 export async function renderGoogleRoutePreview(hostElementOrId, fareQuote = {}) {
