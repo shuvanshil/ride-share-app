@@ -27,6 +27,7 @@ let currentlyAssignedRideId = null;
 let pendingDriverPaymentRideId = null;
 let activeDriverRenderedStatus = null;
 let activeConsoleUid = null;
+let activeDriverRideData = null;
 
 function addOptionalClickListener(elementId, handler) {
     const element = document.getElementById(elementId);
@@ -206,8 +207,88 @@ function resetActiveTripButtons(status = "accepted") {
     completeBtn.disabled = status !== "en_route";
 }
 
-function renderActiveTripStatus(status) {
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function renderActivePassengerContact(ride = {}) {
+    const rawPassengerName = String(ride.passenger_name || "Passenger").trim() || "Passenger";
+    const passengerName = escapeHtml(rawPassengerName);
+    const passengerInitial = escapeHtml(rawPassengerName.charAt(0).toUpperCase() || "P");
+    const passengerPhone = String(ride.passenger_phone || "").trim();
+    const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
+
+    return `
+        <div class="active-passenger-contact">
+            <div class="active-passenger-avatar" aria-hidden="true">${passengerInitial}</div>
+            <div class="active-passenger-copy">
+                <span>Passenger</span>
+                <strong>${passengerName}</strong>
+            </div>
+            ${callablePhone ? `
+                <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
+                    <span aria-hidden="true">☎</span>
+                    <small>Call</small>
+                </a>
+            ` : `
+                <button class="active-passenger-call" type="button" disabled aria-label="Passenger phone unavailable">
+                    <span aria-hidden="true">☎</span>
+                    <small>Call</small>
+                </button>
+            `}
+        </div>
+    `;
+}
+
+function formatRideDistance(value) {
+    const distance = Number(value);
+    return Number.isFinite(distance) && distance > 0 ? `${distance.toFixed(1)} km` : "Not available";
+}
+
+function formatRideDuration(value) {
+    const duration = Number(value);
+    return Number.isFinite(duration) && duration > 0 ? `${Math.round(duration)} mins` : "Not available";
+}
+
+function renderActiveTripRoute(ride = {}) {
+    const pickup = escapeHtml(ride.pickup_name || "Pickup location unavailable");
+    const destination = escapeHtml(ride.drop_name || ride.drop_full_address || "Destination unavailable");
+    const distanceLabel = formatRideDistance(ride.distance_km);
+    const durationLabel = formatRideDuration(ride.duration_minutes);
+
+    return `
+        <div class="active-trip-route" aria-label="Active trip route">
+            <div class="active-trip-place">
+                <span class="active-route-dot pickup" aria-hidden="true"></span>
+                <div>
+                    <small>Pickup</small>
+                    <strong>${pickup}</strong>
+                </div>
+            </div>
+            <div class="active-route-line" aria-hidden="true"></div>
+            <div class="active-trip-place">
+                <span class="active-route-dot destination" aria-hidden="true"></span>
+                <div>
+                    <small>Destination</small>
+                    <strong>${destination}</strong>
+                </div>
+            </div>
+            <div class="active-trip-metrics">
+                <div><small>Distance</small><strong>${distanceLabel}</strong></div>
+                <div><small>Estimated time</small><strong>${durationLabel}</strong></div>
+            </div>
+        </div>
+    `;
+}
+
+function renderActiveTripStatus(status, rideData = activeDriverRideData) {
     activeDriverRenderedStatus = status;
+    activeDriverRideData = { ...(activeDriverRideData || {}), ...(rideData || {}), status };
 
     const labels = {
         accepted: "PIN verification required",
@@ -229,6 +310,8 @@ function renderActiveTripStatus(status) {
     ` : "";
 
     activeTripDetails.innerHTML = `
+        ${renderActivePassengerContact(activeDriverRideData)}
+        ${renderActiveTripRoute(activeDriverRideData)}
         <p class="mb-1"><strong>Status:</strong> ${labels[status] || status}</p>
         <p class="mb-0 text-secondary" id="gps-status">${gpsStatusText}</p>
         ${pinVerificationHtml}
@@ -242,13 +325,13 @@ function renderActiveTripStatus(status) {
     }
 }
 
-function showDriverActiveTripPanel(status) {
+function showDriverActiveTripPanel(status, rideData = activeDriverRideData) {
     document.getElementById('active-trip-container').classList.remove('d-none');
     document.getElementById('active-trip-details').innerHTML = `
         <p class="mb-1"><strong>Status:</strong> Restoring active trip...</p>
         <p class="mb-0 text-secondary" id="gps-status">GPS locking...</p>
     `;
-    renderActiveTripStatus(status);
+    renderActiveTripStatus(status, rideData);
 }
 
 function buildTripHistoryRecord(rideId, rideData) {
@@ -342,7 +425,8 @@ async function restoreDriverActiveRide() {
         const rideRef = doc(db, "rides", activeRideDoc.id);
         currentlyAssignedRideId = activeRideDoc.id;
         await setDriverAvailability("busy");
-        showDriverActiveTripPanel(activeRideDoc.data().status);
+        activeDriverRideData = activeRideDoc.data();
+        showDriverActiveTripPanel(activeDriverRideData.status, activeDriverRideData);
         attachDriverTripListener(rideRef);
         startDriverGpsBroadcast(rideRef);
     } catch (error) {
@@ -391,6 +475,16 @@ function initDriverJobsStream() {
                     </div>
                     <span class="badge bg-primary fs-6">Rs ${ride.fare}</span>
                 </div>
+                <div class="ride-request-metrics" aria-label="Ride distance and estimated time">
+                    <div>
+                        <small>Distance</small>
+                        <strong>${formatRideDistance(ride.distance_km)}</strong>
+                    </div>
+                    <div>
+                        <small>Estimated time</small>
+                        <strong>${formatRideDuration(ride.duration_minutes)}</strong>
+                    </div>
+                </div>
                 <button class="btn btn-sm btn-success w-100 fw-bold mt-2 accept-job-btn" data-id="${rideId}">
                     Accept Ride Request
                 </button>
@@ -426,6 +520,8 @@ function attachDriverTripListener(rideRef) {
 
             document.getElementById('active-trip-container').classList.add('d-none');
             currentlyAssignedRideId = null;
+            activeDriverRideData = null;
+            activeDriverRenderedStatus = null;
             setDriverAvailability("searching");
 
             if (activeDriverTripListener) activeDriverTripListener();
@@ -433,8 +529,11 @@ function attachDriverTripListener(rideRef) {
         }
 
         if (DRIVER_ACTIVE_STATUSES.includes(currentRideData.status)) {
-            if (currentRideData.status !== activeDriverRenderedStatus) {
-                renderActiveTripStatus(currentRideData.status);
+            const passengerChanged = currentRideData.passenger_name !== activeDriverRideData?.passenger_name
+                || currentRideData.passenger_phone !== activeDriverRideData?.passenger_phone;
+            activeDriverRideData = currentRideData;
+            if (currentRideData.status !== activeDriverRenderedStatus || passengerChanged) {
+                renderActiveTripStatus(currentRideData.status, currentRideData);
             }
         }
     });
@@ -471,6 +570,7 @@ function startDriverGpsBroadcast(rideRef) {
 
 async function acceptRideJob(rideId) {
     try {
+        let acceptedRideData = null;
         const rideRef = doc(db, "rides", rideId);
         const driverActiveRideQuery = query(
             collection(db, "rides"),
@@ -491,6 +591,7 @@ async function acceptRideJob(rideId) {
             }
 
             const rideData = rideSnap.data();
+            acceptedRideData = rideData;
 
             if (rideData.status !== "pending" || rideData.driver_id) {
                 throw new Error("This ride was already accepted by another driver.");
@@ -520,8 +621,9 @@ async function acceptRideJob(rideId) {
 
         await setDriverAvailability("busy");
         currentlyAssignedRideId = rideId;
+        activeDriverRideData = { ...acceptedRideData, status: "accepted" };
         document.getElementById('active-trip-container').classList.remove('d-none');
-        renderActiveTripStatus("accepted");
+        renderActiveTripStatus("accepted", activeDriverRideData);
         attachDriverTripListener(rideRef);
         startDriverGpsBroadcast(rideRef);
     } catch (error) {
@@ -672,6 +774,8 @@ async function completeRideJob() {
         await setDriverAvailability("searching");
 
         document.getElementById('active-trip-container').classList.add('d-none');
+        activeDriverRideData = null;
+        activeDriverRenderedStatus = null;
         document.getElementById('driver-final-fare').innerText = `Rs ${finalFare}`;
 
         const driverUPI = currentUser.upiId;
@@ -721,6 +825,8 @@ async function cancelRideByDriver(rideId) {
         });
 
         document.getElementById('active-trip-container').classList.add('d-none');
+        activeDriverRideData = null;
+        activeDriverRenderedStatus = null;
         alert("Trip aborted successfully. Status set to online.");
 
         currentlyAssignedRideId = null;

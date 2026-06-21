@@ -1,4 +1,4 @@
-const CACHE_VERSION = "goyatra-shell-v9-driver-history-summary";
+const CACHE_VERSION = "goyatra-shell-v12-request-metrics";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [
