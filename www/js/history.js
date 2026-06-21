@@ -9,6 +9,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
+const FILTER_LABELS = {
+    day: "today",
+    week: "this week",
+    month: "this month",
+    all: "all time"
+};
+
 const historyState = {
     user: null,
     profile: null,
@@ -33,6 +40,10 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+}
+
+function isDriverAccount() {
+    return historyState.profile?.role === "driver";
 }
 
 function formatMoney(value) {
@@ -62,15 +73,54 @@ function getTripTime(trip) {
     return trip.completedAt?.toMillis ? trip.completedAt.toMillis() : 0;
 }
 
-function getTripRole(trip) {
-    if (!historyState.user) return "passenger";
-    return trip.driver_id === historyState.user.uid ? "driver" : "passenger";
+function getTripRole() {
+    return isDriverAccount() ? "driver" : "passenger";
 }
 
 function getParticipantName(trip) {
-    return getTripRole(trip) === "driver"
+    return isDriverAccount()
         ? trip.passenger_name || "Passenger"
         : trip.driver_name || "Driver";
+}
+
+function getFilterLabel(filterName = historyState.activeFilter) {
+    return FILTER_LABELS[filterName] || FILTER_LABELS.all;
+}
+
+function getDayStart(now) {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+}
+
+function getWeekStart(now) {
+    const day = now.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff).getTime();
+}
+
+function isTripInActiveFilter(trip) {
+    if (historyState.activeFilter === "all") return true;
+
+    const tripTime = getTripTime(trip);
+    if (!tripTime) return false;
+
+    const tripDate = new Date(tripTime);
+    const now = new Date();
+
+    if (historyState.activeFilter === "day") {
+        return tripTime >= getDayStart(now);
+    }
+
+    if (historyState.activeFilter === "week") {
+        const weekStart = getWeekStart(now);
+        return tripTime >= weekStart;
+    }
+
+    if (historyState.activeFilter === "month") {
+        return tripDate.getFullYear() === now.getFullYear()
+            && tripDate.getMonth() === now.getMonth();
+    }
+
+    return true;
 }
 
 async function loadUserProfile(user) {
@@ -93,60 +143,46 @@ async function getTripsByField(fieldName, uid) {
 async function loadTripHistory() {
     if (!historyState.user) return [];
 
-    const [passengerTrips, driverTrips] = await Promise.all([
-        getTripsByField("passenger_id", historyState.user.uid),
-        getTripsByField("driver_id", historyState.user.uid)
-    ]);
-
-    const tripMap = new Map();
-    [...passengerTrips, ...driverTrips].forEach((trip) => {
-        tripMap.set(trip.id, trip);
-    });
-
-    return [...tripMap.values()].sort((a, b) => getTripTime(b) - getTripTime(a));
+    const fieldName = isDriverAccount() ? "driver_id" : "passenger_id";
+    const trips = await getTripsByField(fieldName, historyState.user.uid);
+    return trips.sort((a, b) => getTripTime(b) - getTripTime(a));
 }
 
 function getVisibleTrips() {
-    if (historyState.activeFilter === "all") return historyState.trips;
-    return historyState.trips.filter((trip) => getTripRole(trip) === historyState.activeFilter);
+    return historyState.trips.filter(isTripInActiveFilter);
 }
 
 function renderSummary(trips) {
-    const isDriverAccount = historyState.profile?.role === "driver";
-    summaryGrid.classList.toggle('d-none', !isDriverAccount);
-    if (!isDriverAccount) return;
+    summaryGrid.classList.toggle('d-none', !isDriverAccount());
+    if (!isDriverAccount()) return;
 
     const totalFare = trips.reduce((sum, trip) => sum + Number(trip.fare_amount || 0), 0);
     const totalDistance = trips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
-    const driverTripCount = trips.filter((trip) => getTripRole(trip) === "driver").length;
-    const passengerTripCount = trips.length - driverTripCount;
 
     totalTripsEl.innerText = String(trips.length);
     totalFareEl.innerText = formatMoney(totalFare);
     totalDistanceEl.innerText = totalDistance > 0 ? `${totalDistance.toFixed(1)} km` : "0 km";
-
-    if (historyState.activeFilter === "driver") {
-        moneyLabelEl.innerText = "Earnings";
-    } else if (historyState.activeFilter === "passenger") {
-        moneyLabelEl.innerText = "Spent";
-    } else {
-        moneyLabelEl.innerText = driverTripCount > passengerTripCount ? "Net Fare" : "Total Fare";
-    }
+    moneyLabelEl.innerText = "Total Fare";
 }
 
 function renderEmptyState() {
+    const roleText = isDriverAccount() ? "driven" : "booked";
+    const filterText = getFilterLabel();
+    const actionLabel = isDriverAccount() ? "Go Home" : "Book a Ride";
+    const actionLink = isDriverAccount() ? "driver.html" : "index.html";
+
     historyList.innerHTML = `
         <div class="history-empty-card">
             <div class="history-empty-icon">◷</div>
-            <h3>No completed rides yet</h3>
-            <p>Your paid completed trips will appear here after the driver confirms payment.</p>
-            <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='index.html'">Book a Ride</button>
+            <h3>No completed rides for ${escapeHtml(filterText)}</h3>
+            <p>Your ${escapeHtml(roleText)} trips for ${escapeHtml(filterText)} will appear here after payment is confirmed.</p>
+            <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='${actionLink}'">${actionLabel}</button>
         </div>
     `;
 }
 
 function renderTripCard(trip) {
-    const role = getTripRole(trip);
+    const role = getTripRole();
     const participantLabel = role === "driver" ? "Passenger" : "Driver";
     const moneyLabel = role === "driver" ? "Earnings" : "Fare";
     const vehicleDetails = trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`;
@@ -203,7 +239,7 @@ function renderTrips() {
 }
 
 function openTripDetail(trip) {
-    const role = getTripRole(trip);
+    const role = getTripRole();
     const vehicleDetails = trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`;
 
     detailContent.innerHTML = `
@@ -272,6 +308,9 @@ document.getElementById('history-detail-close-btn').addEventListener('click', ()
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
+        historyState.user = null;
+        historyState.profile = null;
+        historyState.trips = [];
         document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.remove('d-none'));
         userContext.innerText = "Login to view your completed trips";
         historyList.innerHTML = `
@@ -294,7 +333,7 @@ onAuthStateChanged(auth, async (user) => {
     try {
         historyState.profile = await loadUserProfile(user);
         const name = historyState.profile.name || "LiphtUp user";
-        const role = historyState.profile.role || "rider";
+        const role = isDriverAccount() ? "driver" : "passenger";
         userContext.innerText = `${name} • ${role}`;
         await refreshHistory();
     } catch (error) {

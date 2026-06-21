@@ -1895,7 +1895,7 @@ body.profile-editor-open {
 
 .history-filter-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
     margin-bottom: 18px;
     padding: 6px;
