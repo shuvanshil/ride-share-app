@@ -1,4 +1,4 @@
-const CACHE_VERSION = "liphtup-shell-v15-wordmark-alignment";
+const CACHE_VERSION = "liphtup-shell-v16-vehicle-markers";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -32,6 +32,8 @@ const APP_SHELL = [
     "assets/icons/liphtup-icon-1024.png",
     "assets/icons/liphtup-icon-maskable-512.png",
     "assets/liphtup-logo.jpeg",
+    "assets/vehicle-markers/bike-marker.png",
+    "assets/vehicle-markers/auto-marker.png",
     "assets/hero banner.png",
     "assets/unakoti background image.jpg",
     "assets/railway background.jpeg"

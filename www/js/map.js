@@ -10,6 +10,11 @@ const TRIPURA_CENTER = { lat: 23.8315, lng: 91.9882 };
 const DESTINATION_SEARCH_DEBOUNCE_MS = 420;
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
+const DRIVER_MARKER_ANIMATION_MS = 850;
+const VEHICLE_MARKER_ASSETS = Object.freeze({
+    bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
+    auto: new URL("../assets/vehicle-markers/auto-marker.png", import.meta.url).href
+});
 
 let userLatitude = DEFAULT_PICKUP.lat;
 let userLongitude = DEFAULT_PICKUP.lng;
@@ -24,6 +29,7 @@ let destinationMapPickMode = null;
 let fareEngineListenersBound = false;
 let passengerDestinationLocked = false;
 let globalDriversUnsubscribe = null;
+let vehicleLegendElement = null;
 const globalDriverMarkers = new Map();
 
 function normalizeCoordinate(value) {
@@ -222,6 +228,36 @@ function addGoogleMapStyles() {
             font-weight: 800;
             padding: 10px 12px;
             width: 100%;
+        }
+
+        .vehicle-marker-legend {
+            position: absolute;
+            top: 58px;
+            left: 12px;
+            z-index: 700;
+            display: flex;
+            gap: 6px;
+            padding: 5px 7px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: 0 5px 14px rgba(0, 0, 0, 0.12);
+            pointer-events: none;
+        }
+
+        .vehicle-marker-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            color: #374151;
+            font-size: 10px;
+            font-weight: 800;
+        }
+
+        .vehicle-marker-legend img {
+            width: 23px;
+            height: 23px;
+            object-fit: contain;
         }
     `;
     document.head.appendChild(style);
@@ -425,16 +461,69 @@ function inferDriverVehicleType(driver) {
 
 function createDriverMarkerIcon(driver) {
     const maps = getGoogleMaps();
-    const isAuto = inferDriverVehicleType(driver) === "auto";
+    const vehicleType = inferDriverVehicleType(driver);
     return {
-        path: "M12 2C7.03 2 3 6.03 3 11c0 6.75 9 15 9 15s9-8.25 9-15c0-4.97-4.03-9-9-9z",
-        fillColor: isAuto ? "#f59e0b" : "#15803d",
-        fillOpacity: 1,
-        strokeColor: "#ffffff",
-        strokeWeight: 2,
-        scale: 1.35,
-        labelOrigin: new maps.Point(12, 11)
+        url: VEHICLE_MARKER_ASSETS[vehicleType],
+        scaledSize: new maps.Size(48, 48),
+        anchor: new maps.Point(24, 24)
     };
+}
+
+function updateVehicleMarkerLegend() {
+    const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
+
+    const counts = { bike: 0, auto: 0 };
+    globalDriverMarkers.forEach(({ vehicleType }) => {
+        counts[vehicleType] = (counts[vehicleType] || 0) + 1;
+    });
+
+    if (!vehicleLegendElement) {
+        vehicleLegendElement = document.createElement("div");
+        vehicleLegendElement.className = "vehicle-marker-legend";
+        vehicleLegendElement.setAttribute("aria-label", "Nearby vehicle counts");
+        mapContainer.appendChild(vehicleLegendElement);
+    }
+
+    vehicleLegendElement.innerHTML = `
+        <span><img src="${VEHICLE_MARKER_ASSETS.bike}" alt="">Bike ${counts.bike}</span>
+        <span><img src="${VEHICLE_MARKER_ASSETS.auto}" alt="">Auto ${counts.auto}</span>
+    `;
+}
+
+function animateGlobalDriverMarker(existing, targetPosition) {
+    if (existing.animationFrame) cancelAnimationFrame(existing.animationFrame);
+
+    const current = existing.marker.getPosition();
+    if (!current || typeof requestAnimationFrame !== "function") {
+        existing.marker.setPosition(targetPosition);
+        return;
+    }
+
+    const startPosition = { lat: current.lat(), lng: current.lng() };
+    const latitudeDelta = targetPosition.lat - startPosition.lat;
+    const longitudeDelta = targetPosition.lng - startPosition.lng;
+    if (Math.abs(latitudeDelta) > 0.05 || Math.abs(longitudeDelta) > 0.05) {
+        existing.marker.setPosition(targetPosition);
+        return;
+    }
+
+    const startedAt = performance.now();
+    const step = (now) => {
+        const progress = Math.min(1, (now - startedAt) / DRIVER_MARKER_ANIMATION_MS);
+        const eased = progress * progress * (3 - (2 * progress));
+        existing.marker.setPosition({
+            lat: startPosition.lat + (latitudeDelta * eased),
+            lng: startPosition.lng + (longitudeDelta * eased)
+        });
+
+        if (progress < 1) {
+            existing.animationFrame = requestAnimationFrame(step);
+        } else {
+            existing.animationFrame = null;
+        }
+    };
+    existing.animationFrame = requestAnimationFrame(step);
 }
 
 function isLiveDriverVisible(driver) {
@@ -462,37 +551,30 @@ function upsertGlobalDriverMarker(driverId, driver) {
             position,
             title: `${driver.name || "Online Driver"} - ${vehicleType}`,
             icon: createDriverMarkerIcon(driver),
-            label: {
-                text: vehicleType === "auto" ? "A" : "B",
-                color: "#ffffff",
-                fontSize: "11px",
-                fontWeight: "800"
-            },
             zIndex: 500
         });
 
-        globalDriverMarkers.set(driverId, { marker, vehicleType });
+        globalDriverMarkers.set(driverId, { marker, vehicleType, animationFrame: null });
+        updateVehicleMarkerLegend();
         return;
     }
 
-    existing.marker.setPosition(position);
+    animateGlobalDriverMarker(existing, position);
+    existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
     if (existing.vehicleType !== vehicleType) {
         existing.marker.setIcon(createDriverMarkerIcon(driver));
-        existing.marker.setLabel({
-            text: vehicleType === "auto" ? "A" : "B",
-            color: "#ffffff",
-            fontSize: "11px",
-            fontWeight: "800"
-        });
         existing.vehicleType = vehicleType;
+        updateVehicleMarkerLegend();
     }
 }
 
 function removeGlobalDriverMarker(driverId) {
     const existing = globalDriverMarkers.get(driverId);
     if (!existing) return;
+    if (existing.animationFrame) cancelAnimationFrame(existing.animationFrame);
     removeMarker(existing.marker);
     globalDriverMarkers.delete(driverId);
+    updateVehicleMarkerLegend();
 }
 
 function clearGlobalDriverMarkers() {
@@ -508,6 +590,7 @@ function startGlobalDriverPresenceListener() {
     }
 
     clearGlobalDriverMarkers();
+    updateVehicleMarkerLegend();
     globalDriversUnsubscribe = onSnapshot(collection(db, "driverPresence"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             const driverId = change.doc.id;

@@ -40,6 +40,62 @@ let currentRide = null;
 let currentRideId = null;
 let currentTarget = null;
 let currentTargetKey = "";
+let driverMarkerAnimationFrame = null;
+
+const VEHICLE_MARKER_ASSETS = Object.freeze({
+    bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
+    auto: new URL("../assets/vehicle-markers/auto-marker.png", import.meta.url).href
+});
+
+function inferVehicleType(driver = {}) {
+    const text = [
+        driver.vehicle_type,
+        driver.vehicleType,
+        driver.vehicle_model,
+        driver.vehicleModel,
+        driver.vehicleName
+    ].filter(Boolean).join(" ").toLowerCase();
+    return /auto|rickshaw|tuk/.test(text) ? "auto" : "bike";
+}
+
+function getLiveVehicleMarkerIcon() {
+    const maps = window.google.maps;
+    return {
+        url: VEHICLE_MARKER_ASSETS[inferVehicleType(currentUser)],
+        scaledSize: new maps.Size(48, 48),
+        anchor: new maps.Point(24, 24)
+    };
+}
+
+function animateDriverMarkerTo(position) {
+    if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
+    const current = driverMarker?.getPosition();
+    if (!current || typeof requestAnimationFrame !== "function") {
+        driverMarker?.setPosition(position);
+        return;
+    }
+
+    const start = { lat: current.lat(), lng: current.lng() };
+    const latDelta = position.lat - start.lat;
+    const lngDelta = position.lng - start.lng;
+    if (Math.abs(latDelta) > 0.05 || Math.abs(lngDelta) > 0.05) {
+        driverMarker.setPosition(position);
+        driverMarkerAnimationFrame = null;
+        return;
+    }
+
+    const startedAt = performance.now();
+    const step = (now) => {
+        const progress = Math.min(1, (now - startedAt) / 700);
+        const eased = progress * progress * (3 - (2 * progress));
+        driverMarker.setPosition({
+            lat: start.lat + (latDelta * eased),
+            lng: start.lng + (lngDelta * eased)
+        });
+        driverMarkerAnimationFrame = progress < 1 ? requestAnimationFrame(step) : null;
+    };
+    driverMarkerAnimationFrame = requestAnimationFrame(step);
+}
 let mapShell = null;
 let map = null;
 let driverMarker = null;
@@ -177,19 +233,12 @@ function upsertDriverMarker(position) {
             position,
             title: "Your live location",
             zIndex: 1000,
-            icon: {
-                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 6,
-                fillColor: "#16723a",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 3
-            }
+            icon: getLiveVehicleMarkerIcon()
         });
         return;
     }
 
-    driverMarker.setPosition(position);
+    animateDriverMarkerTo(position);
 }
 
 function upsertTargetMarker() {
@@ -339,6 +388,7 @@ async function writeDriverLocation(position) {
             verificationStatus: currentUser.verificationStatus || "pending_review",
             vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
             vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
+            vehicle_type: inferVehicleType(currentUser),
             isConnected: true,
             lastSeenAt: serverTimestamp(),
             updatedAt: serverTimestamp()
@@ -547,6 +597,10 @@ retryButton.addEventListener('click', () => {
     }
 
     if (retryButton.dataset.action === "map" && lastPosition) {
+        if (driverMarkerAnimationFrame) {
+            cancelAnimationFrame(driverMarkerAnimationFrame);
+            driverMarkerAnimationFrame = null;
+        }
         mapShell?.destroy();
         mapShell = null;
         map = null;
@@ -607,5 +661,6 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 window.addEventListener('beforeunload', () => {
     if (locationWatchId !== null) navigator.geolocation.clearWatch(locationWatchId);
     if (activeRideUnsubscribe) activeRideUnsubscribe();
+    if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
     mapShell?.destroy();
 });
