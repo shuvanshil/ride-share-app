@@ -1,4 +1,4 @@
-const CACHE_VERSION = "goyatra-shell-v12-request-metrics";
+const CACHE_VERSION = "liphtup-shell-v15-wordmark-alignment";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -26,9 +26,12 @@ const APP_SHELL = [
     "js/fare-policy.js",
     "js/navigation.js",
     "js/pwa.js",
-    "assets/icons/goyatra-icon-180.png",
-    "assets/icons/goyatra-icon-192.png",
-    "assets/icons/goyatra-icon-512.png",
+    "assets/icons/liphtup-icon-180.png",
+    "assets/icons/liphtup-icon-192.png",
+    "assets/icons/liphtup-icon-512.png",
+    "assets/icons/liphtup-icon-1024.png",
+    "assets/icons/liphtup-icon-maskable-512.png",
+    "assets/liphtup-logo.jpeg",
     "assets/hero banner.png",
     "assets/unakoti background image.jpg",
     "assets/railway background.jpeg"

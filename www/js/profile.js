@@ -8,10 +8,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-const PROFILE_CACHE_KEY = "goyatra_user_profile";
+const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const APP_SHARE_URL = "https://ride-share-app.vercel.app/";
-const APP_SHARE_TITLE = "GoYatra";
-const APP_SHARE_TEXT = "Book reliable local rides with GoYatra. Join me and travel easily across Tripura.";
+const APP_SHARE_TITLE = "LiphtUp";
+const APP_SHARE_TEXT = "Book reliable local rides with LiphtUp. Join me and travel easily across Tripura.";
 const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_SAVED_IMAGE_LENGTH = 650000;
 
@@ -70,7 +70,7 @@ function renderAvatar(container, name, photoUrl) {
 
     const photo = document.createElement('img');
     photo.src = photoUrl;
-    photo.alt = `${name || "GoYatra user"} profile photo`;
+    photo.alt = `${name || "LiphtUp user"} profile photo`;
     photo.addEventListener('error', () => {
         container.replaceChildren();
         container.innerText = getInitials(name);
@@ -79,7 +79,7 @@ function renderAvatar(container, name, photoUrl) {
 }
 
 function renderProfileSummary(profile = {}) {
-    const displayName = profile.name || currentAuthUser?.displayName || "GoYatra User";
+    const displayName = profile.name || currentAuthUser?.displayName || "LiphtUp User";
     const phone = profile.phone || currentAuthUser?.phoneNumber || "Phone number unavailable";
 
     nameEl.innerText = displayName;
@@ -144,7 +144,7 @@ async function copyShareLink() {
     }
 
     closeFallbackShareSheet();
-    saveNotice.innerText = "GoYatra link copied";
+    saveNotice.innerText = "LiphtUp link copied";
     showSaveNotice();
     window.setTimeout(() => {
         saveNotice.innerText = "Profile updated successfully";
@@ -171,7 +171,7 @@ function openShareChannel(channel) {
     }
 }
 
-async function shareGoYatra() {
+async function shareLiphtUp() {
     const shareData = {
         title: APP_SHARE_TITLE,
         text: APP_SHARE_TEXT,
@@ -401,17 +401,17 @@ function bindProfileActions() {
         window.location.href = 'history.html';
     });
     document.querySelector('[data-action="contact"]').addEventListener('click', () => {
-        window.location.href = 'mailto:support@goyatra.app';
+        window.location.href = 'mailto:support@liphtup.app';
     });
     document.querySelector('[data-action="help"]').addEventListener('click', () => {
-        alert('GoYatra support will be connected here.');
+        alert('LiphtUp support will be connected here.');
     });
     document.querySelector('[data-action="safety"]').addEventListener('click', () => {
         alert('Safety center coming soon.');
     });
-    document.querySelector('[data-action="refer"]').addEventListener('click', shareGoYatra);
+    document.querySelector('[data-action="refer"]').addEventListener('click', shareLiphtUp);
     document.querySelector('[data-action="about"]').addEventListener('click', () => {
-        alert('GoYatra is a local ride-hailing platform for Tripura.');
+        alert('LiphtUp is a local ride-hailing platform for Tripura.');
     });
 
     editButton.addEventListener('click', openEditor);
@@ -511,7 +511,7 @@ onAuthStateChanged(auth, async (user) => {
         const userSnap = await getDoc(doc(db, "users", user.uid));
         currentProfile = userSnap.exists() ? userSnap.data() : {
             uid: user.uid,
-            name: user.displayName || "GoYatra User",
+            name: user.displayName || "LiphtUp User",
             phone: user.phoneNumber || "",
             role: "passenger"
         };
@@ -521,7 +521,7 @@ onAuthStateChanged(auth, async (user) => {
         console.error("Profile load failed:", error);
         currentProfile = {
             uid: user.uid,
-            name: user.displayName || "GoYatra User",
+            name: user.displayName || "LiphtUp User",
             phone: user.phoneNumber || "",
             role: "passenger"
         };

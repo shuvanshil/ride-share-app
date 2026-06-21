@@ -293,7 +293,7 @@ onAuthStateChanged(auth, async (user) => {
 
     try {
         historyState.profile = await loadUserProfile(user);
-        const name = historyState.profile.name || "GoYatra user";
+        const name = historyState.profile.name || "LiphtUp user";
         const role = historyState.profile.role || "rider";
         userContext.innerText = `${name} • ${role}`;
         await refreshHistory();

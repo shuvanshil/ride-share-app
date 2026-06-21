@@ -199,13 +199,13 @@ function resetPassengerBookingUi() {
 function applyServiceBookingDraft() {
     if (!currentUser || currentUser.role !== "passenger") return false;
 
-    const rawDraft = sessionStorage.getItem("goyatra_service_booking_draft");
+    const rawDraft = sessionStorage.getItem("liphtup_service_booking_draft");
     if (!rawDraft) return false;
 
     try {
         const draft = JSON.parse(rawDraft);
         if (!draft?.drop || Date.now() - Number(draft.createdAt || 0) > 10 * 60 * 1000) {
-            sessionStorage.removeItem("goyatra_service_booking_draft");
+            sessionStorage.removeItem("liphtup_service_booking_draft");
             return false;
         }
 
@@ -219,12 +219,12 @@ function applyServiceBookingDraft() {
         if (dropInput) {
             dropInput.value = draft.drop;
             dropInput.dispatchEvent(new Event('input', { bubbles: true }));
-            sessionStorage.removeItem("goyatra_service_booking_draft");
+            sessionStorage.removeItem("liphtup_service_booking_draft");
             return true;
         }
     } catch (error) {
         console.warn("Could not apply Services booking draft:", error);
-        sessionStorage.removeItem("goyatra_service_booking_draft");
+        sessionStorage.removeItem("liphtup_service_booking_draft");
     }
 
     return false;

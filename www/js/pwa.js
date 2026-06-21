@@ -34,12 +34,12 @@ function showManualInstallHelp() {
         ? `
             <li>Tap the Share button in Safari.</li>
             <li>Select <strong>Add to Home Screen</strong>.</li>
-            <li>Tap <strong>Add</strong> to install GoYatra.</li>
+            <li>Tap <strong>Add</strong> to install LiphtUp.</li>
         `
         : `
             <li>Open your browser menu.</li>
             <li>Select <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
-            <li>Confirm to install GoYatra.</li>
+            <li>Confirm to install LiphtUp.</li>
         `;
 
     const layer = document.createElement('div');
@@ -49,10 +49,10 @@ function showManualInstallHelp() {
         <button class="pwa-ios-install-backdrop" type="button" aria-label="Close install instructions"></button>
         <section class="pwa-ios-install-sheet" role="dialog" aria-modal="true" aria-labelledby="pwa-ios-install-title">
             <header>
-                <img src="${new URL('assets/icons/goyatra-icon-192.png', APP_BASE_URL).href}" alt="">
+                <img src="${new URL('assets/icons/liphtup-icon-192.png', APP_BASE_URL).href}" alt="">
                 <div>
-                    <span>Install GoYatra</span>
-                    <h2 id="pwa-ios-install-title">${ios ? 'Add to Home Screen' : 'Install GoYatra'}</h2>
+                    <span>Install LiphtUp</span>
+                    <h2 id="pwa-ios-install-title">${ios ? 'Add to Home Screen' : 'Install LiphtUp'}</h2>
                 </div>
                 <button class="pwa-ios-install-close" type="button" aria-label="Close">&times;</button>
             </header>
@@ -66,7 +66,7 @@ function showManualInstallHelp() {
     layer.querySelector('.pwa-ios-install-close').addEventListener('click', closeIosInstallHelp);
 }
 
-async function installGoYatra(button) {
+async function installLiphtUp(button) {
     if (isStandalone()) {
         setInstallButtonsVisible(false);
         return;
@@ -83,7 +83,7 @@ async function installGoYatra(button) {
         const choice = await deferredInstallPrompt.userChoice;
         if (choice.outcome === 'accepted') setInstallButtonsVisible(false);
     } catch (error) {
-        console.warn('GoYatra install prompt failed:', error);
+        console.warn('LiphtUp install prompt failed:', error);
     } finally {
         deferredInstallPrompt = null;
         button.disabled = false;
@@ -92,7 +92,7 @@ async function installGoYatra(button) {
 
 function bindInstallButtons() {
     getInstallButtons().forEach((button) => {
-        button.addEventListener('click', () => installGoYatra(button));
+        button.addEventListener('click', () => installLiphtUp(button));
     });
 
     if (isStandalone()) {
@@ -117,7 +117,7 @@ if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         const serviceWorkerUrl = new URL('sw.js', APP_BASE_URL);
         navigator.serviceWorker.register(serviceWorkerUrl.href, { scope: APP_BASE_URL.pathname }).catch((error) => {
-            console.warn('GoYatra service worker registration failed:', error);
+            console.warn('LiphtUp service worker registration failed:', error);
         });
     });
 }

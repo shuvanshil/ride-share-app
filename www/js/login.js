@@ -7,7 +7,7 @@ import {
     signOut
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-const PROFILE_CACHE_KEY = "goyatra_user_profile";
+const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const OTP_RESEND_DELAY_SECONDS = 60;
 
 let confirmationResult = null;
@@ -271,11 +271,11 @@ async function verifyOTP() {
             otpInputContainer.classList.add('d-none');
             registrationContainer.classList.remove('d-none');
             authEntryTitle.textContent = "Complete your profile";
-            authEntryCopy.textContent = "Tell us whether you will ride as a passenger or drive with GoYatra.";
+            authEntryCopy.textContent = "Tell us whether you will ride as a passenger or drive with LiphtUp.";
             document.getElementById('user-name').focus();
         } else {
             await signOut(auth);
-            alert("No GoYatra account was found for this number. Please register first.");
+            alert("No LiphtUp account was found for this number. Please register first.");
             setAuthMode("register");
             setAuthStatus("No account found. Register this mobile number to continue.");
         }
@@ -354,7 +354,7 @@ async function finalizeRegistration() {
 
     registerBtn.disabled = true;
     registerBtn.textContent = "Creating account...";
-    setAuthStatus("Creating your GoYatra account...");
+    setAuthStatus("Creating your LiphtUp account...");
 
     try {
         await setDoc(doc(db, "users", currentAuthUser.uid), profileData);
@@ -408,7 +408,7 @@ onAuthStateChanged(auth, async (user) => {
             otpInputContainer.classList.add('d-none');
             registrationContainer.classList.remove('d-none');
             authEntryTitle.textContent = "Complete your profile";
-            authEntryCopy.textContent = "Finish creating your GoYatra account.";
+            authEntryCopy.textContent = "Finish creating your LiphtUp account.";
         }
     } catch (error) {
         console.warn("Existing auth session lookup failed:", error);

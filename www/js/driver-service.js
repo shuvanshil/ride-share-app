@@ -13,7 +13,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-const PROFILE_CACHE_KEY = "goyatra_user_profile";
+const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const ACTIVE_RIDE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 const ROUTE_RECALC_DISTANCE_METERS = 25;
 const ROUTE_RECALC_MIN_INTERVAL_MS = 7000;

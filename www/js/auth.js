@@ -2,7 +2,7 @@ import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-const PROFILE_CACHE_KEY = "goyatra_user_profile";
+const PROFILE_CACHE_KEY = "liphtup_user_profile";
 let sessionReadyDispatched = false;
 
 function getCachedProfile() {

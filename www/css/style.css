@@ -40,19 +40,31 @@ select {
 
 
 .brand-logo {
-    font-size: 22px;
-    line-height: 1;
-    font-weight: 800;
-    letter-spacing: 0;
+    width: 116px;
+    min-width: 116px;
+    display: flex;
+    align-items: center;
 }
 
-
-.brand-logo span:first-child {
-    color: #111;
+.brand-logo img {
+    width: 116px;
+    height: auto;
+    display: block;
+    transform: translateX(-7px);
 }
 
-.brand-logo span:last-child {
-    color: var(--gy-green);
+.brand-logo.text-center {
+    width: 100%;
+    justify-content: center;
+}
+
+.brand-logo.text-center img {
+    width: 164px;
+    transform: none;
+}
+
+.pwa-offline-page .brand-logo img {
+    transform: none;
 }
 
 .auth-screen,
