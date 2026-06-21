@@ -22,6 +22,7 @@ const totalTripsEl = document.getElementById('history-total-trips');
 const totalFareEl = document.getElementById('history-total-fare');
 const totalDistanceEl = document.getElementById('history-total-distance');
 const moneyLabelEl = document.getElementById('history-money-label');
+const summaryGrid = document.getElementById('history-summary-grid');
 const detailModal = document.getElementById('history-detail-modal');
 const detailContent = document.getElementById('history-detail-content');
 
@@ -111,6 +112,10 @@ function getVisibleTrips() {
 }
 
 function renderSummary(trips) {
+    const isDriverAccount = historyState.profile?.role === "driver";
+    summaryGrid.classList.toggle('d-none', !isDriverAccount);
+    if (!isDriverAccount) return;
+
     const totalFare = trips.reduce((sum, trip) => sum + Number(trip.fare_amount || 0), 0);
     const totalDistance = trips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
     const driverTripCount = trips.filter((trip) => getTripRole(trip) === "driver").length;
