@@ -29,6 +29,7 @@ let pickupSearchTimer = null;
 let pickupSearchAbortController = null;
 let destinationMapPickMode = null;
 let pickupMapPickMode = null;
+let centerMapPickerElement = null;
 let fareEngineListenersBound = false;
 let pickupSearchListenersBound = false;
 let passengerDestinationLocked = false;
@@ -239,6 +240,115 @@ function addGoogleMapStyles() {
         .is-location-pick-mode,
         .is-location-pick-mode * {
             cursor: crosshair !important;
+        }
+
+        .map-center-location-picker {
+            position: absolute;
+            inset: 0;
+            z-index: 750;
+            pointer-events: none;
+        }
+
+        .map-center-pin-wrap {
+            --pin-color: #0b5d2a;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 42px;
+            height: 58px;
+            transform: translate(-50%, -50px);
+            transition: transform 160ms ease;
+            filter: drop-shadow(0 5px 5px rgba(0, 0, 0, 0.28));
+        }
+
+        .map-center-location-picker.is-drop .map-center-pin-wrap {
+            --pin-color: #d32f2f;
+        }
+
+        .map-center-location-picker.is-moving .map-center-pin-wrap {
+            transform: translate(-50%, -58px);
+        }
+
+        .map-center-pin-head {
+            position: absolute;
+            top: 0;
+            left: 5px;
+            width: 32px;
+            height: 32px;
+            border: 7px solid var(--pin-color);
+            border-radius: 50%;
+            background: #fff;
+        }
+
+        .map-center-pin-stick {
+            position: absolute;
+            top: 29px;
+            left: 19px;
+            width: 4px;
+            height: 20px;
+            border-radius: 0 0 4px 4px;
+            background: var(--pin-color);
+        }
+
+        .map-center-pin-shadow {
+            position: absolute;
+            top: calc(50% + 3px);
+            left: 50%;
+            width: 22px;
+            height: 7px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.2);
+            transform: translate(-50%, -50%);
+            transition: transform 160ms ease, opacity 160ms ease;
+        }
+
+        .map-center-location-picker.is-moving .map-center-pin-shadow {
+            opacity: 0.12;
+            transform: translate(-50%, -50%) scale(0.7);
+        }
+
+        .map-center-picker-actions {
+            position: absolute;
+            right: 14px;
+            bottom: 14px;
+            left: 14px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+            pointer-events: auto;
+        }
+
+        .map-center-picker-actions span {
+            color: #374151;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+
+        .map-center-picker-confirm {
+            min-height: 38px;
+            padding: 0 14px;
+            border: 0;
+            border-radius: 9px;
+            color: #fff;
+            background: #0b5d2a;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer !important;
+        }
+
+        .map-center-location-picker.is-drop .map-center-picker-confirm {
+            background: #d32f2f;
+        }
+
+        .map-center-picker-confirm:disabled {
+            opacity: 0.65;
         }
 
         .vehicle-marker-legend {
@@ -628,7 +738,7 @@ export async function initializeMapEngine() {
     hideDestinationSuggestions();
     pickupMapPickMode = null;
     destinationMapPickMode = null;
-    mapContainer.classList.remove("is-location-pick-mode");
+    hideCenterMapPicker();
     window.latestFareQuote = null;
     window.selectedDestination = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
@@ -659,15 +769,11 @@ export async function initializeMapEngine() {
     window.mapInstance = mainMapShell.map;
     addPickupMarker(coords);
 
-    window.mapInstance.addListener("click", (event) => {
-        if (!event.latLng) return;
-        if (pickupMapPickMode) {
-            completePickupMapPick(event.latLng.lat(), event.latLng.lng());
-            return;
-        }
-        if (destinationMapPickMode) {
-            completeDestinationMapPick(event.latLng.lat(), event.latLng.lng());
-        }
+    window.mapInstance.addListener("dragstart", () => {
+        centerMapPickerElement?.classList.add("is-moving");
+    });
+    window.mapInstance.addListener("dragend", () => {
+        centerMapPickerElement?.classList.remove("is-moving");
     });
 
     setupFareEngineListeners();
@@ -694,6 +800,7 @@ function setupPickupSearchListeners() {
 
     pickupInput.addEventListener("input", () => {
         if (pickupInput.readOnly) return;
+        cancelCenterMapPick();
         const query = pickupInput.value.trim();
 
         if (pickupSearchTimer) clearTimeout(pickupSearchTimer);
@@ -813,6 +920,7 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
             const resolved = await resolveGooglePlace(selected);
             if (!resolved) return;
 
+            cancelCenterMapPick();
             const existingDestination = window.selectedDestination;
             userLatitude = resolved.lat;
             userLongitude = resolved.lng;
@@ -845,13 +953,64 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
     suggestions.classList.add("is-visible");
 }
 
+function hideCenterMapPicker() {
+    centerMapPickerElement?.remove();
+    centerMapPickerElement = null;
+    document.getElementById("map-container")?.classList.remove("is-location-pick-mode");
+}
+
+function cancelCenterMapPick() {
+    pickupMapPickMode = null;
+    destinationMapPickMode = null;
+    hideCenterMapPicker();
+}
+
+function showCenterMapPicker(kind) {
+    const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
+
+    hideCenterMapPicker();
+    centerMapPickerElement = document.createElement("div");
+    centerMapPickerElement.className = `map-center-location-picker is-${kind}`;
+    centerMapPickerElement.innerHTML = `
+        <span class="map-center-pin-shadow" aria-hidden="true"></span>
+        <span class="map-center-pin-wrap" aria-hidden="true">
+            <span class="map-center-pin-head"></span>
+            <span class="map-center-pin-stick"></span>
+        </span>
+        <div class="map-center-picker-actions">
+            <span>Move the map to place the ${kind} pin exactly</span>
+            <button class="map-center-picker-confirm" type="button">Select ${kind}</button>
+        </div>
+    `;
+
+    centerMapPickerElement.querySelector(".map-center-picker-confirm")?.addEventListener("click", async (event) => {
+        const center = window.mapInstance?.getCenter?.();
+        if (!center) return;
+
+        const button = event.currentTarget;
+        button.disabled = true;
+        button.textContent = "Selecting...";
+        const lat = center.lat();
+        const lng = center.lng();
+        if (kind === "pickup") {
+            await completePickupMapPick(lat, lng);
+        } else {
+            await completeDestinationMapPick(lat, lng);
+        }
+    });
+
+    mapContainer.classList.add("is-location-pick-mode");
+    mapContainer.appendChild(centerMapPickerElement);
+}
+
 function startPickupMapPick(pickupInput) {
     if (!window.mapInstance) {
         alert("Map is not ready yet. Please wait a moment and try again.");
         return;
     }
 
-    destinationMapPickMode = null;
+    cancelCenterMapPick();
     pickupMapPickMode = {
         pickupInput,
         existingDestination: window.selectedDestination
@@ -861,9 +1020,11 @@ function startPickupMapPick(pickupInput) {
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
     clearRouteAndDestination();
-    document.getElementById("map-container")?.classList.add("is-location-pick-mode");
+    window.mapInstance.panTo({ lat: userLatitude, lng: userLongitude });
+    window.mapInstance.setZoom(16);
+    showCenterMapPicker("pickup");
     window.dispatchEvent(new CustomEvent("pickup-location-updated", {
-        detail: { name: "Tap the map to select pickup" }
+        detail: { name: "Move the map and confirm the pickup pin" }
     }));
 }
 
@@ -872,7 +1033,6 @@ async function completePickupMapPick(lat, lng) {
 
     const pickMode = pickupMapPickMode;
     pickupMapPickMode = null;
-    document.getElementById("map-container")?.classList.remove("is-location-pick-mode");
 
     const result = await reverseGeocodeLocation(lat, lng);
     const pickup = {
@@ -885,6 +1045,7 @@ async function completePickupMapPick(lat, lng) {
     userLatitude = lat;
     userLongitude = lng;
     pickMode.pickupInput.value = pickup.name;
+    hideCenterMapPicker();
     addPickupMarker(pickup);
     window.mapInstance?.panTo({ lat, lng });
     window.mapInstance?.setZoom(15);
@@ -907,6 +1068,7 @@ async function completePickupMapPick(lat, lng) {
 export async function useCurrentPickupLocation() {
     const pickupInput = document.getElementById("pickup-input");
     if (!pickupInput || pickupInput.readOnly) return;
+    cancelCenterMapPick();
 
     if (pickupSearchTimer) clearTimeout(pickupSearchTimer);
     if (pickupSearchAbortController) {
@@ -958,6 +1120,7 @@ function setupFareEngineListeners() {
 
     dropInput.addEventListener("input", (event) => {
         if (passengerDestinationLocked || dropInput.readOnly) return;
+        cancelCenterMapPick();
         hidePickupSuggestions();
 
         const query = event.target.value.trim();
@@ -1195,6 +1358,7 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
             const selected = destinations[Number(item.dataset.index)];
             if (!selected) return;
 
+            cancelCenterMapPick();
             dropInput.value = selected.mainName || selected.name;
             hideDestinationSuggestions();
             window.latestFareQuote = null;
@@ -1240,13 +1404,13 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
         return;
     }
 
-    pickupMapPickMode = null;
+    cancelCenterMapPick();
     hidePickupSuggestions();
     hideDestinationSuggestions();
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
     clearRouteAndDestination();
-    fareAmountSpan.innerText = "Tap destination on map";
+    fareAmountSpan.innerText = "Move map and confirm drop";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
 
@@ -1257,7 +1421,9 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
         fareAmountSpan
     };
 
-    document.getElementById("map-container")?.classList.add("is-location-pick-mode");
+    window.mapInstance.panTo({ lat: userLatitude, lng: userLongitude });
+    window.mapInstance.setZoom(16);
+    showCenterMapPicker("drop");
 
     dropInput.value = destination.mainName || destination.name || dropInput.value;
 }
@@ -1281,7 +1447,6 @@ async function completeDestinationMapPick(lat, lng) {
 
     const pickMode = destinationMapPickMode;
     destinationMapPickMode = null;
-    document.getElementById("map-container")?.classList.remove("is-location-pick-mode");
 
     const destination = {
         ...pickMode.destination,
@@ -1300,6 +1465,7 @@ async function completeDestinationMapPick(lat, lng) {
         destination.placeId = result.placeId || destination.placeId || "";
     }
 
+    hideCenterMapPicker();
     pickMode.dropInput.value = destination.mainName || destination.name || destination.fullAddress || "Pinned destination";
     window.selectedDestination = buildSelectedDestination(destination);
     renderDestinationFare(destination, pickMode.fareQuoteBox, pickMode.fareAmountSpan);
@@ -1462,7 +1628,7 @@ window.addEventListener("passenger-destination-lock-changed", (event) => {
 
     destinationMapPickMode = null;
     pickupMapPickMode = null;
-    document.getElementById("map-container")?.classList.remove("is-location-pick-mode");
+    hideCenterMapPicker();
     if (destinationSearchTimer) {
         clearTimeout(destinationSearchTimer);
         destinationSearchTimer = null;
