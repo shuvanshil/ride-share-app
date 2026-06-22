@@ -28,6 +28,7 @@ let destinationSearchAbortController = null;
 let pickupSearchTimer = null;
 let pickupSearchAbortController = null;
 let destinationMapPickMode = null;
+let pickupMapPickMode = null;
 let fareEngineListenersBound = false;
 let pickupSearchListenersBound = false;
 let passengerDestinationLocked = false;
@@ -233,6 +234,11 @@ function addGoogleMapStyles() {
             font-weight: 800;
             padding: 10px 12px;
             width: 100%;
+        }
+
+        .is-location-pick-mode,
+        .is-location-pick-mode * {
+            cursor: crosshair !important;
         }
 
         .vehicle-marker-legend {
@@ -620,6 +626,9 @@ export async function initializeMapEngine() {
 
     hidePickupSuggestions();
     hideDestinationSuggestions();
+    pickupMapPickMode = null;
+    destinationMapPickMode = null;
+    mapContainer.classList.remove("is-location-pick-mode");
     window.latestFareQuote = null;
     window.selectedDestination = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
@@ -651,8 +660,14 @@ export async function initializeMapEngine() {
     addPickupMarker(coords);
 
     window.mapInstance.addListener("click", (event) => {
-        if (!destinationMapPickMode || !event.latLng) return;
-        completeDestinationMapPick(event.latLng.lat(), event.latLng.lng());
+        if (!event.latLng) return;
+        if (pickupMapPickMode) {
+            completePickupMapPick(event.latLng.lat(), event.latLng.lng());
+            return;
+        }
+        if (destinationMapPickMode) {
+            completeDestinationMapPick(event.latLng.lat(), event.latLng.lng());
+        }
     });
 
     setupFareEngineListeners();
@@ -669,6 +684,13 @@ function setupPickupSearchListeners() {
     const pickupInput = document.getElementById("pickup-input");
     if (!pickupInput) return;
     pickupSearchListenersBound = true;
+
+    pickupInput.addEventListener("focus", () => {
+        hideDestinationSuggestions();
+        if (!pickupInput.readOnly) {
+            showPickupSuggestions(pickupInput, [], false);
+        }
+    });
 
     pickupInput.addEventListener("input", () => {
         if (pickupInput.readOnly) return;
@@ -744,7 +766,7 @@ async function searchGooglePickups(query) {
     }
 }
 
-function showPickupSuggestions(pickupInput, pickups) {
+function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
     const suggestions = ensurePickupSuggestions(pickupInput);
     if (!pickups.length) {
         suggestions.innerHTML = `
@@ -752,9 +774,11 @@ function showPickupSuggestions(pickupInput, pickups) {
                 <span class="destination-suggestion-pin">&#8982;</span>
                 <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
             </button>
-            <div class="destination-suggestion-empty">No Google result found for this pickup name.</div>
+            <button class="destination-map-pick-btn choose-pickup-on-map-btn" type="button">Select pickup on map</button>
+            ${showEmptyMessage ? '<div class="destination-suggestion-empty">No Google result found for this pickup name.</div>' : ''}
         `;
         suggestions.querySelector(".use-current-pickup-item")?.addEventListener("click", useCurrentPickupLocation);
+        suggestions.querySelector(".choose-pickup-on-map-btn")?.addEventListener("click", () => startPickupMapPick(pickupInput));
         suggestions.classList.add("is-visible");
         return;
     }
@@ -765,6 +789,7 @@ function showPickupSuggestions(pickupInput, pickups) {
             <span class="destination-suggestion-pin">&#8982;</span>
             <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
         </button>
+        <button class="destination-map-pick-btn choose-pickup-on-map-btn" type="button">Select pickup on map</button>
         ${pickups.map((pickup, index) => `
             <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
                 <span class="destination-suggestion-pin">&#8982;</span>
@@ -778,6 +803,7 @@ function showPickupSuggestions(pickupInput, pickups) {
     `;
 
     suggestions.querySelector(".use-current-pickup-item")?.addEventListener("click", useCurrentPickupLocation);
+    suggestions.querySelector(".choose-pickup-on-map-btn")?.addEventListener("click", () => startPickupMapPick(pickupInput));
 
     suggestions.querySelectorAll(".destination-suggestion-item[data-index]").forEach((item) => {
         item.addEventListener("click", async () => {
@@ -817,6 +843,65 @@ function showPickupSuggestions(pickupInput, pickups) {
         });
     });
     suggestions.classList.add("is-visible");
+}
+
+function startPickupMapPick(pickupInput) {
+    if (!window.mapInstance) {
+        alert("Map is not ready yet. Please wait a moment and try again.");
+        return;
+    }
+
+    destinationMapPickMode = null;
+    pickupMapPickMode = {
+        pickupInput,
+        existingDestination: window.selectedDestination
+    };
+    hidePickupSuggestions();
+    hideDestinationSuggestions();
+    window.latestFareQuote = null;
+    window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+    clearRouteAndDestination();
+    document.getElementById("map-container")?.classList.add("is-location-pick-mode");
+    window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+        detail: { name: "Tap the map to select pickup" }
+    }));
+}
+
+async function completePickupMapPick(lat, lng) {
+    if (!pickupMapPickMode) return;
+
+    const pickMode = pickupMapPickMode;
+    pickupMapPickMode = null;
+    document.getElementById("map-container")?.classList.remove("is-location-pick-mode");
+
+    const result = await reverseGeocodeLocation(lat, lng);
+    const pickup = {
+        lat,
+        lng,
+        name: result?.name || result?.fullAddress || "Pinned pickup",
+        fullAddress: result?.fullAddress || ""
+    };
+
+    userLatitude = lat;
+    userLongitude = lng;
+    pickMode.pickupInput.value = pickup.name;
+    addPickupMarker(pickup);
+    window.mapInstance?.panTo({ lat, lng });
+    window.mapInstance?.setZoom(15);
+    window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+        detail: { name: pickup.name, lat, lng }
+    }));
+
+    if (!pickMode.existingDestination) return;
+    window.selectedDestination = pickMode.existingDestination;
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (!fareQuoteBox || !fareAmountSpan) return;
+
+    fareAmountSpan.innerText = "Calculating...";
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
+    await renderDestinationFare(pickMode.existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
 export async function useCurrentPickupLocation() {
@@ -864,6 +949,13 @@ function setupFareEngineListeners() {
     if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
 
     fareEngineListenersBound = true;
+    dropInput.addEventListener("focus", () => {
+        hidePickupSuggestions();
+        if (!passengerDestinationLocked && !dropInput.readOnly) {
+            showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan, false);
+        }
+    });
+
     dropInput.addEventListener("input", (event) => {
         if (passengerDestinationLocked || dropInput.readOnly) return;
         hidePickupSuggestions();
@@ -1048,14 +1140,14 @@ async function resolveGooglePlace(destination) {
     }
 }
 
-function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan) {
+function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan, showEmptyMessage = true) {
     const suggestions = ensureDestinationSuggestions(dropInput);
 
     if (!destinations.length) {
         suggestions.innerHTML = `
             <div class="destination-suggestion-empty">
-                <div>No Google result found for this name.</div>
-                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Choose destination on map</button>
+                ${showEmptyMessage ? '<div>No Google result found for this name.</div>' : ''}
+                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Select drop on map</button>
             </div>
         `;
         suggestions.querySelector("#choose-destination-on-map-btn")?.addEventListener("click", () => {
@@ -1085,7 +1177,18 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
                 </span>
             </button>
         `).join("")}
+        <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Select drop on map</button>
     `;
+
+    suggestions.querySelector("#choose-destination-on-map-btn")?.addEventListener("click", () => {
+        startDestinationMapPick({
+            name: dropInput.value.trim() || "Pinned destination",
+            mainName: dropInput.value.trim() || "Pinned destination",
+            source: "google-map-pick",
+            provider: "google",
+            typeHint: "Pinned location"
+        }, dropInput, fareQuoteBox, fareAmountSpan);
+    });
 
     suggestions.querySelectorAll(".destination-suggestion-item").forEach((item) => {
         item.addEventListener("click", async () => {
@@ -1137,9 +1240,12 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
         return;
     }
 
+    pickupMapPickMode = null;
+    hidePickupSuggestions();
     hideDestinationSuggestions();
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+    clearRouteAndDestination();
     fareAmountSpan.innerText = "Tap destination on map";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
@@ -1151,7 +1257,23 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
         fareAmountSpan
     };
 
+    document.getElementById("map-container")?.classList.add("is-location-pick-mode");
+
     dropInput.value = destination.mainName || destination.name || dropInput.value;
+}
+
+async function reverseGeocodeLocation(lat, lng) {
+    try {
+        const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+        const response = await fetch(`/api/google-reverse-geocode?${params.toString()}`, {
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json().catch(() => ({}));
+        return response.ok ? data.result || null : null;
+    } catch (error) {
+        console.warn("Google reverse geocode for map selection failed:", error);
+        return null;
+    }
 }
 
 async function completeDestinationMapPick(lat, lng) {
@@ -1159,6 +1281,7 @@ async function completeDestinationMapPick(lat, lng) {
 
     const pickMode = destinationMapPickMode;
     destinationMapPickMode = null;
+    document.getElementById("map-container")?.classList.remove("is-location-pick-mode");
 
     const destination = {
         ...pickMode.destination,
@@ -1169,20 +1292,12 @@ async function completeDestinationMapPick(lat, lng) {
         typeHint: pickMode.destination.typeHint || "Pinned location"
     };
 
-    try {
-        const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
-        const response = await fetch(`/api/google-reverse-geocode?${params.toString()}`, {
-            headers: { Accept: "application/json" }
-        });
-        const data = await response.json().catch(() => ({}));
-        if (response.ok && data.result) {
-            destination.name = data.result.name || destination.name;
-            destination.mainName = data.result.name || destination.mainName;
-            destination.fullAddress = data.result.fullAddress || destination.fullAddress;
-            destination.placeId = data.result.placeId || destination.placeId || "";
-        }
-    } catch (error) {
-        console.warn("Google reverse geocode for selected destination failed:", error);
+    const result = await reverseGeocodeLocation(lat, lng);
+    if (result) {
+        destination.name = result.name || destination.name;
+        destination.mainName = result.name || destination.mainName;
+        destination.fullAddress = result.fullAddress || destination.fullAddress;
+        destination.placeId = result.placeId || destination.placeId || "";
     }
 
     pickMode.dropInput.value = destination.mainName || destination.name || destination.fullAddress || "Pinned destination";
@@ -1346,6 +1461,8 @@ window.addEventListener("passenger-destination-lock-changed", (event) => {
     if (!passengerDestinationLocked) return;
 
     destinationMapPickMode = null;
+    pickupMapPickMode = null;
+    document.getElementById("map-container")?.classList.remove("is-location-pick-mode");
     if (destinationSearchTimer) {
         clearTimeout(destinationSearchTimer);
         destinationSearchTimer = null;
