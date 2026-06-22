@@ -37,12 +37,12 @@
                     <div class="services-location-card" aria-label="Ride locations">
                         <div class="location-field services-location-field">
                             <span class="pickup-dot">●</span>
-                            <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." readonly>
+                            <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
                             <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Refresh pickup location">⌖</button>
                         </div>
                         <div class="location-field services-location-field">
                             <span class="drop-pin">📍</span>
-                            <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where to? village, street, town, or landmark">
+                            <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where to? village, street, town, or landmark" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
                             <button id="clear-drop-btn" class="field-action services-field-btn" type="button" aria-label="Clear destination">×</button>
                         </div>
                     </div>

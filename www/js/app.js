@@ -25,9 +25,23 @@ let activeDispatchExpansionTimer = null;
 
 let currentPassengerRideId = null;
 
-function setPassengerDestinationLocked(locked, destinationName = "") {
+function setPassengerDestinationLocked(locked, destinationName = "", pickupName = "") {
     const dropInput = document.getElementById('drop-input');
     if (!dropInput) return;
+
+    const pickupInput = document.getElementById('pickup-input');
+    if (pickupInput) {
+        if (locked && pickupName) pickupInput.value = pickupName;
+        pickupInput.readOnly = locked;
+        pickupInput.setAttribute('aria-readonly', String(locked));
+        pickupInput.classList.toggle('destination-locked', locked);
+    }
+
+    const refreshLocationBtn = document.getElementById('refresh-location-btn');
+    if (refreshLocationBtn) {
+        refreshLocationBtn.disabled = locked;
+        refreshLocationBtn.classList.toggle('d-none', locked);
+    }
 
     if (locked && destinationName) {
         dropInput.value = destinationName;
@@ -461,7 +475,7 @@ async function restorePassengerActiveRide() {
 
         console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
         showPassengerCancelButton(activeRideDoc.id);
-        setPassengerDestinationLocked(true, activeRide.drop_name || "");
+        setPassengerDestinationLocked(true, activeRide.drop_name || "", activeRide.pickup_name || "");
         setPassengerServiceLocked(true, activeRide);
         renderPassengerDriverCard(activeRide);
         renderPassengerVerificationPin(activeRide.verification_pin);
@@ -533,7 +547,7 @@ requestRideButton.addEventListener('click', async () => {
     }
 
     // UI updates only happen if the user has no active bookings
-    setPassengerDestinationLocked(true, dropText);
+    setPassengerDestinationLocked(true, dropText, pickupText);
     setPassengerServiceLocked(true, {
         ...service,
         vehicle_type: requestedVehicleType,
@@ -612,7 +626,7 @@ function listenToRideStatusUpdates(rideId) {
         const ride = docSnap.data();
 
         if (ACTIVE_RIDE_STATUSES.includes(ride.status)) {
-            setPassengerDestinationLocked(true, ride.drop_name || "");
+            setPassengerDestinationLocked(true, ride.drop_name || "", ride.pickup_name || "");
             setPassengerServiceLocked(true, ride);
         }
 

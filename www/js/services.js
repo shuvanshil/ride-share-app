@@ -169,6 +169,10 @@ function bindServicesControls() {
         setStatus(pickupInput.value || "Pickup location detected.", "ready");
     });
 
+    window.addEventListener('pickup-location-updated', (event) => {
+        setStatus(event.detail?.name || "Manual pickup selected.", "ready");
+    });
+
     findRideBtn.addEventListener('click', () => {
         if (!isAuthenticatedPassenger && window.selectedRideService) {
             openBookingLoginGate();
