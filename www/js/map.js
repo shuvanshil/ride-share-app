@@ -747,13 +747,24 @@ async function searchGooglePickups(query) {
 function showPickupSuggestions(pickupInput, pickups) {
     const suggestions = ensurePickupSuggestions(pickupInput);
     if (!pickups.length) {
-        suggestions.innerHTML = '<div class="destination-suggestion-empty">No Google result found for this pickup name.</div>';
+        suggestions.innerHTML = `
+            <button class="destination-suggestion-item use-current-pickup-item" type="button">
+                <span class="destination-suggestion-pin">&#8982;</span>
+                <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
+            </button>
+            <div class="destination-suggestion-empty">No Google result found for this pickup name.</div>
+        `;
+        suggestions.querySelector(".use-current-pickup-item")?.addEventListener("click", useCurrentPickupLocation);
         suggestions.classList.add("is-visible");
         return;
     }
 
     suggestions.innerHTML = `
         <div class="destination-suggestions-title">Pickup search results</div>
+        <button class="destination-suggestion-item use-current-pickup-item" type="button">
+            <span class="destination-suggestion-pin">&#8982;</span>
+            <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
+        </button>
         ${pickups.map((pickup, index) => `
             <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
                 <span class="destination-suggestion-pin">&#8982;</span>
@@ -766,7 +777,9 @@ function showPickupSuggestions(pickupInput, pickups) {
         `).join("")}
     `;
 
-    suggestions.querySelectorAll(".destination-suggestion-item").forEach((item) => {
+    suggestions.querySelector(".use-current-pickup-item")?.addEventListener("click", useCurrentPickupLocation);
+
+    suggestions.querySelectorAll(".destination-suggestion-item[data-index]").forEach((item) => {
         item.addEventListener("click", async () => {
             const selected = pickups[Number(item.dataset.index)];
             if (!selected) return;
@@ -804,6 +817,42 @@ function showPickupSuggestions(pickupInput, pickups) {
         });
     });
     suggestions.classList.add("is-visible");
+}
+
+export async function useCurrentPickupLocation() {
+    const pickupInput = document.getElementById("pickup-input");
+    if (!pickupInput || pickupInput.readOnly) return;
+
+    if (pickupSearchTimer) clearTimeout(pickupSearchTimer);
+    if (pickupSearchAbortController) {
+        pickupSearchAbortController.abort();
+        pickupSearchAbortController = null;
+    }
+
+    const existingDestination = window.selectedDestination;
+    hidePickupSuggestions();
+    const coords = await getUserLocation();
+    addPickupMarker(coords);
+    window.mapInstance?.panTo(googleLatLngLiteral(coords));
+    window.mapInstance?.setZoom(15);
+    window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+        detail: { name: coords.label, lat: coords.lat, lng: coords.lng }
+    }));
+
+    window.latestFareQuote = null;
+    window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+    clearRouteAndDestination();
+
+    if (!existingDestination) return;
+    window.selectedDestination = existingDestination;
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (!fareQuoteBox || !fareAmountSpan) return;
+
+    fareAmountSpan.innerText = "Calculating...";
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
+    await renderDestinationFare(existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
 function setupFareEngineListeners() {

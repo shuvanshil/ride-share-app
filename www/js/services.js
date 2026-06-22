@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine } from './map.js';
+import { initializeMapEngine, useCurrentPickupLocation } from './map.js';
 import { getRideService } from './fare-policy.js';
 
 const dashboardView = document.getElementById('dashboard-view');
@@ -134,8 +134,8 @@ function startGuestServices() {
 
 async function refreshServicesMap() {
     try {
-        setStatus("Refreshing your exact pickup location...", "loading");
-        await initializeMapEngine();
+        setStatus("Detecting your current pickup location...", "loading");
+        await useCurrentPickupLocation();
         setStatus(pickupInput.value || "Pickup location detected.", "ready");
     } catch (error) {
         console.error("Services location refresh failed:", error);
