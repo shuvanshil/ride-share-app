@@ -58,6 +58,13 @@
                 </div>
             </section>
 
+            <section id="driver-service-lifecycle" class="active-trip-card driver-service-lifecycle d-none" aria-live="polite">
+                <h6>Active Trip Lifecycle</h6>
+                <div id="driver-service-trip-details" class="trip-details-text"></div>
+                <button id="driver-service-complete-btn" class="gy-btn gy-btn-dark w-100 mb-2 d-none" type="button" disabled>Drop off Passenger & Complete Trip</button>
+                <button id="driver-service-cancel-btn" class="gy-btn gy-btn-danger-outline w-100" type="button">Cancel Active Trip</button>
+            </section>
+
             <section class="driver-service-actions">
                 <button id="driver-open-console-btn" class="gy-btn gy-btn-dark w-100 d-none" type="button">
                     Open Duty Console
@@ -67,14 +74,27 @@
             <nav class="bottom-nav driver-service-nav">
                 <button type="button" onclick="window.location.href='driver.html'"><span>⌂</span>Home</button>
                 <button class="active" type="button"><span>▦</span>Services</button>
-                <button type="button" onclick="window.location.href='history.html'"><span>◇</span>History</button>
+                <button type="button" onclick="window.location.href='history.html'"><span>◷</span>History</button>
                 <button type="button" onclick="window.location.href='profile.html'"><span>○</span>Profile</button>
             </nav>
         </div>
     </div>
 
+    <div id="driver-service-payment-view" class="modal-layer d-none">
+        <div class="receipt-card">
+            <div class="success-mark">Rs</div>
+            <h4>Collect Your Fare</h4>
+            <p>Show this screen to the passenger for easy collection.</p>
+            <div class="price-total" id="driver-service-final-fare">Rs 0.00</div>
+            <div class="qr-frame">
+                <img id="driver-service-upi-qr-image" src="" alt="UPI QR Code">
+            </div>
+            <button id="driver-service-close-payment-btn" class="gy-btn gy-btn-dark w-100" type="button">Fare Received & Clear</button>
+        </div>
+    </div>
+
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/driver-service.js?v=20260622-vehicle-markers"></script>
+    <script type="module" src="js/driver-service.js?v=20260622-lifecycle-panel"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

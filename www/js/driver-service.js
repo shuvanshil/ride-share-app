@@ -4,8 +4,10 @@ import {
     collection,
     doc,
     getDoc,
+    increment,
     onSnapshot,
     query,
+    runTransaction,
     serverTimestamp,
     setDoc,
     updateDoc,
@@ -34,84 +36,29 @@ const messageTitle = document.getElementById('driver-map-message-title');
 const messageCopy = document.getElementById('driver-map-message-copy');
 const retryButton = document.getElementById('driver-location-retry-btn');
 const openConsoleButton = document.getElementById('driver-open-console-btn');
+const lifecyclePanel = document.getElementById('driver-service-lifecycle');
+const lifecycleDetails = document.getElementById('driver-service-trip-details');
+const completeButton = document.getElementById('driver-service-complete-btn');
+const cancelButton = document.getElementById('driver-service-cancel-btn');
+const paymentModal = document.getElementById('driver-service-payment-view');
+const finalFareEl = document.getElementById('driver-service-final-fare');
+const upiQrImage = document.getElementById('driver-service-upi-qr-image');
+const closePaymentButton = document.getElementById('driver-service-close-payment-btn');
 
 let currentUser = null;
 let currentRide = null;
 let currentRideId = null;
 let currentTarget = null;
 let currentTargetKey = "";
+let currentRideStatus = "";
+let pendingPaymentRideId = null;
+let lifecycleGpsText = "GPS locking...";
 let driverMarkerAnimationFrame = null;
 
 const VEHICLE_MARKER_ASSETS = Object.freeze({
     bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
     auto: new URL("../assets/vehicle-markers/auto-marker.png", import.meta.url).href
 });
-
-function inferVehicleType(driver = {}) {
-    const text = [
-        driver.vehicle_type,
-        driver.vehicleType,
-        driver.vehicle_model,
-        driver.vehicleModel,
-        driver.vehicleName
-    ].filter(Boolean).join(" ").toLowerCase();
-    return /auto|rickshaw|tuk/.test(text) ? "auto" : "bike";
-}
-
-function getLiveVehicleMarkerIcon() {
-    const maps = window.google.maps;
-    return {
-        url: VEHICLE_MARKER_ASSETS[inferVehicleType(currentUser)],
-        scaledSize: new maps.Size(48, 48),
-        anchor: new maps.Point(24, 24)
-    };
-}
-
-function animateDriverMarkerTo(position) {
-    if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
-    const current = driverMarker?.getPosition();
-    if (!current || typeof requestAnimationFrame !== "function") {
-        driverMarker?.setPosition(position);
-        return;
-    }
-
-    const start = { lat: current.lat(), lng: current.lng() };
-    const latDelta = position.lat - start.lat;
-    const lngDelta = position.lng - start.lng;
-    if (Math.abs(latDelta) > 0.05 || Math.abs(lngDelta) > 0.05) {
-        driverMarker.setPosition(position);
-        driverMarkerAnimationFrame = null;
-        return;
-    }
-
-    const startedAt = performance.now();
-    const step = (now) => {
-        const progress = Math.min(1, (now - startedAt) / 700);
-        const eased = progress * progress * (3 - (2 * progress));
-        driverMarker.setPosition({
-            lat: start.lat + (latDelta * eased),
-            lng: start.lng + (lngDelta * eased)
-        });
-        driverMarkerAnimationFrame = progress < 1 ? requestAnimationFrame(step) : null;
-    };
-    driverMarkerAnimationFrame = requestAnimationFrame(step);
-}
-let mapShell = null;
-let map = null;
-let driverMarker = null;
-let targetMarker = null;
-let routePolyline = null;
-let locationWatchId = null;
-let activeRideUnsubscribe = null;
-let lastPosition = null;
-let lastRoutePosition = null;
-let lastRouteAt = 0;
-let lastWritePosition = null;
-let lastWriteAt = 0;
-let routeRequestInFlight = false;
-let routeRefreshQueued = false;
-let firstRouteFitComplete = false;
-let routeRetryTimer = null;
 
 function cacheProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
@@ -125,9 +72,58 @@ function cacheProfile(profile) {
     }
 }
 
+function inferVehicleType(driver = {}) {
+    const text = [
+        driver.vehicle_type,
+        driver.vehicleType,
+        driver.vehicle_model,
+        driver.vehicleModel,
+        driver.vehicleName
+    ].filter(Boolean).join(" ").toLowerCase();
+    return /auto|rickshaw|tuk/.test(text) ? "auto" : "bike";
+}
+
+function getServiceLabel(vehicleType) {
+    return vehicleType === "auto" ? "Auto" : "Bike / Scooty";
+}
+
+function getLiveVehicleMarkerIcon() {
+    const maps = window.google.maps;
+    return {
+        url: VEHICLE_MARKER_ASSETS[inferVehicleType(currentUser)],
+        scaledSize: new maps.Size(48, 48),
+        anchor: new maps.Point(24, 24)
+    };
+}
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function formatRideDistance(value) {
+    const distance = Number(value);
+    return Number.isFinite(distance) && distance > 0 ? `${distance.toFixed(1)} km` : "Not available";
+}
+
+function formatRideDuration(value) {
+    const duration = Number(value);
+    return Number.isFinite(duration) && duration > 0 ? `${Math.round(duration)} mins` : "Not available";
+}
+
 function setGpsState(state, label) {
     livePill.dataset.state = state;
     livePill.innerText = label;
+}
+
+function setLifecycleGpsText(text) {
+    lifecycleGpsText = text;
+    const gpsNode = document.getElementById('driver-service-gps-status');
+    if (gpsNode) gpsNode.innerText = text;
 }
 
 function showMessage(title, copy, action = "location") {
@@ -169,6 +165,165 @@ function distanceMeters(pointA, pointB) {
         + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
     return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
+
+function renderActivePassengerContact(ride = {}) {
+    const rawPassengerName = String(ride.passenger_name || "Passenger").trim() || "Passenger";
+    const passengerName = escapeHtml(rawPassengerName);
+    const passengerInitial = escapeHtml(rawPassengerName.charAt(0).toUpperCase() || "P");
+    const passengerPhone = String(ride.passenger_phone || "").trim();
+    const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
+
+    return `
+        <div class="active-passenger-contact">
+            <div class="active-passenger-avatar" aria-hidden="true">${passengerInitial}</div>
+            <div class="active-passenger-copy">
+                <span>Passenger</span>
+                <strong>${passengerName}</strong>
+            </div>
+            ${callablePhone ? `
+                <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
+                    <span aria-hidden="true">☎</span>
+                    <small>Call</small>
+                </a>
+            ` : `
+                <button class="active-passenger-call" type="button" disabled aria-label="Passenger phone unavailable">
+                    <span aria-hidden="true">☎</span>
+                    <small>Call</small>
+                </button>
+            `}
+        </div>
+    `;
+}
+
+function renderActiveTripRoute(ride = {}) {
+    const pickup = escapeHtml(ride.pickup_name || "Pickup location unavailable");
+    const destination = escapeHtml(ride.drop_name || ride.drop_full_address || "Destination unavailable");
+    const distanceLabel = formatRideDistance(ride.distance_km);
+    const durationLabel = formatRideDuration(ride.duration_minutes);
+
+    return `
+        <div class="active-trip-route" aria-label="Active trip route">
+            <div class="active-trip-place">
+                <span class="active-route-dot pickup" aria-hidden="true"></span>
+                <div>
+                    <small>Pickup</small>
+                    <strong>${pickup}</strong>
+                </div>
+            </div>
+            <div class="active-route-line" aria-hidden="true"></div>
+            <div class="active-trip-place">
+                <span class="active-route-dot destination" aria-hidden="true"></span>
+                <div>
+                    <small>Destination</small>
+                    <strong>${destination}</strong>
+                </div>
+            </div>
+            <div class="active-trip-metrics">
+                <div><small>Distance</small><strong>${distanceLabel}</strong></div>
+                <div><small>Estimated time</small><strong>${durationLabel}</strong></div>
+            </div>
+        </div>
+    `;
+}
+
+function resetLifecycleButtons(status = "accepted") {
+    completeButton.classList.toggle('d-none', !["started", "en_route"].includes(status));
+    completeButton.disabled = !["started", "en_route"].includes(status);
+}
+
+function renderLifecycleState(status, rideData = currentRide) {
+    currentRideStatus = status;
+    currentRide = { ...(currentRide || {}), ...(rideData || {}), status };
+
+    const labels = {
+        accepted: "Passenger PIN verification required",
+        arrived: "Passenger PIN verification required",
+        started: "Trip started - continue to destination",
+        en_route: "Trip in progress"
+    };
+
+    const showPinVerification = ["accepted", "arrived"].includes(status);
+    const pinVerificationHtml = showPinVerification ? `
+        <div id="driver-service-verification-panel" class="mt-3">
+            <label for="driver-service-verification-pin-input" class="form-label fw-semibold mb-1">Passenger PIN</label>
+            <input id="driver-service-verification-pin-input" type="tel" maxlength="4" inputmode="numeric" class="form-control text-center fw-bold mb-2" placeholder="Enter 4-digit PIN">
+            <button id="driver-service-verify-pin-btn" class="btn btn-success w-100 fw-bold" type="button">
+                Verify & Start Trip
+            </button>
+        </div>
+    ` : "";
+
+    lifecycleDetails.innerHTML = `
+        ${renderActivePassengerContact(currentRide)}
+        ${renderActiveTripRoute(currentRide)}
+        <p class="mb-1"><strong>Status:</strong> ${labels[status] || escapeHtml(status)}</p>
+        <p class="mb-0 text-secondary" id="driver-service-gps-status">${escapeHtml(lifecycleGpsText)}</p>
+        ${pinVerificationHtml}
+    `;
+
+    resetLifecycleButtons(status);
+
+    const verifyPinButton = document.getElementById('driver-service-verify-pin-btn');
+    if (verifyPinButton) {
+        verifyPinButton.addEventListener('click', () => verifyAndStartTrip(currentRideId));
+    }
+}
+
+function showLifecyclePanel(status, rideData = currentRide) {
+    lifecyclePanel.classList.remove('d-none');
+    renderLifecycleState(status, rideData);
+}
+
+function hideLifecyclePanel() {
+    lifecyclePanel.classList.add('d-none');
+}
+
+function animateDriverMarkerTo(position) {
+    if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
+    const current = driverMarker?.getPosition();
+    if (!current || typeof requestAnimationFrame !== "function") {
+        driverMarker?.setPosition(position);
+        return;
+    }
+
+    const start = { lat: current.lat(), lng: current.lng() };
+    const latDelta = position.lat - start.lat;
+    const lngDelta = position.lng - start.lng;
+    if (Math.abs(latDelta) > 0.05 || Math.abs(lngDelta) > 0.05) {
+        driverMarker.setPosition(position);
+        driverMarkerAnimationFrame = null;
+        return;
+    }
+
+    const startedAt = performance.now();
+    const step = (now) => {
+        const progress = Math.min(1, (now - startedAt) / 700);
+        const eased = progress * progress * (3 - (2 * progress));
+        driverMarker.setPosition({
+            lat: start.lat + (latDelta * eased),
+            lng: start.lng + (lngDelta * eased)
+        });
+        driverMarkerAnimationFrame = progress < 1 ? requestAnimationFrame(step) : null;
+    };
+    driverMarkerAnimationFrame = requestAnimationFrame(step);
+}
+
+let mapShell = null;
+let map = null;
+let driverMarker = null;
+let targetMarker = null;
+let routePolyline = null;
+let locationWatchId = null;
+let activeRideUnsubscribe = null;
+let lastPosition = null;
+let lastRoutePosition = null;
+let lastRouteAt = 0;
+let lastWritePosition = null;
+let lastWriteAt = 0;
+let routeRequestInFlight = false;
+let routeRefreshQueued = false;
+let firstRouteFitComplete = false;
+let routeRetryTimer = null;
 
 function clearRoute() {
     if (routePolyline?.setMap) routePolyline.setMap(null);
@@ -419,6 +574,7 @@ async function handleLocation(position) {
 
     lastPosition = coords;
     setGpsState("live", "LIVE");
+    setLifecycleGpsText("GPS Active & Broadcasting");
     hideMessage();
     statusText.innerText = currentTarget
         ? currentTarget.kind === "pickup"
@@ -450,6 +606,7 @@ async function handleLocation(position) {
 function handleLocationError(error) {
     console.warn("Driver GPS update failed:", error);
     setGpsState("error", "GPS");
+    setLifecycleGpsText("GPS signal interrupted");
 
     if (lastPosition) {
         statusText.innerText = "GPS signal lost. Showing your last known position.";
@@ -470,6 +627,7 @@ function handleLocationError(error) {
 function startLocationTracking() {
     if (!navigator.geolocation) {
         setGpsState("error", "GPS");
+        setLifecycleGpsText("GPS not supported");
         showMessage("Location is not supported", "This browser cannot provide live GPS navigation.", "location");
         return;
     }
@@ -479,6 +637,7 @@ function startLocationTracking() {
     }
 
     setGpsState("loading", "GPS");
+    setLifecycleGpsText("GPS locking...");
     statusText.innerText = "Finding your live position...";
     locationWatchId = navigator.geolocation.watchPosition(
         handleLocation,
@@ -492,7 +651,7 @@ function startLocationTracking() {
 }
 
 function getRideTarget(ride) {
-    const isDestinationLeg = ride.status === "en_route";
+    const isDestinationLeg = ride.status === "en_route" || ride.status === "started";
     const position = isDestinationLeg
         ? normalizeCoordinates(ride.drop_lat, ride.drop_lng)
         : normalizeCoordinates(ride.pickup_lat, ride.pickup_lng);
@@ -512,8 +671,10 @@ function renderIdleState() {
     clearTarget();
     currentRide = null;
     currentRideId = null;
+    currentRideStatus = "";
     routePanel.classList.add('d-none');
     openConsoleButton.classList.add('d-none');
+    hideLifecyclePanel();
     hideRouteWarning();
     statusText.innerText = "Online and ready for ride requests";
     if (lastPosition && map) map.panTo(lastPosition);
@@ -522,7 +683,9 @@ function renderIdleState() {
 function renderActiveRideState(rideId, ride) {
     currentRideId = rideId;
     currentRide = ride;
+    currentRideStatus = ride.status || "accepted";
     openConsoleButton.classList.remove('d-none');
+    showLifecyclePanel(currentRideStatus, ride);
 
     const target = getRideTarget(ride);
     if (!target) {
@@ -560,6 +723,201 @@ function renderActiveRideState(rideId, ride) {
 
     if (map) upsertTargetMarker();
     if (lastPosition) refreshRoute(lastPosition, targetChanged);
+}
+
+async function verifyAndStartTrip(rideId) {
+    if (!rideId) {
+        alert("No active ride found for PIN verification.");
+        return;
+    }
+
+    const pinInput = document.getElementById('driver-service-verification-pin-input');
+    const typedPin = pinInput ? pinInput.value.trim() : "";
+
+    if (!/^\d{4}$/.test(typedPin)) {
+        alert("Please enter the 4-digit passenger PIN.");
+        return;
+    }
+
+    try {
+        const rideRef = doc(db, "rides", rideId);
+        const rideSnap = await getDoc(rideRef);
+
+        if (!rideSnap.exists()) {
+            alert("This ride no longer exists.");
+            return;
+        }
+
+        const rideData = rideSnap.data();
+
+        if (rideData.driver_id !== currentUser.uid) {
+            alert("Only the assigned driver can verify this ride.");
+            return;
+        }
+
+        if (String(rideData.verification_pin || "") !== typedPin) {
+            alert("Incorrect verification PIN. Please verify with the passenger.");
+            return;
+        }
+
+        await updateDoc(rideRef, {
+            status: "en_route",
+            pinVerifiedAt: serverTimestamp(),
+            startedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+    } catch (error) {
+        console.error("PIN verification failed:", error);
+        alert("Could not verify PIN. Please try again.");
+    }
+}
+
+async function completeRideJob() {
+    if (!currentRideId) {
+        alert("No active trip found to complete.");
+        return;
+    }
+
+    try {
+        const rideRef = doc(db, "rides", currentRideId);
+        const rideSnap = await getDoc(rideRef);
+        if (!rideSnap.exists()) return;
+
+        const rideData = rideSnap.data();
+        if (!["started", "en_route"].includes(rideData.status)) {
+            alert("Verify the passenger PIN before completing this trip.");
+            return;
+        }
+
+        const finalFare = parseFloat(rideData.fare || 0);
+        pendingPaymentRideId = currentRideId;
+
+        await updateDoc(rideRef, {
+            status: "completed",
+            completedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            lifetime_earnings: increment(finalFare),
+            total_completed_trips: increment(1)
+        });
+
+        finalFareEl.innerText = `Rs ${finalFare}`;
+
+        const driverUPI = currentUser.upiId;
+        if (driverUPI) {
+            const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${finalFare}&cu=INR`);
+            upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
+            upiQrImage.classList.remove('d-none');
+        } else {
+            upiQrImage.src = "";
+            upiQrImage.classList.add('d-none');
+            alert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+        }
+
+        paymentModal.classList.remove('d-none');
+        hideLifecyclePanel();
+    } catch (error) {
+        console.error("Error finalizing ride transaction:", error);
+        alert("Database connection dropped during checkout.");
+    }
+}
+
+async function cancelRideByDriver() {
+    if (!currentRideId) {
+        alert("No active trip found to cancel.");
+        return;
+    }
+
+    if (!confirm("Warning: Cancelling active trips impacts your driver rating. Proceed?")) return;
+
+    try {
+        await updateDoc(doc(db, "rides", currentRideId), {
+            status: "cancelled_by_driver",
+            cancelledAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        alert("Trip cancelled successfully.");
+    } catch (error) {
+        console.error("Driver cancel execution failure:", error);
+        alert("Could not cancel the active trip.");
+    }
+}
+
+function buildTripHistoryRecord(rideId, rideData) {
+    return {
+        ride_id: rideId,
+        passenger_id: rideData.passenger_id || null,
+        driver_id: rideData.driver_id || null,
+        pickup_location: rideData.pickup_name || "Pickup not recorded",
+        drop_location: rideData.drop_name || "Drop not recorded",
+        completedAt: rideData.completedAt || serverTimestamp(),
+        paidAt: serverTimestamp(),
+        distance_km: Number(rideData.distance_km || 0),
+        duration_minutes: Number(rideData.duration_minutes || 0),
+        fare_amount: Number(rideData.fare || 0),
+        trip_status: rideData.status || "completed",
+        payment_status: "paid",
+        driver_name: rideData.driver_name || "Driver",
+        passenger_name: rideData.passenger_name || "Passenger",
+        vehicle_model: rideData.vehicle_model || "Vehicle",
+        vehicle_number: rideData.vehicle_number || "Number not recorded",
+        vehicle_details: `${rideData.vehicle_model || "Vehicle"} - ${rideData.vehicle_number || "Number not recorded"}`,
+        vehicle_type: rideData.vehicle_type || "",
+        service_name: rideData.service_name || getServiceLabel(rideData.vehicle_type),
+        passenger_capacity: Number(rideData.passenger_capacity || (rideData.vehicle_type === "auto" ? 4 : 1)),
+        source: "client_payment_confirmation",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    };
+}
+
+async function markRidePaidAndCreateHistory(rideId) {
+    if (!rideId) {
+        alert("No completed ride found for payment confirmation.");
+        return false;
+    }
+
+    try {
+        const rideRef = doc(db, "rides", rideId);
+        const historyRef = doc(db, "tripHistory", rideId);
+
+        await runTransaction(db, async (transaction) => {
+            const rideSnap = await transaction.get(rideRef);
+            if (!rideSnap.exists()) {
+                throw new Error("Ride document no longer exists.");
+            }
+
+            const rideData = rideSnap.data();
+            if (rideData.status !== "completed") {
+                throw new Error("Only completed rides can be moved into trip history.");
+            }
+
+            if (rideData.driver_id !== currentUser.uid) {
+                throw new Error("Only the assigned driver can confirm this payment.");
+            }
+
+            transaction.update(rideRef, {
+                payment_status: "paid",
+                payment_confirmed_by: currentUser.uid,
+                paymentConfirmedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+
+            transaction.set(historyRef, buildTripHistoryRecord(rideId, {
+                ...rideData,
+                payment_status: "paid"
+            }));
+        });
+
+        return true;
+    } catch (error) {
+        console.error("Trip history creation failed:", error);
+        alert(error.message || "Could not confirm payment and save trip history.");
+        return false;
+    }
 }
 
 function startActiveRideListener() {
@@ -622,6 +980,24 @@ retryButton.addEventListener('click', () => {
 
 openConsoleButton.addEventListener('click', () => {
     window.location.href = 'driver.html';
+});
+
+completeButton.addEventListener('click', completeRideJob);
+cancelButton.addEventListener('click', cancelRideByDriver);
+
+closePaymentButton.addEventListener('click', async () => {
+    closePaymentButton.disabled = true;
+    closePaymentButton.innerText = "Saving trip history...";
+
+    const saved = await markRidePaidAndCreateHistory(pendingPaymentRideId);
+    if (!saved) {
+        closePaymentButton.disabled = false;
+        closePaymentButton.innerText = "Fare Received & Clear";
+        return;
+    }
+
+    paymentModal.classList.add('d-none');
+    window.location.reload();
 });
 
 onAuthStateChanged(auth, async (firebaseUser) => {
