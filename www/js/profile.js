@@ -413,6 +413,12 @@ function bindProfileActions() {
     document.querySelector('[data-action="about"]').addEventListener('click', () => {
         alert('LiphtUp is a local ride-hailing platform for Tripura.');
     });
+    document.querySelector('[data-action="terms"]').addEventListener('click', () => {
+        alert('Terms & Conditions will be available here.');
+    });
+    document.querySelector('[data-action="privacy"]').addEventListener('click', () => {
+        alert('Privacy Policy will be available here.');
+    });
 
     editButton.addEventListener('click', openEditor);
     document.getElementById('profile-edit-close-btn').addEventListener('click', closeEditor);
