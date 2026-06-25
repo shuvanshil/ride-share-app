@@ -1,5 +1,5 @@
 import { auth, db } from './firebase-init.js';
-import { createRideMapSurface, fetchRoadRouteDetails } from './map.js';
+import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js';
 import {
     collection,
     doc,
@@ -21,6 +21,8 @@ const ROUTE_RECALC_DISTANCE_METERS = 25;
 const ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
 const LOCATION_WRITE_DISTANCE_METERS = 10;
 const LOCATION_WRITE_MIN_INTERVAL_MS = 5000;
+const DRIVER_LOCATION_CACHE_KEY = "liphtup_last_driver_location";
+const DEFAULT_DRIVER_LOCATION = Object.freeze({ lat: 24.3124, lng: 92.0135 });
 
 const mapHost = document.getElementById('driver-service-map');
 const statusText = document.getElementById('driver-service-status');
@@ -54,6 +56,8 @@ let currentRideStatus = "";
 let pendingPaymentRideId = null;
 let lifecycleGpsText = "GPS locking...";
 let driverMarkerAnimationFrame = null;
+
+warmGoogleMaps();
 
 const VEHICLE_MARKER_ASSETS = Object.freeze({
     bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
@@ -151,6 +155,34 @@ function normalizeCoordinates(latValue, lngValue) {
     const lat = Number(latValue);
     const lng = Number(lngValue);
     return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function readCachedDriverLocation() {
+    try {
+        const cached = JSON.parse(localStorage.getItem(DRIVER_LOCATION_CACHE_KEY) || "null");
+        return normalizeCoordinates(cached?.lat, cached?.lng);
+    } catch {
+        return null;
+    }
+}
+
+function rememberDriverLocation(position) {
+    const coords = normalizeCoordinates(position?.lat, position?.lng);
+    if (!coords) return;
+
+    try {
+        localStorage.setItem(DRIVER_LOCATION_CACHE_KEY, JSON.stringify({
+            lat: coords.lat,
+            lng: coords.lng,
+            savedAt: Date.now()
+        }));
+    } catch {
+        // Location caching is a speed hint only; live GPS still drives backend updates.
+    }
+}
+
+function getInitialDriverLocation() {
+    return readCachedDriverLocation() || DEFAULT_DRIVER_LOCATION;
 }
 
 function distanceMeters(pointA, pointB) {
@@ -316,6 +348,7 @@ let routePolyline = null;
 let locationWatchId = null;
 let activeRideUnsubscribe = null;
 let lastPosition = null;
+let hasLiveGpsPosition = false;
 let lastRoutePosition = null;
 let lastRouteAt = 0;
 let lastWritePosition = null;
@@ -573,6 +606,8 @@ async function handleLocation(position) {
     };
 
     lastPosition = coords;
+    hasLiveGpsPosition = true;
+    rememberDriverLocation(coords);
     setGpsState("live", "LIVE");
     setLifecycleGpsText("GPS Active & Broadcasting");
     hideMessage();
@@ -608,7 +643,7 @@ function handleLocationError(error) {
     setGpsState("error", "GPS");
     setLifecycleGpsText("GPS signal interrupted");
 
-    if (lastPosition) {
+    if (hasLiveGpsPosition && lastPosition) {
         statusText.innerText = "GPS signal lost. Showing your last known position.";
         showRouteWarning("GPS signal interrupted. Navigation will resume automatically when location returns.");
         return;
@@ -625,6 +660,19 @@ function handleLocationError(error) {
 }
 
 function startLocationTracking() {
+    const initialPosition = getInitialDriverLocation();
+    lastPosition = lastPosition || initialPosition;
+
+    ensureMap(initialPosition).then(() => {
+        upsertDriverMarker(initialPosition);
+        if (currentTarget) {
+            upsertTargetMarker();
+            refreshRoute(initialPosition, true);
+        } else {
+            map.panTo(initialPosition);
+        }
+    }).catch(() => {});
+
     if (!navigator.geolocation) {
         setGpsState("error", "GPS");
         setLifecycleGpsText("GPS not supported");
