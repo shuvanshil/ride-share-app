@@ -474,7 +474,7 @@ select {
 .hero-card {
     min-height: 200px;
     display: grid;
-    grid-template-columns: 1fr 156px;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     align-items: center;
     padding: 18px;
@@ -485,16 +485,25 @@ select {
     overflow: hidden;
 }
 
+.hero-card > div {
+    max-width: 260px;
+}
+
 .hero-card h1 {
     margin: 0 0 8px;
     color: #1d1d1d;
-    font-size: 30px;
+    font-size: clamp(24px, 6.7vw, 30px);
     line-height: 1.05;
     font-weight: 800;
     letter-spacing: 0;
 }
 
-.hero-card h1 span {
+.hero-card h1 .headline-line {
+    display: block;
+    white-space: nowrap;
+}
+
+.hero-card h1 .headline-accent {
     color: #14c22e;
 }
 
@@ -1051,12 +1060,11 @@ select {
 
 @media (max-width: 390px) {
     .hero-card {
-        grid-template-columns: 1fr 122px;
         padding: 14px;
     }
 
     .hero-card h1 {
-        font-size: 26px;
+        max-width: 250px;
     }
 
     .map-frame {
