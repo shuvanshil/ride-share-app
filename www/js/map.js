@@ -7,6 +7,7 @@ import {
 
 const DEFAULT_PICKUP = { lat: 24.3124, lng: 92.0135 };
 const TRIPURA_CENTER = { lat: 23.8315, lng: 91.9882 };
+const PICKUP_CACHE_KEY = "liphtup_last_passenger_pickup";
 const DESTINATION_SEARCH_DEBOUNCE_MS = 420;
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
@@ -35,6 +36,7 @@ let pickupSearchListenersBound = false;
 let passengerDestinationLocked = false;
 let globalDriversUnsubscribe = null;
 let vehicleLegendElement = null;
+let googleMapsLoadPromise = null;
 const globalDriverMarkers = new Map();
 
 function normalizeCoordinate(value) {
@@ -74,6 +76,59 @@ function getGoogleMaps() {
     return window.google?.maps || null;
 }
 
+function getFallbackPickupLocation() {
+    return {
+        lat: DEFAULT_PICKUP.lat,
+        lng: DEFAULT_PICKUP.lng,
+        label: "Kailashahar Center"
+    };
+}
+
+function readCachedPickupLocation() {
+    try {
+        const cached = JSON.parse(localStorage.getItem(PICKUP_CACHE_KEY) || "null");
+        const coords = normalizeCoordinatePair(cached?.lat, cached?.lng);
+        if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return null;
+
+        return {
+            lat: coords.lat,
+            lng: coords.lng,
+            label: cached.label || cached.name || "Previous pickup location"
+        };
+    } catch {
+        return null;
+    }
+}
+
+function rememberPickupLocation(coords, label = "Previous pickup location") {
+    const normalized = normalizeCoordinatePair(coords?.lat, coords?.lng);
+    if (!Number.isFinite(normalized.lat) || !Number.isFinite(normalized.lng)) return;
+
+    try {
+        localStorage.setItem(PICKUP_CACHE_KEY, JSON.stringify({
+            lat: normalized.lat,
+            lng: normalized.lng,
+            label,
+            savedAt: Date.now()
+        }));
+    } catch {
+        // Storage may be unavailable in private browsing; map behavior still works.
+    }
+}
+
+function getInitialPickupLocation() {
+    const pickup = readCachedPickupLocation() || getFallbackPickupLocation();
+    userLatitude = pickup.lat;
+    userLongitude = pickup.lng;
+
+    const pickupInput = document.getElementById("pickup-input");
+    if (pickupInput && !pickupInput.value) {
+        pickupInput.value = pickup.label;
+    }
+
+    return pickup;
+}
+
 async function getGoogleBrowserKey() {
     const response = await fetch("/api/google-config", {
         headers: { Accept: "application/json" }
@@ -92,32 +147,51 @@ async function loadGoogleMaps() {
         return getGoogleMaps();
     }
 
-    const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
-    if (existingScript) {
-        await new Promise((resolve, reject) => {
-            existingScript.addEventListener("load", resolve, { once: true });
-            existingScript.addEventListener("error", reject, { once: true });
-        });
-        return getGoogleMaps();
-    }
+    if (googleMapsLoadPromise) return googleMapsLoadPromise;
 
-    const browserKey = await getGoogleBrowserKey();
-    await new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.id = GOOGLE_MAP_SCRIPT_ID;
-        script.async = true;
-        script.defer = true;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}`;
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
+    googleMapsLoadPromise = (async () => {
+        const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
+        if (existingScript) {
+            await new Promise((resolve, reject) => {
+                if (getGoogleMaps()?.Map) {
+                    resolve();
+                    return;
+                }
+                existingScript.addEventListener("load", resolve, { once: true });
+                existingScript.addEventListener("error", reject, { once: true });
+            });
+            return getGoogleMaps();
+        }
+
+        const browserKey = await getGoogleBrowserKey();
+        await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.id = GOOGLE_MAP_SCRIPT_ID;
+            script.async = true;
+            script.defer = true;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}`;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+
+        if (!getGoogleMaps()?.Map) {
+            throw new Error("Google Maps SDK did not load.");
+        }
+
+        return getGoogleMaps();
+    })().catch((error) => {
+        googleMapsLoadPromise = null;
+        throw error;
     });
 
-    if (!getGoogleMaps()?.Map) {
-        throw new Error("Google Maps SDK did not load.");
-    }
+    return googleMapsLoadPromise;
+}
 
-    return getGoogleMaps();
+export function warmGoogleMaps() {
+    loadGoogleMaps().catch((error) => {
+        console.warn("Google Maps warmup failed:", error);
+    });
 }
 
 function addGoogleMapStyles() {
@@ -509,17 +583,12 @@ function decodePolyline(encoded = "") {
 
 async function getUserLocation() {
     const pickupInput = document.getElementById("pickup-input");
-
-    const fallback = {
-        lat: DEFAULT_PICKUP.lat,
-        lng: DEFAULT_PICKUP.lng,
-        label: "Kailashahar Center (Simulation)"
-    };
+    const fallback = readCachedPickupLocation() || getFallbackPickupLocation();
 
     if (!navigator.geolocation) {
         userLatitude = fallback.lat;
         userLongitude = fallback.lng;
-        if (pickupInput) pickupInput.value = fallback.label;
+        if (pickupInput && !pickupInput.value) pickupInput.value = fallback.label;
         return fallback;
     }
 
@@ -534,12 +603,13 @@ async function getUserLocation() {
                 userLatitude = coords.lat;
                 userLongitude = coords.lng;
                 if (pickupInput) pickupInput.value = coords.label;
+                rememberPickupLocation(coords, coords.label);
                 resolve(coords);
             },
             () => {
                 userLatitude = fallback.lat;
                 userLongitude = fallback.lng;
-                if (pickupInput) pickupInput.value = fallback.label;
+                if (pickupInput && !pickupInput.value) pickupInput.value = fallback.label;
                 resolve(fallback);
             },
             { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
@@ -729,10 +799,40 @@ function startGlobalDriverPresenceListener() {
     });
 }
 
-export async function initializeMapEngine() {
+async function refreshLivePickupAfterMapReady(initialCoords) {
     const coords = await getUserLocation();
+    const pickupInput = document.getElementById("pickup-input");
+    const label = coords.label || pickupInput?.value || "Current location";
+
+    rememberPickupLocation(coords, label);
+    addPickupMarker(coords);
+
+    const movedFromInitial = Math.abs(coords.lat - initialCoords.lat) > 0.00001
+        || Math.abs(coords.lng - initialCoords.lng) > 0.00001;
+    if (movedFromInitial) {
+        window.mapInstance?.panTo(googleLatLngLiteral(coords));
+    }
+
+    window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+        detail: { name: label, lat: coords.lat, lng: coords.lng }
+    }));
+
+    if (!window.selectedDestination) return;
+
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (!fareQuoteBox || !fareAmountSpan) return;
+
+    fareAmountSpan.innerText = "Calculating...";
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
+    await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
+}
+
+export async function initializeMapEngine() {
     const mapContainer = document.getElementById("map-container");
     if (!mapContainer) return;
+    const coords = getInitialPickupLocation();
 
     hidePickupSuggestions();
     hideDestinationSuggestions();
@@ -782,6 +882,10 @@ export async function initializeMapEngine() {
     window.dispatchEvent(new CustomEvent("map-engine-ready", {
         detail: { pickup: { lat: coords.lat, lng: coords.lng } }
     }));
+
+    refreshLivePickupAfterMapReady(coords).catch((error) => {
+        console.warn("Current pickup location refresh failed:", error);
+    });
 }
 
 function setupPickupSearchListeners() {
@@ -925,6 +1029,7 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
             userLatitude = resolved.lat;
             userLongitude = resolved.lng;
             pickupInput.value = resolved.mainName || resolved.name;
+            rememberPickupLocation(resolved, pickupInput.value);
             hidePickupSuggestions();
             addPickupMarker(resolved);
             window.mapInstance?.panTo(googleLatLngLiteral(resolved));
@@ -1045,6 +1150,7 @@ async function completePickupMapPick(lat, lng) {
     userLatitude = lat;
     userLongitude = lng;
     pickMode.pickupInput.value = pickup.name;
+    rememberPickupLocation(pickup, pickup.name);
     hideCenterMapPicker();
     addPickupMarker(pickup);
     window.mapInstance?.panTo({ lat, lng });

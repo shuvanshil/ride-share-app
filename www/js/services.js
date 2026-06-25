@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine, useCurrentPickupLocation } from './map.js';
+import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js';
 import { getRideService } from './fare-policy.js';
 
 const dashboardView = document.getElementById('dashboard-view');
@@ -20,6 +20,8 @@ let servicesSessionStarted = false;
 let selectedServiceType = "bike";
 let serviceSelectionLocked = false;
 let isAuthenticatedPassenger = false;
+
+warmGoogleMaps();
 
 function selectRideService(serviceType) {
     if (serviceSelectionLocked) return;
