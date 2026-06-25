@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js';
+import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260626-prefill-destination';
 import { getRideService } from './fare-policy.js';
 
 const dashboardView = document.getElementById('dashboard-view');
@@ -20,6 +20,7 @@ let servicesSessionStarted = false;
 let selectedServiceType = "bike";
 let serviceSelectionLocked = false;
 let isAuthenticatedPassenger = false;
+const requestedDestination = new URLSearchParams(window.location.search).get("destination")?.trim() || "";
 
 warmGoogleMaps();
 
@@ -121,6 +122,14 @@ function closeBookingLoginGate() {
     bookingLoginGate.classList.add('d-none');
 }
 
+function requestPrefilledDestination() {
+    if (!requestedDestination || window.selectedDestination) return;
+    dropInput.value = requestedDestination;
+    window.dispatchEvent(new CustomEvent('prefill-destination-request', {
+        detail: { query: requestedDestination }
+    }));
+}
+
 function startGuestServices() {
     isAuthenticatedPassenger = false;
     setGuestLoginVisibility(true);
@@ -169,6 +178,7 @@ function bindServicesControls() {
 
     window.addEventListener('map-engine-ready', () => {
         setStatus(pickupInput.value || "Pickup location detected.", "ready");
+        requestPrefilledDestination();
     });
 
     window.addEventListener('pickup-location-updated', (event) => {

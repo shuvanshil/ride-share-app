@@ -685,15 +685,33 @@ select {
 .heritage-card {
     min-height: 118px;
     margin-bottom: 12px;
+    border: 0;
     border-radius: 8px;
     overflow: hidden;
     display: flex;
     align-items: end;
     padding: 16px;
     color: #fff;
+    text-decoration: none;
     background-size: cover;
     background-position: center;
     position: relative;
+    cursor: pointer;
+    transition: transform 160ms ease, filter 160ms ease;
+}
+
+.heritage-card:hover {
+    color: #fff;
+    filter: brightness(1.04);
+}
+
+.heritage-card:active {
+    transform: scale(0.99);
+}
+
+.heritage-card:focus-visible {
+    outline: 3px solid rgba(26, 122, 46, 0.38);
+    outline-offset: 3px;
 }
 
 .heritage-card::before {

@@ -1463,31 +1463,34 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
         item.addEventListener("click", async () => {
             const selected = destinations[Number(item.dataset.index)];
             if (!selected) return;
-
-            cancelCenterMapPick();
-            dropInput.value = selected.mainName || selected.name;
-            hideDestinationSuggestions();
-            window.latestFareQuote = null;
-            window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-            fareAmountSpan.innerText = "Calculating...";
-            fareQuoteBox.classList.remove("d-none");
-            fareQuoteBox.classList.add("d-flex");
-
-            const resolved = await resolveGooglePlace(selected);
-            if (!resolved) {
-                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
-                return;
-            }
-
-            window.selectedDestination = buildSelectedDestination(resolved);
-            const fareRendered = await renderDestinationFare(resolved, fareQuoteBox, fareAmountSpan);
-            if (!fareRendered) {
-                startDestinationMapPick(selected, dropInput, fareQuoteBox, fareAmountSpan);
-            }
+            await chooseDestination(selected, dropInput, fareQuoteBox, fareAmountSpan);
         });
     });
 
     suggestions.classList.add("is-visible");
+}
+
+async function chooseDestination(destination, dropInput, fareQuoteBox, fareAmountSpan) {
+    cancelCenterMapPick();
+    dropInput.value = destination.mainName || destination.name;
+    hideDestinationSuggestions();
+    window.latestFareQuote = null;
+    window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+    fareAmountSpan.innerText = "Calculating...";
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
+
+    const resolved = await resolveGooglePlace(destination);
+    if (!resolved) {
+        startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmountSpan);
+        return;
+    }
+
+    window.selectedDestination = buildSelectedDestination(resolved);
+    const fareRendered = await renderDestinationFare(resolved, fareQuoteBox, fareAmountSpan);
+    if (!fareRendered) {
+        startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmountSpan);
+    }
 }
 
 function buildSelectedDestination(destination) {
@@ -1726,6 +1729,32 @@ window.addEventListener("user-session-ready", () => {
     initializeMapEngine().catch((error) => {
         console.error("Google map engine initialization failed:", error);
     });
+});
+
+window.addEventListener("prefill-destination-request", async (event) => {
+    const query = event.detail?.query?.trim();
+    if (!query || passengerDestinationLocked) return;
+
+    const dropInput = document.getElementById("drop-input");
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+
+    dropInput.value = query;
+    fareAmountSpan.innerText = "Searching...";
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
+
+    const destinations = await searchGoogleDestinations(query);
+    if (passengerDestinationLocked || dropInput.value.trim() !== query) return;
+
+    if (destinations.length) {
+        await chooseDestination(destinations[0], dropInput, fareQuoteBox, fareAmountSpan);
+        return;
+    }
+
+    resetDestinationFareState(fareQuoteBox);
+    showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan);
 });
 
 window.addEventListener("passenger-destination-lock-changed", (event) => {
