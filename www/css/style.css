@@ -819,6 +819,7 @@ select {
 .share-card-action-arrow {
     font-size: 16px;
     line-height: 1;
+    margin-bottom: 4px;
 }
 
 .share-card-status {
