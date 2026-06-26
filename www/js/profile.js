@@ -32,6 +32,7 @@ const saveButton = document.getElementById('profile-save-btn');
 const errorBox = document.getElementById('profile-edit-error');
 const saveNotice = document.getElementById('profile-save-notice');
 const shareLayer = document.getElementById('profile-share-layer');
+const termsLayer = document.getElementById('profile-terms-layer');
 const profileSessionButton = document.getElementById('profile-logout-btn');
 
 const inputs = {
@@ -123,7 +124,20 @@ function openFallbackShareSheet() {
 
 function closeFallbackShareSheet() {
     shareLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none')) {
+    if (editLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
+function openTermsSheet() {
+    termsLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => document.getElementById('profile-terms-close-btn').focus(), 80);
+}
+
+function closeTermsSheet() {
+    termsLayer.classList.add('d-none');
+    if (editLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none')) {
         document.body.classList.remove('profile-editor-open');
     }
 }
@@ -413,9 +427,7 @@ function bindProfileActions() {
     document.querySelector('[data-action="about"]').addEventListener('click', () => {
         alert('LiphtUp is a local ride-hailing platform for Tripura.');
     });
-    document.querySelector('[data-action="terms"]').addEventListener('click', () => {
-        alert('Terms & Conditions will be available here.');
-    });
+    document.querySelector('[data-action="terms"]').addEventListener('click', openTermsSheet);
     document.querySelector('[data-action="privacy"]').addEventListener('click', () => {
         alert('Privacy Policy will be available here.');
     });
@@ -426,8 +438,15 @@ function bindProfileActions() {
     document.getElementById('profile-edit-backdrop').addEventListener('click', closeEditor);
     document.getElementById('profile-share-close-btn').addEventListener('click', closeFallbackShareSheet);
     document.getElementById('profile-share-backdrop').addEventListener('click', closeFallbackShareSheet);
+    document.getElementById('profile-terms-close-btn').addEventListener('click', closeTermsSheet);
+    document.getElementById('profile-terms-backdrop').addEventListener('click', closeTermsSheet);
     document.querySelectorAll('[data-share-channel]').forEach((button) => {
         button.addEventListener('click', () => openShareChannel(button.dataset.shareChannel));
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !termsLayer.classList.contains('d-none')) {
+            closeTermsSheet();
+        }
     });
     editForm.addEventListener('submit', saveProfile);
 

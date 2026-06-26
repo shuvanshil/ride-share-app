@@ -54,7 +54,7 @@
             </button>
             <button class="profile-menu-row" type="button" data-action="refer">
                 <span class="profile-menu-icon">↗</span>
-                <span>Refer</span>
+                <span>Share</span>
                 <strong>›</strong>
             </button>
             <button class="profile-menu-row" type="button" data-action="contact">
@@ -206,8 +206,109 @@
         </section>
     </div>
 
+    <div id="profile-terms-layer" class="profile-terms-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-terms-title">
+        <button id="profile-terms-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close terms and conditions"></button>
+        <section class="profile-terms-sheet">
+            <header class="profile-share-head">
+                <div>
+                    <span>LiphtUp policy</span>
+                    <h2 id="profile-terms-title">Terms &amp; Conditions</h2>
+                </div>
+                <button id="profile-terms-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
+            </header>
+
+            <article class="profile-terms-content">
+                <section>
+                    <h3>Rider Terms &amp; Conditions</h3>
+
+                    <h4>1. Account Registration &amp; Eligibility</h4>
+                    <ul>
+                        <li><strong>Age Requirement:</strong> Riders must be at least 18 years old to create an account.</li>
+                        <li><strong>Account Security:</strong> Users are solely responsible for maintaining password confidentiality.</li>
+                        <li><strong>Accuracy of Information:</strong> Riders must provide true, accurate, and updated personal profiles.</li>
+                    </ul>
+
+                    <h4>2. Services &amp; Booking</h4>
+                    <ul>
+                        <li><strong>Platform Role:</strong> The app acts purely as a digital intermediary connecting riders with independent third-party drivers.</li>
+                        <li><strong>Booking Rules:</strong> A booking is confirmed only when a driver accepts the request.</li>
+                        <li><strong>Usage Restrictions:</strong> Vehicles must not be used to transport illegal goods, hazardous materials, or excess luggage beyond capacity.</li>
+                    </ul>
+
+                    <h4>3. Fares, Payments &amp; Cancellation</h4>
+                    <ul>
+                        <li><strong>Fare Calculation:</strong> Fares are dynamic and based on distance, time, traffic, and peak hours.</li>
+                        <li><strong>Payment Methods:</strong> Riders agree to pay via linked credit/debit cards, digital wallets, or direct cash to the driver.</li>
+                        <li><strong>Cancellation Fee:</strong> Fees apply if a ride is cancelled after a specific time window or if the driver waits past the grace period.</li>
+                        <li><strong>Taxes &amp; Tolls:</strong> Standard government taxes and route tolls are added to the final trip fare.</li>
+                    </ul>
+
+                    <h4>4. Code of Conduct</h4>
+                    <ul>
+                        <li><strong>Behavior:</strong> Riders must treat drivers with respect. Verbal abuse, physical aggression, or harassment results in immediate bans.</li>
+                        <li><strong>Vehicle Care:</strong> Damaging or fouling the vehicle will incur cleaning or repair charges.</li>
+                        <li><strong>Safety:</strong> Seatbelts, if available, must be worn, and riders must not force drivers to violate traffic laws.</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h3>Driver Terms &amp; Conditions</h3>
+
+                    <h4>1. Driver Eligibility &amp; Documentation</h4>
+                    <ul>
+                        <li><strong>Licensing:</strong> Drivers must hold a valid commercial driving licence for 3-wheelers.</li>
+                        <li><strong>Vehicle Requirements:</strong> The auto-rickshaw must have valid registration, fitness certificates, and updated commercial insurance.</li>
+                        <li><strong>Background Verification:</strong> Drivers consent to mandatory criminal record and driving history background checks.</li>
+                    </ul>
+
+                    <h4>2. Nature of Relationship</h4>
+                    <ul>
+                        <li><strong>Independent Contractor:</strong> Drivers are independent service providers. They are not employees, agents, or partners of the app.</li>
+                        <li><strong>Flexibility:</strong> Drivers maintain full autonomy to log on/off the app and accept or decline trip requests at will.</li>
+                    </ul>
+
+                    <h4>3. Fares, Commission &amp; Payouts</h4>
+                    <ul>
+                        <li><strong>Platform Fee:</strong> The app deducts a predefined percentage, or commission, from each completed trip fare.</li>
+                        <li><strong>Payout Schedule:</strong> Driver earnings from digital payments are processed and transferred on a weekly or daily schedule.</li>
+                        <li><strong>Tipping:</strong> Drivers retain 100% of any voluntary tips provided by riders.</li>
+                    </ul>
+
+                    <h4>4. Operating Rules &amp; Conduct</h4>
+                    <ul>
+                        <li><strong>Safety &amp; Compliance:</strong> Drivers must strictly follow all regional traffic rules, speed limits, and transport guidelines.</li>
+                        <li><strong>Route Choice:</strong> Drivers must follow the app's GPS navigation unless the rider requests a specific alternative.</li>
+                        <li><strong>Device Usage:</strong> Mobile devices must be mounted safely. Texting or calling while driving is strictly prohibited.</li>
+                        <li><strong>Discrimination:</strong> Zero-tolerance policy for discrimination based on race, religion, gender, nationality, or disability.</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h3>Mutual Clauses</h3>
+
+                    <h4>1. Data Privacy &amp; Location Tracking</h4>
+                    <ul>
+                        <li><strong>GPS Tracking:</strong> Real-time location tracking is active during trips for safety and fare validation.</li>
+                        <li><strong>Data Privacy:</strong> Personal data handling strictly follows the platform's standard Privacy Policy.</li>
+                    </ul>
+
+                    <h4>2. Limitation of Liability</h4>
+                    <ul>
+                        <li><strong>Service Interruptions:</strong> The platform is provided "as-is" and is not liable for app downtime or GPS inaccuracies.</li>
+                        <li><strong>Third-Party Actions:</strong> The company is not liable for any property damage, injury, or loss caused by the actions of riders or drivers.</li>
+                    </ul>
+
+                    <h4>3. Termination &amp; Suspension</h4>
+                    <ul>
+                        <li><strong>Account Deactivation:</strong> The platform reserves the right to suspend accounts instantly for fraud, low ratings, or policy violations.</li>
+                    </ul>
+                </section>
+            </article>
+        </section>
+    </div>
+
     <script src="js/navigation.js"></script>
-    <script type="module" src="js/profile.js?v=20260623-profile-policy-links"></script>
+    <script type="module" src="js/profile.js?v=20260626-profile-terms"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>
