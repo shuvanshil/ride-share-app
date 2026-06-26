@@ -779,9 +779,9 @@ select {
 .share-card-description {
     margin: 6px 0 0;
     color: #526167;
-    font-size: 8px;
+    font-size: 10px;
     line-height: 1.18;
-    max-width: 180px;
+    max-width: 160px;
 }
 
 .share-card-action {
