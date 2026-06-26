@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260626-home-cards">
+    <link rel="stylesheet" href="css/style.css?v=20260626-share-card-banner">
 </head>
 <body>
     <div id="app-container" class="app-root">
@@ -69,6 +69,17 @@
                         <a class="heritage-card railway" href="services.html?destination=Kumarghat%20Railway%20Station%2C%20Tripura" aria-label="Book a ride to Railway Station">
                             <div><strong>Railway Station</strong><span>Go anywhere with LiphtUp</span></div>
                         </a>
+                        <section class="share-card" aria-labelledby="share-card-heading">
+                            <div class="share-card-copy">
+                                <h2 id="share-card-heading">Ride Together, Save Together.</h2>
+                                <p class="share-card-description">Invite friends &amp; get exciting discounts on first 5 ride.</p>
+                                <button id="invite-friends-btn" class="share-card-action" type="button" aria-describedby="invite-friends-status">
+                                    <span>Invite Friends</span>
+                                    <span class="share-card-action-arrow" aria-hidden="true">&rarr;</span>
+                                </button>
+                                <p id="invite-friends-status" class="share-card-status" aria-live="polite"></p>
+                            </div>
+                        </section>
                     </div>
                 </section>
             </main>

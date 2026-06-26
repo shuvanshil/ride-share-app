@@ -17,6 +17,9 @@ const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_r
 const DISPATCH_BATCH_SIZE = 10;
 const DISPATCH_TIMEOUT_MS = 45000;
 const ACTIVE_DRIVER_LAST_SEEN_MS = 120000;
+const APP_SHARE_URL = "https://ride-share-app.vercel.app/";
+const APP_SHARE_TITLE = "LiphtUp";
+const APP_SHARE_TEXT = "Ride Together, Save Together. Invite friends and unlock exciting LiphtUp discounts.";
 
 // Global variables
 let currentUser = null;
@@ -90,6 +93,52 @@ function addOptionalClickListener(elementId, handler) {
     if (element) {
         element.addEventListener('click', handler);
     }
+}
+
+async function copyTextToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch {
+        const temporaryInput = document.createElement('textarea');
+        temporaryInput.value = text;
+        temporaryInput.setAttribute('readonly', '');
+        temporaryInput.style.position = 'fixed';
+        temporaryInput.style.opacity = '0';
+        document.body.appendChild(temporaryInput);
+        temporaryInput.select();
+        const copied = document.execCommand('copy');
+        temporaryInput.remove();
+        return copied;
+    }
+}
+
+function setInviteFriendsStatus(message = "") {
+    const statusEl = document.getElementById('invite-friends-status');
+    if (statusEl) statusEl.innerText = message;
+}
+
+async function inviteFriends() {
+    const shareData = {
+        title: APP_SHARE_TITLE,
+        text: APP_SHARE_TEXT,
+        url: APP_SHARE_URL
+    };
+    const shareMessage = `${APP_SHARE_TEXT} ${APP_SHARE_URL}`;
+
+    if (typeof navigator.share === 'function') {
+        try {
+            await navigator.share(shareData);
+            setInviteFriendsStatus("Invite shared successfully.");
+            return;
+        } catch (error) {
+            if (error?.name === 'AbortError') return;
+            console.warn("Native share failed; falling back to copy:", error);
+        }
+    }
+
+    const copied = await copyTextToClipboard(shareMessage);
+    setInviteFriendsStatus(copied ? "Invite link copied. Share it with friends." : "Unable to share right now. Please try again.");
 }
 
 function generateVerificationPin() {
@@ -767,5 +816,10 @@ addOptionalClickListener('close-passenger-payment-btn', () => {
 
 addOptionalClickListener('passenger-history-btn', () => {
     window.location.href = 'history.html';
+});
+
+addOptionalClickListener('invite-friends-btn', () => {
+    setInviteFriendsStatus("");
+    inviteFriends();
 });
 
