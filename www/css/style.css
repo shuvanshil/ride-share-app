@@ -893,6 +893,8 @@ select {
 
     .share-card-action-arrow {
         font-size: 16px;
+        margin-bottom: 4px;
+
     }
 
     .share-card-status {
