@@ -763,8 +763,8 @@ select {
 }
 
 .share-card-copy {
-    width: 53%;
-    max-width: 164px;
+    width: 58%;
+    max-width: 190px;
 }
 
 .share-card h2 {
@@ -779,9 +779,10 @@ select {
 .share-card-description {
     margin: 6px 0 0;
     color: #526167;
-    font-size: 1px;
+    font-size: 9px;
     line-height: 1.18;
-    max-width: 160px;
+    max-width: 188px;
+    white-space: nowrap;
 }
 
 .share-card-action {
@@ -843,13 +844,13 @@ select {
     }
 
     .share-card-copy {
-        width: 52%;
-        max-width: 176px;
+        width: 56%;
+        max-width: 204px;
     }
 
     .share-card-description {
-        font-size: 13px;
-        max-width: 164px;
+        font-size: 12px;
+        max-width: 200px;
     }
 
     .share-card-action {
@@ -877,8 +878,8 @@ select {
 
     .share-card-description {
         margin-top: 9px;
-        font-size: 13px;
-        max-width: 174px;
+        font-size: 12px;
+        max-width: 204px;
     }
 
     .share-card-action {
@@ -915,8 +916,8 @@ select {
     }
 
     .share-card-description {
-        font-size: 13px;
-        max-width: 188px;
+        font-size: 12px;
+        max-width: 210px;
     }
 }
 
