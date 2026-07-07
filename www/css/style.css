@@ -232,6 +232,8 @@ select {
 #request-ride-btn.btn,
 #verify-otp-btn,
 #send-otp-btn,
+#password-login-btn,
+#reset-password-btn,
 #register-btn {
     color: #fff !important;
     background: var(--gy-green) !important;

@@ -1,17 +1,32 @@
 import { auth, db } from './firebase-init.js';
-import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import {
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    query,
+    setDoc,
+    serverTimestamp,
+    where
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {
+    EmailAuthProvider,
     RecaptchaVerifier,
-    signInWithPhoneNumber,
+    linkWithCredential,
     onAuthStateChanged,
-    signOut
+    signInWithEmailAndPassword,
+    signInWithPhoneNumber,
+    signOut,
+    updatePassword
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const OTP_RESEND_DELAY_SECONDS = 60;
+const PHONE_INDEX_COLLECTION = "phoneLoginIndex";
 
 let confirmationResult = null;
 let verifiedFirebaseUser = null;
+let verifiedPhoneNumber = null;
 let recaptchaVerifier = null;
 let loginFlowStarted = false;
 let requestedPhoneNumber = null;
@@ -19,13 +34,19 @@ let resendTimerId = null;
 let otpRequestInProgress = false;
 let authMode = "login";
 
+const passwordLoginContainer = document.getElementById('password-login-container');
 const phoneInputContainer = document.getElementById('phone-input-container');
 const otpInputContainer = document.getElementById('otp-input-container');
+const resetPasswordContainer = document.getElementById('reset-password-container');
 const registrationContainer = document.getElementById('registration-container');
 const userRoleSelect = document.getElementById('user-role');
 const driverVerificationFields = document.getElementById('driver-verification-fields');
 const sendOtpBtn = document.getElementById('send-otp-btn');
 const verifyOtpBtn = document.getElementById('verify-otp-btn');
+const passwordLoginBtn = document.getElementById('password-login-btn');
+const forgotPasswordBtn = document.getElementById('forgot-password-btn');
+const resetPasswordBtn = document.getElementById('reset-password-btn');
+const resetBackBtn = document.getElementById('reset-back-btn');
 const registerBtn = document.getElementById('register-btn');
 const changePhoneBtn = document.getElementById('change-phone-btn');
 const resendOtpBtn = document.getElementById('resend-otp-btn');
@@ -35,24 +56,43 @@ const registerModeBtn = document.getElementById('register-mode-btn');
 const authEntryTitle = document.getElementById('auth-entry-title');
 const authEntryCopy = document.getElementById('auth-entry-copy');
 
+function setVisible(element, visible) {
+    element.classList.toggle('d-none', !visible);
+}
+
 function updateAuthModeUi() {
     const isRegistration = authMode === "register";
-    loginModeBtn.classList.toggle('active', !isRegistration);
+    const isReset = authMode === "reset";
+
+    loginModeBtn.classList.toggle('active', authMode === "login" || isReset);
     registerModeBtn.classList.toggle('active', isRegistration);
-    loginModeBtn.setAttribute('aria-selected', String(!isRegistration));
+    loginModeBtn.setAttribute('aria-selected', String(authMode === "login" || isReset));
     registerModeBtn.setAttribute('aria-selected', String(isRegistration));
-    authEntryTitle.textContent = isRegistration ? "Create your account" : "Welcome back";
-    authEntryCopy.textContent = isRegistration
-        ? "Verify your mobile number, then complete your passenger or driver profile."
-        : "Login with the mobile number linked to your account.";
-    sendOtpBtn.textContent = isRegistration ? "Register with OTP" : "Send Login OTP";
-    verifyOtpBtn.textContent = isRegistration ? "Verify & Continue" : "Verify & Login";
+
+    if (isRegistration) {
+        authEntryTitle.textContent = "Create your account";
+        authEntryCopy.textContent = "Verify your mobile number, then complete your passenger or driver profile.";
+        sendOtpBtn.textContent = "Send Registration OTP";
+        verifyOtpBtn.textContent = "Verify & Continue";
+        return;
+    }
+
+    if (isReset) {
+        authEntryTitle.textContent = "Reset your password";
+        authEntryCopy.textContent = "Verify your registered mobile number, then create a new password.";
+        sendOtpBtn.textContent = "Send Reset OTP";
+        verifyOtpBtn.textContent = "Verify OTP";
+        return;
+    }
+
+    authEntryTitle.textContent = "Welcome back";
+    authEntryCopy.textContent = "Login with your phone or email and password.";
 }
 
 function setAuthMode(mode) {
-    if (mode !== "login" && mode !== "register") return;
+    if (!["login", "register", "reset"].includes(mode)) return;
     authMode = mode;
-    resetToPhoneStep();
+    resetAuthStep();
     updateAuthModeUi();
 }
 
@@ -64,8 +104,17 @@ function setAuthStatus(message = "", isError = false) {
 
 function getAuthErrorMessage(error, fallbackMessage) {
     const messages = {
+        "auth/email-already-in-use": "This email is already linked to another account.",
+        "auth/invalid-credential": "Phone/email or password is incorrect.",
+        "auth/invalid-email": "Enter a valid email address.",
         "auth/invalid-phone-number": "Enter a valid 10-digit Indian mobile number.",
+        "auth/missing-password": "Enter your password.",
         "auth/missing-phone-number": "Enter your mobile number first.",
+        "auth/provider-already-linked": "Password login is already enabled for this account.",
+        "auth/requires-recent-login": "Please verify OTP again before changing your password.",
+        "auth/user-not-found": "No LiphtUp account was found for this phone or email.",
+        "auth/wrong-password": "Phone/email or password is incorrect.",
+        "auth/weak-password": "Use a password with at least 6 characters.",
         "auth/invalid-verification-code": "That OTP is incorrect. Check the SMS and try again.",
         "auth/code-expired": "That OTP has expired. Request a new OTP.",
         "auth/session-expired": "This verification session has expired. Request a new OTP.",
@@ -73,7 +122,7 @@ function getAuthErrorMessage(error, fallbackMessage) {
         "auth/quota-exceeded": "The SMS sending limit has been reached. Please try again later.",
         "auth/captcha-check-failed": "The security check failed. Refresh the page and try again.",
         "auth/missing-app-credential": "The security check could not start. Refresh the page and try again.",
-        "auth/operation-not-allowed": "Phone login is not enabled for this Firebase project.",
+        "auth/operation-not-allowed": "Email/password or phone login is not enabled for this Firebase project.",
         "auth/unauthorized-domain": "This website domain is not authorized for phone login.",
         "auth/network-request-failed": "Check your internet connection and try again."
     };
@@ -84,6 +133,32 @@ function getAuthErrorMessage(error, fallbackMessage) {
 function maskPhoneNumber(phoneNumber) {
     const nationalNumber = phoneNumber.replace(/^\+91/, "");
     return `+91 ******${nationalNumber.slice(-4)}`;
+}
+
+function normalizeEmail(value) {
+    return String(value || "").trim().toLowerCase();
+}
+
+function formatPhoneFromValue(value, showAlert = true) {
+    const rawPhone = String(value || "").trim().replace(/\D/g, "");
+    const nationalPhone = rawPhone.startsWith("91") && rawPhone.length === 12
+        ? rawPhone.slice(2)
+        : rawPhone;
+
+    if (!/^[6-9]\d{9}$/.test(nationalPhone)) {
+        if (showAlert) {
+            const message = "Enter a valid 10-digit Indian mobile number.";
+            setAuthStatus(message, true);
+            alert(message);
+        }
+        return null;
+    }
+
+    return `+91${nationalPhone}`;
+}
+
+function getFormattedPhoneNumber() {
+    return formatPhoneFromValue(document.getElementById('phone-number').value);
 }
 
 function clearResendTimer() {
@@ -113,7 +188,6 @@ function startResendTimer() {
 
 function clearRecaptchaVerifier() {
     if (!recaptchaVerifier) return;
-
     recaptchaVerifier.clear();
     recaptchaVerifier = null;
 }
@@ -136,44 +210,41 @@ function routeToHome(profile) {
 }
 
 function updateRegistrationFieldsForRole() {
-    if (userRoleSelect.value === "driver") {
-        driverVerificationFields.classList.remove('d-none');
-    } else {
-        driverVerificationFields.classList.add('d-none');
-    }
+    driverVerificationFields.classList.toggle('d-none', userRoleSelect.value !== "driver");
 }
 
-function resetToPhoneStep() {
+function resetAuthStep() {
     confirmationResult = null;
     verifiedFirebaseUser = null;
+    verifiedPhoneNumber = null;
     requestedPhoneNumber = null;
     clearResendTimer();
     clearRecaptchaVerifier();
+
     document.getElementById('otp-code').value = "";
-    otpInputContainer.classList.add('d-none');
-    registrationContainer.classList.add('d-none');
-    phoneInputContainer.classList.remove('d-none');
+    setVisible(passwordLoginContainer, authMode === "login");
+    setVisible(phoneInputContainer, authMode === "register" || authMode === "reset");
+    setVisible(otpInputContainer, false);
+    setVisible(resetPasswordContainer, false);
+    setVisible(registrationContainer, false);
+
     sendOtpBtn.disabled = false;
-    sendOtpBtn.textContent = authMode === "register" ? "Register with OTP" : "Send Login OTP";
     verifyOtpBtn.disabled = false;
-    verifyOtpBtn.textContent = authMode === "register" ? "Verify & Continue" : "Verify & Login";
     resendOtpBtn.disabled = true;
     resendOtpBtn.textContent = "Resend OTP";
+    registerBtn.disabled = false;
+    registerBtn.textContent = "Create Account";
+    resetPasswordBtn.disabled = false;
+    resetPasswordBtn.textContent = "Update Password";
     setAuthStatus();
-    document.getElementById('phone-number').focus();
-}
 
-function getFormattedPhoneNumber() {
-    const rawPhone = document.getElementById('phone-number').value.trim();
-
-    if (!/^[6-9]\d{9}$/.test(rawPhone)) {
-        const message = "Enter a valid 10-digit Indian mobile number.";
-        setAuthStatus(message, true);
-        alert(message);
-        return null;
-    }
-
-    return `+91${rawPhone}`;
+    window.setTimeout(() => {
+        if (authMode === "login") {
+            document.getElementById('login-identifier').focus();
+        } else {
+            document.getElementById('phone-number').focus();
+        }
+    }, 50);
 }
 
 function ensureRecaptchaVerifier() {
@@ -209,21 +280,21 @@ async function sendOTP() {
         confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, ensureRecaptchaVerifier());
         requestedPhoneNumber = phoneNumber;
         console.log(`Firebase OTP sent to ${phoneNumber}`);
-        phoneInputContainer.classList.add('d-none');
-        otpInputContainer.classList.remove('d-none');
+        setVisible(phoneInputContainer, false);
+        setVisible(otpInputContainer, true);
         document.getElementById('otp-destination').textContent = `We sent a 6-digit OTP to ${maskPhoneNumber(phoneNumber)}.`;
-        sendOtpBtn.textContent = authMode === "register" ? "Register with OTP" : "Send Login OTP";
+        sendOtpBtn.textContent = authMode === "register" ? "Send Registration OTP" : "Send Reset OTP";
         setAuthStatus("OTP sent. It may take a few moments to arrive.");
         startResendTimer();
         document.getElementById('otp-code').focus();
     } catch (error) {
-        console.error("Firebase phone sign-in failed:", error);
+        console.error("Firebase phone OTP failed:", error);
         clearRecaptchaVerifier();
         const message = getAuthErrorMessage(error, "Could not send the OTP. Please try again.");
         setAuthStatus(message, true);
         alert(message);
         sendOtpBtn.disabled = false;
-        sendOtpBtn.textContent = authMode === "register" ? "Register with OTP" : "Send Login OTP";
+        sendOtpBtn.textContent = authMode === "register" ? "Send Registration OTP" : "Send Reset OTP";
         resendOtpBtn.disabled = false;
         resendOtpBtn.textContent = "Resend OTP";
     } finally {
@@ -234,6 +305,82 @@ async function sendOTP() {
 async function resendOTP() {
     if (!requestedPhoneNumber || resendOtpBtn.disabled) return;
     await sendOTP();
+}
+
+async function resolvePhoneLogin(phoneNumber) {
+    const indexSnap = await getDoc(doc(db, PHONE_INDEX_COLLECTION, phoneNumber));
+    if (indexSnap.exists()) {
+        return indexSnap.data();
+    }
+
+    const usersQuery = query(collection(db, "users"), where("phone", "==", phoneNumber));
+    const usersSnap = await getDocs(usersQuery);
+    if (usersSnap.empty) return null;
+
+    const userDoc = usersSnap.docs[0];
+    const profile = userDoc.data();
+    return {
+        uid: profile.uid || userDoc.id,
+        email: profile.email,
+        role: profile.role || "passenger"
+    };
+}
+
+async function getLoginEmail(identifier) {
+    const trimmed = String(identifier || "").trim();
+    if (trimmed.includes("@")) return normalizeEmail(trimmed);
+
+    const phoneNumber = formatPhoneFromValue(trimmed);
+    if (!phoneNumber) return null;
+
+    const loginIndex = await resolvePhoneLogin(phoneNumber);
+    if (!loginIndex?.email) {
+        throw new Error("No LiphtUp account was found for this mobile number. Please register first.");
+    }
+
+    return normalizeEmail(loginIndex.email);
+}
+
+async function loginWithPassword() {
+    if (passwordLoginBtn.disabled) return;
+
+    const identifier = document.getElementById('login-identifier').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    if (!identifier) {
+        alert("Enter your phone number or email address.");
+        return;
+    }
+
+    if (!password) {
+        alert("Enter your password.");
+        return;
+    }
+
+    passwordLoginBtn.disabled = true;
+    passwordLoginBtn.textContent = "Logging in...";
+    setAuthStatus("Checking your account...");
+    loginFlowStarted = true;
+
+    try {
+        const email = await getLoginEmail(identifier);
+        const result = await signInWithEmailAndPassword(auth, email, password);
+        const userDocSnap = await getDoc(doc(db, "users", result.user.uid));
+
+        if (!userDocSnap.exists()) {
+            await signOut(auth);
+            throw new Error("Your login worked, but no LiphtUp profile was found. Please contact support.");
+        }
+
+        routeToHome(userDocSnap.data());
+    } catch (error) {
+        console.error("Password login failed:", error);
+        const message = getAuthErrorMessage(error, error.message || "Could not login. Please try again.");
+        setAuthStatus(message, true);
+        alert(message);
+        passwordLoginBtn.disabled = false;
+        passwordLoginBtn.textContent = "Login";
+    }
 }
 
 async function verifyOTP() {
@@ -258,26 +405,40 @@ async function verifyOTP() {
     try {
         const result = await confirmationResult.confirm(code);
         verifiedFirebaseUser = result.user;
+        verifiedPhoneNumber = result.user.phoneNumber || requestedPhoneNumber;
         clearResendTimer();
         setAuthStatus("Phone number verified successfully.");
 
         const userDocSnap = await getDoc(doc(db, "users", verifiedFirebaseUser.uid));
-        if (userDocSnap.exists()) {
-            if (authMode === "register") {
+
+        if (authMode === "register") {
+            if (userDocSnap.exists()) {
                 alert("An account already exists for this mobile number. Logging you in instead.");
+                routeToHome(userDocSnap.data());
+                return;
             }
-            routeToHome(userDocSnap.data());
-        } else if (authMode === "register") {
-            otpInputContainer.classList.add('d-none');
-            registrationContainer.classList.remove('d-none');
+
+            setVisible(otpInputContainer, false);
+            setVisible(registrationContainer, true);
             authEntryTitle.textContent = "Complete your profile";
-            authEntryCopy.textContent = "Tell us whether you will ride as a passenger or drive with LiphtUp.";
+            authEntryCopy.textContent = "Add your email and password for future logins.";
             document.getElementById('user-name').focus();
-        } else {
-            await signOut(auth);
-            alert("No LiphtUp account was found for this number. Please register first.");
-            setAuthMode("register");
-            setAuthStatus("No account found. Register this mobile number to continue.");
+            return;
+        }
+
+        if (authMode === "reset") {
+            if (!userDocSnap.exists()) {
+                await signOut(auth);
+                alert("No LiphtUp account was found for this number. Please register first.");
+                setAuthMode("register");
+                return;
+            }
+
+            setVisible(otpInputContainer, false);
+            setVisible(resetPasswordContainer, true);
+            authEntryTitle.textContent = "Create new password";
+            authEntryCopy.textContent = "Use this password for phone/email login from now on.";
+            document.getElementById('reset-password').focus();
         }
     } catch (error) {
         console.error("OTP verification failed:", error);
@@ -285,39 +446,87 @@ async function verifyOTP() {
         setAuthStatus(message, true);
         alert(message);
         verifyOtpBtn.disabled = false;
-        verifyOtpBtn.textContent = authMode === "register" ? "Verify & Continue" : "Verify & Login";
+        verifyOtpBtn.textContent = authMode === "register" ? "Verify & Continue" : "Verify OTP";
     }
+}
+
+function validatePasswordPair(password, confirmPassword) {
+    if (password.length < 6) return "Password must be at least 6 characters.";
+    if (password !== confirmPassword) return "Password and confirm password do not match.";
+    return "";
+}
+
+function getRegistrationPasswordError() {
+    return validatePasswordPair(
+        document.getElementById('user-password').value,
+        document.getElementById('user-confirm-password').value
+    );
+}
+
+async function ensurePasswordProvider(user, email, password) {
+    const credential = EmailAuthProvider.credential(email, password);
+    const hasPasswordProvider = user.providerData.some((provider) => provider.providerId === "password");
+
+    if (hasPasswordProvider) {
+        await updatePassword(user, password);
+        return user;
+    }
+
+    const linkedCredential = await linkWithCredential(user, credential);
+    return linkedCredential.user;
+}
+
+async function savePhoneLoginIndex(profileData) {
+    if (!profileData.phone || !profileData.email || !profileData.uid) return;
+
+    await setDoc(doc(db, PHONE_INDEX_COLLECTION, profileData.phone), {
+        uid: profileData.uid,
+        email: profileData.email,
+        role: profileData.role,
+        phone: profileData.phone,
+        updatedAt: serverTimestamp()
+    }, { merge: true });
 }
 
 async function finalizeRegistration() {
     if (registerBtn.disabled) return;
 
     const name = document.getElementById('user-name').value.trim();
-    const email = document.getElementById('user-email').value.trim();
+    const email = normalizeEmail(document.getElementById('user-email').value);
     const role = document.getElementById('user-role').value;
+    const password = document.getElementById('user-password').value;
     const currentAuthUser = verifiedFirebaseUser || auth.currentUser;
 
-    if (!currentAuthUser) {
-        alert("Your login session is missing. Please verify OTP again.");
+    if (!currentAuthUser || !verifiedPhoneNumber) {
+        alert("Your phone verification session is missing. Please verify OTP again.");
         return;
     }
 
-    if (!name) {
-        alert("Name field cannot be blank.");
+    if (name.length < 2) {
+        alert("Enter your full name.");
         return;
     }
 
-    if (!email || !email.includes("@")) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         alert("Please enter a valid email address.");
+        return;
+    }
+
+    const passwordError = getRegistrationPasswordError();
+    if (passwordError) {
+        alert(passwordError);
         return;
     }
 
     const profileData = {
         uid: currentAuthUser.uid,
         name,
-        phone: currentAuthUser.phoneNumber,
+        phone: verifiedPhoneNumber,
         email,
         role,
+        phoneVerified: true,
+        authProvider: "password",
+        otpProvider: "firebase-phone",
         profileCompleted: true,
         createdAt: serverTimestamp()
     };
@@ -357,12 +566,14 @@ async function finalizeRegistration() {
     setAuthStatus("Creating your LiphtUp account...");
 
     try {
+        await ensurePasswordProvider(currentAuthUser, email, password);
         await setDoc(doc(db, "users", currentAuthUser.uid), profileData);
+        await savePhoneLoginIndex(profileData);
         console.log(`Saved profile to Firestore: ${name} as ${role}`);
         routeToHome(profileData);
     } catch (error) {
-        console.error("Firestore Write Exception:", error);
-        const message = "Your phone was verified, but the profile could not be saved. Please try again.";
+        console.error("Registration failed:", error);
+        const message = getAuthErrorMessage(error, "Your phone was verified, but the account could not be created. Please try again.");
         setAuthStatus(message, true);
         alert(message);
         registerBtn.disabled = false;
@@ -370,14 +581,77 @@ async function finalizeRegistration() {
     }
 }
 
+async function updateForgottenPassword() {
+    if (resetPasswordBtn.disabled) return;
+
+    const currentAuthUser = verifiedFirebaseUser || auth.currentUser;
+    const newPassword = document.getElementById('reset-password').value;
+    const confirmPassword = document.getElementById('reset-confirm-password').value;
+    const passwordError = validatePasswordPair(newPassword, confirmPassword);
+
+    if (!currentAuthUser) {
+        alert("Your OTP session is missing. Please verify again.");
+        return;
+    }
+
+    if (passwordError) {
+        alert(passwordError);
+        return;
+    }
+
+    resetPasswordBtn.disabled = true;
+    resetPasswordBtn.textContent = "Updating...";
+    setAuthStatus("Updating your password...");
+
+    try {
+        const userDocSnap = await getDoc(doc(db, "users", currentAuthUser.uid));
+        if (!userDocSnap.exists()) {
+            throw new Error("No LiphtUp profile was found for this number.");
+        }
+
+        const profile = userDocSnap.data();
+        const email = normalizeEmail(profile.email || currentAuthUser.email);
+
+        if (!email) {
+            throw new Error("This account has no email saved. Please contact support to reset the password.");
+        }
+
+        await ensurePasswordProvider(currentAuthUser, email, newPassword);
+        await savePhoneLoginIndex({
+            uid: currentAuthUser.uid,
+            phone: profile.phone || currentAuthUser.phoneNumber || verifiedPhoneNumber,
+            email,
+            role: profile.role || "passenger"
+        });
+
+        alert("Password updated successfully.");
+        routeToHome({ ...profile, email });
+    } catch (error) {
+        console.error("Password reset failed:", error);
+        const message = getAuthErrorMessage(error, error.message || "Could not update your password. Please try again.");
+        setAuthStatus(message, true);
+        alert(message);
+        resetPasswordBtn.disabled = false;
+        resetPasswordBtn.textContent = "Update Password";
+    }
+}
+
 sendOtpBtn.addEventListener('click', sendOTP);
 verifyOtpBtn.addEventListener('click', verifyOTP);
+passwordLoginBtn.addEventListener('click', loginWithPassword);
+forgotPasswordBtn.addEventListener('click', () => setAuthMode("reset"));
+resetPasswordBtn.addEventListener('click', updateForgottenPassword);
+resetBackBtn.addEventListener('click', async () => {
+    if (auth.currentUser) await signOut(auth);
+    setAuthMode("login");
+});
 registerBtn.addEventListener('click', finalizeRegistration);
 resendOtpBtn.addEventListener('click', resendOTP);
-changePhoneBtn.addEventListener('click', resetToPhoneStep);
+changePhoneBtn.addEventListener('click', resetAuthStep);
 loginModeBtn.addEventListener('click', () => setAuthMode("login"));
 registerModeBtn.addEventListener('click', () => setAuthMode("register"));
 userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
+
 document.getElementById('phone-number').addEventListener('input', (event) => {
     event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10);
 });
@@ -390,8 +664,19 @@ document.getElementById('otp-code').addEventListener('input', (event) => {
 document.getElementById('otp-code').addEventListener('keydown', (event) => {
     if (event.key === "Enter") verifyOTP();
 });
+document.getElementById('login-identifier').addEventListener('keydown', (event) => {
+    if (event.key === "Enter") loginWithPassword();
+});
+document.getElementById('login-password').addEventListener('keydown', (event) => {
+    if (event.key === "Enter") loginWithPassword();
+});
+document.getElementById('reset-confirm-password').addEventListener('keydown', (event) => {
+    if (event.key === "Enter") updateForgottenPassword();
+});
+
 updateRegistrationFieldsForRole();
 updateAuthModeUi();
+resetAuthStep();
 
 onAuthStateChanged(auth, async (user) => {
     if (!user || loginFlowStarted) return;
@@ -400,15 +685,6 @@ onAuthStateChanged(auth, async (user) => {
         const userDocSnap = await getDoc(doc(db, "users", user.uid));
         if (userDocSnap.exists()) {
             routeToHome(userDocSnap.data());
-        } else {
-            verifiedFirebaseUser = user;
-            authMode = "register";
-            updateAuthModeUi();
-            phoneInputContainer.classList.add('d-none');
-            otpInputContainer.classList.add('d-none');
-            registrationContainer.classList.remove('d-none');
-            authEntryTitle.textContent = "Complete your profile";
-            authEntryCopy.textContent = "Finish creating your LiphtUp account.";
         }
     } catch (error) {
         console.warn("Existing auth session lookup failed:", error);

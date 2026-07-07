@@ -35,13 +35,26 @@
                 <p id="auth-entry-copy">Login with the mobile number linked to your account.</p>
             </div>
 
-            <div id="phone-input-container">
+            <div id="password-login-container">
+                <div class="mb-3">
+                    <label class="form-label">Phone or Email</label>
+                    <input type="text" id="login-identifier" class="form-control gy-input" placeholder="9999999999 or name@example.com" autocomplete="username">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="login-password" class="form-control gy-input" placeholder="Enter your password" autocomplete="current-password">
+                </div>
+                <button id="password-login-btn" class="gy-btn gy-btn-primary w-100" type="button">Login</button>
+                <button id="forgot-password-btn" class="auth-link-btn mt-3" type="button">Forgot password?</button>
+            </div>
+
+            <div id="phone-input-container" class="d-none">
                 <label class="form-label">Mobile Number</label>
                 <div class="input-group gy-input-group mb-3">
                     <span class="input-group-text">+91</span>
                     <input type="tel" id="phone-number" class="form-control" placeholder="9999999999" maxlength="10" inputmode="numeric" autocomplete="tel-national" aria-describedby="sms-consent-text">
                 </div>
-                <button id="send-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Send Login OTP</button>
+                <button id="send-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Send OTP</button>
                 <p id="sms-consent-text" class="auth-consent-text mt-3 mb-0">
                     By continuing, you agree to receive a one-time verification SMS. Message and data rates may apply.
                 </p>
@@ -51,9 +64,23 @@
                 <label class="form-label">Enter OTP</label>
                 <p id="otp-destination" class="auth-step-text mb-3"></p>
                 <input type="text" id="otp-code" class="form-control gy-input text-center mb-3" placeholder="******" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-                <button id="verify-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Verify & Login</button>
+                <button id="verify-otp-btn" class="gy-btn gy-btn-primary w-100" type="button">Verify OTP</button>
                 <button id="resend-otp-btn" class="auth-link-btn mt-3" type="button" disabled>Resend OTP</button>
                 <button id="change-phone-btn" class="auth-link-btn mt-3" type="button">Use another number</button>
+            </div>
+
+            <div id="reset-password-container" class="d-none">
+                <h5 class="fw-bold mb-3">Create New Password</h5>
+                <div class="mb-3">
+                    <label class="form-label">New Password</label>
+                    <input type="password" id="reset-password" class="form-control gy-input" placeholder="Minimum 6 characters" autocomplete="new-password">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Confirm New Password</label>
+                    <input type="password" id="reset-confirm-password" class="form-control gy-input" placeholder="Repeat new password" autocomplete="new-password">
+                </div>
+                <button id="reset-password-btn" class="gy-btn gy-btn-primary w-100" type="button">Update Password</button>
+                <button id="reset-back-btn" class="auth-link-btn mt-3" type="button">Back to login</button>
             </div>
 
             <div id="registration-container" class="d-none">
@@ -65,6 +92,14 @@
                 <div class="mb-3">
                     <label class="form-label">Email Address</label>
                     <input type="email" id="user-email" class="form-control gy-input" placeholder="name@example.com" autocomplete="email">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" id="user-password" class="form-control gy-input" placeholder="Minimum 6 characters" autocomplete="new-password">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Confirm Password</label>
+                    <input type="password" id="user-confirm-password" class="form-control gy-input" placeholder="Repeat password" autocomplete="new-password">
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Register As</label>
@@ -112,7 +147,7 @@
     </main>
 
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/login.js?v=20260621-auth-modes"></script>
+    <script type="module" src="js/login.js?v=20260707-password-auth"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>
