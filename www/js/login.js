@@ -10,24 +10,20 @@ import {
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import {
-    EmailAuthProvider,
-    RecaptchaVerifier,
-    linkWithCredential,
+    createUserWithEmailAndPassword,
     onAuthStateChanged,
     signInWithEmailAndPassword,
-    signInWithPhoneNumber,
-    signOut,
-    updatePassword
+    signOut
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const OTP_RESEND_DELAY_SECONDS = 60;
 const PHONE_INDEX_COLLECTION = "phoneLoginIndex";
 
-let confirmationResult = null;
 let verifiedFirebaseUser = null;
 let verifiedPhoneNumber = null;
-let recaptchaVerifier = null;
+let otpSessionId = null;
+let otpVerificationToken = null;
 let loginFlowStarted = false;
 let requestedPhoneNumber = null;
 let resendTimerId = null;
@@ -186,12 +182,6 @@ function startResendTimer() {
     }, 1000);
 }
 
-function clearRecaptchaVerifier() {
-    if (!recaptchaVerifier) return;
-    recaptchaVerifier.clear();
-    recaptchaVerifier = null;
-}
-
 function cacheUserProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
     try {
@@ -214,12 +204,12 @@ function updateRegistrationFieldsForRole() {
 }
 
 function resetAuthStep() {
-    confirmationResult = null;
     verifiedFirebaseUser = null;
     verifiedPhoneNumber = null;
+    otpSessionId = null;
+    otpVerificationToken = null;
     requestedPhoneNumber = null;
     clearResendTimer();
-    clearRecaptchaVerifier();
 
     document.getElementById('otp-code').value = "";
     setVisible(passwordLoginContainer, authMode === "login");
@@ -247,19 +237,6 @@ function resetAuthStep() {
     }, 50);
 }
 
-function ensureRecaptchaVerifier() {
-    if (recaptchaVerifier) return recaptchaVerifier;
-
-    recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {
-            console.log("reCAPTCHA verification completed.");
-        }
-    });
-
-    return recaptchaVerifier;
-}
-
 async function sendOTP() {
     if (otpRequestInProgress) return;
 
@@ -273,13 +250,26 @@ async function sendOTP() {
     sendOtpBtn.textContent = "Sending OTP...";
     resendOtpBtn.textContent = "Sending OTP...";
     setAuthStatus("Requesting a secure verification code...");
-    confirmationResult = null;
-    clearRecaptchaVerifier();
+    otpSessionId = null;
+    otpVerificationToken = null;
 
     try {
-        confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, ensureRecaptchaVerifier());
+        const response = await fetch("/api/send-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                phone: phoneNumber,
+                purpose: authMode === "reset" ? "reset" : "register"
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !data.otpSessionId) {
+            throw new Error(data.error || data.message || "Could not send the OTP. Please try again.");
+        }
+
+        otpSessionId = data.otpSessionId;
         requestedPhoneNumber = phoneNumber;
-        console.log(`Firebase OTP sent to ${phoneNumber}`);
+        console.log(`2Factor OTP sent to ${phoneNumber}`);
         setVisible(phoneInputContainer, false);
         setVisible(otpInputContainer, true);
         document.getElementById('otp-destination').textContent = `We sent a 6-digit OTP to ${maskPhoneNumber(phoneNumber)}.`;
@@ -288,8 +278,7 @@ async function sendOTP() {
         startResendTimer();
         document.getElementById('otp-code').focus();
     } catch (error) {
-        console.error("Firebase phone OTP failed:", error);
-        clearRecaptchaVerifier();
+        console.error("2Factor OTP send failed:", error);
         const message = getAuthErrorMessage(error, "Could not send the OTP. Please try again.");
         setAuthStatus(message, true);
         alert(message);
@@ -393,7 +382,7 @@ async function verifyOTP() {
         return;
     }
 
-    if (!confirmationResult) {
+    if (!otpSessionId || !requestedPhoneNumber) {
         alert("Please request an OTP first.");
         return;
     }
@@ -403,18 +392,31 @@ async function verifyOTP() {
     setAuthStatus("Verifying your OTP...");
 
     try {
-        const result = await confirmationResult.confirm(code);
-        verifiedFirebaseUser = result.user;
-        verifiedPhoneNumber = result.user.phoneNumber || requestedPhoneNumber;
+        const response = await fetch("/api/verify-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                phone: requestedPhoneNumber,
+                otpSessionId,
+                otp: code,
+                purpose: authMode === "reset" ? "reset" : "register"
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !data.verificationToken) {
+            throw new Error(data.error || data.message || "Could not verify the OTP. Please try again.");
+        }
+
+        verifiedPhoneNumber = data.phone || requestedPhoneNumber;
+        otpVerificationToken = data.verificationToken;
         clearResendTimer();
         setAuthStatus("Phone number verified successfully.");
 
-        const userDocSnap = await getDoc(doc(db, "users", verifiedFirebaseUser.uid));
-
         if (authMode === "register") {
-            if (userDocSnap.exists()) {
-                alert("An account already exists for this mobile number. Logging you in instead.");
-                routeToHome(userDocSnap.data());
+            const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
+            if (existingPhoneLogin?.email) {
+                alert("An account already exists for this mobile number. Please login or use forgot password.");
+                setAuthMode("login");
                 return;
             }
 
@@ -427,8 +429,8 @@ async function verifyOTP() {
         }
 
         if (authMode === "reset") {
-            if (!userDocSnap.exists()) {
-                await signOut(auth);
+            const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
+            if (!existingPhoneLogin?.email) {
                 alert("No LiphtUp account was found for this number. Please register first.");
                 setAuthMode("register");
                 return;
@@ -463,19 +465,6 @@ function getRegistrationPasswordError() {
     );
 }
 
-async function ensurePasswordProvider(user, email, password) {
-    const credential = EmailAuthProvider.credential(email, password);
-    const hasPasswordProvider = user.providerData.some((provider) => provider.providerId === "password");
-
-    if (hasPasswordProvider) {
-        await updatePassword(user, password);
-        return user;
-    }
-
-    const linkedCredential = await linkWithCredential(user, credential);
-    return linkedCredential.user;
-}
-
 async function savePhoneLoginIndex(profileData) {
     if (!profileData.phone || !profileData.email || !profileData.uid) return;
 
@@ -495,9 +484,8 @@ async function finalizeRegistration() {
     const email = normalizeEmail(document.getElementById('user-email').value);
     const role = document.getElementById('user-role').value;
     const password = document.getElementById('user-password').value;
-    const currentAuthUser = verifiedFirebaseUser || auth.currentUser;
 
-    if (!currentAuthUser || !verifiedPhoneNumber) {
+    if (!verifiedPhoneNumber || !otpVerificationToken) {
         alert("Your phone verification session is missing. Please verify OTP again.");
         return;
     }
@@ -519,14 +507,14 @@ async function finalizeRegistration() {
     }
 
     const profileData = {
-        uid: currentAuthUser.uid,
+        uid: "",
         name,
         phone: verifiedPhoneNumber,
         email,
         role,
         phoneVerified: true,
         authProvider: "password",
-        otpProvider: "firebase-phone",
+        otpProvider: "2factor",
         profileCompleted: true,
         createdAt: serverTimestamp()
     };
@@ -566,8 +554,16 @@ async function finalizeRegistration() {
     setAuthStatus("Creating your LiphtUp account...");
 
     try {
-        await ensurePasswordProvider(currentAuthUser, email, password);
-        await setDoc(doc(db, "users", currentAuthUser.uid), profileData);
+        const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
+        if (existingPhoneLogin?.email) {
+            throw new Error("An account already exists for this mobile number. Please login instead.");
+        }
+
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        verifiedFirebaseUser = result.user;
+        profileData.uid = result.user.uid;
+
+        await setDoc(doc(db, "users", result.user.uid), profileData);
         await savePhoneLoginIndex(profileData);
         console.log(`Saved profile to Firestore: ${name} as ${role}`);
         routeToHome(profileData);
@@ -584,12 +580,11 @@ async function finalizeRegistration() {
 async function updateForgottenPassword() {
     if (resetPasswordBtn.disabled) return;
 
-    const currentAuthUser = verifiedFirebaseUser || auth.currentUser;
     const newPassword = document.getElementById('reset-password').value;
     const confirmPassword = document.getElementById('reset-confirm-password').value;
     const passwordError = validatePasswordPair(newPassword, confirmPassword);
 
-    if (!currentAuthUser) {
+    if (!verifiedPhoneNumber || !otpVerificationToken) {
         alert("Your OTP session is missing. Please verify again.");
         return;
     }
@@ -604,28 +599,23 @@ async function updateForgottenPassword() {
     setAuthStatus("Updating your password...");
 
     try {
-        const userDocSnap = await getDoc(doc(db, "users", currentAuthUser.uid));
-        if (!userDocSnap.exists()) {
-            throw new Error("No LiphtUp profile was found for this number.");
-        }
-
-        const profile = userDocSnap.data();
-        const email = normalizeEmail(profile.email || currentAuthUser.email);
-
-        if (!email) {
-            throw new Error("This account has no email saved. Please contact support to reset the password.");
-        }
-
-        await ensurePasswordProvider(currentAuthUser, email, newPassword);
-        await savePhoneLoginIndex({
-            uid: currentAuthUser.uid,
-            phone: profile.phone || currentAuthUser.phoneNumber || verifiedPhoneNumber,
-            email,
-            role: profile.role || "passenger"
+        const response = await fetch("/api/reset-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                verificationToken: otpVerificationToken,
+                password: newPassword
+            })
         });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || data.message || "Could not update your password. Please try again.");
+        }
 
         alert("Password updated successfully.");
-        routeToHome({ ...profile, email });
+        document.getElementById('login-identifier').value = data.email || verifiedPhoneNumber;
+        document.getElementById('login-password').value = "";
+        setAuthMode("login");
     } catch (error) {
         console.error("Password reset failed:", error);
         const message = getAuthErrorMessage(error, error.message || "Could not update your password. Please try again.");
