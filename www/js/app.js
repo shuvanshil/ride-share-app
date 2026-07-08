@@ -17,7 +17,7 @@ const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_r
 const DISPATCH_BATCH_SIZE = 10;
 const DISPATCH_TIMEOUT_MS = 45000;
 const ACTIVE_DRIVER_LAST_SEEN_MS = 120000;
-const APP_SHARE_URL = "https://ride-share-app.vercel.app/";
+const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
 const APP_SHARE_TEXT = "Ride Together, Save Together. Invite friends and unlock exciting LiphtUp discounts.";
 
