@@ -5,13 +5,11 @@ import {
     getDoc,
     getDocs,
     query,
-    setDoc,
-    serverTimestamp,
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import {
-    createUserWithEmailAndPassword,
     onAuthStateChanged,
+    signInWithCustomToken,
     signInWithEmailAndPassword,
     signOut
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -465,18 +463,6 @@ function getRegistrationPasswordError() {
     );
 }
 
-async function savePhoneLoginIndex(profileData) {
-    if (!profileData.phone || !profileData.email || !profileData.uid) return;
-
-    await setDoc(doc(db, PHONE_INDEX_COLLECTION, profileData.phone), {
-        uid: profileData.uid,
-        email: profileData.email,
-        role: profileData.role,
-        phone: profileData.phone,
-        updatedAt: serverTimestamp()
-    }, { merge: true });
-}
-
 async function finalizeRegistration() {
     if (registerBtn.disabled) return;
 
@@ -506,18 +492,7 @@ async function finalizeRegistration() {
         return;
     }
 
-    const profileData = {
-        uid: "",
-        name,
-        phone: verifiedPhoneNumber,
-        email,
-        role,
-        phoneVerified: true,
-        authProvider: "password",
-        otpProvider: "2factor",
-        profileCompleted: true,
-        createdAt: serverTimestamp()
-    };
+    const profileData = { name, email, role };
 
     if (role === "driver") {
         const profilePhotoUrl = document.getElementById('driver-profile-photo').value.trim();
@@ -559,14 +534,25 @@ async function finalizeRegistration() {
             throw new Error("An account already exists for this mobile number. Please login instead.");
         }
 
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-        verifiedFirebaseUser = result.user;
-        profileData.uid = result.user.uid;
+        const response = await fetch("/api/register-account", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                verificationToken: otpVerificationToken,
+                password,
+                profile: profileData
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !data.customToken || !data.profile) {
+            throw new Error(data.error || data.message || "Could not create account. Please try again.");
+        }
 
-        await setDoc(doc(db, "users", result.user.uid), profileData);
-        await savePhoneLoginIndex(profileData);
+        const result = await signInWithCustomToken(auth, data.customToken);
+        verifiedFirebaseUser = result.user;
+        const createdProfile = data.profile;
         console.log(`Saved profile to Firestore: ${name} as ${role}`);
-        routeToHome(profileData);
+        routeToHome(createdProfile);
     } catch (error) {
         console.error("Registration failed:", error);
         const message = getAuthErrorMessage(error, "Your phone was verified, but the account could not be created. Please try again.");
