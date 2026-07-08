@@ -1,11 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import {
-    collection,
     doc,
     getDoc,
-    getDocs,
-    query,
-    where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import {
     onAuthStateChanged,
@@ -295,22 +291,13 @@ async function resendOTP() {
 }
 
 async function resolvePhoneLogin(phoneNumber) {
-    const indexSnap = await getDoc(doc(db, PHONE_INDEX_COLLECTION, phoneNumber));
-    if (indexSnap.exists()) {
-        return indexSnap.data();
+    try {
+        const indexSnap = await getDoc(doc(db, PHONE_INDEX_COLLECTION, phoneNumber));
+        return indexSnap.exists() ? indexSnap.data() : null;
+    } catch (error) {
+        console.warn("Phone login index lookup failed:", error);
+        return null;
     }
-
-    const usersQuery = query(collection(db, "users"), where("phone", "==", phoneNumber));
-    const usersSnap = await getDocs(usersQuery);
-    if (usersSnap.empty) return null;
-
-    const userDoc = usersSnap.docs[0];
-    const profile = userDoc.data();
-    return {
-        uid: profile.uid || userDoc.id,
-        email: profile.email,
-        role: profile.role || "passenger"
-    };
 }
 
 async function getLoginEmail(identifier) {
@@ -427,13 +414,6 @@ async function verifyOTP() {
         }
 
         if (authMode === "reset") {
-            const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
-            if (!existingPhoneLogin?.email) {
-                alert("No LiphtUp account was found for this number. Please register first.");
-                setAuthMode("register");
-                return;
-            }
-
             setVisible(otpInputContainer, false);
             setVisible(resetPasswordContainer, true);
             authEntryTitle.textContent = "Create new password";
@@ -442,7 +422,7 @@ async function verifyOTP() {
         }
     } catch (error) {
         console.error("OTP verification failed:", error);
-        const message = getAuthErrorMessage(error, "Could not verify the OTP. Please try again.");
+        const message = getAuthErrorMessage(error, error.message || "Could not verify the OTP. Please try again.");
         setAuthStatus(message, true);
         alert(message);
         verifyOtpBtn.disabled = false;

@@ -125,7 +125,7 @@ async function fetchTwoFactorJson(url) {
 }
 
 function twoFactorPhone(phoneNumber) {
-    return phoneNumber.replace(/^\+/, "");
+    return phoneNumber;
 }
 
 function buildVerificationToken(phone, purpose) {
