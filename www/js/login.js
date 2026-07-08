@@ -535,7 +535,7 @@ async function finalizeRegistration() {
         routeToHome(createdProfile);
     } catch (error) {
         console.error("Registration failed:", error);
-        const message = getAuthErrorMessage(error, "Your phone was verified, but the account could not be created. Please try again.");
+        const message = getAuthErrorMessage(error, error.message || "Your phone was verified, but the account could not be created. Please try again.");
         setAuthStatus(message, true);
         alert(message);
         registerBtn.disabled = false;

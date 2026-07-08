@@ -77,6 +77,15 @@ function buildProfile(uid, phone, profile) {
 }
 
 async function phoneAlreadyExists(admin, phone) {
+    try {
+        await admin.auth().getUserByPhoneNumber(phone);
+        return true;
+    } catch (error) {
+        if (error.code !== "auth/user-not-found") {
+            throw error;
+        }
+    }
+
     const indexSnap = await admin.firestore().collection("phoneLoginIndex").doc(phone).get();
     if (indexSnap.exists) return true;
 
