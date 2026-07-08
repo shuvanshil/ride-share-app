@@ -1794,6 +1794,11 @@ body.profile-editor-open {
 }
 
 .profile-share-layer,
+.profile-about-layer,
+.profile-contact-layer,
+.profile-help-layer,
+.profile-privacy-layer,
+.profile-safety-layer,
 .profile-terms-layer {
     position: fixed;
     inset: 0;
@@ -1804,6 +1809,11 @@ body.profile-editor-open {
 }
 
 .profile-share-sheet,
+.profile-about-sheet,
+.profile-contact-sheet,
+.profile-help-sheet,
+.profile-privacy-sheet,
+.profile-safety-sheet,
 .profile-terms-sheet {
     position: relative;
     width: min(100%, 560px);
@@ -1815,6 +1825,11 @@ body.profile-editor-open {
     box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.2);
 }
 
+.profile-about-sheet,
+.profile-contact-sheet,
+.profile-help-sheet,
+.profile-privacy-sheet,
+.profile-safety-sheet,
 .profile-terms-sheet {
     max-height: 92dvh;
     display: grid;
@@ -1933,6 +1948,13 @@ body.profile-editor-open {
     font-size: 14px;
     line-height: 1.35;
     font-weight: 800;
+}
+
+.profile-terms-content p {
+    margin: 0;
+    color: #4c554f;
+    font-size: 13px;
+    line-height: 1.6;
 }
 
 .profile-terms-content ul {

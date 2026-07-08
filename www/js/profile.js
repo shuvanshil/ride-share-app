@@ -32,6 +32,11 @@ const saveButton = document.getElementById('profile-save-btn');
 const errorBox = document.getElementById('profile-edit-error');
 const saveNotice = document.getElementById('profile-save-notice');
 const shareLayer = document.getElementById('profile-share-layer');
+const aboutLayer = document.getElementById('profile-about-layer');
+const contactLayer = document.getElementById('profile-contact-layer');
+const helpLayer = document.getElementById('profile-help-layer');
+const privacyLayer = document.getElementById('profile-privacy-layer');
+const safetyLayer = document.getElementById('profile-safety-layer');
 const termsLayer = document.getElementById('profile-terms-layer');
 const profileSessionButton = document.getElementById('profile-logout-btn');
 
@@ -124,7 +129,72 @@ function openFallbackShareSheet() {
 
 function closeFallbackShareSheet() {
     shareLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
+    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
+function openAboutSheet() {
+    aboutLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => document.getElementById('profile-about-close-btn').focus(), 80);
+}
+
+function closeAboutSheet() {
+    aboutLayer.classList.add('d-none');
+    if (editLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
+function openContactSheet() {
+    contactLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => document.getElementById('profile-contact-close-btn').focus(), 80);
+}
+
+function closeContactSheet() {
+    contactLayer.classList.add('d-none');
+    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
+function openHelpSheet() {
+    helpLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => document.getElementById('profile-help-close-btn').focus(), 80);
+}
+
+function closeHelpSheet() {
+    helpLayer.classList.add('d-none');
+    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
+function openPrivacySheet() {
+    privacyLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => document.getElementById('profile-privacy-close-btn').focus(), 80);
+}
+
+function closePrivacySheet() {
+    privacyLayer.classList.add('d-none');
+    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
+function openSafetySheet() {
+    safetyLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => document.getElementById('profile-safety-close-btn').focus(), 80);
+}
+
+function closeSafetySheet() {
+    safetyLayer.classList.add('d-none');
+    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
         document.body.classList.remove('profile-editor-open');
     }
 }
@@ -137,7 +207,7 @@ function openTermsSheet() {
 
 function closeTermsSheet() {
     termsLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none')) {
+    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none')) {
         document.body.classList.remove('profile-editor-open');
     }
 }
@@ -414,23 +484,13 @@ function bindProfileActions() {
     document.querySelector('[data-action="rides"]').addEventListener('click', () => {
         window.location.href = 'history.html';
     });
-    document.querySelector('[data-action="contact"]').addEventListener('click', () => {
-        window.location.href = 'mailto:support@liphtup.app';
-    });
-    document.querySelector('[data-action="help"]').addEventListener('click', () => {
-        alert('LiphtUp support will be connected here.');
-    });
-    document.querySelector('[data-action="safety"]').addEventListener('click', () => {
-        alert('Safety center coming soon.');
-    });
+    document.querySelector('[data-action="contact"]').addEventListener('click', openContactSheet);
+    document.querySelector('[data-action="help"]').addEventListener('click', openHelpSheet);
+    document.querySelector('[data-action="safety"]').addEventListener('click', openSafetySheet);
     document.querySelector('[data-action="refer"]').addEventListener('click', shareLiphtUp);
-    document.querySelector('[data-action="about"]').addEventListener('click', () => {
-        alert('LiphtUp is a local ride-hailing platform for Tripura.');
-    });
+    document.querySelector('[data-action="about"]').addEventListener('click', openAboutSheet);
     document.querySelector('[data-action="terms"]').addEventListener('click', openTermsSheet);
-    document.querySelector('[data-action="privacy"]').addEventListener('click', () => {
-        alert('Privacy Policy will be available here.');
-    });
+    document.querySelector('[data-action="privacy"]').addEventListener('click', openPrivacySheet);
 
     editButton.addEventListener('click', openEditor);
     document.getElementById('profile-edit-close-btn').addEventListener('click', closeEditor);
@@ -438,13 +498,33 @@ function bindProfileActions() {
     document.getElementById('profile-edit-backdrop').addEventListener('click', closeEditor);
     document.getElementById('profile-share-close-btn').addEventListener('click', closeFallbackShareSheet);
     document.getElementById('profile-share-backdrop').addEventListener('click', closeFallbackShareSheet);
+    document.getElementById('profile-about-close-btn').addEventListener('click', closeAboutSheet);
+    document.getElementById('profile-about-backdrop').addEventListener('click', closeAboutSheet);
+    document.getElementById('profile-contact-close-btn').addEventListener('click', closeContactSheet);
+    document.getElementById('profile-contact-backdrop').addEventListener('click', closeContactSheet);
+    document.getElementById('profile-help-close-btn').addEventListener('click', closeHelpSheet);
+    document.getElementById('profile-help-backdrop').addEventListener('click', closeHelpSheet);
+    document.getElementById('profile-privacy-close-btn').addEventListener('click', closePrivacySheet);
+    document.getElementById('profile-privacy-backdrop').addEventListener('click', closePrivacySheet);
+    document.getElementById('profile-safety-close-btn').addEventListener('click', closeSafetySheet);
+    document.getElementById('profile-safety-backdrop').addEventListener('click', closeSafetySheet);
     document.getElementById('profile-terms-close-btn').addEventListener('click', closeTermsSheet);
     document.getElementById('profile-terms-backdrop').addEventListener('click', closeTermsSheet);
     document.querySelectorAll('[data-share-channel]').forEach((button) => {
         button.addEventListener('click', () => openShareChannel(button.dataset.shareChannel));
     });
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !termsLayer.classList.contains('d-none')) {
+        if (event.key === 'Escape' && !aboutLayer.classList.contains('d-none')) {
+            closeAboutSheet();
+        } else if (event.key === 'Escape' && !contactLayer.classList.contains('d-none')) {
+            closeContactSheet();
+        } else if (event.key === 'Escape' && !helpLayer.classList.contains('d-none')) {
+            closeHelpSheet();
+        } else if (event.key === 'Escape' && !privacyLayer.classList.contains('d-none')) {
+            closePrivacySheet();
+        } else if (event.key === 'Escape' && !safetyLayer.classList.contains('d-none')) {
+            closeSafetySheet();
+        } else if (event.key === 'Escape' && !termsLayer.classList.contains('d-none')) {
             closeTermsSheet();
         }
     });
