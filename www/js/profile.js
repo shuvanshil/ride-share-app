@@ -9,7 +9,7 @@ import {
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
-const APP_SHARE_URL = "https://ride-share-app.vercel.app/";
+const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
 const APP_SHARE_TEXT = "Book reliable local rides with LiphtUp. Join me and travel easily across Tripura.";
 const MAX_SOURCE_IMAGE_BYTES = 10 * 1024 * 1024;
