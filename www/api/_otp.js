@@ -18,27 +18,53 @@ function requireEnv(name) {
 }
 
 function readJsonBody(req) {
+    if (req.body && typeof req.body === "object") {
+        return Promise.resolve(req.body);
+    }
+
+    if (typeof req.body === "string") {
+        try {
+            return Promise.resolve(req.body ? JSON.parse(req.body) : {});
+        } catch {
+            return Promise.reject(new Error("Invalid JSON body."));
+        }
+    }
+
     return new Promise((resolve, reject) => {
         let body = "";
+        let settled = false;
+        const timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve({});
+        }, 1500);
+
+        function finish(callback, value) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            callback(value);
+        }
+
         req.on("data", (chunk) => {
             body += chunk;
             if (body.length > 16 * 1024) {
-                reject(new Error("Request body is too large."));
+                finish(reject, new Error("Request body is too large."));
                 req.destroy();
             }
         });
         req.on("end", () => {
             if (!body) {
-                resolve({});
+                finish(resolve, {});
                 return;
             }
             try {
-                resolve(JSON.parse(body));
+                finish(resolve, JSON.parse(body));
             } catch {
-                reject(new Error("Invalid JSON body."));
+                finish(reject, new Error("Invalid JSON body."));
             }
         });
-        req.on("error", reject);
+        req.on("error", (error) => finish(reject, error));
     });
 }
 
