@@ -12,6 +12,9 @@ const DESTINATION_SEARCH_DEBOUNCE_MS = 420;
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
 const DRIVER_MARKER_ANIMATION_MS = 850;
+const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
+const ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS = 25;
+const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
 const VEHICLE_MARKER_ASSETS = Object.freeze({
     bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
     auto: new URL("../assets/vehicle-markers/auto-marker.png", import.meta.url).href
@@ -37,6 +40,17 @@ let passengerDestinationLocked = false;
 let globalDriversUnsubscribe = null;
 let vehicleLegendElement = null;
 let googleMapsLoadPromise = null;
+let activeDriverMarker = null;
+let pendingAssignedDriverDetail = null;
+let activeDriverRouteState = {
+    driverId: "",
+    targetKey: "",
+    routePath: [],
+    lastRoutePosition: null,
+    lastRouteAt: 0,
+    routeRequestInFlight: false,
+    queuedDetail: null
+};
 const globalDriverMarkers = new Map();
 
 function normalizeCoordinate(value) {
@@ -74,6 +88,48 @@ function normalizeCoordinatePair(latValue, lngValue) {
 
 function getGoogleMaps() {
     return window.google?.maps || null;
+}
+
+function normalizeHeading(value) {
+    const heading = Number(value);
+    return Number.isFinite(heading) ? ((heading % 360) + 360) % 360 : null;
+}
+
+function shortestHeadingDelta(from, to) {
+    return ((to - from + 540) % 360) - 180;
+}
+
+function smoothHeading(previousHeading, nextHeading, strength = 0.35) {
+    const previous = normalizeHeading(previousHeading);
+    const next = normalizeHeading(nextHeading);
+    if (next == null) return previous;
+    if (previous == null) return next;
+    return normalizeHeading(previous + shortestHeadingDelta(previous, next) * strength);
+}
+
+function calculateDistanceMeters(pointA, pointB) {
+    if (!pointA || !pointB) return Infinity;
+
+    const earthRadius = 6371000;
+    const lat1 = Number(pointA.lat) * Math.PI / 180;
+    const lat2 = Number(pointB.lat) * Math.PI / 180;
+    const deltaLat = (Number(pointB.lat) - Number(pointA.lat)) * Math.PI / 180;
+    const deltaLng = (Number(pointB.lng) - Number(pointA.lng)) * Math.PI / 180;
+    const value = Math.sin(deltaLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+    return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function calculateBearing(from, to) {
+    if (!from || !to) return null;
+
+    const lat1 = Number(from.lat) * Math.PI / 180;
+    const lat2 = Number(to.lat) * Math.PI / 180;
+    const deltaLng = (Number(to.lng) - Number(from.lng)) * Math.PI / 180;
+    const y = Math.sin(deltaLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2)
+        - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+    return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
 }
 
 function getFallbackPickupLocation() {
@@ -454,12 +510,106 @@ function addGoogleMapStyles() {
             height: 23px;
             object-fit: contain;
         }
+
+        .rotating-vehicle-marker {
+            position: absolute;
+            width: 48px;
+            height: 48px;
+            pointer-events: auto;
+            will-change: transform;
+        }
+
+        .rotating-vehicle-marker img {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+            transform-origin: 50% 50%;
+            transition: transform 220ms linear;
+            user-select: none;
+        }
     `;
     document.head.appendChild(style);
 }
 
 function googleLatLngLiteral(coords) {
     return { lat: Number(coords.lat), lng: Number(coords.lng) };
+}
+
+class RotatingVehicleMarker {
+    constructor({ map, position, title = "", vehicleType = "bike", heading = null, zIndex = 500 }) {
+        const maps = getGoogleMaps();
+        this.position = googleLatLngLiteral(position);
+        this.title = title;
+        this.vehicleType = vehicleType;
+        this.heading = normalizeHeading(heading);
+        this.overlay = new maps.OverlayView();
+        this.element = document.createElement("div");
+        this.element.className = "rotating-vehicle-marker";
+        this.element.style.zIndex = String(zIndex);
+        this.element.title = title;
+        this.image = document.createElement("img");
+        this.image.alt = "";
+        this.image.draggable = false;
+        this.element.appendChild(this.image);
+        this.setVehicleType(vehicleType);
+        this.setHeading(this.heading);
+
+        this.overlay.onAdd = () => {
+            this.overlay.getPanes()?.overlayMouseTarget.appendChild(this.element);
+        };
+        this.overlay.draw = () => this.draw();
+        this.overlay.onRemove = () => {
+            this.element.remove();
+        };
+        this.overlay.setMap(map);
+    }
+
+    draw() {
+        const projection = this.overlay.getProjection();
+        if (!projection || !this.position) return;
+
+        const maps = getGoogleMaps();
+        const point = projection.fromLatLngToDivPixel(new maps.LatLng(this.position.lat, this.position.lng));
+        if (!point) return;
+
+        this.element.style.transform = `translate(${point.x - 24}px, ${point.y - 24}px)`;
+    }
+
+    getPosition() {
+        const maps = getGoogleMaps();
+        return new maps.LatLng(this.position.lat, this.position.lng);
+    }
+
+    setPosition(position) {
+        this.position = googleLatLngLiteral(position);
+        this.draw();
+    }
+
+    setMap(map) {
+        this.overlay.setMap(map);
+    }
+
+    setTitle(title = "") {
+        this.title = title;
+        this.element.title = title;
+    }
+
+    setIcon(icon) {
+        if (icon?.url) this.image.src = icon.url;
+    }
+
+    setVehicleType(vehicleType = "bike") {
+        this.vehicleType = vehicleType;
+        this.image.src = VEHICLE_MARKER_ASSETS[vehicleType] || VEHICLE_MARKER_ASSETS.bike;
+    }
+
+    setHeading(heading) {
+        const normalized = normalizeHeading(heading);
+        if (normalized == null) return;
+
+        this.heading = normalized;
+        this.image.style.transform = `rotate(${normalized}deg)`;
+    }
 }
 
 function makeMarker(options) {
@@ -660,6 +810,56 @@ function createDriverMarkerIcon(driver) {
     };
 }
 
+function getDriverDocumentHeading(driver) {
+    return normalizeHeading(
+        driver.driverHeading
+        ?? driver.heading
+        ?? driver.driverLocation?.heading
+        ?? driver.driverLocation?.bearing
+    );
+}
+
+function getRouteHeading(position, routePath = []) {
+    if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
+
+    let bestIndex = -1;
+    let bestDistance = Infinity;
+    routePath.forEach((point, index) => {
+        const distance = calculateDistanceMeters(position, point);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = index;
+        }
+    });
+
+    if (bestIndex < 0) return null;
+    const nextPoint = routePath[bestIndex + 1] || routePath[bestIndex];
+    const previousPoint = routePath[bestIndex - 1] || routePath[bestIndex];
+    return calculateBearing(previousPoint, nextPoint);
+}
+
+function resolveDriverHeading(existing, position, driver, routePath = []) {
+    const routeHeading = getRouteHeading(position, routePath);
+    if (routeHeading != null) {
+        return smoothHeading(existing?.heading, routeHeading, 0.45);
+    }
+
+    const documentHeading = getDriverDocumentHeading(driver);
+    if (documentHeading != null) {
+        return smoothHeading(existing?.heading, documentHeading, 0.4);
+    }
+
+    const previousPosition = existing?.marker?.getPosition?.();
+    if (previousPosition) {
+        const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
+        if (calculateDistanceMeters(previous, position) >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
+            return smoothHeading(existing?.heading, calculateBearing(previous, position), 0.35);
+        }
+    }
+
+    return normalizeHeading(existing?.heading);
+}
+
 function updateVehicleMarkerLegend() {
     const mapContainer = document.getElementById("map-container");
     if (!mapContainer) return;
@@ -682,12 +882,13 @@ function updateVehicleMarkerLegend() {
     `;
 }
 
-function animateGlobalDriverMarker(existing, targetPosition) {
+function animateGlobalDriverMarker(existing, targetPosition, targetHeading = null) {
     if (existing.animationFrame) cancelAnimationFrame(existing.animationFrame);
 
     const current = existing.marker.getPosition();
     if (!current || typeof requestAnimationFrame !== "function") {
         existing.marker.setPosition(targetPosition);
+        existing.marker.setHeading?.(targetHeading);
         return;
     }
 
@@ -696,6 +897,7 @@ function animateGlobalDriverMarker(existing, targetPosition) {
     const longitudeDelta = targetPosition.lng - startPosition.lng;
     if (Math.abs(latitudeDelta) > 0.05 || Math.abs(longitudeDelta) > 0.05) {
         existing.marker.setPosition(targetPosition);
+        existing.marker.setHeading?.(targetHeading);
         return;
     }
 
@@ -707,10 +909,15 @@ function animateGlobalDriverMarker(existing, targetPosition) {
             lat: startPosition.lat + (latitudeDelta * eased),
             lng: startPosition.lng + (longitudeDelta * eased)
         });
+        if (targetHeading != null) {
+            existing.marker.setHeading(smoothHeading(existing.heading, targetHeading, eased));
+        }
 
         if (progress < 1) {
             existing.animationFrame = requestAnimationFrame(step);
         } else {
+            existing.heading = targetHeading ?? existing.heading;
+            existing.marker.setHeading?.(existing.heading);
             existing.animationFrame = null;
         }
     };
@@ -735,27 +942,34 @@ function upsertGlobalDriverMarker(driverId, driver) {
     };
     const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
+    const heading = resolveDriverHeading(existing, position, driver, driver.activeRoutePath || []);
 
     if (!existing) {
-        const marker = makeMarker({
+        const marker = new RotatingVehicleMarker({
             map: window.mapInstance,
             position,
             title: `${driver.name || "Online Driver"} - ${vehicleType}`,
-            icon: createDriverMarkerIcon(driver),
+            vehicleType,
+            heading,
             zIndex: 500
         });
 
-        globalDriverMarkers.set(driverId, { marker, vehicleType, animationFrame: null });
+        globalDriverMarkers.set(driverId, { marker, vehicleType, heading, animationFrame: null });
         updateVehicleMarkerLegend();
         return;
     }
 
-    animateGlobalDriverMarker(existing, position);
+    animateGlobalDriverMarker(existing, position, heading);
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
     if (existing.vehicleType !== vehicleType) {
-        existing.marker.setIcon(createDriverMarkerIcon(driver));
+        existing.marker.setVehicleType?.(vehicleType);
+        existing.marker.setIcon?.(createDriverMarkerIcon(driver));
         existing.vehicleType = vehicleType;
         updateVehicleMarkerLegend();
+    }
+    if (heading != null && !existing.animationFrame) {
+        existing.heading = heading;
+        existing.marker.setHeading?.(heading);
     }
 }
 
@@ -770,6 +984,157 @@ function removeGlobalDriverMarker(driverId) {
 
 function clearGlobalDriverMarkers() {
     Array.from(globalDriverMarkers.keys()).forEach(removeGlobalDriverMarker);
+}
+
+function resetActiveDriverRouteState() {
+    activeDriverRouteState = {
+        driverId: "",
+        targetKey: "",
+        routePath: [],
+        lastRoutePosition: null,
+        lastRouteAt: 0,
+        routeRequestInFlight: false,
+        queuedDetail: null
+    };
+}
+
+function clearActiveDriverMarker() {
+    if (activeDriverMarker?.animationFrame) cancelAnimationFrame(activeDriverMarker.animationFrame);
+    removeMarker(activeDriverMarker?.marker);
+    activeDriverMarker = null;
+    resetActiveDriverRouteState();
+}
+
+function getActiveRideTarget(detail = {}) {
+    const status = detail.rideStatus || detail.status || "";
+    const isDestinationLeg = status === "started" || status === "en_route";
+    const target = isDestinationLeg
+        ? normalizeCoordinatePair(detail.drop_lat, detail.drop_lng)
+        : normalizeCoordinatePair(detail.pickup_lat, detail.pickup_lng);
+
+    if (!Number.isFinite(target.lat) || !Number.isFinite(target.lng)) return null;
+    return target;
+}
+
+async function refreshActiveDriverRoute(detail, position, target) {
+    const driverId = detail.driver_id || detail.driverId || "assigned";
+    const targetKey = `${driverId}:${target.lat}:${target.lng}`;
+    const targetChanged = activeDriverRouteState.targetKey !== targetKey;
+    const moved = calculateDistanceMeters(activeDriverRouteState.lastRoutePosition, position);
+    const elapsed = Date.now() - activeDriverRouteState.lastRouteAt;
+
+    if (targetChanged) {
+        activeDriverRouteState.routePath = [];
+        activeDriverRouteState.lastRoutePosition = null;
+        activeDriverRouteState.lastRouteAt = 0;
+    }
+
+    if (!targetChanged
+        && activeDriverRouteState.routePath.length
+        && moved < ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS) {
+        return;
+    }
+
+    if (!targetChanged
+        && activeDriverRouteState.routePath.length
+        && elapsed < ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS) {
+        return;
+    }
+
+    if (activeDriverRouteState.routeRequestInFlight) {
+        activeDriverRouteState.queuedDetail = detail;
+        return;
+    }
+
+    activeDriverRouteState.routeRequestInFlight = true;
+    let routeRefreshed = false;
+    try {
+        const routeDetails = await fetchRoadRouteDetails(position, target);
+        if (!routeDetails?.routePath?.length) return;
+
+        activeDriverRouteState.driverId = driverId;
+        activeDriverRouteState.targetKey = targetKey;
+        activeDriverRouteState.routePath = routeDetails.routePath;
+        activeDriverRouteState.lastRoutePosition = position;
+        activeDriverRouteState.lastRouteAt = Date.now();
+        routeRefreshed = true;
+    } catch (error) {
+        console.warn("Assigned driver route heading lookup failed:", error);
+    } finally {
+        activeDriverRouteState.routeRequestInFlight = false;
+        const queuedDetail = activeDriverRouteState.queuedDetail;
+        activeDriverRouteState.queuedDetail = null;
+        if (queuedDetail || routeRefreshed) {
+            handleAssignedDriverLocation({ detail: queuedDetail || detail });
+        }
+    }
+}
+
+async function handleAssignedDriverLocation(event) {
+    const detail = event.detail || {};
+    if (!window.mapInstance) {
+        pendingAssignedDriverDetail = detail;
+        return;
+    }
+
+    const location = detail.driverLocation || detail;
+    const position = {
+        lat: Number(location.lat),
+        lng: Number(location.lng)
+    };
+    if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return;
+
+    const vehicleType = inferDriverVehicleType(detail);
+    const target = getActiveRideTarget(detail);
+    if (target) {
+        refreshActiveDriverRoute(detail, position, target).catch((error) => {
+            console.warn("Assigned driver route heading refresh failed:", error);
+        });
+    }
+
+    const driverId = detail.driver_id || detail.driverId;
+    const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
+    const existing = existingGlobal || activeDriverMarker;
+    const routePath = target ? activeDriverRouteState.routePath : [];
+    const heading = resolveDriverHeading(existing, position, detail, routePath);
+
+    if (existingGlobal) {
+        if (activeDriverMarker) {
+            if (activeDriverMarker.animationFrame) cancelAnimationFrame(activeDriverMarker.animationFrame);
+            removeMarker(activeDriverMarker.marker);
+            activeDriverMarker = null;
+        }
+        animateGlobalDriverMarker(existingGlobal, position, heading);
+        if (heading != null && !existingGlobal.animationFrame) {
+            existingGlobal.heading = heading;
+            existingGlobal.marker.setHeading?.(heading);
+        }
+        return;
+    }
+
+    if (!activeDriverMarker) {
+        activeDriverMarker = {
+            marker: new RotatingVehicleMarker({
+                map: window.mapInstance,
+                position,
+                title: detail.driver_name || "Assigned Driver",
+                vehicleType,
+                heading,
+                zIndex: 950
+            }),
+            vehicleType,
+            heading,
+            animationFrame: null
+        };
+        return;
+    }
+
+    animateGlobalDriverMarker(activeDriverMarker, position, heading);
+    activeDriverMarker.marker.setTitle(detail.driver_name || "Assigned Driver");
+    if (activeDriverMarker.vehicleType !== vehicleType) {
+        activeDriverMarker.marker.setVehicleType(vehicleType);
+        activeDriverMarker.vehicleType = vehicleType;
+    }
 }
 
 function startGlobalDriverPresenceListener() {
@@ -851,6 +1216,7 @@ export async function initializeMapEngine() {
         globalDriversUnsubscribe = null;
     }
     clearGlobalDriverMarkers();
+    clearActiveDriverMarker();
     clearRouteAndDestination();
     clearPickupMarker();
 
@@ -868,6 +1234,11 @@ export async function initializeMapEngine() {
 
     window.mapInstance = mainMapShell.map;
     addPickupMarker(coords);
+    if (pendingAssignedDriverDetail) {
+        const detail = pendingAssignedDriverDetail;
+        pendingAssignedDriverDetail = null;
+        handleAssignedDriverLocation({ detail });
+    }
 
     window.mapInstance.addListener("dragstart", () => {
         centerMapPickerElement?.classList.add("is-moving");
@@ -1783,3 +2154,6 @@ window.addEventListener("passenger-destination-lock-changed", (event) => {
     hidePickupSuggestions();
     hideDestinationSuggestions();
 });
+
+window.addEventListener("driver-location-updated", handleAssignedDriverLocation);
+window.addEventListener("ride-completed-clear-map", clearActiveDriverMarker);

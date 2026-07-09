@@ -17,6 +17,7 @@ import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
+const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 
 let currentUser = null;
 let activeDriverLocationWatchId = null;
@@ -28,6 +29,10 @@ let pendingDriverPaymentRideId = null;
 let activeDriverRenderedStatus = null;
 let activeConsoleUid = null;
 let activeDriverRideData = null;
+let lastPresenceHeadingPosition = null;
+let lastPresenceHeading = null;
+let lastActiveHeadingPosition = null;
+let lastActiveHeading = null;
 
 function addOptionalClickListener(elementId, handler) {
     const element = document.getElementById(elementId);
@@ -84,6 +89,52 @@ function inferVehicleTypeFromProfile(driver) {
 
 function getServiceLabel(vehicleType) {
     return vehicleType === "auto" ? "Auto" : "Bike / Scooty";
+}
+
+function normalizeHeading(value) {
+    const heading = Number(value);
+    return Number.isFinite(heading) ? ((heading % 360) + 360) % 360 : null;
+}
+
+function distanceMeters(pointA, pointB) {
+    if (!pointA || !pointB) return Infinity;
+
+    const earthRadius = 6371000;
+    const lat1 = pointA.lat * Math.PI / 180;
+    const lat2 = pointB.lat * Math.PI / 180;
+    const deltaLat = (pointB.lat - pointA.lat) * Math.PI / 180;
+    const deltaLng = (pointB.lng - pointA.lng) * Math.PI / 180;
+    const value = Math.sin(deltaLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+    return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function calculateBearing(from, to) {
+    if (!from || !to) return null;
+
+    const lat1 = from.lat * Math.PI / 180;
+    const lat2 = to.lat * Math.PI / 180;
+    const deltaLng = (to.lng - from.lng) * Math.PI / 180;
+    const y = Math.sin(deltaLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2)
+        - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+    return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+}
+
+function buildDriverTelemetry(coords, browserCoords, previousPosition, previousHeading) {
+    const telemetry = {};
+    const gpsHeading = normalizeHeading(browserCoords?.heading);
+    const moved = distanceMeters(previousPosition, coords);
+    const calculatedHeading = moved >= DRIVER_HEADING_MIN_DISTANCE_METERS
+        ? calculateBearing(previousPosition, coords)
+        : null;
+    const heading = gpsHeading ?? calculatedHeading ?? normalizeHeading(previousHeading);
+
+    if (heading != null) telemetry.driverHeading = heading;
+    if (Number.isFinite(Number(browserCoords?.speed))) telemetry.driverSpeed = Number(browserCoords.speed);
+    if (Number.isFinite(Number(browserCoords?.accuracy))) telemetry.driverAccuracy = Number(browserCoords.accuracy);
+
+    return { telemetry, heading };
 }
 
 function showDriverReview(profile) {
@@ -143,7 +194,7 @@ async function setDriverAvailability(status) {
     }
 }
 
-async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "searching") {
+async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "searching", telemetry = {}) {
     if (!currentUser || currentUser.role !== "driver") return;
 
     await setDoc(doc(db, "driverPresence", currentUser.uid), {
@@ -152,6 +203,7 @@ async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "se
         phone: currentUser.phone || "",
         driverLocation: { lat, lng },
         driverAvailability: currentUser.driverAvailability || fallbackAvailability,
+        ...telemetry,
         verificationStatus: currentUser.verificationStatus || "pending_review",
         vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
         vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
@@ -179,12 +231,22 @@ function startDriverPresenceTracking() {
             try {
                 const lat = position.coords.latitude;
                 const lng = position.coords.longitude;
+                const coords = { lat, lng };
+                const telemetryResult = buildDriverTelemetry(
+                    coords,
+                    position.coords,
+                    lastPresenceHeadingPosition,
+                    lastPresenceHeading
+                );
+                lastPresenceHeadingPosition = coords;
+                lastPresenceHeading = telemetryResult.heading;
                 await updateDoc(doc(db, "users", currentUser.uid), {
                     driverLocation: { lat, lng },
+                    ...telemetryResult.telemetry,
                     isConnected: true,
                     lastSeenAt: serverTimestamp()
                 });
-                await updateDriverPresenceLocation(lat, lng, "searching");
+                await updateDriverPresenceLocation(lat, lng, "searching", telemetryResult.telemetry);
             } catch (error) {
                 console.warn("Driver presence update failed:", error);
             }
@@ -551,12 +613,22 @@ function startDriverGpsBroadcast(rideRef) {
         async (position) => {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
+            const coords = { lat, lng };
+            const telemetryResult = buildDriverTelemetry(
+                coords,
+                position.coords,
+                lastActiveHeadingPosition,
+                lastActiveHeading
+            );
+            lastActiveHeadingPosition = coords;
+            lastActiveHeading = telemetryResult.heading;
 
             if (currentlyAssignedRideId) {
                 await updateDoc(rideRef, {
-                    driverLocation: { lat, lng }
+                    driverLocation: { lat, lng },
+                    ...telemetryResult.telemetry
                 });
-                await updateDriverPresenceLocation(lat, lng, "busy");
+                await updateDriverPresenceLocation(lat, lng, "busy", telemetryResult.telemetry);
                 document.getElementById('gps-status').innerText = "GPS Active & Broadcasting";
             }
         },

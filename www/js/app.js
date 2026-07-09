@@ -233,6 +233,32 @@ function hidePassengerDriverCard() {
     if (driverCard) driverCard.classList.add('d-none');
 }
 
+function dispatchPassengerDriverLocation(ride) {
+    if (!ride?.driverLocation) return;
+
+    window.dispatchEvent(new CustomEvent('driver-location-updated', {
+        detail: {
+            ...ride.driverLocation,
+            driver_id: ride.driver_id,
+            driverId: ride.driver_id,
+            driver_name: ride.driver_name,
+            vehicle_type: ride.vehicle_type,
+            vehicleType: ride.vehicle_type,
+            vehicle_model: ride.vehicle_model,
+            vehicleModel: ride.vehicle_model,
+            driverHeading: ride.driverHeading,
+            driverSpeed: ride.driverSpeed,
+            driverAccuracy: ride.driverAccuracy,
+            rideStatus: ride.status,
+            status: ride.status,
+            pickup_lat: ride.pickup_lat,
+            pickup_lng: ride.pickup_lng,
+            drop_lat: ride.drop_lat,
+            drop_lng: ride.drop_lng
+        }
+    }));
+}
+
 function showPassengerCancelButton(rideId) {
     currentPassengerRideId = rideId;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
@@ -537,11 +563,7 @@ async function restorePassengerActiveRide() {
         resetPassengerRequestButtonForActiveRide(activeRide.status);
         listenToRideStatusUpdates(activeRideDoc.id);
 
-        if (activeRide.driverLocation) {
-            window.dispatchEvent(new CustomEvent('driver-location-updated', {
-                detail: activeRide.driverLocation
-            }));
-        }
+        dispatchPassengerDriverLocation(activeRide);
 
         return true;
     } catch (error) {
@@ -717,41 +739,25 @@ function listenToRideStatusUpdates(rideId) {
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
             
-            if (ride.driverLocation) {
-                window.dispatchEvent(new CustomEvent('driver-location-updated', { 
-                    detail: ride.driverLocation 
-                }));
-            }
+            dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "arrived") {
             renderPassengerDriverCard(ride);
             requestBtn.innerHTML = 'Driver arrived at pickup.';
             requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
 
-            if (ride.driverLocation) {
-                window.dispatchEvent(new CustomEvent('driver-location-updated', {
-                    detail: ride.driverLocation
-                }));
-            }
+            dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "started") {
             renderPassengerDriverCard(ride);
             requestBtn.innerHTML = 'Trip started. Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
-            if (ride.driverLocation) {
-                window.dispatchEvent(new CustomEvent('driver-location-updated', {
-                    detail: ride.driverLocation
-                }));
-            }
+            dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "en_route") {
             renderPassengerDriverCard(ride);
             requestBtn.innerHTML = '🚗 Trip in Progress! Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
-            if (ride.driverLocation) {
-                window.dispatchEvent(new CustomEvent('driver-location-updated', {
-                    detail: ride.driverLocation
-                }));
-            }
+            dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "completed") {
             clearDispatchExpansionTimer();
             setPassengerDestinationLocked(false);
