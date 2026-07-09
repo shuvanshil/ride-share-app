@@ -4,16 +4,16 @@ export const RIDE_SERVICES = Object.freeze({
         name: "Bike / Scooty",
         shortName: "Bike",
         capacity: 1,
-        baseFare: 20,
+        baseFare: 15,
         perKmRate: 7
     }),
     auto: Object.freeze({
         id: "auto",
         name: "Auto",
         shortName: "Auto",
-        capacity: 4,
-        baseFare: 30,
-        perKmRate: 11
+        capacity: 3,
+        baseFare: 25,
+        perKmRate: 12.5
     })
 });
 
