@@ -678,6 +678,38 @@ function clearRouteAndDestination() {
     }
 }
 
+function getRideDropLocation(detail = {}) {
+    const drop = normalizeCoordinatePair(detail.drop_lat, detail.drop_lng);
+    if (!Number.isFinite(drop.lat) || !Number.isFinite(drop.lng)) return null;
+
+    return {
+        position: drop,
+        title: detail.drop_name || detail.drop_full_address || "Destination"
+    };
+}
+
+function upsertRideDestinationMarker(detail = {}) {
+    if (!window.mapInstance) return null;
+
+    const destination = getRideDropLocation(detail);
+    if (!destination) return null;
+
+    if (!destinationMarker) {
+        destinationMarker = makeMarker({
+            map: window.mapInstance,
+            position: googleLatLngLiteral(destination.position),
+            title: destination.title,
+            zIndex: 920
+        });
+        return destination.position;
+    }
+
+    destinationMarker.setMap(window.mapInstance);
+    destinationMarker.setPosition(googleLatLngLiteral(destination.position));
+    destinationMarker.setTitle(destination.title);
+    return destination.position;
+}
+
 function renderRouteMetric(distanceKm, durationMinutes) {
     if (!window.mapInstance || !Number.isFinite(distanceKm) || !Number.isFinite(durationMinutes)) return;
 
@@ -761,7 +793,7 @@ function clearAssignedDriverRoute() {
     assignedDriverLastDistanceKm = null;
 }
 
-function drawAssignedDriverRoute(path, driverPosition, targetPosition) {
+function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinationPosition = null) {
     if (!window.mapInstance || !window.google?.maps) return;
 
     if (assignedDriverRoutePolyline?.setMap) {
@@ -786,6 +818,7 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition) {
     routePath.forEach((point) => bounds.extend(point));
     bounds.extend(driverPosition);
     bounds.extend(targetPosition);
+    if (destinationPosition) bounds.extend(destinationPosition);
     window.mapInstance.fitBounds(bounds, { top: 58, right: 42, bottom: 96, left: 42 });
 }
 
@@ -1161,6 +1194,7 @@ function clearActiveDriverMarker() {
     activeDriverMarker = null;
     assignedDriverTrackingDriverId = "";
     clearAssignedDriverRoute();
+    clearRouteAndDestination();
     resetActiveDriverRouteState();
     syncGlobalDriverMarkerVisibility();
 }
@@ -1179,6 +1213,7 @@ function getActiveRideTarget(detail = {}) {
 async function refreshActiveDriverRoute(detail, position, target) {
     const driverId = detail.driver_id || detail.driverId || "assigned";
     const targetKey = `${driverId}:${target.lat}:${target.lng}`;
+    const destinationPosition = upsertRideDestinationMarker(detail);
     const targetChanged = activeDriverRouteState.targetKey !== targetKey;
     const moved = calculateDistanceMeters(activeDriverRouteState.lastRoutePosition, position);
     const elapsed = Date.now() - activeDriverRouteState.lastRouteAt;
@@ -1213,7 +1248,7 @@ async function refreshActiveDriverRoute(detail, position, target) {
         const routeDetails = await fetchRoadRouteDetails(position, target);
         if (!routeDetails?.routePath?.length) {
             const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
-            drawAssignedDriverRoute([], position, target);
+            drawAssignedDriverRoute([], position, target, destinationPosition);
             renderAssignedDriverTracking(routeDetails, straightLineDistanceKm);
             return;
         }
@@ -1223,14 +1258,14 @@ async function refreshActiveDriverRoute(detail, position, target) {
         activeDriverRouteState.routePath = routeDetails.routePath;
         activeDriverRouteState.lastRoutePosition = position;
         activeDriverRouteState.lastRouteAt = Date.now();
-        drawAssignedDriverRoute(routeDetails.routePath, position, target);
+        drawAssignedDriverRoute(routeDetails.routePath, position, target, destinationPosition);
         if (!hadRoutePath) assignedDriverLastDistanceKm = null;
         renderAssignedDriverTracking(routeDetails);
         routeRefreshed = true;
     } catch (error) {
         console.warn("Assigned driver route heading lookup failed:", error);
         const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
-        drawAssignedDriverRoute([], position, target);
+        drawAssignedDriverRoute([], position, target, destinationPosition);
         renderAssignedDriverTracking(null, straightLineDistanceKm);
     } finally {
         activeDriverRouteState.routeRequestInFlight = false;
@@ -1262,6 +1297,7 @@ async function handleAssignedDriverLocation(event) {
     assignedDriverTrackingDriverId = driverId;
     syncGlobalDriverMarkerVisibility();
     clearRouteAndDestination();
+    upsertRideDestinationMarker(detail);
 
     if (target) {
         const targetKey = `${driverId}:${target.lat}:${target.lng}`;
