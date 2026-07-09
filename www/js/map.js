@@ -42,6 +42,10 @@ let vehicleLegendElement = null;
 let googleMapsLoadPromise = null;
 let activeDriverMarker = null;
 let pendingAssignedDriverDetail = null;
+let assignedDriverTrackingDriverId = "";
+let assignedDriverRoutePolyline = null;
+let assignedDriverTrackingElement = null;
+let assignedDriverLastDistanceKm = null;
 let activeDriverRouteState = {
     driverId: "",
     targetKey: "",
@@ -511,6 +515,42 @@ function addGoogleMapStyles() {
             object-fit: contain;
         }
 
+        .assigned-driver-tracking {
+            position: absolute;
+            right: 12px;
+            bottom: 12px;
+            left: 12px;
+            z-index: 710;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            padding: 9px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+            pointer-events: none;
+        }
+
+        .assigned-driver-tracking span {
+            display: block;
+            color: #6b7280;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 1.2;
+            text-transform: uppercase;
+        }
+
+        .assigned-driver-tracking strong {
+            display: block;
+            margin-top: 2px;
+            color: #111827;
+            font-size: 13px;
+            font-weight: 900;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+
         .rotating-vehicle-marker {
             position: absolute;
             width: 48px;
@@ -644,12 +684,126 @@ function renderRouteMetric(distanceKm, durationMinutes) {
     const mapContainer = document.getElementById("map-container");
     if (!mapContainer) return;
 
+    if (routeMetricElement) {
+        routeMetricElement.remove();
+        routeMetricElement = null;
+    }
+
     routeMetricElement = document.createElement("div");
     routeMetricElement.className = "map-metric";
     routeMetricElement.setAttribute("role", "status");
     routeMetricElement.setAttribute("aria-live", "polite");
     routeMetricElement.textContent = `${distanceKm.toFixed(1)} km \u2022 ${Math.round(durationMinutes)} mins`;
     mapContainer.appendChild(routeMetricElement);
+}
+
+function formatTrackingDistance(distanceKm) {
+    const distance = Number(distanceKm);
+    if (!Number.isFinite(distance) || distance < 0) return "--";
+    if (distance < 1) return `${Math.round(distance * 1000)} m`;
+    return `${distance.toFixed(1)} km`;
+}
+
+function formatTrackingDuration(durationMinutes) {
+    const duration = Number(durationMinutes);
+    if (!Number.isFinite(duration) || duration < 0) return "--";
+    return `${Math.max(1, Math.round(duration))} min`;
+}
+
+function getAssignedDriverTrend(distanceKm) {
+    if (!Number.isFinite(distanceKm)) return "Tracking";
+    if (!Number.isFinite(assignedDriverLastDistanceKm)) return "Tracking";
+
+    const deltaKm = assignedDriverLastDistanceKm - distanceKm;
+    if (deltaKm > 0.03) return "Getting closer";
+    if (deltaKm < -0.03) return "Moving away";
+    return "Holding";
+}
+
+function renderAssignedDriverTracking(routeDetails, straightLineDistanceKm = null) {
+    const mapContainer = document.getElementById("map-container");
+    if (!mapContainer) return;
+
+    const distanceKm = Number.isFinite(Number(routeDetails?.distanceKm))
+        ? Number(routeDetails.distanceKm)
+        : Number(straightLineDistanceKm);
+    const durationMinutes = Number(routeDetails?.durationMinutes);
+    const trend = getAssignedDriverTrend(distanceKm);
+
+    if (!assignedDriverTrackingElement) {
+        assignedDriverTrackingElement = document.createElement("div");
+        assignedDriverTrackingElement.className = "assigned-driver-tracking";
+        assignedDriverTrackingElement.setAttribute("role", "status");
+        assignedDriverTrackingElement.setAttribute("aria-live", "polite");
+        mapContainer.appendChild(assignedDriverTrackingElement);
+    }
+
+    assignedDriverTrackingElement.innerHTML = `
+        <div><span>Driver</span><strong>${trend}</strong></div>
+        <div><span>Distance</span><strong>${formatTrackingDistance(distanceKm)}</strong></div>
+        <div><span>ETA</span><strong>${formatTrackingDuration(durationMinutes)}</strong></div>
+    `;
+
+    if (Number.isFinite(distanceKm)) {
+        assignedDriverLastDistanceKm = distanceKm;
+    }
+}
+
+function clearAssignedDriverRoute() {
+    if (assignedDriverRoutePolyline?.setMap) {
+        assignedDriverRoutePolyline.setMap(null);
+    }
+    assignedDriverRoutePolyline = null;
+    if (assignedDriverTrackingElement) {
+        assignedDriverTrackingElement.remove();
+        assignedDriverTrackingElement = null;
+    }
+    assignedDriverLastDistanceKm = null;
+}
+
+function drawAssignedDriverRoute(path, driverPosition, targetPosition) {
+    if (!window.mapInstance || !window.google?.maps) return;
+
+    if (assignedDriverRoutePolyline?.setMap) {
+        assignedDriverRoutePolyline.setMap(null);
+    }
+
+    const routePath = Array.isArray(path) && path.length >= 2
+        ? path
+        : [driverPosition, targetPosition].filter(Boolean);
+    if (routePath.length < 2) return;
+
+    assignedDriverRoutePolyline = new window.google.maps.Polyline({
+        map: window.mapInstance,
+        path: routePath,
+        strokeColor: "#16723a",
+        strokeOpacity: 0.96,
+        strokeWeight: 6,
+        zIndex: 640
+    });
+
+    const bounds = new window.google.maps.LatLngBounds();
+    routePath.forEach((point) => bounds.extend(point));
+    bounds.extend(driverPosition);
+    bounds.extend(targetPosition);
+    window.mapInstance.fitBounds(bounds, { top: 58, right: 42, bottom: 96, left: 42 });
+}
+
+function setGlobalDriverMarkerVisibility(driverId, existing) {
+    if (!existing?.marker?.setMap) return;
+
+    const shouldShow = !assignedDriverTrackingDriverId || driverId === assignedDriverTrackingDriverId;
+    existing.marker.setMap(shouldShow ? window.mapInstance : null);
+}
+
+function syncGlobalDriverMarkerVisibility() {
+    globalDriverMarkers.forEach((existing, driverId) => {
+        setGlobalDriverMarkerVisibility(driverId, existing);
+    });
+
+    if (vehicleLegendElement) {
+        vehicleLegendElement.classList.toggle("d-none", Boolean(assignedDriverTrackingDriverId));
+    }
 }
 
 function clearPickupMarker() {
@@ -880,6 +1034,7 @@ function updateVehicleMarkerLegend() {
         <span><img src="${VEHICLE_MARKER_ASSETS.bike}" alt="">Bike ${counts.bike}</span>
         <span><img src="${VEHICLE_MARKER_ASSETS.auto}" alt="">Auto ${counts.auto}</span>
     `;
+    vehicleLegendElement.classList.toggle("d-none", Boolean(assignedDriverTrackingDriverId));
 }
 
 function animateGlobalDriverMarker(existing, targetPosition, targetHeading = null) {
@@ -946,7 +1101,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
 
     if (!existing) {
         const marker = new RotatingVehicleMarker({
-            map: window.mapInstance,
+            map: assignedDriverTrackingDriverId && driverId !== assignedDriverTrackingDriverId ? null : window.mapInstance,
             position,
             title: `${driver.name || "Online Driver"} - ${vehicleType}`,
             vehicleType,
@@ -955,10 +1110,12 @@ function upsertGlobalDriverMarker(driverId, driver) {
         });
 
         globalDriverMarkers.set(driverId, { marker, vehicleType, heading, animationFrame: null });
+        setGlobalDriverMarkerVisibility(driverId, globalDriverMarkers.get(driverId));
         updateVehicleMarkerLegend();
         return;
     }
 
+    setGlobalDriverMarkerVisibility(driverId, existing);
     animateGlobalDriverMarker(existing, position, heading);
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
     if (existing.vehicleType !== vehicleType) {
@@ -1002,7 +1159,10 @@ function clearActiveDriverMarker() {
     if (activeDriverMarker?.animationFrame) cancelAnimationFrame(activeDriverMarker.animationFrame);
     removeMarker(activeDriverMarker?.marker);
     activeDriverMarker = null;
+    assignedDriverTrackingDriverId = "";
+    clearAssignedDriverRoute();
     resetActiveDriverRouteState();
+    syncGlobalDriverMarkerVisibility();
 }
 
 function getActiveRideTarget(detail = {}) {
@@ -1048,18 +1208,30 @@ async function refreshActiveDriverRoute(detail, position, target) {
 
     activeDriverRouteState.routeRequestInFlight = true;
     let routeRefreshed = false;
+    const hadRoutePath = activeDriverRouteState.routePath.length > 0;
     try {
         const routeDetails = await fetchRoadRouteDetails(position, target);
-        if (!routeDetails?.routePath?.length) return;
+        if (!routeDetails?.routePath?.length) {
+            const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
+            drawAssignedDriverRoute([], position, target);
+            renderAssignedDriverTracking(routeDetails, straightLineDistanceKm);
+            return;
+        }
 
         activeDriverRouteState.driverId = driverId;
         activeDriverRouteState.targetKey = targetKey;
         activeDriverRouteState.routePath = routeDetails.routePath;
         activeDriverRouteState.lastRoutePosition = position;
         activeDriverRouteState.lastRouteAt = Date.now();
+        drawAssignedDriverRoute(routeDetails.routePath, position, target);
+        if (!hadRoutePath) assignedDriverLastDistanceKm = null;
+        renderAssignedDriverTracking(routeDetails);
         routeRefreshed = true;
     } catch (error) {
         console.warn("Assigned driver route heading lookup failed:", error);
+        const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
+        drawAssignedDriverRoute([], position, target);
+        renderAssignedDriverTracking(null, straightLineDistanceKm);
     } finally {
         activeDriverRouteState.routeRequestInFlight = false;
         const queuedDetail = activeDriverRouteState.queuedDetail;
@@ -1086,13 +1258,21 @@ async function handleAssignedDriverLocation(event) {
 
     const vehicleType = inferDriverVehicleType(detail);
     const target = getActiveRideTarget(detail);
+    const driverId = detail.driver_id || detail.driverId || "assigned";
+    assignedDriverTrackingDriverId = driverId;
+    syncGlobalDriverMarkerVisibility();
+    clearRouteAndDestination();
+
     if (target) {
+        const targetKey = `${driverId}:${target.lat}:${target.lng}`;
+        if (activeDriverRouteState.targetKey !== targetKey || !activeDriverRouteState.routePath.length) {
+            renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
+        }
         refreshActiveDriverRoute(detail, position, target).catch((error) => {
             console.warn("Assigned driver route heading refresh failed:", error);
         });
     }
 
-    const driverId = detail.driver_id || detail.driverId;
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
     const existing = existingGlobal || activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
@@ -1109,6 +1289,7 @@ async function handleAssignedDriverLocation(event) {
             existingGlobal.heading = heading;
             existingGlobal.marker.setHeading?.(heading);
         }
+        existingGlobal.marker.setTitle(detail.driver_name || "Assigned Driver");
         return;
     }
 

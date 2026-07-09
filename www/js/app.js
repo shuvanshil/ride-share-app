@@ -278,6 +278,7 @@ function resetPassengerBookingUi() {
     hidePassengerCancelButton();
     setPassengerDestinationLocked(false);
     setPassengerServiceLocked(false);
+    window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
 
     const requestBtn = document.getElementById('request-ride-btn');
     requestBtn.innerHTML = 'Find Ride';
