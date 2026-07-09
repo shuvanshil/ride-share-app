@@ -52,7 +52,7 @@ function buildProfile(uid, phone, profile) {
         const licenseNumber = cleanString(profile.drivingLicenseNumber, 30).toUpperCase();
         const upiId = cleanString(profile.upiId, 100).toLowerCase();
 
-        if (!profilePhotoUrl || !vehicleType || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
+        if (!vehicleType || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
             throw new Error("Drivers must add all required vehicle and payment details.");
         }
 

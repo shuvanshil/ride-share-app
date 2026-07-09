@@ -475,20 +475,18 @@ async function finalizeRegistration() {
     const profileData = { name, email, role };
 
     if (role === "driver") {
-        const profilePhotoUrl = document.getElementById('driver-profile-photo').value.trim();
         const vehicleType = document.getElementById('driver-vehicle-type').value;
         const vehicleNumber = document.getElementById('driver-vehicle-number').value.trim().toUpperCase();
         const vehicleModel = document.getElementById('driver-vehicle-model').value.trim();
         const licenseNumber = document.getElementById('driver-license-number').value.trim().toUpperCase();
         const upiId = document.getElementById('driver-upi-id').value.trim();
 
-        if (!profilePhotoUrl || !vehicleType || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
+        if (!vehicleType || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
             alert("Drivers must select Bike or Auto and add all required vehicle and payment details.");
             return;
         }
 
         Object.assign(profileData, {
-            profilePhotoUrl,
             vehicleType,
             vehicle_type: vehicleType,
             vehicleNumber,
