@@ -187,6 +187,73 @@
 
     <div id="profile-save-notice" class="profile-save-notice d-none" role="status">Profile updated successfully</div>
 
+    <div id="profile-account-layer" class="profile-account-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-account-title">
+        <button id="profile-account-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close account options"></button>
+        <section class="profile-account-sheet">
+            <header class="profile-share-head">
+                <div>
+                    <span>Account</span>
+                    <h2 id="profile-account-title">Account options</h2>
+                </div>
+                <button id="profile-account-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
+            </header>
+
+            <div class="profile-account-actions">
+                <button id="profile-account-logout-btn" class="profile-account-action" type="button">
+                    <span>Log out</span>
+                    <strong>End this session on your device.</strong>
+                </button>
+                <button id="profile-account-delete-open-btn" class="profile-account-action is-danger" type="button">
+                    <span>Delete account permanently</span>
+                    <strong>Remove your login, profile, and saved account access.</strong>
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <div id="profile-delete-layer" class="profile-delete-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-delete-title">
+        <button id="profile-delete-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close delete account confirmation"></button>
+        <section class="profile-delete-sheet">
+            <header class="profile-share-head">
+                <div>
+                    <span>Permanent deletion</span>
+                    <h2 id="profile-delete-title">Delete account</h2>
+                </div>
+                <button id="profile-delete-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
+            </header>
+
+            <form id="profile-delete-form" class="profile-delete-form" novalidate>
+                <div class="profile-delete-warning">
+                    <h3>This cannot be undone.</h3>
+                    <p>Your LiphtUp login and profile will be permanently deleted. Completed ride records may remain for safety, support, payment, or legal reasons, but your personal account details will be removed from them.</p>
+                </div>
+
+                <ul class="profile-delete-list">
+                    <li>Any active ride must be completed or cancelled before deletion.</li>
+                    <li>Your phone number and email can be used again to create a new passenger or driver account.</li>
+                    <li>Your old completed trips will not be automatically linked to a new account.</li>
+                </ul>
+
+                <div class="profile-form-field">
+                    <label for="profile-delete-confirmation">Type DELETE</label>
+                    <input id="profile-delete-confirmation" class="form-control gy-input" type="text" autocomplete="off" spellcheck="false" required>
+                </div>
+
+                <div class="profile-form-field">
+                    <label for="profile-delete-password">Account password</label>
+                    <input id="profile-delete-password" class="form-control gy-input" type="password" autocomplete="current-password" required>
+                </div>
+
+                <div id="profile-delete-error" class="profile-edit-error d-none" role="alert"></div>
+
+                <footer class="profile-edit-footer">
+                    <button id="profile-delete-cancel-btn" class="gy-btn profile-cancel-btn" type="button">Cancel</button>
+                    <button id="profile-delete-submit-btn" class="gy-btn profile-delete-submit" type="submit">Delete my account</button>
+                </footer>
+            </form>
+        </section>
+    </div>
+
     <div id="profile-share-layer" class="profile-share-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-share-title">
         <button id="profile-share-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close sharing options"></button>
         <section class="profile-share-sheet">
@@ -612,7 +679,7 @@
     </div>
 
     <script src="js/navigation.js"></script>
-    <script type="module" src="js/profile.js?v=20260709-profile-privacy"></script>
+    <script type="module" src="js/profile.js?v=20260709-delete-account"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

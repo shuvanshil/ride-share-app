@@ -39,6 +39,13 @@ const privacyLayer = document.getElementById('profile-privacy-layer');
 const safetyLayer = document.getElementById('profile-safety-layer');
 const termsLayer = document.getElementById('profile-terms-layer');
 const profileSessionButton = document.getElementById('profile-logout-btn');
+const accountLayer = document.getElementById('profile-account-layer');
+const deleteLayer = document.getElementById('profile-delete-layer');
+const deleteForm = document.getElementById('profile-delete-form');
+const deleteConfirmationInput = document.getElementById('profile-delete-confirmation');
+const deletePasswordInput = document.getElementById('profile-delete-password');
+const deleteErrorBox = document.getElementById('profile-delete-error');
+const deleteSubmitButton = document.getElementById('profile-delete-submit-btn');
 
 const inputs = {
     name: document.getElementById('profile-edit-name'),
@@ -55,6 +62,7 @@ let currentAuthUser = null;
 let currentProfile = null;
 let pendingPhotoValue = "";
 let saveInProgress = false;
+let deleteInProgress = false;
 let noticeTimer = null;
 
 function getInitials(name) {
@@ -122,6 +130,37 @@ function showSaveNotice() {
     noticeTimer = window.setTimeout(() => saveNotice.classList.add('d-none'), 2600);
 }
 
+function showDeleteError(message) {
+    deleteErrorBox.innerText = message;
+    deleteErrorBox.classList.remove('d-none');
+}
+
+function clearDeleteError() {
+    deleteErrorBox.innerText = "";
+    deleteErrorBox.classList.add('d-none');
+}
+
+function isSupportLayerOpen() {
+    return [
+        editLayer,
+        shareLayer,
+        aboutLayer,
+        contactLayer,
+        helpLayer,
+        privacyLayer,
+        safetyLayer,
+        termsLayer,
+        accountLayer,
+        deleteLayer
+    ].some((layer) => layer && !layer.classList.contains('d-none'));
+}
+
+function unlockBodyIfNoSheetOpen() {
+    if (!isSupportLayerOpen()) {
+        document.body.classList.remove('profile-editor-open');
+    }
+}
+
 function openFallbackShareSheet() {
     shareLayer.classList.remove('d-none');
     document.body.classList.add('profile-editor-open');
@@ -129,9 +168,7 @@ function openFallbackShareSheet() {
 
 function closeFallbackShareSheet() {
     shareLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
-        document.body.classList.remove('profile-editor-open');
-    }
+    unlockBodyIfNoSheetOpen();
 }
 
 function openAboutSheet() {
@@ -142,9 +179,7 @@ function openAboutSheet() {
 
 function closeAboutSheet() {
     aboutLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
-        document.body.classList.remove('profile-editor-open');
-    }
+    unlockBodyIfNoSheetOpen();
 }
 
 function openContactSheet() {
@@ -155,9 +190,7 @@ function openContactSheet() {
 
 function closeContactSheet() {
     contactLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
-        document.body.classList.remove('profile-editor-open');
-    }
+    unlockBodyIfNoSheetOpen();
 }
 
 function openHelpSheet() {
@@ -168,9 +201,7 @@ function openHelpSheet() {
 
 function closeHelpSheet() {
     helpLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
-        document.body.classList.remove('profile-editor-open');
-    }
+    unlockBodyIfNoSheetOpen();
 }
 
 function openPrivacySheet() {
@@ -181,9 +212,7 @@ function openPrivacySheet() {
 
 function closePrivacySheet() {
     privacyLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
-        document.body.classList.remove('profile-editor-open');
-    }
+    unlockBodyIfNoSheetOpen();
 }
 
 function openSafetySheet() {
@@ -194,9 +223,7 @@ function openSafetySheet() {
 
 function closeSafetySheet() {
     safetyLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none') && termsLayer.classList.contains('d-none')) {
-        document.body.classList.remove('profile-editor-open');
-    }
+    unlockBodyIfNoSheetOpen();
 }
 
 function openTermsSheet() {
@@ -207,9 +234,42 @@ function openTermsSheet() {
 
 function closeTermsSheet() {
     termsLayer.classList.add('d-none');
-    if (editLayer.classList.contains('d-none') && aboutLayer.classList.contains('d-none') && contactLayer.classList.contains('d-none') && helpLayer.classList.contains('d-none') && privacyLayer.classList.contains('d-none') && safetyLayer.classList.contains('d-none') && shareLayer.classList.contains('d-none')) {
-        document.body.classList.remove('profile-editor-open');
+    unlockBodyIfNoSheetOpen();
+}
+
+function openAccountSheet() {
+    if (!currentAuthUser) {
+        window.location.href = 'login.html';
+        return;
     }
+
+    accountLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => document.getElementById('profile-account-logout-btn').focus(), 80);
+}
+
+function closeAccountSheet() {
+    if (deleteInProgress) return;
+    accountLayer.classList.add('d-none');
+    unlockBodyIfNoSheetOpen();
+}
+
+function openDeleteSheet() {
+    if (!currentAuthUser) return;
+    closeAccountSheet();
+    clearDeleteError();
+    deleteForm.reset();
+    deleteLayer.classList.remove('d-none');
+    document.body.classList.add('profile-editor-open');
+    window.setTimeout(() => deleteConfirmationInput.focus(), 80);
+}
+
+function closeDeleteSheet() {
+    if (deleteInProgress) return;
+    deleteLayer.classList.add('d-none');
+    clearDeleteError();
+    deleteForm.reset();
+    unlockBodyIfNoSheetOpen();
 }
 
 async function copyShareLink() {
@@ -322,8 +382,74 @@ function openEditor() {
 function closeEditor() {
     if (saveInProgress) return;
     editLayer.classList.add('d-none');
-    document.body.classList.remove('profile-editor-open');
+    unlockBodyIfNoSheetOpen();
     clearError();
+}
+
+function setDeleteState(isDeleting) {
+    deleteInProgress = isDeleting;
+    deleteSubmitButton.disabled = isDeleting;
+    deleteSubmitButton.innerText = isDeleting ? "Deleting..." : "Delete my account";
+    deleteForm.querySelectorAll('input, button').forEach((control) => {
+        if (control !== deleteSubmitButton) control.disabled = isDeleting;
+    });
+}
+
+async function logoutCurrentUser() {
+    sessionStorage.removeItem(PROFILE_CACHE_KEY);
+    await signOut(auth);
+    window.location.href = 'login.html';
+}
+
+async function deleteAccount(event) {
+    event.preventDefault();
+    if (!currentAuthUser || deleteInProgress) return;
+
+    const confirmation = deleteConfirmationInput.value.trim();
+    const password = deletePasswordInput.value;
+
+    if (confirmation !== "DELETE") {
+        showDeleteError("Type DELETE exactly to confirm permanent deletion.");
+        return;
+    }
+    if (password.length < 6) {
+        showDeleteError("Enter your account password to delete this account.");
+        return;
+    }
+
+    clearDeleteError();
+    setDeleteState(true);
+
+    try {
+        const idToken = await currentAuthUser.getIdToken(true);
+        const response = await fetch('/api/delete-account', {
+            method: 'POST',
+            headers: {
+                "Authorization": `Bearer ${idToken}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ confirmation, password })
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(data.error || "Could not delete your account. Please try again.");
+        }
+
+        sessionStorage.removeItem(PROFILE_CACHE_KEY);
+        saveNotice.innerText = "Account deleted";
+        showSaveNotice();
+        try {
+            await signOut(auth);
+        } catch (signOutError) {
+            console.warn("Local sign out after account deletion failed:", signOutError);
+        }
+        window.location.replace('login.html');
+    } catch (error) {
+        console.error("Account deletion failed:", error);
+        setDeleteState(false);
+        showDeleteError(error.message || "Could not delete your account. Please try again.");
+    }
 }
 
 function loadImage(file) {
@@ -510,6 +636,14 @@ function bindProfileActions() {
     document.getElementById('profile-safety-backdrop').addEventListener('click', closeSafetySheet);
     document.getElementById('profile-terms-close-btn').addEventListener('click', closeTermsSheet);
     document.getElementById('profile-terms-backdrop').addEventListener('click', closeTermsSheet);
+    document.getElementById('profile-account-close-btn').addEventListener('click', closeAccountSheet);
+    document.getElementById('profile-account-backdrop').addEventListener('click', closeAccountSheet);
+    document.getElementById('profile-account-logout-btn').addEventListener('click', logoutCurrentUser);
+    document.getElementById('profile-account-delete-open-btn').addEventListener('click', openDeleteSheet);
+    document.getElementById('profile-delete-close-btn').addEventListener('click', closeDeleteSheet);
+    document.getElementById('profile-delete-backdrop').addEventListener('click', closeDeleteSheet);
+    document.getElementById('profile-delete-cancel-btn').addEventListener('click', closeDeleteSheet);
+    deleteForm.addEventListener('submit', deleteAccount);
     document.querySelectorAll('[data-share-channel]').forEach((button) => {
         button.addEventListener('click', () => openShareChannel(button.dataset.shareChannel));
     });
@@ -526,6 +660,10 @@ function bindProfileActions() {
             closeSafetySheet();
         } else if (event.key === 'Escape' && !termsLayer.classList.contains('d-none')) {
             closeTermsSheet();
+        } else if (event.key === 'Escape' && !deleteLayer.classList.contains('d-none')) {
+            closeDeleteSheet();
+        } else if (event.key === 'Escape' && !accountLayer.classList.contains('d-none')) {
+            closeAccountSheet();
         }
     });
     editForm.addEventListener('submit', saveProfile);
@@ -573,17 +711,19 @@ function bindProfileActions() {
             closeFallbackShareSheet();
         } else if (!editLayer.classList.contains('d-none')) {
             closeEditor();
+        } else if (!deleteLayer.classList.contains('d-none')) {
+            closeDeleteSheet();
+        } else if (!accountLayer.classList.contains('d-none')) {
+            closeAccountSheet();
         }
     });
 
-    profileSessionButton.addEventListener('click', async () => {
+    profileSessionButton.addEventListener('click', () => {
         if (!currentAuthUser) {
             window.location.href = 'login.html';
             return;
         }
-        sessionStorage.removeItem(PROFILE_CACHE_KEY);
-        await signOut(auth);
-        window.location.href = 'login.html';
+        openAccountSheet();
     });
 }
 
@@ -607,7 +747,7 @@ onAuthStateChanged(auth, async (user) => {
 
     currentAuthUser = user;
     editButton.disabled = false;
-    profileSessionButton.innerText = "Log out";
+    profileSessionButton.innerText = "Account";
     profileSessionButton.classList.remove('is-login');
     profileSessionButton.classList.remove('d-none');
     document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
