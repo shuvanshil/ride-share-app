@@ -58,6 +58,17 @@
                 </div>
             </section>
 
+            <section id="driver-service-requests" class="driver-service-requests" aria-live="polite">
+                <h6 class="section-title">Incoming Local Ride Requests</h6>
+                <div id="driver-service-rides-list" class="ride-list">
+                    <div id="driver-service-no-rides-msg" class="empty-state">
+                        <span>Live</span>
+                        <strong>Searching nearby passengers</strong>
+                        <p>Keep this page open to receive targeted requests.</p>
+                    </div>
+                </div>
+            </section>
+
             <section id="driver-service-lifecycle" class="active-trip-card driver-service-lifecycle d-none" aria-live="polite">
                 <h6>Active Trip Lifecycle</h6>
                 <div id="driver-service-trip-details" class="trip-details-text"></div>
@@ -94,7 +105,7 @@
     </div>
 
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/driver-service.js?v=20260709-driver-heading"></script>
+    <script type="module" src="js/driver-service.js?v=20260710-service-requests"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

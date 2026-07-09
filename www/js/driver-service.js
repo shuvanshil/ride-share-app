@@ -4,6 +4,7 @@ import {
     collection,
     doc,
     getDoc,
+    getDocs,
     increment,
     onSnapshot,
     query,
@@ -47,6 +48,9 @@ const paymentModal = document.getElementById('driver-service-payment-view');
 const finalFareEl = document.getElementById('driver-service-final-fare');
 const upiQrImage = document.getElementById('driver-service-upi-qr-image');
 const closePaymentButton = document.getElementById('driver-service-close-payment-btn');
+const requestsPanel = document.getElementById('driver-service-requests');
+const ridesContainer = document.getElementById('driver-service-rides-list');
+const noRidesMsg = document.getElementById('driver-service-no-rides-msg');
 
 let currentUser = null;
 let currentRide = null;
@@ -58,6 +62,8 @@ let pendingPaymentRideId = null;
 let lifecycleGpsText = "GPS locking...";
 let driverMarkerAnimationFrame = null;
 let lastDriverHeading = null;
+let incomingRideUnsubscribe = null;
+let acceptRideInProgress = false;
 
 warmGoogleMaps();
 
@@ -91,6 +97,20 @@ function inferVehicleType(driver = {}) {
 
 function getServiceLabel(vehicleType) {
     return vehicleType === "auto" ? "Auto" : "Bike / Scooty";
+}
+
+function getDriverRequestVehicleType(driver = {}) {
+    const text = [
+        driver.vehicle_type,
+        driver.vehicleType,
+        driver.vehicle_model,
+        driver.vehicleModel,
+        driver.vehicleName
+    ].filter(Boolean).join(" ").toLowerCase();
+
+    if (/auto|rickshaw|tuk/.test(text)) return "auto";
+    if (/bike|scooter|scooty|activa|motorcycle/.test(text)) return "bike";
+    return "";
 }
 
 function getLiveVehicleMarkerIcon() {
@@ -209,6 +229,207 @@ function formatRideDistance(value) {
 function formatRideDuration(value) {
     const duration = Number(value);
     return Number.isFinite(duration) && duration > 0 ? `${Math.round(duration)} mins` : "Not available";
+}
+
+function updateIncomingRequestsVisibility() {
+    if (!requestsPanel) return;
+    requestsPanel.classList.toggle('d-none', Boolean(currentRideId));
+}
+
+function renderIncomingRideCard(rideId, ride = {}) {
+    const passengerName = escapeHtml(ride.passenger_name || "Passenger");
+    const serviceName = escapeHtml(ride.service_name || getServiceLabel(ride.vehicle_type));
+    const passengerCapacity = Number(ride.passenger_capacity || (ride.vehicle_type === "auto" ? 4 : 1));
+    const pickupName = escapeHtml(ride.pickup_name || "Pickup location unavailable");
+    const dropName = escapeHtml(ride.drop_name || ride.drop_full_address || "Destination unavailable");
+    const fare = escapeHtml(ride.fare || "0");
+
+    const card = document.createElement('div');
+    card.className = "driver-service-request-card";
+    card.innerHTML = `
+        <div class="driver-service-request-head">
+            <div>
+                <h6>${passengerName}</h6>
+                <span>${serviceName} - ${passengerCapacity} passenger${passengerCapacity === 1 ? "" : "s"}</span>
+            </div>
+            <strong>Rs ${fare}</strong>
+        </div>
+        <div class="driver-service-request-route">
+            <p><b>From:</b> ${pickupName}</p>
+            <p><b>To:</b> ${dropName}</p>
+        </div>
+        <div class="ride-request-metrics" aria-label="Ride distance and estimated time">
+            <div>
+                <small>Distance</small>
+                <strong>${formatRideDistance(ride.distance_km)}</strong>
+            </div>
+            <div>
+                <small>Estimated time</small>
+                <strong>${formatRideDuration(ride.duration_minutes)}</strong>
+            </div>
+        </div>
+        <button class="gy-btn gy-btn-primary driver-service-accept-btn" type="button" data-ride-id="${escapeHtml(rideId)}">
+            Accept Ride Request
+        </button>
+    `;
+
+    return card;
+}
+
+function renderNoIncomingRequests() {
+    ridesContainer.innerHTML = "";
+    ridesContainer.appendChild(noRidesMsg);
+    noRidesMsg.querySelector('strong').innerText = "Searching nearby passengers";
+    noRidesMsg.querySelector('p').innerText = "Keep this page open to receive targeted requests.";
+    noRidesMsg.classList.remove('d-none');
+}
+
+function startIncomingRideListener() {
+    if (!currentUser?.uid || !ridesContainer || !noRidesMsg) return;
+    if (incomingRideUnsubscribe) incomingRideUnsubscribe();
+
+    const incomingRideQuery = query(
+        collection(db, "rides"),
+        where("eligible_driver_ids", "array-contains", currentUser.uid)
+    );
+
+    incomingRideUnsubscribe = onSnapshot(incomingRideQuery, (snapshot) => {
+        ridesContainer.innerHTML = "";
+        ridesContainer.appendChild(noRidesMsg);
+        noRidesMsg.classList.add('d-none');
+
+        let renderedRideCount = 0;
+        const driverVehicleType = getDriverRequestVehicleType(currentUser);
+
+        snapshot.forEach((docSnapshot) => {
+            const ride = docSnapshot.data();
+            if (ride.status !== "pending" || ride.driver_id) return;
+            if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) return;
+
+            renderedRideCount += 1;
+            ridesContainer.appendChild(renderIncomingRideCard(docSnapshot.id, ride));
+        });
+
+        if (renderedRideCount === 0) {
+            renderNoIncomingRequests();
+        }
+
+        updateIncomingRequestsVisibility();
+    }, (error) => {
+        console.error("Driver service incoming ride listener failed:", error);
+        renderNoIncomingRequests();
+        noRidesMsg.querySelector('strong').innerText = "Could not sync ride requests";
+        noRidesMsg.querySelector('p').innerText = "Check your connection and keep this page open.";
+    });
+}
+
+async function setServiceDriverAvailability(status) {
+    if (!currentUser?.uid) return;
+
+    currentUser.driverAvailability = status;
+    const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
+
+    const userUpdate = {
+        driverAvailability: status,
+        isConnected: status !== "offline",
+        driverAvailabilityUpdatedAt: serverTimestamp(),
+        lastSeenAt: serverTimestamp()
+    };
+    if (locationData) userUpdate.driverLocation = locationData;
+
+    const presenceUpdate = {
+        uid: currentUser.uid,
+        name: currentUser.name || "Driver",
+        phone: currentUser.phone || "",
+        driverAvailability: status,
+        verificationStatus: currentUser.verificationStatus || "pending_review",
+        vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
+        vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
+        vehicle_type: inferVehicleType(currentUser),
+        isConnected: status !== "offline",
+        updatedAt: serverTimestamp(),
+        lastSeenAt: serverTimestamp()
+    };
+    if (locationData) presenceUpdate.driverLocation = locationData;
+
+    await Promise.allSettled([
+        updateDoc(doc(db, "users", currentUser.uid), userUpdate),
+        setDoc(doc(db, "driverPresence", currentUser.uid), presenceUpdate, { merge: true })
+    ]);
+}
+
+async function acceptIncomingRide(rideId, button) {
+    if (!rideId || !currentUser?.uid || acceptRideInProgress) return;
+
+    acceptRideInProgress = true;
+    if (button) {
+        button.disabled = true;
+        button.innerText = "Accepting...";
+    }
+
+    try {
+        let acceptedRideData = null;
+        const rideRef = doc(db, "rides", rideId);
+        const activeRideQuery = query(
+            collection(db, "rides"),
+            where("driver_id", "==", currentUser.uid),
+            where("status", "in", ACTIVE_RIDE_STATUSES)
+        );
+        const activeRideSnap = await getDocs(activeRideQuery);
+
+        if (!activeRideSnap.empty) {
+            throw new Error("You already have an active ride.");
+        }
+
+        await runTransaction(db, async (transaction) => {
+            const rideSnap = await transaction.get(rideRef);
+            if (!rideSnap.exists()) {
+                throw new Error("Ride request no longer exists.");
+            }
+
+            const rideData = rideSnap.data();
+            acceptedRideData = rideData;
+
+            if (rideData.status !== "pending" || rideData.driver_id) {
+                throw new Error("This ride was already accepted by another driver.");
+            }
+
+            const driverVehicleType = getDriverRequestVehicleType(currentUser);
+            if (!driverVehicleType || rideData.vehicle_type !== driverVehicleType) {
+                throw new Error(`This ${getServiceLabel(rideData.vehicle_type)} request requires a matching registered vehicle.`);
+            }
+
+            if (!Array.isArray(rideData.eligible_driver_ids) || !rideData.eligible_driver_ids.includes(currentUser.uid)) {
+                throw new Error("This ride request is no longer available for you.");
+            }
+
+            transaction.update(rideRef, {
+                status: "accepted",
+                driver_id: currentUser.uid,
+                driver_name: currentUser.name,
+                driver_phone: currentUser.phone,
+                vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || currentUser.vehicleName || "Registered Vehicle",
+                vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || currentUser.vehicleNo || "Vehicle number pending",
+                vehicle_type: driverVehicleType,
+                acceptedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        });
+
+        await setServiceDriverAvailability("busy");
+        renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });
+        updateIncomingRequestsVisibility();
+        statusText.innerText = "Ride accepted - route is loading";
+    } catch (error) {
+        console.error("Driver service ride acceptance failed:", error);
+        alert(error.message || "Could not accept this ride.");
+        if (button) {
+            button.disabled = false;
+            button.innerText = "Accept Ride Request";
+        }
+    } finally {
+        acceptRideInProgress = false;
+    }
 }
 
 function setGpsState(state, label) {
@@ -888,6 +1109,7 @@ function renderIdleState() {
     hideLifecyclePanel();
     hideRouteWarning();
     statusText.innerText = "Online and ready for ride requests";
+    updateIncomingRequestsVisibility();
     if (lastPosition && map) map.panTo(lastPosition);
 }
 
@@ -896,6 +1118,7 @@ function renderActiveRideState(rideId, ride) {
     currentRide = ride;
     currentRideStatus = ride.status || "accepted";
     openConsoleButton.classList.remove('d-none');
+    updateIncomingRequestsVisibility();
     showLifecyclePanel(currentRideStatus, ride);
 
     const target = getRideTarget(ride);
@@ -1195,6 +1418,11 @@ openConsoleButton.addEventListener('click', () => {
 
 completeButton.addEventListener('click', completeRideJob);
 cancelButton.addEventListener('click', cancelRideByDriver);
+ridesContainer?.addEventListener('click', (event) => {
+    const acceptButton = event.target.closest('.driver-service-accept-btn');
+    if (!acceptButton) return;
+    acceptIncomingRide(acceptButton.dataset.rideId, acceptButton);
+});
 
 closePaymentButton.addEventListener('click', async () => {
     closePaymentButton.disabled = true;
@@ -1238,6 +1466,7 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         currentUser = profile;
         cacheProfile(profile);
         startActiveRideListener();
+        startIncomingRideListener();
         startLocationTracking();
     } catch (error) {
         console.error("Driver service authentication failed:", error);
@@ -1248,6 +1477,7 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 window.addEventListener('beforeunload', () => {
     if (locationWatchId !== null) navigator.geolocation.clearWatch(locationWatchId);
     if (activeRideUnsubscribe) activeRideUnsubscribe();
+    if (incomingRideUnsubscribe) incomingRideUnsubscribe();
     if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
     mapShell?.destroy();
 });
