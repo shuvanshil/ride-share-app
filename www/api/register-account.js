@@ -6,6 +6,9 @@ const {
     verifyToken
 } = require("./_otp");
 
+const DRIVER_TERMS_VERSION = "2026-07-10";
+const DRIVER_PRIVACY_POLICY_VERSION = "2026-07-10";
+
 function cleanString(value, maxLength = 200) {
     return String(value || "").trim().slice(0, maxLength);
 }
@@ -56,6 +59,12 @@ function buildProfile(uid, phone, profile) {
             throw new Error("Drivers must add all required vehicle and payment details.");
         }
 
+        if (profile.termsAccepted !== true) {
+            throw new Error("Drivers must agree to LiphtUp's Terms and Conditions & Privacy Policy.");
+        }
+
+        const acceptedAt = new Date();
+
         Object.assign(profileData, {
             profilePhotoUrl,
             vehicleType,
@@ -66,6 +75,12 @@ function buildProfile(uid, phone, profile) {
             vehicle_model: vehicleModel,
             drivingLicenseNumber: licenseNumber,
             upiId,
+            termsAccepted: true,
+            termsAcceptedAt: acceptedAt,
+            termsVersion: DRIVER_TERMS_VERSION,
+            privacyPolicyAccepted: true,
+            privacyPolicyAcceptedAt: acceptedAt,
+            privacyPolicyVersion: DRIVER_PRIVACY_POLICY_VERSION,
             verificationStatus: "pending_review",
             driverAvailability: "searching",
             lifetime_earnings: 0,

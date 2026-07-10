@@ -31,6 +31,7 @@ const resetPasswordContainer = document.getElementById('reset-password-container
 const registrationContainer = document.getElementById('registration-container');
 const userRoleSelect = document.getElementById('user-role');
 const driverVerificationFields = document.getElementById('driver-verification-fields');
+const driverAgreementCheckbox = document.getElementById('driver-agreement-checkbox');
 const sendOtpBtn = document.getElementById('send-otp-btn');
 const verifyOtpBtn = document.getElementById('verify-otp-btn');
 const passwordLoginBtn = document.getElementById('password-login-btn');
@@ -193,8 +194,18 @@ function routeToHome(profile) {
     window.location.replace(profile.role === "driver" ? "driver.html" : "index.html");
 }
 
+function isDriverRegistration() {
+    return userRoleSelect.value === "driver";
+}
+
+function updateRegistrationSubmitState() {
+    if (registerBtn.textContent === "Creating account...") return;
+    registerBtn.disabled = isDriverRegistration() && !driverAgreementCheckbox.checked;
+}
+
 function updateRegistrationFieldsForRole() {
-    driverVerificationFields.classList.toggle('d-none', userRoleSelect.value !== "driver");
+    driverVerificationFields.classList.toggle('d-none', !isDriverRegistration());
+    updateRegistrationSubmitState();
 }
 
 function resetAuthStep() {
@@ -218,6 +229,8 @@ function resetAuthStep() {
     resendOtpBtn.textContent = "Resend OTP";
     registerBtn.disabled = false;
     registerBtn.textContent = "Create Account";
+    driverAgreementCheckbox.checked = false;
+    updateRegistrationSubmitState();
     resetPasswordBtn.disabled = false;
     resetPasswordBtn.textContent = "Update Password";
     setAuthStatus();
@@ -486,6 +499,11 @@ async function finalizeRegistration() {
             return;
         }
 
+        if (!driverAgreementCheckbox.checked) {
+            alert("Please agree to LiphtUp's Terms and Conditions & Privacy Policy to create a driver account.");
+            return;
+        }
+
         Object.assign(profileData, {
             vehicleType,
             vehicle_type: vehicleType,
@@ -495,6 +513,7 @@ async function finalizeRegistration() {
             vehicle_model: vehicleModel,
             drivingLicenseNumber: licenseNumber,
             upiId,
+            termsAccepted: true,
             verificationStatus: "pending_review",
             driverAvailability: "searching",
             lifetime_earnings: 0,
@@ -538,6 +557,7 @@ async function finalizeRegistration() {
         alert(message);
         registerBtn.disabled = false;
         registerBtn.textContent = "Create Account";
+        updateRegistrationSubmitState();
     }
 }
 
@@ -605,6 +625,7 @@ changePhoneBtn.addEventListener('click', resetAuthStep);
 loginModeBtn.addEventListener('click', () => setAuthMode("login"));
 registerModeBtn.addEventListener('click', () => setAuthMode("register"));
 userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
+driverAgreementCheckbox.addEventListener('change', updateRegistrationSubmitState);
 
 document.getElementById('phone-number').addEventListener('input', (event) => {
     event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10);
