@@ -876,7 +876,7 @@ async function verifyAndStartTrip(rideId) {
             return;
         }
 
-        const historyRef = doc(db, "tripHistory", rideId);
+        let verifiedRideData = null;
         await runTransaction(db, async (transaction) => {
             const freshRideSnap = await transaction.get(rideRef);
             if (!freshRideSnap.exists()) {
@@ -892,19 +892,24 @@ async function verifyAndStartTrip(rideId) {
                 throw new Error("Incorrect verification PIN. Please verify with the passenger.");
             }
 
+            verifiedRideData = freshRideData;
             transaction.update(rideRef, {
                 status: "en_route",
                 pinVerifiedAt: serverTimestamp(),
                 startedAt: serverTimestamp(),
                 updatedAt: serverTimestamp()
             });
-
-            transaction.set(historyRef, buildTripHistoryRecord(rideId, {
-                ...freshRideData,
-                status: "verified",
-                payment_status: freshRideData.payment_status || "pending"
-            }), { merge: true });
         });
+
+        if (verifiedRideData) {
+            setDoc(doc(db, "tripHistory", rideId), buildTripHistoryRecord(rideId, {
+                ...verifiedRideData,
+                status: "verified",
+                payment_status: verifiedRideData.payment_status || "pending"
+            }), { merge: true }).catch((historyError) => {
+                console.warn("Trip history save after PIN verification failed:", historyError);
+            });
+        }
 
         const verificationPanel = document.getElementById('verification-pin-panel');
         if (verificationPanel) verificationPanel.classList.add('d-none');
