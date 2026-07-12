@@ -3,6 +3,7 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260712-location-ux';
 import { getRideService } from './fare-policy.js';
+import { setRideActive } from './wake-lock.js';
 
 const dashboardView = document.getElementById('dashboard-view');
 const pickupInput = document.getElementById('pickup-input');
@@ -23,6 +24,13 @@ let isAuthenticatedPassenger = false;
 const requestedDestination = new URLSearchParams(window.location.search).get("destination")?.trim() || "";
 
 warmGoogleMaps();
+
+window.addEventListener('passenger-service-lock-changed', (event) => {
+    setRideActive(Boolean(event.detail?.locked));
+});
+window.addEventListener('ride-completed-clear-map', () => {
+    setRideActive(false);
+});
 
 function selectRideService(serviceType) {
     if (serviceSelectionLocked) return;
