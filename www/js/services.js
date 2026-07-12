@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260626-prefill-destination';
+import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260712-location-ux';
 import { getRideService } from './fare-policy.js';
 
 const dashboardView = document.getElementById('dashboard-view');
@@ -55,7 +55,7 @@ function resetFareOptions() {
     if (serviceSelectionLocked) return;
     window.selectedRideService = null;
     serviceOptions.classList.add('d-none');
-    findRideBtn.innerText = "Calculating route...";
+    findRideBtn.innerText = dropInput.value.trim() ? "Calculating route..." : "Please enter destination";
     findRideBtn.disabled = true;
 }
 
