@@ -3,7 +3,7 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260712-location-ux';
 import { getRideService } from './fare-policy.js';
-import { setRideActive } from './wake-lock.js';
+import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 
 const dashboardView = document.getElementById('dashboard-view');
 const pickupInput = document.getElementById('pickup-input');
@@ -24,13 +24,6 @@ let isAuthenticatedPassenger = false;
 const requestedDestination = new URLSearchParams(window.location.search).get("destination")?.trim() || "";
 
 warmGoogleMaps();
-
-window.addEventListener('passenger-service-lock-changed', (event) => {
-    setRideActive(Boolean(event.detail?.locked));
-});
-window.addEventListener('ride-completed-clear-map', () => {
-    setRideActive(false);
-});
 
 function selectRideService(serviceType) {
     if (serviceSelectionLocked) return;
@@ -70,6 +63,7 @@ function resetFareOptions() {
 function setServiceSelectionLocked(detail = {}) {
     serviceSelectionLocked = Boolean(detail.locked);
     serviceOptions.classList.toggle('is-locked', serviceSelectionLocked);
+    setRideActive(serviceSelectionLocked);
 
     const headingCopy = serviceOptions.querySelector('.ride-service-heading p');
     if (headingCopy) {
@@ -183,6 +177,7 @@ function bindServicesControls() {
     window.addEventListener('fare-quote-updated', (event) => renderFareOptions(event.detail));
     window.addEventListener('fare-quote-reset', resetFareOptions);
     window.addEventListener('passenger-service-lock-changed', (event) => setServiceSelectionLocked(event.detail));
+    window.addEventListener('ride-completed-clear-map', () => setRideActive(false));
 
     window.addEventListener('map-engine-ready', () => {
         setStatus(pickupInput.value || "Pickup location detected.", "ready");
