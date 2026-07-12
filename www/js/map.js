@@ -8,7 +8,8 @@ import {
 const DEFAULT_PICKUP = { lat: 24.3124, lng: 92.0135 };
 const TRIPURA_CENTER = { lat: 23.8315, lng: 91.9882 };
 const PICKUP_CACHE_KEY = "liphtup_last_passenger_pickup";
-const DESTINATION_SEARCH_DEBOUNCE_MS = 420;
+const DESTINATION_SEARCH_DEBOUNCE_MS = 150;
+const MAX_VISIBLE_SUGGESTIONS = 5;
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
 const DRIVER_MARKER_ANIMATION_MS = 850;
@@ -931,7 +932,7 @@ async function getUserLocation() {
 
     return new Promise((resolve) => {
         navigator.geolocation.getCurrentPosition(
-            (position) => {
+            async (position) => {
                 const coords = {
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
@@ -939,8 +940,21 @@ async function getUserLocation() {
                 };
                 userLatitude = coords.lat;
                 userLongitude = coords.lng;
-                if (pickupInput) pickupInput.value = coords.label;
-                rememberPickupLocation(coords, coords.label);
+
+                const placeholderValue = coords.label;
+                if (pickupInput) pickupInput.value = placeholderValue;
+
+                const geocoded = await reverseGeocodeLocation(coords.lat, coords.lng);
+                const resolvedLabel = geocoded?.name || geocoded?.fullAddress || coords.label;
+                coords.label = resolvedLabel;
+                coords.fullAddress = geocoded?.fullAddress || "";
+                coords.placeId = geocoded?.placeId || "";
+
+                if (pickupInput && pickupInput.value === placeholderValue) {
+                    pickupInput.value = resolvedLabel;
+                }
+
+                rememberPickupLocation(coords, resolvedLabel);
                 resolve(coords);
             },
             () => {
@@ -1506,7 +1520,7 @@ function setupPickupSearchListeners() {
         window.dispatchEvent(new CustomEvent("fare-quote-reset"));
         clearRouteAndDestination();
 
-        if (query.length < 3) {
+        if (query.length < 2) {
             hidePickupSuggestions();
             return;
         }
@@ -1514,7 +1528,7 @@ function setupPickupSearchListeners() {
         pickupSearchTimer = setTimeout(async () => {
             const pickups = await searchGooglePickups(query);
             if (pickupInput.readOnly || pickupInput.value.trim() !== query) return;
-            showPickupSuggestions(pickupInput, pickups);
+            showPickupSuggestions(pickupInput, pickups.slice(0, MAX_VISIBLE_SUGGESTIONS));
         }, DESTINATION_SEARCH_DEBOUNCE_MS);
     });
 }
@@ -1828,7 +1842,7 @@ function setupFareEngineListeners() {
             destinationSearchAbortController = null;
         }
 
-        if (query.length < 3) {
+        if (query.length < 2) {
             resetDestinationFareState(fareQuoteBox);
             hideDestinationSuggestions();
             return;
@@ -1847,7 +1861,7 @@ function setupFareEngineListeners() {
             }
 
             if (destinations.length) {
-                showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan);
+                showDestinationSuggestions(dropInput, destinations.slice(0, MAX_VISIBLE_SUGGESTIONS), fareQuoteBox, fareAmountSpan);
                 fareQuoteBox.classList.add("d-none");
                 fareQuoteBox.classList.remove("d-flex");
             } else {
