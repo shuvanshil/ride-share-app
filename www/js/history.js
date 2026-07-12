@@ -4,6 +4,7 @@ import {
     doc,
     getDoc,
     getDocs,
+    onSnapshot,
     query,
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -21,7 +22,9 @@ const historyState = {
     user: null,
     profile: null,
     trips: [],
-    activeFilter: "all"
+    activeFilter: "all",
+    unsubscribe: null,
+    streamToken: 0
 };
 
 const historyList = document.getElementById('history-list');
@@ -84,12 +87,13 @@ function formatDate(timestamp) {
     if (!timestamp?.toDate) return "Date not recorded";
     return timestamp.toDate().toLocaleString("en-IN", {
         dateStyle: "medium",
-        timeStyle: "short"
+        timeStyle: "medium"
     });
 }
 
 function getTripTime(trip) {
-    return trip.completedAt?.toMillis ? trip.completedAt.toMillis() : 0;
+    const timestamp = trip.finalStatusAt || trip.completedAt || trip.cancelledAt || trip.verifiedAt;
+    return timestamp?.toMillis ? timestamp.toMillis() : 0;
 }
 
 function getTripRole() {
@@ -100,6 +104,25 @@ function getParticipantName(trip) {
     return isDriverAccount()
         ? trip.passenger_name || "Passenger"
         : trip.driver_name || "Driver";
+}
+
+function getTripStatusLabel(trip = {}) {
+    const finalStatus = String(trip.final_status || "").toLowerCase();
+    const tripStatus = String(trip.trip_status || "").toLowerCase();
+
+    if (finalStatus === "completed" || tripStatus === "completed") return "Completed";
+    if (finalStatus === "cancelled" || tripStatus.startsWith("cancelled")) {
+        const actor = trip.cancelled_by || (tripStatus === "cancelled_by_passenger" ? "passenger" : tripStatus === "cancelled_by_driver" ? "driver" : "");
+        return actor ? `Cancelled by ${actor}` : "Cancelled";
+    }
+
+    return "Verified";
+}
+
+function getTripDisplayTimestamp(trip = {}) {
+    if (trip.final_status === "completed" || trip.trip_status === "completed") return trip.completedAt || trip.finalStatusAt;
+    if (trip.final_status === "cancelled" || String(trip.trip_status || "").startsWith("cancelled")) return trip.cancelledAt || trip.finalStatusAt;
+    return trip.verifiedAt || trip.finalStatusAt || trip.completedAt;
 }
 
 function getFilterLabel(filterName = historyState.activeFilter) {
@@ -201,6 +224,42 @@ async function loadTripHistory() {
     return enrichedTrips.sort((a, b) => getTripTime(b) - getTripTime(a));
 }
 
+function stopHistoryRealtime() {
+    if (historyState.unsubscribe) {
+        historyState.unsubscribe();
+        historyState.unsubscribe = null;
+    }
+}
+
+function startHistoryRealtime() {
+    if (!historyState.user) return;
+    stopHistoryRealtime();
+    setLoadingState();
+
+    const fieldName = isDriverAccount() ? "driver_id" : "passenger_id";
+    const q = query(
+        collection(db, "tripHistory"),
+        where(fieldName, "==", historyState.user.uid)
+    );
+    const token = historyState.streamToken + 1;
+    historyState.streamToken = token;
+
+    historyState.unsubscribe = onSnapshot(q, async (snap) => {
+        try {
+            const trips = snap.docs.map((docSnap) => ({
+                id: docSnap.id,
+                ...docSnap.data()
+            }));
+            const enrichedTrips = await Promise.all(trips.map(enrichTripHistoryAddress));
+            if (historyState.streamToken !== token) return;
+            historyState.trips = enrichedTrips.sort((a, b) => getTripTime(b) - getTripTime(a));
+            renderTrips();
+        } catch (error) {
+            setErrorState(error);
+        }
+    }, setErrorState);
+}
+
 function getVisibleTrips() {
     return historyState.trips.filter(isTripInActiveFilter);
 }
@@ -209,7 +268,9 @@ function renderSummary(trips) {
     summaryGrid.classList.toggle('d-none', !isDriverAccount());
     if (!isDriverAccount()) return;
 
-    const totalFare = trips.reduce((sum, trip) => sum + Number(trip.fare_amount || 0), 0);
+    const totalFare = trips
+        .filter((trip) => trip.final_status === "completed" || trip.trip_status === "completed")
+        .reduce((sum, trip) => sum + Number(trip.fare_amount || 0), 0);
     const totalDistance = trips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
 
     totalTripsEl.innerText = String(trips.length);
@@ -227,8 +288,8 @@ function renderEmptyState() {
     historyList.innerHTML = `
         <div class="history-empty-card">
             <div class="history-empty-icon">◷</div>
-            <h3>No completed rides for ${escapeHtml(filterText)}</h3>
-            <p>Your ${escapeHtml(roleText)} trips for ${escapeHtml(filterText)} will appear here after payment is confirmed.</p>
+            <h3>No ride history for ${escapeHtml(filterText)}</h3>
+            <p>Your verified, completed, and cancelled ${escapeHtml(roleText)} trips for ${escapeHtml(filterText)} will appear here.</p>
             <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='${actionLink}'">${actionLabel}</button>
         </div>
     `;
@@ -238,6 +299,7 @@ function renderTripCard(trip) {
     const role = getTripRole();
     const participantLabel = role === "driver" ? "Passenger" : "Driver";
     const moneyLabel = role === "driver" ? "Earnings" : "Fare";
+    const statusLabel = getTripStatusLabel(trip);
     const vehicleDetails = trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`;
 
     return `
@@ -246,7 +308,7 @@ function renderTripCard(trip) {
                 <div>
                     <span class="history-role-pill ${role}">${role === "driver" ? "Driven" : "Ridden"}</span>
                     <h3>${escapeHtml(getParticipantName(trip))}</h3>
-                    <p>${escapeHtml(participantLabel)} • ${escapeHtml(formatDate(trip.completedAt))}</p>
+                    <p>${escapeHtml(statusLabel)} • ${escapeHtml(participantLabel)} • ${escapeHtml(formatDate(getTripDisplayTimestamp(trip)))}</p>
                 </div>
                 <div class="history-trip-fare">
                     <strong>${formatMoney(trip.fare_amount)}</strong>
@@ -293,12 +355,16 @@ function renderTrips() {
 
 function openTripDetail(trip) {
     const role = getTripRole();
+    const statusLabel = getTripStatusLabel(trip);
     const vehicleDetails = trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`;
 
     detailContent.innerHTML = `
         <div class="history-detail-row"><span>Ride ID</span><strong>${escapeHtml(trip.ride_id || trip.id)}</strong></div>
-        <div class="history-detail-row"><span>Status</span><strong>${escapeHtml(trip.trip_status || "completed")} / ${escapeHtml(trip.payment_status || "paid")}</strong></div>
-        <div class="history-detail-row"><span>Date & Time</span><strong>${escapeHtml(formatDate(trip.completedAt))}</strong></div>
+        <div class="history-detail-row"><span>Final Status</span><strong>${escapeHtml(statusLabel)}</strong></div>
+        <div class="history-detail-row"><span>Verification Date & Time</span><strong>${escapeHtml(formatDate(trip.verifiedAt))}</strong></div>
+        <div class="history-detail-row"><span>Completion Date & Time</span><strong>${escapeHtml(formatDate(trip.completedAt))}</strong></div>
+        <div class="history-detail-row"><span>Cancellation Date & Time</span><strong>${escapeHtml(formatDate(trip.cancelledAt))}</strong></div>
+        <div class="history-detail-row"><span>Payment</span><strong>${escapeHtml(trip.payment_status || "pending")}</strong></div>
         <div class="history-detail-row"><span>Your Role</span><strong>${role === "driver" ? "Driver" : "Passenger"}</strong></div>
         <div class="history-detail-row"><span>Passenger</span><strong>${escapeHtml(trip.passenger_name || "Passenger")}</strong></div>
         <div class="history-detail-row"><span>Driver</span><strong>${escapeHtml(trip.driver_name || "Driver")}</strong></div>
@@ -332,14 +398,7 @@ function setErrorState(error) {
 
 async function refreshHistory() {
     if (!historyState.user) return;
-    setLoadingState();
-
-    try {
-        historyState.trips = await loadTripHistory();
-        renderTrips();
-    } catch (error) {
-        setErrorState(error);
-    }
+    startHistoryRealtime();
 }
 
 function bindFilters() {
@@ -361,11 +420,12 @@ document.getElementById('history-detail-close-btn').addEventListener('click', ()
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
+        stopHistoryRealtime();
         historyState.user = null;
         historyState.profile = null;
         historyState.trips = [];
         document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.remove('d-none'));
-        userContext.innerText = "Login to view your completed trips";
+        userContext.innerText = "Login to view your ride history";
         historyList.innerHTML = `
             <div class="history-empty-card">
                 <div class="history-empty-icon">○</div>
@@ -388,7 +448,7 @@ onAuthStateChanged(auth, async (user) => {
         const name = historyState.profile.name || "LiphtUp user";
         const role = isDriverAccount() ? "driver" : "passenger";
         userContext.innerText = `${name} • ${role}`;
-        await refreshHistory();
+        startHistoryRealtime();
     } catch (error) {
         setErrorState(error);
     }

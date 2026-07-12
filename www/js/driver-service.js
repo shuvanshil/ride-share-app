@@ -1235,11 +1235,33 @@ async function verifyAndStartTrip(rideId) {
             return;
         }
 
-        await updateDoc(rideRef, {
-            status: "en_route",
-            pinVerifiedAt: serverTimestamp(),
-            startedAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+        await runTransaction(db, async (transaction) => {
+            const freshRideSnap = await transaction.get(rideRef);
+            if (!freshRideSnap.exists()) {
+                throw new Error("This ride no longer exists.");
+            }
+
+            const freshRideData = freshRideSnap.data();
+            if (freshRideData.driver_id !== currentUser.uid) {
+                throw new Error("Only the assigned driver can verify this ride.");
+            }
+
+            if (String(freshRideData.verification_pin || "") !== typedPin) {
+                throw new Error("Incorrect verification PIN. Please verify with the passenger.");
+            }
+
+            transaction.update(rideRef, {
+                status: "en_route",
+                pinVerifiedAt: serverTimestamp(),
+                startedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+
+            transaction.set(doc(db, "tripHistory", rideId), buildTripHistoryRecord(rideId, {
+                ...freshRideData,
+                status: "verified",
+                payment_status: freshRideData.payment_status || "pending"
+            }), { merge: true });
         });
     } catch (error) {
         console.error("PIN verification failed:", error);
@@ -1267,10 +1289,21 @@ async function completeRideJob() {
         const finalFare = parseFloat(rideData.fare || 0);
         pendingPaymentRideId = currentRideId;
 
-        await updateDoc(rideRef, {
-            status: "completed",
-            completedAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+        await runTransaction(db, async (transaction) => {
+            const freshRideSnap = await transaction.get(rideRef);
+            if (!freshRideSnap.exists()) return;
+            const freshRideData = freshRideSnap.data();
+
+            transaction.update(rideRef, {
+                status: "completed",
+                completedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            transaction.set(doc(db, "tripHistory", currentRideId), buildTripHistoryFinalUpdate({
+                ...freshRideData,
+                ride_id: currentRideId,
+                status: "completed"
+            }, "completed"), { merge: true });
         });
 
         await updateDoc(doc(db, "users", currentUser.uid), {
@@ -1308,10 +1341,26 @@ async function cancelRideByDriver() {
     if (!confirm("Warning: Cancelling active trips impacts your driver rating. Proceed?")) return;
 
     try {
-        await updateDoc(doc(db, "rides", currentRideId), {
-            status: "cancelled_by_driver",
-            cancelledAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+        const rideId = currentRideId;
+        await runTransaction(db, async (transaction) => {
+            const rideRef = doc(db, "rides", rideId);
+            const rideSnap = await transaction.get(rideRef);
+            if (!rideSnap.exists()) return;
+            const rideData = rideSnap.data();
+
+            transaction.update(rideRef, {
+                status: "cancelled_by_driver",
+                cancelledAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+
+            if (rideData.pinVerifiedAt) {
+                transaction.set(doc(db, "tripHistory", rideId), buildTripHistoryFinalUpdate({
+                    ...rideData,
+                    ride_id: rideId,
+                    status: "cancelled_by_driver"
+                }, "cancelled_by_driver"), { merge: true });
+            }
         });
 
         alert("Trip cancelled successfully.");
@@ -1322,6 +1371,15 @@ async function cancelRideByDriver() {
 }
 
 function buildTripHistoryRecord(rideId, rideData) {
+    const status = rideData.status || "verified";
+    const isCancelled = status === "cancelled_by_passenger" || status === "cancelled_by_driver";
+    const isCompleted = status === "completed";
+    const cancelledBy = status === "cancelled_by_passenger"
+        ? "passenger"
+        : status === "cancelled_by_driver"
+            ? "driver"
+            : "";
+
     return {
         ride_id: rideId,
         passenger_id: rideData.passenger_id || null,
@@ -1335,13 +1393,22 @@ function buildTripHistoryRecord(rideId, rideData) {
         drop_formatted_address: rideData.drop_formatted_address || rideData.drop_full_address || "",
         drop_full_address: rideData.drop_full_address || "",
         drop_landmark: rideData.drop_landmark || "",
-        completedAt: rideData.completedAt || serverTimestamp(),
-        paidAt: serverTimestamp(),
+        verifiedAt: rideData.pinVerifiedAt || rideData.verifiedAt || serverTimestamp(),
+        completedAt: isCompleted ? rideData.completedAt || serverTimestamp() : null,
+        cancelledAt: isCancelled ? rideData.cancelledAt || serverTimestamp() : null,
+        finalStatusAt: isCompleted
+            ? rideData.completedAt || serverTimestamp()
+            : isCancelled
+                ? rideData.cancelledAt || serverTimestamp()
+                : null,
+        paidAt: rideData.payment_status === "paid" ? rideData.paidAt || serverTimestamp() : null,
         distance_km: Number(rideData.distance_km || 0),
         duration_minutes: Number(rideData.duration_minutes || 0),
         fare_amount: Number(rideData.fare || 0),
-        trip_status: rideData.status || "completed",
-        payment_status: "paid",
+        trip_status: status,
+        final_status: isCompleted ? "completed" : isCancelled ? "cancelled" : "verified",
+        cancelled_by: cancelledBy,
+        payment_status: rideData.payment_status || "pending",
         driver_name: rideData.driver_name || "Driver",
         passenger_name: rideData.passenger_name || "Passenger",
         vehicle_model: rideData.vehicle_model || "Vehicle",
@@ -1350,8 +1417,26 @@ function buildTripHistoryRecord(rideId, rideData) {
         vehicle_type: rideData.vehicle_type || "",
         service_name: rideData.service_name || getServiceLabel(rideData.vehicle_type),
         passenger_capacity: Number(rideData.passenger_capacity || (rideData.vehicle_type === "auto" ? 4 : 1)),
-        source: "client_payment_confirmation",
+        source: rideData.source || "client_verification",
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    };
+}
+
+function buildTripHistoryFinalUpdate(rideData, status) {
+    const isCancelled = status === "cancelled_by_passenger" || status === "cancelled_by_driver";
+    const cancelledBy = status === "cancelled_by_passenger" ? "passenger" : status === "cancelled_by_driver" ? "driver" : "";
+    const record = buildTripHistoryRecord(rideData.ride_id, { ...rideData, status });
+    delete record.createdAt;
+
+    return {
+        ...record,
+        completedAt: status === "completed" ? serverTimestamp() : rideData.completedAt || null,
+        cancelledAt: isCancelled ? serverTimestamp() : rideData.cancelledAt || null,
+        finalStatusAt: serverTimestamp(),
+        final_status: status === "completed" ? "completed" : isCancelled ? "cancelled" : "verified",
+        cancelled_by: cancelledBy,
+        trip_status: status,
         updatedAt: serverTimestamp()
     };
 }
@@ -1388,10 +1473,14 @@ async function markRidePaidAndCreateHistory(rideId) {
                 updatedAt: serverTimestamp()
             });
 
-            transaction.set(historyRef, buildTripHistoryRecord(rideId, {
+            const historyRecord = buildTripHistoryRecord(rideId, {
                 ...rideData,
-                payment_status: "paid"
-            }));
+                status: "completed",
+                payment_status: "paid",
+                source: "client_payment_confirmation"
+            });
+            delete historyRecord.createdAt;
+            transaction.set(historyRef, historyRecord, { merge: true });
         });
 
         return true;
