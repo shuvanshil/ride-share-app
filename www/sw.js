@@ -1,4 +1,4 @@
-const CACHE_VERSION = "liphtup-shell-v22-driver-agreement";
+const CACHE_VERSION = "liphtup-shell-v23-driver-addresses";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [

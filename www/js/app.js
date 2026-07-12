@@ -20,6 +20,7 @@ const ACTIVE_DRIVER_LAST_SEEN_MS = 120000;
 const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
 const APP_SHARE_TEXT = "Ride Together, Save Together. Invite friends and unlock exciting LiphtUp discounts.";
+const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 
 // Global variables
 let currentUser = null;
@@ -27,6 +28,64 @@ let activeRideListener = null;          // For Passenger monitoring
 let activeDispatchExpansionTimer = null;
 
 let currentPassengerRideId = null;
+
+function cleanAddressPart(value) {
+    return String(value || "").trim();
+}
+
+function compactAddressParts(parts = []) {
+    const seen = new Set();
+    return parts
+        .map(cleanAddressPart)
+        .filter(Boolean)
+        .filter((part) => {
+            const key = part.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+function isUnclearLocationLabel(value) {
+    const label = cleanAddressPart(value).toLowerCase();
+    return !label || UNCLEAR_LOCATION_LABELS.has(label);
+}
+
+async function reverseGeocodeRidePoint(lat, lng) {
+    if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return null;
+
+    try {
+        const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+        const response = await fetch(`/api/google-reverse-geocode?${params.toString()}`, {
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json().catch(() => ({}));
+        return response.ok ? data.result || null : null;
+    } catch (error) {
+        console.warn("Ride address reverse geocode failed:", error);
+        return null;
+    }
+}
+
+function buildRideAddressFields(prefix, geocode, originalLabel = "") {
+    const displayAddress = compactAddressParts([
+        geocode?.displayAddress,
+        geocode?.fullAddress
+    ])[0] || "";
+    const fallbackAddress = !isUnclearLocationLabel(originalLabel) ? cleanAddressPart(originalLabel) : "";
+
+    return {
+        [`${prefix}_display_address`]: displayAddress || fallbackAddress,
+        [`${prefix}_formatted_address`]: cleanAddressPart(geocode?.fullAddress),
+        [`${prefix}_landmark`]: cleanAddressPart(geocode?.landmark || geocode?.name),
+        [`${prefix}_road`]: cleanAddressPart(geocode?.road),
+        [`${prefix}_locality`]: cleanAddressPart(geocode?.locality),
+        [`${prefix}_city`]: cleanAddressPart(geocode?.city),
+        [`${prefix}_district`]: cleanAddressPart(geocode?.district),
+        [`${prefix}_pin_code`]: cleanAddressPart(geocode?.pinCode),
+        [`${prefix}_reverse_geocoded_at`]: geocode ? new Date().toISOString() : ""
+    };
+}
 
 function setPassengerDestinationLocked(locked, destinationName = "", pickupName = "") {
     const dropInput = document.getElementById('drop-input');
@@ -632,7 +691,11 @@ requestRideButton.addEventListener('click', async () => {
 
     try {
         const verificationPin = generateVerificationPin();
-        const dispatchState = await buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng, requestedVehicleType);
+        const [dispatchState, pickupGeocode, dropGeocode] = await Promise.all([
+            buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng, requestedVehicleType),
+            reverseGeocodeRidePoint(fareQuote.pickup_lat, fareQuote.pickup_lng),
+            reverseGeocodeRidePoint(fareQuote.drop_lat, fareQuote.drop_lng)
+        ]);
         const rideData = {
             passenger_id: currentUser.uid,
             passenger_name: currentUser.name,
@@ -640,6 +703,12 @@ requestRideButton.addEventListener('click', async () => {
             pickup_name: pickupText,
             drop_name: dropText,
             drop_full_address: fareQuote.drop_full_address || "",
+            ...buildRideAddressFields("pickup", pickupGeocode, pickupText),
+            ...buildRideAddressFields("drop", dropGeocode || {
+                fullAddress: fareQuote.drop_full_address || "",
+                displayAddress: fareQuote.drop_full_address || "",
+                name: dropText
+            }, dropText),
             drop_source: fareQuote.drop_source || "",
             drop_provider: fareQuote.drop_provider || fareQuote.drop_source || "",
             drop_place_id: fareQuote.drop_place_id || "",

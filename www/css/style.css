@@ -1339,6 +1339,32 @@ select {
     font-size: 13px;
 }
 
+.driver-location-preview-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.driver-location-preview-btn {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    border: 1px solid rgba(26, 122, 46, 0.22);
+    border-radius: 8px;
+    background: #EAF8ED;
+    color: var(--gy-green);
+    font-size: 11px;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.driver-location-preview-btn:hover {
+    color: var(--gy-green);
+}
+
 .active-passenger-contact {
     display: grid;
     grid-template-columns: 42px minmax(0, 1fr) auto;

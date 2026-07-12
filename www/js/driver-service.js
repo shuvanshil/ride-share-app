@@ -231,6 +231,42 @@ function formatRideDuration(value) {
     return Number.isFinite(duration) && duration > 0 ? `${Math.round(duration)} mins` : "Not available";
 }
 
+function normalizeRideCoordinates(latValue, lngValue) {
+    const lat = Number(latValue);
+    const lng = Number(lngValue);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function getRideDisplayAddress(ride = {}, kind = "pickup") {
+    const label = kind === "pickup" ? ride.pickup_name : ride.drop_name;
+    const fallback = kind === "pickup" ? "Pickup location unavailable" : "Destination unavailable";
+    const candidates = kind === "pickup"
+        ? [ride.pickup_display_address, ride.pickup_formatted_address, ride.pickup_landmark, ride.pickup_name]
+        : [ride.drop_display_address, ride.drop_formatted_address, ride.drop_full_address, ride.drop_landmark, ride.drop_name];
+    const selected = candidates.map((value) => String(value || "").trim()).find(Boolean);
+    const coords = kind === "pickup"
+        ? normalizeRideCoordinates(ride.pickup_lat, ride.pickup_lng)
+        : normalizeRideCoordinates(ride.drop_lat, ride.drop_lng);
+
+    if (coords && (!selected || /^current location$/i.test(selected))) {
+        return "Pinned location available - preview on map";
+    }
+
+    return selected || label || fallback;
+}
+
+function buildMapPreviewUrl(latValue, lngValue) {
+    const coords = normalizeRideCoordinates(latValue, lngValue);
+    if (!coords) return "";
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coords.lat},${coords.lng}`)}`;
+}
+
+function renderLocationPreviewLink(label, latValue, lngValue) {
+    const url = buildMapPreviewUrl(latValue, lngValue);
+    if (!url) return "";
+    return `<a class="driver-location-preview-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+}
+
 function updateIncomingRequestsVisibility() {
     if (!requestsPanel) return;
     requestsPanel.classList.toggle('d-none', Boolean(currentRideId));
@@ -240,9 +276,13 @@ function renderIncomingRideCard(rideId, ride = {}) {
     const passengerName = escapeHtml(ride.passenger_name || "Passenger");
     const serviceName = escapeHtml(ride.service_name || getServiceLabel(ride.vehicle_type));
     const passengerCapacity = Number(ride.passenger_capacity || (ride.vehicle_type === "auto" ? 4 : 1));
-    const pickupName = escapeHtml(ride.pickup_name || "Pickup location unavailable");
-    const dropName = escapeHtml(ride.drop_name || ride.drop_full_address || "Destination unavailable");
+    const pickupName = escapeHtml(getRideDisplayAddress(ride, "pickup"));
+    const dropName = escapeHtml(getRideDisplayAddress(ride, "drop"));
     const fare = escapeHtml(ride.fare || "0");
+    const previewLinks = [
+        renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng),
+        renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)
+    ].filter(Boolean).join("");
 
     const card = document.createElement('div');
     card.className = "driver-service-request-card";
@@ -257,6 +297,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
         <div class="driver-service-request-route">
             <p><b>From:</b> ${pickupName}</p>
             <p><b>To:</b> ${dropName}</p>
+            ${previewLinks ? `<div class="driver-location-preview-row">${previewLinks}</div>` : ""}
         </div>
         <div class="ride-request-metrics" aria-label="Ride distance and estimated time">
             <div>
@@ -541,8 +582,8 @@ function renderActivePassengerContact(ride = {}) {
 }
 
 function renderActiveTripRoute(ride = {}) {
-    const pickup = escapeHtml(ride.pickup_name || "Pickup location unavailable");
-    const destination = escapeHtml(ride.drop_name || ride.drop_full_address || "Destination unavailable");
+    const pickup = escapeHtml(getRideDisplayAddress(ride, "pickup"));
+    const destination = escapeHtml(getRideDisplayAddress(ride, "drop"));
     const distanceLabel = formatRideDistance(ride.distance_km);
     const durationLabel = formatRideDuration(ride.duration_minutes);
 

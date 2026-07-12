@@ -317,9 +317,45 @@ function formatRideDuration(value) {
     return Number.isFinite(duration) && duration > 0 ? `${Math.round(duration)} mins` : "Not available";
 }
 
+function normalizeRideCoordinates(latValue, lngValue) {
+    const lat = Number(latValue);
+    const lng = Number(lngValue);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+function getRideDisplayAddress(ride = {}, kind = "pickup") {
+    const label = kind === "pickup" ? ride.pickup_name : ride.drop_name;
+    const fallback = kind === "pickup" ? "Pickup location unavailable" : "Destination unavailable";
+    const candidates = kind === "pickup"
+        ? [ride.pickup_display_address, ride.pickup_formatted_address, ride.pickup_landmark, ride.pickup_name]
+        : [ride.drop_display_address, ride.drop_formatted_address, ride.drop_full_address, ride.drop_landmark, ride.drop_name];
+    const selected = candidates.map((value) => String(value || "").trim()).find(Boolean);
+    const coords = kind === "pickup"
+        ? normalizeRideCoordinates(ride.pickup_lat, ride.pickup_lng)
+        : normalizeRideCoordinates(ride.drop_lat, ride.drop_lng);
+
+    if (coords && (!selected || /^current location$/i.test(selected))) {
+        return "Pinned location available - preview on map";
+    }
+
+    return selected || label || fallback;
+}
+
+function buildMapPreviewUrl(latValue, lngValue) {
+    const coords = normalizeRideCoordinates(latValue, lngValue);
+    if (!coords) return "";
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coords.lat},${coords.lng}`)}`;
+}
+
+function renderLocationPreviewLink(label, latValue, lngValue) {
+    const url = buildMapPreviewUrl(latValue, lngValue);
+    if (!url) return "";
+    return `<a class="driver-location-preview-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+}
+
 function renderActiveTripRoute(ride = {}) {
-    const pickup = escapeHtml(ride.pickup_name || "Pickup location unavailable");
-    const destination = escapeHtml(ride.drop_name || ride.drop_full_address || "Destination unavailable");
+    const pickup = escapeHtml(getRideDisplayAddress(ride, "pickup"));
+    const destination = escapeHtml(getRideDisplayAddress(ride, "drop"));
     const distanceLabel = formatRideDistance(ride.distance_km);
     const durationLabel = formatRideDuration(ride.duration_minutes);
 
@@ -532,8 +568,12 @@ function initDriverJobsStream() {
                     <div>
                         <h6 class="fw-bold mb-1 text-dark">${ride.passenger_name}</h6>
                         <span class="badge bg-light text-dark border mb-2">${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${ride.passenger_capacity || (ride.vehicle_type === "auto" ? 4 : 1)} passenger${Number(ride.passenger_capacity || 1) === 1 ? "" : "s"}</span>
-                        <p class="mb-1 text-muted small"><strong>From:</strong> ${ride.pickup_name}</p>
-                        <p class="mb-2 text-muted small"><strong>To:</strong> ${ride.drop_name}</p>
+                        <p class="mb-1 text-muted small"><strong>From:</strong> ${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</p>
+                        <p class="mb-2 text-muted small"><strong>To:</strong> ${escapeHtml(getRideDisplayAddress(ride, "drop"))}</p>
+                        <div class="driver-location-preview-row">
+                            ${renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng)}
+                            ${renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)}
+                        </div>
                     </div>
                     <span class="badge bg-primary fs-6">Rs ${ride.fare}</span>
                 </div>
