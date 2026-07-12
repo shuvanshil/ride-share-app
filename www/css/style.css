@@ -2694,6 +2694,10 @@ body.profile-editor-open {
     margin: 0;
 }
 
+.services-location-field .gy-input {
+    padding: 10px 8px;
+}
+
 .services-field-btn {
     width: 34px;
     height: 34px;
