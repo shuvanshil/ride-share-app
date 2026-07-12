@@ -14,6 +14,7 @@ import {
     runTransaction
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
@@ -661,6 +662,7 @@ function attachDriverTripListener(rideRef) {
 
         if (currentRideData.status === "cancelled_by_passenger") {
             alert("The passenger has cancelled this ride request.");
+            setRideActive(false);
 
             if (activeDriverLocationWatchId !== null) {
                 navigator.geolocation.clearWatch(activeDriverLocationWatchId);
@@ -780,6 +782,7 @@ async function acceptRideJob(rideId) {
 
         await setDriverAvailability("busy");
         currentlyAssignedRideId = rideId;
+        setRideActive(true);
         activeDriverRideData = { ...acceptedRideData, status: "accepted" };
         document.getElementById('active-trip-container').classList.remove('d-none');
         renderActiveTripStatus("accepted", activeDriverRideData);
@@ -992,6 +995,7 @@ async function completeRideJob() {
         document.getElementById('driver-payment-view').classList.remove('d-none');
         pendingDriverPaymentRideId = currentlyAssignedRideId;
         currentlyAssignedRideId = null;
+        setRideActive(false);
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
         alert("Database connection dropped during checkout.");
@@ -1043,6 +1047,7 @@ async function cancelRideByDriver(rideId) {
         alert("Trip aborted successfully. Status set to online.");
 
         currentlyAssignedRideId = null;
+        setRideActive(false);
         await setDriverAvailability("searching");
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
