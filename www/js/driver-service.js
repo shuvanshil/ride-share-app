@@ -1,5 +1,6 @@
 import { auth, db } from './firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js';
+import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 import {
     collection,
     doc,
@@ -1141,6 +1142,7 @@ function getRideTarget(ride) {
 }
 
 function renderIdleState() {
+    setRideActive(false);
     clearTarget();
     currentRide = null;
     currentRideId = null;
@@ -1155,6 +1157,7 @@ function renderIdleState() {
 }
 
 function renderActiveRideState(rideId, ride) {
+    setRideActive(true);
     currentRideId = rideId;
     currentRide = ride;
     currentRideStatus = ride.status || "accepted";
