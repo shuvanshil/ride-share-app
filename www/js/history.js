@@ -15,6 +15,7 @@ const FILTER_LABELS = {
     month: "this month",
     all: "all time"
 };
+const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 
 const historyState = {
     user: null,
@@ -59,6 +60,24 @@ function formatDistance(value) {
 function formatDuration(value) {
     const duration = Number(value || 0);
     return duration > 0 ? `${Math.round(duration)} mins` : "Not recorded";
+}
+
+function cleanLocationText(value) {
+    return String(value || "").trim();
+}
+
+function isUnclearLocationText(value) {
+    const text = cleanLocationText(value).toLowerCase();
+    return !text || UNCLEAR_LOCATION_LABELS.has(text);
+}
+
+function getHistoryLocation(trip = {}, kind = "pickup") {
+    const fallback = kind === "pickup" ? "Pickup not recorded" : "Drop not recorded";
+    const candidates = kind === "pickup"
+        ? [trip.pickup_display_address, trip.pickup_formatted_address, trip.pickup_location]
+        : [trip.drop_display_address, trip.drop_formatted_address, trip.drop_full_address, trip.drop_location];
+    const selected = candidates.map(cleanLocationText).find(Boolean);
+    return selected && !isUnclearLocationText(selected) ? selected : fallback;
 }
 
 function formatDate(timestamp) {
@@ -140,12 +159,46 @@ async function getTripsByField(fieldName, uid) {
     }));
 }
 
+async function enrichTripHistoryAddress(trip) {
+    if (trip.pickup_display_address && trip.drop_display_address) return trip;
+
+    const rideId = trip.ride_id || trip.id;
+    if (!rideId) return trip;
+
+    try {
+        const rideSnap = await getDoc(doc(db, "rides", rideId));
+        if (!rideSnap.exists()) return trip;
+
+        const ride = rideSnap.data();
+        return {
+            ...trip,
+            pickup_display_address: trip.pickup_display_address || ride.pickup_display_address || "",
+            pickup_formatted_address: trip.pickup_formatted_address || ride.pickup_formatted_address || "",
+            pickup_landmark: trip.pickup_landmark || ride.pickup_landmark || "",
+            drop_display_address: trip.drop_display_address || ride.drop_display_address || "",
+            drop_formatted_address: trip.drop_formatted_address || ride.drop_formatted_address || ride.drop_full_address || "",
+            drop_full_address: trip.drop_full_address || ride.drop_full_address || "",
+            drop_landmark: trip.drop_landmark || ride.drop_landmark || "",
+            pickup_location: isUnclearLocationText(trip.pickup_location)
+                ? ride.pickup_display_address || ride.pickup_formatted_address || trip.pickup_location
+                : trip.pickup_location,
+            drop_location: isUnclearLocationText(trip.drop_location)
+                ? ride.drop_display_address || ride.drop_formatted_address || ride.drop_full_address || trip.drop_location
+                : trip.drop_location
+        };
+    } catch (error) {
+        console.warn("Could not enrich trip history address:", error);
+        return trip;
+    }
+}
+
 async function loadTripHistory() {
     if (!historyState.user) return [];
 
     const fieldName = isDriverAccount() ? "driver_id" : "passenger_id";
     const trips = await getTripsByField(fieldName, historyState.user.uid);
-    return trips.sort((a, b) => getTripTime(b) - getTripTime(a));
+    const enrichedTrips = await Promise.all(trips.map(enrichTripHistoryAddress));
+    return enrichedTrips.sort((a, b) => getTripTime(b) - getTripTime(a));
 }
 
 function getVisibleTrips() {
@@ -202,8 +255,8 @@ function renderTripCard(trip) {
             </div>
 
             <div class="history-route">
-                <div><span class="pickup-dot">●</span><p>${escapeHtml(trip.pickup_location || "Pickup not recorded")}</p></div>
-                <div><span class="drop-pin">📍</span><p>${escapeHtml(trip.drop_location || "Drop not recorded")}</p></div>
+                <div><span class="pickup-dot">●</span><p>${escapeHtml(getHistoryLocation(trip, "pickup"))}</p></div>
+                <div><span class="drop-pin">📍</span><p>${escapeHtml(getHistoryLocation(trip, "drop"))}</p></div>
             </div>
 
             <div class="history-trip-meta">
@@ -251,8 +304,8 @@ function openTripDetail(trip) {
         <div class="history-detail-row"><span>Driver</span><strong>${escapeHtml(trip.driver_name || "Driver")}</strong></div>
         <div class="history-detail-row"><span>Vehicle</span><strong>${escapeHtml(vehicleDetails)}</strong></div>
         <div class="history-detail-row"><span>Service</span><strong>${escapeHtml(trip.service_name || (trip.vehicle_type === "auto" ? "Auto" : "Bike / Scooty"))}</strong></div>
-        <div class="history-detail-row"><span>Pickup</span><strong>${escapeHtml(trip.pickup_location || "Pickup not recorded")}</strong></div>
-        <div class="history-detail-row"><span>Drop</span><strong>${escapeHtml(trip.drop_location || "Drop not recorded")}</strong></div>
+        <div class="history-detail-row"><span>Pickup</span><strong>${escapeHtml(getHistoryLocation(trip, "pickup"))}</strong></div>
+        <div class="history-detail-row"><span>Drop</span><strong>${escapeHtml(getHistoryLocation(trip, "drop"))}</strong></div>
         <div class="history-detail-row"><span>Distance</span><strong>${formatDistance(trip.distance_km)}</strong></div>
         <div class="history-detail-row"><span>Duration</span><strong>${formatDuration(trip.duration_minutes)}</strong></div>
         <div class="history-detail-row total"><span>Fare</span><strong>${formatMoney(trip.fare_amount)}</strong></div>
