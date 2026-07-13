@@ -12,7 +12,7 @@ import {
     runTransaction,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { calculateServiceFare, getRideService } from './fare-policy.js';
+import { calculateServiceFare, getRideService, getServiceFarePolicy } from './fare-policy.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -766,8 +766,9 @@ requestRideButton.addEventListener('click', async () => {
     const requestBtn = document.getElementById('request-ride-btn');
     const fareQuote = window.latestFareQuote || {};
     const requestedVehicleType = window.selectedRideService?.id || "";
-    const service = getRideService(requestedVehicleType);
-    const fareAmount = calculateServiceFare(requestedVehicleType, fareQuote.distance_km);
+    const rideRequestedAt = new Date();
+    const service = getServiceFarePolicy(requestedVehicleType, rideRequestedAt);
+    const fareAmount = calculateServiceFare(requestedVehicleType, fareQuote.distance_km, rideRequestedAt);
 
     const hasValidRoute = Number.isFinite(Number(fareQuote.pickup_lat))
         && Number.isFinite(Number(fareQuote.pickup_lng))
@@ -844,6 +845,8 @@ requestRideButton.addEventListener('click', async () => {
             fare: fareAmount,
             fare_base: service.baseFare,
             fare_per_km: service.perKmRate,
+            fare_is_night: service.isNightFare,
+            fare_requested_at: rideRequestedAt.toISOString(),
             fare_currency: "INR",
             vehicle_type: requestedVehicleType,
             service_name: service.name,

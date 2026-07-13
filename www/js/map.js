@@ -1,5 +1,5 @@
 import { db } from './firebase-init.js';
-import { calculateFareOptions } from './fare-policy.js';
+import { calculateFareOptions, isNightFareTime } from './fare-policy.js';
 import {
     collection,
     onSnapshot
@@ -2262,7 +2262,9 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
 
     const billedDistanceKm = Number(distance.toFixed(2));
     const estimatedDurationMinutes = routeDetails?.durationMinutes || Math.max(5, Math.round((distance / 25) * 60));
-    const fareOptions = calculateFareOptions(billedDistanceKm);
+    const fareQuotedAt = new Date();
+    const isNightFare = isNightFareTime(fareQuotedAt);
+    const fareOptions = calculateFareOptions(billedDistanceKm, fareQuotedAt);
 
     window.latestFareQuote = {
         pickup_lat: userLatitude,
@@ -2278,6 +2280,8 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         drop_type_hint: destination.typeHint || getPlaceTypeHint(destination),
         distance_km: billedDistanceKm,
         duration_minutes: estimatedDurationMinutes,
+        fare_quoted_at: fareQuotedAt.toISOString(),
+        is_night_fare: isNightFare,
         fare_options: fareOptions
     };
 
