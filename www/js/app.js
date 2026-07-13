@@ -18,7 +18,6 @@ const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_r
 const DISPATCH_BATCH_SIZE = 10;
 const DISPATCH_TIMEOUT_MS = 45000;
 const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
-const DRIVER_NOTIFICATION_ELIGIBLE_MS = 30 * 60 * 1000;
 const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
 const APP_SHARE_TEXT = "Ride Together, Save Together. Invite friends and unlock exciting LiphtUp discounts.";
@@ -407,15 +406,6 @@ function getTimestampMs(value) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function isDriverNotificationEligible(driver) {
-    if (driver.desiredAvailability === "offline" || driver.driverAvailability === "offline") return false;
-    const eligibleUntil = getTimestampMs(driver.notificationEligibleUntil);
-    if (eligibleUntil) return eligibleUntil >= Date.now();
-
-    const lastSeenAt = getTimestampMs(driver.lastAppSeenAt || driver.lastSeenAt || driver.updatedAt);
-    return Boolean(lastSeenAt) && Date.now() - lastSeenAt <= DRIVER_NOTIFICATION_ELIGIBLE_MS;
-}
-
 function inferVehicleTypeFromProfile(driver) {
     const text = [
         driver.vehicle_type,
@@ -458,7 +448,6 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
             const location = driver.driverLocation || {};
             return driver.verificationStatus === "approved"
                 && isDriverRecentlyConnected(driver)
-                && isDriverNotificationEligible(driver)
                 && driverMatchesRequestedVehicle(driver, requestedVehicleType)
                 && !excludedSet.has(driver.uid || driver.id)
                 && Number.isFinite(Number(location.lat))

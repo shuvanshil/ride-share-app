@@ -256,7 +256,7 @@ async function setDriverAvailability(status) {
             updatedAt: serverTimestamp()
         }, { merge: true });
 
-        if (online && window.Notification?.permission === "granted") {
+        if (online) {
             registerDriverPushToken(db, currentUser.uid).catch((error) => {
                 console.warn("Driver push token registration failed:", error);
             });
@@ -688,6 +688,7 @@ function initDriverJobsStream() {
 
         noRidesMsg.classList.add('d-none');
         let renderedRideCount = 0;
+        let firstPendingRide = null;
 
         querySnapshot.forEach((docSnapshot) => {
             const rideId = docSnapshot.id;
@@ -696,6 +697,12 @@ function initDriverJobsStream() {
             if (ride.status !== "pending" || ride.driver_id) return;
             if (ride.vehicle_type && ride.vehicle_type !== inferVehicleTypeFromProfile(currentUser)) return;
             renderedRideCount += 1;
+            if (!firstPendingRide) {
+                firstPendingRide = {
+                    id: rideId,
+                    body: `${getRideDisplayAddress(ride, "pickup")} to ${getRideDisplayAddress(ride, "drop")}`
+                };
+            }
 
             const card = document.createElement('div');
             card.className = "card p-3 mb-3 border-start border-primary border-4 shadow-sm";
@@ -735,7 +742,7 @@ function initDriverJobsStream() {
             stopRideRequestRing();
             noRidesMsg.classList.remove('d-none');
         } else {
-            startRideRequestRing();
+            startRideRequestRing(firstPendingRide || {});
         }
 
         document.querySelectorAll('.accept-job-btn').forEach(btn => {

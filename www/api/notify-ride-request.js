@@ -132,6 +132,19 @@ module.exports = async function handler(req, res) {
                 },
                 fcmOptions: {
                     link: notificationUrl
+                },
+                notification: {
+                    title: "New LiphtUp ride request",
+                    body: bodyText,
+                    icon: `${APP_BASE_URL}/assets/icons/liphtup-icon-192.png`,
+                    badge: `${APP_BASE_URL}/assets/icons/liphtup-icon-192.png`,
+                    tag: `liphtup-ride-${rideId}`,
+                    renotify: true,
+                    requireInteraction: true,
+                    vibrate: [350, 180, 350, 180, 700],
+                    actions: [
+                        { action: "open", title: "Open ride" }
+                    ]
                 }
             }
         });

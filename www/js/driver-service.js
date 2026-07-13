@@ -2,6 +2,11 @@ import { auth, db } from './firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 import {
+    registerDriverPushToken,
+    startRideRequestRing,
+    stopRideRequestRing
+} from './messaging.js?v=20260713-driver-push';
+import {
     collection,
     doc,
     getDoc,
@@ -341,6 +346,7 @@ function startIncomingRideListener() {
         noRidesMsg.classList.add('d-none');
 
         let renderedRideCount = 0;
+        let firstPendingRide = null;
         const driverVehicleType = getDriverRequestVehicleType(currentUser);
 
         snapshot.forEach((docSnapshot) => {
@@ -349,11 +355,20 @@ function startIncomingRideListener() {
             if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) return;
 
             renderedRideCount += 1;
+            if (!firstPendingRide) {
+                firstPendingRide = {
+                    id: docSnapshot.id,
+                    body: `${getRideDisplayAddress(ride, "pickup")} to ${getRideDisplayAddress(ride, "drop")}`
+                };
+            }
             ridesContainer.appendChild(renderIncomingRideCard(docSnapshot.id, ride));
         });
 
         if (renderedRideCount === 0) {
+            stopRideRequestRing();
             renderNoIncomingRequests();
+        } else {
+            startRideRequestRing(firstPendingRide || {});
         }
 
         updateIncomingRequestsVisibility();
@@ -411,6 +426,7 @@ async function acceptIncomingRide(rideId, button) {
     if (!rideId || !currentUser?.uid || acceptRideInProgress) return;
 
     acceptRideInProgress = true;
+    stopRideRequestRing();
     if (button) {
         button.disabled = true;
         button.innerText = "Accepting...";
@@ -1628,6 +1644,9 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 
         currentUser = profile;
         cacheProfile(profile);
+        registerDriverPushToken(db, currentUser.uid).catch((error) => {
+            console.warn("Driver service push token registration failed:", error);
+        });
         startActiveRideListener();
         startIncomingRideListener();
         startLocationTracking();
