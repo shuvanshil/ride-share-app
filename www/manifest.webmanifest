@@ -6,6 +6,7 @@
   "lang": "en-IN",
   "start_url": "./index.html",
   "scope": "./",
+  "gcm_sender_id": "103953800507",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait-primary",

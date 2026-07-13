@@ -15,10 +15,16 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
+import {
+    registerDriverPushToken,
+    startRideRequestRing,
+    stopRideRequestRing
+} from './messaging.js?v=20260713-driver-push';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
+const DRIVER_NOTIFICATION_ELIGIBLE_MS = 30 * 60 * 1000;
 
 let currentUser = null;
 let activeDriverLocationWatchId = null;
@@ -34,6 +40,7 @@ let lastPresenceHeadingPosition = null;
 let lastPresenceHeading = null;
 let lastActiveHeadingPosition = null;
 let lastActiveHeading = null;
+let driverDutyOnline = true;
 
 function addOptionalClickListener(elementId, handler) {
     const element = document.getElementById(elementId);
@@ -163,19 +170,75 @@ function showDriverHome(profile) {
     if (welcomeName) welcomeName.innerText = `Welcome, ${profile.name || "Driver"}`;
 }
 
+function getNotificationEligibleUntilDate() {
+    return new Date(Date.now() + DRIVER_NOTIFICATION_ELIGIBLE_MS);
+}
+
+function getDriverDutyStatus(profile = currentUser) {
+    if (profile?.desiredAvailability === "offline" || profile?.driverAvailability === "offline") {
+        return "offline";
+    }
+    return "online";
+}
+
+function isDriverDutyOnline() {
+    return driverDutyOnline === true;
+}
+
+function stopPresenceTracking() {
+    if (driverPresenceWatchId !== null) {
+        navigator.geolocation.clearWatch(driverPresenceWatchId);
+        driverPresenceWatchId = null;
+    }
+}
+
+function updateDutySwitchUi() {
+    const switchInput = document.getElementById('driver-duty-switch');
+    const pill = document.getElementById('driver-duty-pill');
+    const label = document.getElementById('driver-duty-state');
+    const helper = document.getElementById('driver-duty-helper');
+    const noRidesMsg = document.getElementById('no-rides-msg');
+
+    if (switchInput) switchInput.checked = isDriverDutyOnline();
+    if (pill) {
+        pill.textContent = isDriverDutyOnline() ? "Online" : "Offline";
+        pill.classList.toggle('offline', !isDriverDutyOnline());
+    }
+    if (label) label.textContent = isDriverDutyOnline() ? "Online for rides" : "Offline";
+    if (helper) {
+        helper.textContent = isDriverDutyOnline()
+            ? "Ride alerts can continue for 30 minutes after your last fresh location."
+            : "Passengers cannot see you and ride alerts are paused.";
+    }
+    if (noRidesMsg) {
+        noRidesMsg.querySelector('span').innerText = isDriverDutyOnline() ? "Live" : "Offline";
+        noRidesMsg.querySelector('strong').innerText = isDriverDutyOnline()
+            ? "Searching nearby passengers"
+            : "Duty switch is off";
+        noRidesMsg.querySelector('p').innerText = isDriverDutyOnline()
+            ? "Keep location enabled to receive targeted requests."
+            : "Turn online when you are ready to receive ride requests.";
+    }
+}
+
 async function setDriverAvailability(status) {
     if (!currentUser || currentUser.role !== "driver") return;
     currentUser.driverAvailability = status;
+    currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
+    driverDutyOnline = currentUser.desiredAvailability === "online";
+    updateDutySwitchUi();
 
     try {
-        if (status === "offline" && driverPresenceWatchId !== null) {
-            navigator.geolocation.clearWatch(driverPresenceWatchId);
-            driverPresenceWatchId = null;
-        }
+        if (status === "offline") stopPresenceTracking();
+
+        const online = status !== "offline";
+        const notificationEligibleUntil = online ? getNotificationEligibleUntilDate() : new Date(0);
 
         await updateDoc(doc(db, "users", currentUser.uid), {
             driverAvailability: status,
-            isConnected: status !== "offline",
+            desiredAvailability: online ? "online" : "offline",
+            isConnected: online,
+            notificationEligibleUntil,
             driverAvailabilityUpdatedAt: serverTimestamp()
         });
         await setDoc(doc(db, "driverPresence", currentUser.uid), {
@@ -183,13 +246,21 @@ async function setDriverAvailability(status) {
             name: currentUser.name || "Driver",
             phone: currentUser.phone || "",
             driverAvailability: status,
+            desiredAvailability: online ? "online" : "offline",
             verificationStatus: currentUser.verificationStatus || "pending_review",
             vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
             vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
             vehicle_type: inferVehicleTypeFromProfile(currentUser),
-            isConnected: status !== "offline",
+            isConnected: online,
+            notificationEligibleUntil,
             updatedAt: serverTimestamp()
         }, { merge: true });
+
+        if (online) {
+            registerDriverPushToken(db, currentUser.uid).catch((error) => {
+                console.warn("Driver push token registration failed:", error);
+            });
+        }
     } catch (error) {
         console.warn("Driver availability update failed:", error);
     }
@@ -197,13 +268,20 @@ async function setDriverAvailability(status) {
 
 async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "searching", telemetry = {}) {
     if (!currentUser || currentUser.role !== "driver") return;
+    if (!isDriverDutyOnline() && fallbackAvailability !== "busy") return;
+
+    const availability = currentlyAssignedRideId ? "busy" : currentUser.driverAvailability || fallbackAvailability;
+    const notificationEligibleUntil = getNotificationEligibleUntilDate();
+    currentUser.driverAvailability = availability;
+    currentUser.desiredAvailability = "online";
 
     await setDoc(doc(db, "driverPresence", currentUser.uid), {
         uid: currentUser.uid,
         name: currentUser.name || "Driver",
         phone: currentUser.phone || "",
         driverLocation: { lat, lng },
-        driverAvailability: currentUser.driverAvailability || fallbackAvailability,
+        driverAvailability: availability,
+        desiredAvailability: "online",
         ...telemetry,
         verificationStatus: currentUser.verificationStatus || "pending_review",
         vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
@@ -211,21 +289,25 @@ async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "se
         vehicle_type: inferVehicleTypeFromProfile(currentUser),
         isConnected: true,
         lastSeenAt: serverTimestamp(),
+        lastAppSeenAt: serverTimestamp(),
+        lastLocationAt: serverTimestamp(),
+        notificationEligibleUntil,
         updatedAt: serverTimestamp()
     }, { merge: true });
 }
 
 function startDriverPresenceTracking() {
     if (!currentUser || currentUser.role !== "driver" || currentUser.verificationStatus !== "approved") return;
+    if (!isDriverDutyOnline()) {
+        stopPresenceTracking();
+        return;
+    }
     if (!navigator.geolocation) {
         console.warn("Driver presence tracking needs browser location access.");
         return;
     }
 
-    if (driverPresenceWatchId !== null) {
-        navigator.geolocation.clearWatch(driverPresenceWatchId);
-        driverPresenceWatchId = null;
-    }
+    stopPresenceTracking();
 
     driverPresenceWatchId = navigator.geolocation.watchPosition(
         async (position) => {
@@ -244,8 +326,13 @@ function startDriverPresenceTracking() {
                 await updateDoc(doc(db, "users", currentUser.uid), {
                     driverLocation: { lat, lng },
                     ...telemetryResult.telemetry,
+                    driverAvailability: currentlyAssignedRideId ? "busy" : "searching",
+                    desiredAvailability: "online",
                     isConnected: true,
-                    lastSeenAt: serverTimestamp()
+                    lastSeenAt: serverTimestamp(),
+                    lastAppSeenAt: serverTimestamp(),
+                    lastLocationAt: serverTimestamp(),
+                    notificationEligibleUntil: getNotificationEligibleUntilDate()
                 });
                 await updateDriverPresenceLocation(lat, lng, "searching", telemetryResult.telemetry);
             } catch (error) {
@@ -593,13 +680,15 @@ function initDriverJobsStream() {
         ridesContainer.innerHTML = "";
         ridesContainer.appendChild(noRidesMsg);
 
-        if (querySnapshot.empty) {
+        if (querySnapshot.empty || !isDriverDutyOnline()) {
+            stopRideRequestRing();
             noRidesMsg.classList.remove('d-none');
             return;
         }
 
         noRidesMsg.classList.add('d-none');
         let renderedRideCount = 0;
+        let firstPendingRide = null;
 
         querySnapshot.forEach((docSnapshot) => {
             const rideId = docSnapshot.id;
@@ -608,6 +697,12 @@ function initDriverJobsStream() {
             if (ride.status !== "pending" || ride.driver_id) return;
             if (ride.vehicle_type && ride.vehicle_type !== inferVehicleTypeFromProfile(currentUser)) return;
             renderedRideCount += 1;
+            if (!firstPendingRide) {
+                firstPendingRide = {
+                    id: rideId,
+                    body: `${getRideDisplayAddress(ride, "pickup")} to ${getRideDisplayAddress(ride, "drop")}`
+                };
+            }
 
             const card = document.createElement('div');
             card.className = "card p-3 mb-3 border-start border-primary border-4 shadow-sm";
@@ -644,7 +739,10 @@ function initDriverJobsStream() {
         });
 
         if (renderedRideCount === 0) {
+            stopRideRequestRing();
             noRidesMsg.classList.remove('d-none');
+        } else {
+            startRideRequestRing(firstPendingRide || {});
         }
 
         document.querySelectorAll('.accept-job-btn').forEach(btn => {
@@ -731,6 +829,7 @@ function startDriverGpsBroadcast(rideRef) {
 
 async function acceptRideJob(rideId) {
     try {
+        stopRideRequestRing();
         let acceptedRideData = null;
         const rideRef = doc(db, "rides", rideId);
         const driverActiveRideQuery = query(
@@ -1057,15 +1156,23 @@ async function cancelRideByDriver(rideId) {
 function startDriverConsole(profile) {
     if (activeConsoleUid === profile.uid) {
         currentUser = { ...currentUser, ...profile };
+        driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
         showDriverHome(currentUser);
+        updateDutySwitchUi();
         return;
     }
 
     activeConsoleUid = profile.uid;
     currentUser = profile;
+    driverDutyOnline = getDriverDutyStatus(profile) === "online";
     showDriverHome(profile);
-    setDriverAvailability("searching");
-    startDriverPresenceTracking();
+    updateDutySwitchUi();
+    if (isDriverDutyOnline()) {
+        setDriverAvailability(profile.driverAvailability === "busy" ? "busy" : "searching");
+        startDriverPresenceTracking();
+    } else {
+        stopPresenceTracking();
+    }
     initDriverJobsStream();
     restoreDriverActiveRide();
 }
@@ -1099,6 +1206,30 @@ addOptionalClickListener('driver-history-btn', () => {
     window.location.href = 'history.html';
 });
 
+addOptionalClickListener('driver-duty-switch', async (event) => {
+    const checked = event.target.checked;
+    event.target.disabled = true;
+    try {
+        if (checked) {
+            driverDutyOnline = true;
+            currentUser.desiredAvailability = "online";
+            await registerDriverPushToken(db, currentUser.uid).catch((error) => {
+                console.warn("Driver push token registration failed:", error);
+            });
+            await setDriverAvailability(currentlyAssignedRideId ? "busy" : "searching");
+            startDriverPresenceTracking();
+        } else {
+            driverDutyOnline = false;
+            currentUser.desiredAvailability = "offline";
+            stopRideRequestRing();
+            await setDriverAvailability("offline");
+        }
+    } finally {
+        event.target.disabled = false;
+        updateDutySwitchUi();
+    }
+});
+
 addOptionalClickListener('close-driver-payment-btn', async () => {
     const closeBtn = document.getElementById('close-driver-payment-btn');
     closeBtn.disabled = true;
@@ -1127,6 +1258,14 @@ addOptionalClickListener('logout-btn', async () => {
     }
 });
 
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data?.type !== "OPEN_DRIVER_RIDE") return;
+        document.getElementById('available-rides-list')?.scrollIntoView({ behavior: "smooth", block: "start" });
+        startRideRequestRing();
+    });
+}
+
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         clearCachedProfile();
@@ -1152,12 +1291,12 @@ window.addEventListener('beforeunload', () => {
     if (currentUser?.role === "driver") {
         updateDoc(doc(db, "users", currentUser.uid), {
             isConnected: false,
-            driverAvailability: "offline",
+            lastAppSeenAt: serverTimestamp(),
             driverAvailabilityUpdatedAt: serverTimestamp()
         }).catch(() => {});
         setDoc(doc(db, "driverPresence", currentUser.uid), {
             isConnected: false,
-            driverAvailability: "offline",
+            lastAppSeenAt: serverTimestamp(),
             updatedAt: serverTimestamp()
         }, { merge: true }).catch(() => {});
     }

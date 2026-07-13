@@ -1,4 +1,17 @@
-const CACHE_VERSION = "liphtup-shell-v24-history-addresses";
+importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js");
+
+firebase.initializeApp({
+    apiKey: "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU",
+    authDomain: "tripura-rideshare.firebaseapp.com",
+    projectId: "tripura-rideshare",
+    storageBucket: "tripura-rideshare.firebasestorage.app",
+    messagingSenderId: "678756320479",
+    appId: "1:678756320479:web:3861739b218640bb3fd56a"
+});
+
+const messaging = firebase.messaging();
+const CACHE_VERSION = "liphtup-shell-v25-driver-push";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -26,6 +39,7 @@ const APP_SHELL = [
     "js/fare-policy.js",
     "js/navigation.js",
     "js/pwa.js",
+    "js/messaging.js",
     "assets/icons/liphtup-icon-180.png",
     "assets/icons/liphtup-icon-192.png",
     "assets/icons/liphtup-icon-512.png",
@@ -99,4 +113,59 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("message", (event) => {
     if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+function getRideNotificationUrl(data = {}) {
+    const rideId = data.rideId || data.ride_id || "";
+    const url = new URL("driver.html", BASE_URL);
+    if (rideId) url.searchParams.set("rideId", rideId);
+    url.searchParams.set("from", "push");
+    return url.href;
+}
+
+function showRideNotification(payload = {}) {
+    const data = payload.data || {};
+    const notification = payload.notification || {};
+    const title = notification.title || data.title || "New LiphtUp ride request";
+    const body = notification.body || data.body || "Open LiphtUp to view and accept this ride.";
+
+    return self.registration.showNotification(title, {
+        body,
+        icon: new URL("assets/icons/liphtup-icon-192.png", BASE_URL).href,
+        badge: new URL("assets/icons/liphtup-icon-192.png", BASE_URL).href,
+        tag: data.rideId ? `liphtup-ride-${data.rideId}` : "liphtup-ride-request",
+        renotify: true,
+        requireInteraction: true,
+        vibrate: [350, 180, 350, 180, 700],
+        data: {
+            ...data,
+            url: getRideNotificationUrl(data)
+        },
+        actions: [
+            { action: "open", title: "Open ride" }
+        ]
+    });
+}
+
+messaging.onBackgroundMessage((payload) => {
+    showRideNotification(payload);
+});
+
+self.addEventListener("notificationclick", (event) => {
+    event.notification.close();
+    const targetUrl = event.notification.data?.url || new URL("driver.html?from=push", BASE_URL).href;
+
+    event.waitUntil((async () => {
+        const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        const sameOriginClient = clientList.find((client) => new URL(client.url).origin === self.location.origin);
+        if (sameOriginClient) {
+            await sameOriginClient.focus();
+            sameOriginClient.postMessage({
+                type: "OPEN_DRIVER_RIDE",
+                rideId: event.notification.data?.rideId || ""
+            });
+            return;
+        }
+        await self.clients.openWindow(targetUrl);
+    })());
 });

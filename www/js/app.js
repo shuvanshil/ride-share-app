@@ -1,4 +1,4 @@
-import { db } from './firebase-init.js';
+import { auth, db } from './firebase-init.js';
 import { 
     collection, 
     addDoc, 
@@ -17,7 +17,7 @@ import { calculateServiceFare, getRideService } from './fare-policy.js';
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
 const DISPATCH_TIMEOUT_MS = 45000;
-const ACTIVE_DRIVER_LAST_SEEN_MS = 120000;
+const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
 const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
 const APP_SHARE_TEXT = "Ride Together, Save Together. Invite friends and unlock exciting LiphtUp discounts.";
@@ -392,9 +392,18 @@ function calculateDispatchDistanceKm(lat1, lon1, lat2, lon2) {
 }
 
 function isDriverRecentlyConnected(driver) {
-    if (!driver.isConnected) return false;
-    if (!driver.lastSeenAt?.toMillis) return true;
-    return Date.now() - driver.lastSeenAt.toMillis() <= ACTIVE_DRIVER_LAST_SEEN_MS;
+    if (driver.desiredAvailability === "offline" || driver.driverAvailability === "offline") return false;
+    const lastLocationAt = getTimestampMs(driver.lastLocationAt || driver.lastSeenAt || driver.updatedAt);
+    if (!lastLocationAt) return Boolean(driver.isConnected);
+    return Date.now() - lastLocationAt <= DRIVER_LOCATION_VISIBLE_MS;
+}
+
+function getTimestampMs(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function inferVehicleTypeFromProfile(driver) {
@@ -475,6 +484,32 @@ async function buildInitialDispatchState(pickupLat, pickupLng, requestedVehicleT
     };
 }
 
+async function notifyRideDrivers(rideId, driverIds = []) {
+    const uniqueDriverIds = [...new Set(driverIds.filter(Boolean))];
+    if (!rideId || !uniqueDriverIds.length) return;
+
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) return;
+
+        const response = await fetch("/api/notify-ride-request", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ rideId, driverIds: uniqueDriverIds })
+        });
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            console.warn("Ride push notification request failed:", data.error || response.status);
+        }
+    } catch (error) {
+        console.warn("Ride push notification request failed:", error);
+    }
+}
+
 function clearDispatchExpansionTimer() {
     if (activeDispatchExpansionTimer) {
         clearTimeout(activeDispatchExpansionTimer);
@@ -528,6 +563,7 @@ async function expandRideDispatch(rideId) {
             last_dispatch_at: serverTimestamp(),
             updatedAt: serverTimestamp()
         });
+        notifyRideDrivers(rideId, nextBatchIds).catch(() => {});
     } catch (error) {
         console.error("Ride dispatch expansion failed:", error);
     }
@@ -827,6 +863,7 @@ requestRideButton.addEventListener('click', async () => {
         };
 
         const docRef = await addDoc(collection(db, "rides"), rideData);
+        notifyRideDrivers(docRef.id, dispatchState.notified_driver_ids).catch(() => {});
         showPassengerCancelButton(docRef.id);
         renderPassengerVerificationPin(verificationPin);
         listenToRideStatusUpdates(docRef.id);

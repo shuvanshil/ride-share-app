@@ -2,6 +2,11 @@ import { auth, db } from './firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 import {
+    registerDriverPushToken,
+    startRideRequestRing,
+    stopRideRequestRing
+} from './messaging.js?v=20260713-driver-push';
+import {
     collection,
     doc,
     getDoc,
@@ -26,6 +31,13 @@ const LOCATION_WRITE_MIN_INTERVAL_MS = 5000;
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 const DRIVER_LOCATION_CACHE_KEY = "liphtup_last_driver_location";
 const DEFAULT_DRIVER_LOCATION = Object.freeze({ lat: 24.3124, lng: 92.0135 });
+const DRIVER_NAV_MODE_CACHE_KEY = "liphtup_driver_nav_mode";
+const NAV_CAMERA_TILT = 55;
+const NAV_CAMERA_ZOOM = 18;
+const DRIVER_MARKER_ANIM_MIN_MS = 700;
+const DRIVER_MARKER_ANIM_MAX_MS = 6000;
+const DRIVER_MARKER_ANIM_DEFAULT_MS = 700;
+const CAMERA_ROTATE_ANIM_MS = 700;
 
 const mapHost = document.getElementById('driver-service-map');
 const statusText = document.getElementById('driver-service-status');
@@ -153,19 +165,20 @@ function calculateBearing(from, to) {
 }
 
 class RotatingVehicleMarker {
-    constructor({ map: markerMap, position, title = "", vehicleType = "bike", heading = null, zIndex = 1000 }) {
+    constructor({ map: markerMap, position, title = "", vehicleType = "bike", heading = null, zIndex = 1000, live = false }) {
         this.position = position;
         this.heading = normalizeHeading(heading);
         this.overlay = new window.google.maps.OverlayView();
         this.element = document.createElement("div");
         this.element.className = "rotating-vehicle-marker";
-        this.element.style.cssText = "position:absolute;width:48px;height:48px;pointer-events:auto;will-change:transform;";
+        this.element.classList.toggle("is-live-tracked", Boolean(live));
+        this.element.style.cssText = "position:absolute;width:48px;height:48px;pointer-events:auto;will-change:transform;animation:vehicle-marker-pop 260ms cubic-bezier(0.34,1.56,0.64,1);";
         this.element.style.zIndex = String(zIndex);
         this.element.title = title;
         this.image = document.createElement("img");
         this.image.alt = "";
         this.image.draggable = false;
-        this.image.style.cssText = "width:48px;height:48px;object-fit:contain;transform-origin:50% 50%;transition:transform 220ms linear;user-select:none;";
+        this.image.style.cssText = "width:48px;height:48px;object-fit:contain;transform-origin:50% 50%;filter:drop-shadow(0 3px 6px rgba(15,23,42,0.35));user-select:none;";
         this.element.appendChild(this.image);
         this.setVehicleType(vehicleType);
         this.setHeading(this.heading);
@@ -210,6 +223,10 @@ class RotatingVehicleMarker {
         if (normalized == null) return;
         this.heading = normalized;
         this.image.style.transform = `rotate(${normalized}deg)`;
+    }
+
+    setLiveTracked(live) {
+        this.element.classList.toggle("is-live-tracked", Boolean(live));
     }
 }
 
@@ -341,6 +358,7 @@ function startIncomingRideListener() {
         noRidesMsg.classList.add('d-none');
 
         let renderedRideCount = 0;
+        let firstPendingRide = null;
         const driverVehicleType = getDriverRequestVehicleType(currentUser);
 
         snapshot.forEach((docSnapshot) => {
@@ -349,11 +367,20 @@ function startIncomingRideListener() {
             if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) return;
 
             renderedRideCount += 1;
+            if (!firstPendingRide) {
+                firstPendingRide = {
+                    id: docSnapshot.id,
+                    body: `${getRideDisplayAddress(ride, "pickup")} to ${getRideDisplayAddress(ride, "drop")}`
+                };
+            }
             ridesContainer.appendChild(renderIncomingRideCard(docSnapshot.id, ride));
         });
 
         if (renderedRideCount === 0) {
+            stopRideRequestRing();
             renderNoIncomingRequests();
+        } else {
+            startRideRequestRing(firstPendingRide || {});
         }
 
         updateIncomingRequestsVisibility();
@@ -369,11 +396,16 @@ async function setServiceDriverAvailability(status) {
     if (!currentUser?.uid) return;
 
     currentUser.driverAvailability = status;
+    currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
+    const online = status !== "offline";
+    const notificationEligibleUntil = online ? new Date(Date.now() + 30 * 60 * 1000) : new Date(0);
 
     const userUpdate = {
         driverAvailability: status,
-        isConnected: status !== "offline",
+        desiredAvailability: online ? "online" : "offline",
+        isConnected: online,
+        notificationEligibleUntil,
         driverAvailabilityUpdatedAt: serverTimestamp(),
         lastSeenAt: serverTimestamp()
     };
@@ -384,11 +416,13 @@ async function setServiceDriverAvailability(status) {
         name: currentUser.name || "Driver",
         phone: currentUser.phone || "",
         driverAvailability: status,
+        desiredAvailability: online ? "online" : "offline",
         verificationStatus: currentUser.verificationStatus || "pending_review",
         vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
         vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
         vehicle_type: inferVehicleType(currentUser),
-        isConnected: status !== "offline",
+        isConnected: online,
+        notificationEligibleUntil,
         updatedAt: serverTimestamp(),
         lastSeenAt: serverTimestamp()
     };
@@ -404,6 +438,7 @@ async function acceptIncomingRide(rideId, button) {
     if (!rideId || !currentUser?.uid || acceptRideInProgress) return;
 
     acceptRideInProgress = true;
+    stopRideRequestRing();
     if (button) {
         button.disabled = true;
         button.innerText = "Accepting...";
@@ -665,12 +700,18 @@ function hideLifecyclePanel() {
     lifecyclePanel.classList.add('d-none');
 }
 
+let lastDriverMarkerFixAt = null;
+
 function animateDriverMarkerTo(position, heading = null) {
     if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
     const current = driverMarker?.getPosition();
+    const now0 = performance.now();
+
     if (!current || typeof requestAnimationFrame !== "function") {
         driverMarker?.setPosition(position);
         driverMarker?.setHeading?.(heading);
+        lastDriverMarkerFixAt = now0;
+        if (navigationModeEnabled) applyNavigationCamera(position, heading, true);
         return;
     }
 
@@ -681,20 +722,34 @@ function animateDriverMarkerTo(position, heading = null) {
         driverMarker.setPosition(position);
         driverMarker.setHeading?.(heading);
         driverMarkerAnimationFrame = null;
+        lastDriverMarkerFixAt = now0;
+        if (navigationModeEnabled) applyNavigationCamera(position, heading, true);
         return;
     }
 
-    const startedAt = performance.now();
+    // Match the glide duration to however long it actually took for this GPS
+    // fix to arrive, so the marker (and nav camera) are always in motion
+    // instead of snapping into place and then sitting still.
+    const sinceLastFix = lastDriverMarkerFixAt ? now0 - lastDriverMarkerFixAt : DRIVER_MARKER_ANIM_DEFAULT_MS;
+    const duration = Math.min(DRIVER_MARKER_ANIM_MAX_MS, Math.max(DRIVER_MARKER_ANIM_MIN_MS, sinceLastFix));
+    lastDriverMarkerFixAt = now0;
+
+    const startedAt = now0;
     const step = (now) => {
-        const progress = Math.min(1, (now - startedAt) / 700);
+        const progress = Math.min(1, (now - startedAt) / duration);
         const eased = progress * progress * (3 - (2 * progress));
-        driverMarker.setPosition({
+        const framePosition = {
             lat: start.lat + (latDelta * eased),
             lng: start.lng + (lngDelta * eased)
-        });
+        };
+        driverMarker.setPosition(framePosition);
+        let frameHeading = lastDriverHeading;
         if (heading != null) {
-            driverMarker.setHeading?.(smoothHeading(lastDriverHeading, heading, eased));
+            frameHeading = smoothHeading(lastDriverHeading, heading, eased);
+            driverMarker.setHeading?.(frameHeading);
         }
+        if (navigationModeEnabled) applyNavigationCamera(framePosition, frameHeading);
+
         if (progress < 1) {
             driverMarkerAnimationFrame = requestAnimationFrame(step);
         } else {
@@ -724,6 +779,27 @@ let routeRefreshQueued = false;
 let firstRouteFitComplete = false;
 let routeRetryTimer = null;
 let activeRoutePath = [];
+let navToggleButton = null;
+let cameraAnimationFrame = null;
+let lastCameraHeading = 0;
+let navigationModeEnabled = readCachedNavigationModePreference();
+
+function readCachedNavigationModePreference() {
+    try {
+        const cached = localStorage.getItem(DRIVER_NAV_MODE_CACHE_KEY);
+        return cached === null ? true : cached === "1";
+    } catch {
+        return true;
+    }
+}
+
+function rememberNavigationModePreference(enabled) {
+    try {
+        localStorage.setItem(DRIVER_NAV_MODE_CACHE_KEY, enabled ? "1" : "0");
+    } catch {
+        // Private browsing may block storage; navigation mode still works this session.
+    }
+}
 
 function clearRoute() {
     if (routePolyline?.setMap) routePolyline.setMap(null);
@@ -742,6 +818,7 @@ function clearTarget() {
         window.clearTimeout(routeRetryTimer);
         routeRetryTimer = null;
     }
+    resetCameraToOverview();
 }
 
 function scheduleRouteRetry() {
@@ -763,10 +840,12 @@ async function ensureMap(position) {
             maxZoom: 21,
             zoomControl: true,
             fullscreenControl: true,
-            gestureHandling: "greedy"
+            gestureHandling: "greedy",
+            enableCameraRotation: true
         });
         map = mapShell.map;
         hideMessage();
+        ensureNavToggleButton();
         return map;
     } catch (error) {
         console.error("Driver Google Map failed to load:", error);
@@ -780,6 +859,95 @@ async function ensureMap(position) {
     }
 }
 
+function stopCameraAnimation() {
+    if (cameraAnimationFrame) {
+        cancelAnimationFrame(cameraAnimationFrame);
+        cameraAnimationFrame = null;
+    }
+}
+
+// Rotates + tilts the camera so the driver's direction of travel always
+// points "up" on screen (heading-up navigation), following the driver from
+// pickup to drop-off the same way Google Maps / Uber turn-by-turn does.
+// Only takes effect once the driver actually has somewhere to drive to -
+// while idle the map stays flat and north-up.
+function applyNavigationCamera(position, heading, instant = false) {
+    if (!map || !navigationModeEnabled || !position || !map.moveCamera) return;
+    // fitBounds() (used for the initial pickup/destination overview) resets
+    // heading and tilt to zero, so wait until that first framing is done
+    // before rotating the camera - otherwise the rotation would be
+    // immediately undone the moment the route arrives.
+    if (!currentTarget || !firstRouteFitComplete) return;
+
+    const targetHeading = normalizeHeading(heading) ?? lastCameraHeading;
+    const targetZoom = map.getZoom() || NAV_CAMERA_ZOOM;
+
+    if (instant) {
+        stopCameraAnimation();
+        map.moveCamera({ center: position, heading: targetHeading, tilt: NAV_CAMERA_TILT, zoom: Math.max(targetZoom, NAV_CAMERA_ZOOM) });
+        lastCameraHeading = targetHeading;
+        return;
+    }
+
+    stopCameraAnimation();
+    const startHeading = normalizeHeading(map.getHeading?.()) ?? lastCameraHeading;
+    const startedAt = performance.now();
+
+    const step = (now) => {
+        const progress = Math.min(1, (now - startedAt) / CAMERA_ROTATE_ANIM_MS);
+        const eased = progress * progress * (3 - (2 * progress));
+        const nextHeading = smoothHeading(startHeading, targetHeading, eased);
+        map.moveCamera({ center: position, heading: nextHeading, tilt: NAV_CAMERA_TILT, zoom: Math.max(map.getZoom() || NAV_CAMERA_ZOOM, NAV_CAMERA_ZOOM) });
+        if (progress < 1) {
+            cameraAnimationFrame = requestAnimationFrame(step);
+        } else {
+            lastCameraHeading = targetHeading;
+            cameraAnimationFrame = null;
+        }
+    };
+    cameraAnimationFrame = requestAnimationFrame(step);
+}
+
+function resetCameraToOverview() {
+    stopCameraAnimation();
+    if (!map || !map.moveCamera) return;
+    map.moveCamera({
+        center: lastPosition || map.getCenter?.(),
+        heading: 0,
+        tilt: 0,
+        zoom: map.getZoom() || 16
+    });
+    lastCameraHeading = 0;
+}
+
+function setNavigationMode(enabled) {
+    navigationModeEnabled = enabled;
+    rememberNavigationModePreference(enabled);
+    navToggleButton?.classList.toggle("is-active", enabled);
+    navToggleButton?.setAttribute("aria-pressed", String(enabled));
+    if (navToggleButton) navToggleButton.title = enabled ? "Navigation mode: on (tap for map view)" : "Map view (tap for navigation mode)";
+
+    if (!map) return;
+    if (enabled && currentTarget && lastPosition) {
+        applyNavigationCamera(lastPosition, lastDriverHeading, true);
+    } else {
+        resetCameraToOverview();
+    }
+}
+
+function ensureNavToggleButton() {
+    if (navToggleButton || !mapHost?.parentElement) return;
+
+    navToggleButton = document.createElement("button");
+    navToggleButton.type = "button";
+    navToggleButton.className = "driver-nav-toggle-btn";
+    navToggleButton.setAttribute("aria-label", "Toggle navigation camera");
+    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true">&#8963;</span>';
+    navToggleButton.addEventListener("click", () => setNavigationMode(!navigationModeEnabled));
+    mapHost.parentElement.appendChild(navToggleButton);
+    setNavigationMode(navigationModeEnabled);
+}
+
 function upsertDriverMarker(position, heading = null) {
     if (!map || !window.google?.maps) return;
 
@@ -790,9 +958,12 @@ function upsertDriverMarker(position, heading = null) {
             title: "Your live location",
             vehicleType: inferVehicleType(currentUser),
             heading,
-            zIndex: 1000
+            zIndex: 1000,
+            live: true
         });
         lastDriverHeading = normalizeHeading(heading) ?? lastDriverHeading;
+        lastDriverMarkerFixAt = performance.now();
+        if (navigationModeEnabled && currentTarget) applyNavigationCamera(position, heading, true);
         return;
     }
 
@@ -835,6 +1006,10 @@ function fitActiveRoute(path) {
     if (lastPosition) bounds.extend(lastPosition);
     map.fitBounds(bounds, { top: 110, right: 42, bottom: 70, left: 42 });
     firstRouteFitComplete = true;
+
+    if (navigationModeEnabled && lastPosition) {
+        window.setTimeout(() => applyNavigationCamera(lastPosition, lastDriverHeading, true), 900);
+    }
 }
 
 function drawRoute(path) {
@@ -969,14 +1144,20 @@ async function writeDriverLocation(position) {
     if (Number.isFinite(Number(position.driverAccuracy))) telemetryData.driverAccuracy = Number(position.driverAccuracy);
     const availability = currentRide ? "busy" : "searching";
     currentUser.driverAvailability = availability;
+    currentUser.desiredAvailability = "online";
+    const notificationEligibleUntil = new Date(Date.now() + 30 * 60 * 1000);
 
     const writes = [
         updateDoc(doc(db, "users", currentUser.uid), {
             driverLocation: locationData,
             ...telemetryData,
             driverAvailability: availability,
+            desiredAvailability: "online",
             isConnected: true,
             lastSeenAt: serverTimestamp(),
+            lastAppSeenAt: serverTimestamp(),
+            lastLocationAt: serverTimestamp(),
+            notificationEligibleUntil,
             driverAvailabilityUpdatedAt: serverTimestamp()
         }),
         setDoc(doc(db, "driverPresence", currentUser.uid), {
@@ -986,12 +1167,16 @@ async function writeDriverLocation(position) {
             driverLocation: locationData,
             ...telemetryData,
             driverAvailability: availability,
+            desiredAvailability: "online",
             verificationStatus: currentUser.verificationStatus || "pending_review",
             vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
             vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
             vehicle_type: inferVehicleType(currentUser),
             isConnected: true,
             lastSeenAt: serverTimestamp(),
+            lastAppSeenAt: serverTimestamp(),
+            lastLocationAt: serverTimestamp(),
+            notificationEligibleUntil,
             updatedAt: serverTimestamp()
         }, { merge: true })
     ];
@@ -1611,6 +1796,9 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 
         currentUser = profile;
         cacheProfile(profile);
+        registerDriverPushToken(db, currentUser.uid).catch((error) => {
+            console.warn("Driver service push token registration failed:", error);
+        });
         startActiveRideListener();
         startIncomingRideListener();
         startLocationTracking();

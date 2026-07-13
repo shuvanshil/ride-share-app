@@ -1053,6 +1053,11 @@ select {
     font-weight: 800;
 }
 
+.online-pill.offline {
+    color: #991b1b;
+    background: #FEE2E2;
+}
+
 .driver-status-card,
 .active-trip-card,
 .ride-list .card,
@@ -1081,6 +1086,69 @@ select {
     margin: 0;
     color: var(--gy-muted);
     font-size: 13px;
+}
+
+.driver-duty-control {
+    display: grid;
+    justify-items: end;
+    gap: 8px;
+    min-width: 118px;
+}
+
+.driver-duty-control strong {
+    color: #111827;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.2;
+    text-align: right;
+}
+
+.driver-duty-switch {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.driver-duty-switch input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.driver-duty-switch span {
+    position: relative;
+    width: 54px;
+    height: 30px;
+    border-radius: 999px;
+    background: #D1D5DB;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    transition: background 180ms ease;
+}
+
+.driver-duty-switch span::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.22);
+    transition: transform 180ms ease;
+}
+
+.driver-duty-switch input:checked + span {
+    background: var(--gy-green);
+}
+
+.driver-duty-switch input:checked + span::after {
+    transform: translateX(24px);
+}
+
+.driver-duty-switch input:focus-visible + span {
+    outline: 3px solid rgba(26, 122, 46, 0.22);
+    outline-offset: 3px;
 }
 
 .ride-list {

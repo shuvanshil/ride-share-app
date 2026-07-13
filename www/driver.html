@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260713-webicons">
+    <link rel="stylesheet" href="css/style.css?v=20260713-driver-duty-push-fix">
 </head>
 <body>
     <div id="app-container" class="app-root driver-app-root">
@@ -43,7 +43,7 @@
                     <small id="driver-welcome-name">Welcome, Driver</small>
                 </div>
                 <div class="app-bar-actions">
-                    <span class="online-pill">Online</span>
+                    <span id="driver-duty-pill" class="online-pill">Online</span>
                     <button class="pwa-install-btn d-none" type="button" aria-label="Install LiphtUp">
                         <span aria-hidden="true">↓</span> Install
                     </button>
@@ -54,9 +54,16 @@
                 <section class="driver-status-card">
                     <div>
                         <h4>Driver Duty Console</h4>
-                        <p>Nearby requests assigned to your live zone.</p>
+                        <p id="driver-duty-helper">Ride alerts can continue for 30 minutes after your last fresh location.</p>
                     </div>
-                    <button id="driver-history-btn" class="mini-action" type="button">History</button>
+                    <div class="driver-duty-control">
+                        <label class="driver-duty-switch" for="driver-duty-switch">
+                            <input id="driver-duty-switch" type="checkbox" checked>
+                            <span aria-hidden="true"></span>
+                        </label>
+                        <strong id="driver-duty-state">Online for rides</strong>
+                        <button id="driver-history-btn" class="mini-action" type="button">History</button>
+                    </div>
                 </section>
 
                 <h6 class="section-title">Incoming Local Ride Requests</h6>
@@ -102,7 +109,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/driver.js?v=20260712-driver-addresses"></script>
+    <script type="module" src="js/driver.js?v=20260713-driver-duty-push-fix"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

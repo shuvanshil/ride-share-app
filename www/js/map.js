@@ -13,6 +13,10 @@ const MAX_VISIBLE_SUGGESTIONS = 5;
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
 const DRIVER_MARKER_ANIMATION_MS = 850;
+const DRIVER_MARKER_ANIMATION_MIN_MS = 900;
+const DRIVER_MARKER_ANIMATION_MAX_MS = 6000;
+const DRIVER_MARKER_COAST_MAX_MS = 4000;
+const DRIVER_MARKER_COAST_DAMPING = 0.6;
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 const ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS = 25;
 const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
@@ -563,6 +567,22 @@ function addGoogleMapStyles() {
             height: 48px;
             pointer-events: auto;
             will-change: transform;
+            animation: vehicle-marker-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .rotating-vehicle-marker::before {
+            content: "";
+            position: absolute;
+            inset: -8px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(26, 115, 232, 0.32) 0%, rgba(26, 115, 232, 0) 72%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .rotating-vehicle-marker.is-live-tracked::before {
+            opacity: 1;
+            animation: vehicle-marker-pulse 1.8s ease-out infinite;
         }
 
         .rotating-vehicle-marker img {
@@ -570,8 +590,19 @@ function addGoogleMapStyles() {
             height: 48px;
             object-fit: contain;
             transform-origin: 50% 50%;
-            transition: transform 220ms linear;
+            filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.35));
             user-select: none;
+        }
+
+        @keyframes vehicle-marker-pop {
+            from { opacity: 0; transform: scale(0.55); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes vehicle-marker-pulse {
+            0% { transform: scale(0.6); opacity: 0.55; }
+            70% { transform: scale(1.6); opacity: 0; }
+            100% { transform: scale(1.6); opacity: 0; }
         }
     `;
     document.head.appendChild(style);
@@ -582,7 +613,7 @@ function googleLatLngLiteral(coords) {
 }
 
 class RotatingVehicleMarker {
-    constructor({ map, position, title = "", vehicleType = "bike", heading = null, zIndex = 500 }) {
+    constructor({ map, position, title = "", vehicleType = "bike", heading = null, zIndex = 500, live = false }) {
         const maps = getGoogleMaps();
         this.position = googleLatLngLiteral(position);
         this.title = title;
@@ -591,6 +622,7 @@ class RotatingVehicleMarker {
         this.overlay = new maps.OverlayView();
         this.element = document.createElement("div");
         this.element.className = "rotating-vehicle-marker";
+        this.element.classList.toggle("is-live-tracked", Boolean(live));
         this.element.style.zIndex = String(zIndex);
         this.element.title = title;
         this.image = document.createElement("img");
@@ -655,6 +687,10 @@ class RotatingVehicleMarker {
 
         this.heading = normalized;
         this.image.style.transform = `rotate(${normalized}deg)`;
+    }
+
+    setLiveTracked(live) {
+        this.element.classList.toggle("is-live-tracked", Boolean(live));
     }
 }
 
@@ -866,6 +902,8 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
     hostElement.innerHTML = "";
     hostElement.classList.add("google-map-host");
 
+    const wantsRotatableCamera = Boolean(options.enableCameraRotation);
+
     const map = new maps.Map(hostElement, {
         center: googleLatLngLiteral(center),
         zoom: options.zoom ?? 15,
@@ -877,11 +915,21 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
         streetViewControl: false,
         mapTypeControl: false,
         gestureHandling: options.gestureHandling || "greedy",
-        clickableIcons: true
+        clickableIcons: true,
+        // Heading/tilt (turn-by-turn style rotation) only exist on Google's
+        // vector map renderer - a plain raster <div> map can't rotate.
+        ...(wantsRotatableCamera ? {
+            renderingType: maps.RenderingType?.VECTOR || "VECTOR",
+            heading: options.heading ?? 0,
+            tilt: options.tilt ?? 0,
+            headingInteractionEnabled: true,
+            tiltInteractionEnabled: true
+        } : {})
     });
 
     return {
         map,
+        supportsCameraRotation: wantsRotatableCamera,
         destroy() {
             maps.event.clearInstanceListeners(map);
             hostElement.innerHTML = "";
@@ -1089,13 +1137,62 @@ function updateVehicleMarkerLegend() {
     vehicleLegendElement.classList.toggle("d-none", Boolean(assignedDriverTrackingDriverId));
 }
 
+function stopDriverMarkerCoast(existing) {
+    if (existing.coastFrame) {
+        cancelAnimationFrame(existing.coastFrame);
+        existing.coastFrame = null;
+    }
+}
+
+// Once an interpolated move finishes, keep gliding the marker forward at its
+// last known speed/heading until the next real fix arrives. This is what
+// keeps the vehicle from ever looking "stuck" while it waits on the next
+// Firestore location write (which can be several seconds away).
+function beginDriverMarkerCoast(existing) {
+    stopDriverMarkerCoast(existing);
+
+    if (!existing.speedMetersPerSecond || existing.speedMetersPerSecond < 0.3) return;
+    if (existing.heading == null) return;
+
+    const headingRad = (existing.heading * Math.PI) / 180;
+    const origin = existing.marker.getPosition?.();
+    if (!origin) return;
+
+    const startPosition = { lat: origin.lat(), lng: origin.lng() };
+    const startedAt = performance.now();
+    const earthRadius = 6371000;
+
+    const step = (now) => {
+        const elapsedMs = now - startedAt;
+        if (elapsedMs > DRIVER_MARKER_COAST_MAX_MS) {
+            existing.coastFrame = null;
+            return;
+        }
+
+        const distanceMeters = existing.speedMetersPerSecond * (elapsedMs / 1000) * DRIVER_MARKER_COAST_DAMPING;
+        const deltaLat = (distanceMeters * Math.cos(headingRad)) / earthRadius * (180 / Math.PI);
+        const deltaLng = (distanceMeters * Math.sin(headingRad))
+            / (earthRadius * Math.cos(startPosition.lat * Math.PI / 180)) * (180 / Math.PI);
+
+        existing.marker.setPosition({
+            lat: startPosition.lat + deltaLat,
+            lng: startPosition.lng + deltaLng
+        });
+        existing.coastFrame = requestAnimationFrame(step);
+    };
+    existing.coastFrame = requestAnimationFrame(step);
+}
+
 function animateGlobalDriverMarker(existing, targetPosition, targetHeading = null) {
     if (existing.animationFrame) cancelAnimationFrame(existing.animationFrame);
+    stopDriverMarkerCoast(existing);
 
     const current = existing.marker.getPosition();
+    const now0 = performance.now();
     if (!current || typeof requestAnimationFrame !== "function") {
         existing.marker.setPosition(targetPosition);
         existing.marker.setHeading?.(targetHeading);
+        existing.lastFixAt = now0;
         return;
     }
 
@@ -1105,12 +1202,23 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     if (Math.abs(latitudeDelta) > 0.05 || Math.abs(longitudeDelta) > 0.05) {
         existing.marker.setPosition(targetPosition);
         existing.marker.setHeading?.(targetHeading);
+        existing.lastFixAt = now0;
         return;
     }
 
-    const startedAt = performance.now();
+    // Adaptive duration: rather than always animating over a fixed short
+    // window, stretch the glide across however long it actually took for
+    // this update to arrive. That way the marker is always moving, in sync
+    // with the real-world update cadence, instead of snapping then idling.
+    const sinceLastFix = existing.lastFixAt ? now0 - existing.lastFixAt : DRIVER_MARKER_ANIMATION_MS;
+    const duration = Math.min(DRIVER_MARKER_ANIMATION_MAX_MS, Math.max(DRIVER_MARKER_ANIMATION_MIN_MS, sinceLastFix));
+    const distanceMeters = calculateDistanceMeters(startPosition, targetPosition);
+    existing.speedMetersPerSecond = duration > 0 ? distanceMeters / (duration / 1000) : 0;
+    existing.lastFixAt = now0;
+
+    const startedAt = now0;
     const step = (now) => {
-        const progress = Math.min(1, (now - startedAt) / DRIVER_MARKER_ANIMATION_MS);
+        const progress = Math.min(1, (now - startedAt) / duration);
         const eased = progress * progress * (3 - (2 * progress));
         existing.marker.setPosition({
             lat: startPosition.lat + (latitudeDelta * eased),
@@ -1126,15 +1234,32 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
             existing.heading = targetHeading ?? existing.heading;
             existing.marker.setHeading?.(existing.heading);
             existing.animationFrame = null;
+            beginDriverMarkerCoast(existing);
         }
     };
     existing.animationFrame = requestAnimationFrame(step);
 }
 
+const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
+
+function getTimestampMs(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function isLiveDriverVisible(driver) {
     const location = driver.driverLocation || {};
-    return driver.isConnected === true
+    const lastLocationAt = getTimestampMs(driver.lastLocationAt || driver.lastSeenAt || driver.updatedAt);
+    const hasFreshLocation = lastLocationAt
+        ? Date.now() - lastLocationAt <= DRIVER_LOCATION_VISIBLE_MS
+        : driver.isConnected === true;
+
+    return driver.desiredAvailability !== "offline"
         && driver.driverAvailability !== "offline"
+        && hasFreshLocation
         && Number.isFinite(Number(location.lat))
         && Number.isFinite(Number(location.lng));
 }
@@ -1161,7 +1286,16 @@ function upsertGlobalDriverMarker(driverId, driver) {
             zIndex: 500
         });
 
-        globalDriverMarkers.set(driverId, { marker, vehicleType, heading, animationFrame: null });
+        globalDriverMarkers.set(driverId, {
+            marker,
+            vehicleType,
+            heading,
+            animationFrame: null,
+            coastFrame: null,
+            lastFixAt: performance.now(),
+            speedMetersPerSecond: 0
+        });
+        marker.setLiveTracked?.(driverId === assignedDriverTrackingDriverId);
         setGlobalDriverMarkerVisibility(driverId, globalDriverMarkers.get(driverId));
         updateVehicleMarkerLegend();
         return;
@@ -1170,6 +1304,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
     setGlobalDriverMarkerVisibility(driverId, existing);
     animateGlobalDriverMarker(existing, position, heading);
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
+    existing.marker.setLiveTracked?.(driverId === assignedDriverTrackingDriverId);
     if (existing.vehicleType !== vehicleType) {
         existing.marker.setVehicleType?.(vehicleType);
         existing.marker.setIcon?.(createDriverMarkerIcon(driver));
@@ -1186,6 +1321,7 @@ function removeGlobalDriverMarker(driverId) {
     const existing = globalDriverMarkers.get(driverId);
     if (!existing) return;
     if (existing.animationFrame) cancelAnimationFrame(existing.animationFrame);
+    stopDriverMarkerCoast(existing);
     removeMarker(existing.marker);
     globalDriverMarkers.delete(driverId);
     updateVehicleMarkerLegend();
@@ -1209,6 +1345,7 @@ function resetActiveDriverRouteState() {
 
 function clearActiveDriverMarker() {
     if (activeDriverMarker?.animationFrame) cancelAnimationFrame(activeDriverMarker.animationFrame);
+    if (activeDriverMarker) stopDriverMarkerCoast(activeDriverMarker);
     removeMarker(activeDriverMarker?.marker);
     activeDriverMarker = null;
     assignedDriverTrackingDriverId = "";
@@ -1336,6 +1473,7 @@ async function handleAssignedDriverLocation(event) {
     if (existingGlobal) {
         if (activeDriverMarker) {
             if (activeDriverMarker.animationFrame) cancelAnimationFrame(activeDriverMarker.animationFrame);
+            stopDriverMarkerCoast(activeDriverMarker);
             removeMarker(activeDriverMarker.marker);
             activeDriverMarker = null;
         }
@@ -1345,6 +1483,7 @@ async function handleAssignedDriverLocation(event) {
             existingGlobal.marker.setHeading?.(heading);
         }
         existingGlobal.marker.setTitle(detail.driver_name || "Assigned Driver");
+        existingGlobal.marker.setLiveTracked?.(true);
         return;
     }
 
@@ -1356,11 +1495,15 @@ async function handleAssignedDriverLocation(event) {
                 title: detail.driver_name || "Assigned Driver",
                 vehicleType,
                 heading,
-                zIndex: 950
+                zIndex: 950,
+                live: true
             }),
             vehicleType,
             heading,
-            animationFrame: null
+            animationFrame: null,
+            coastFrame: null,
+            lastFixAt: performance.now(),
+            speedMetersPerSecond: 0
         };
         return;
     }
