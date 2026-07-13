@@ -369,11 +369,16 @@ async function setServiceDriverAvailability(status) {
     if (!currentUser?.uid) return;
 
     currentUser.driverAvailability = status;
+    currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
+    const online = status !== "offline";
+    const notificationEligibleUntil = online ? new Date(Date.now() + 30 * 60 * 1000) : new Date(0);
 
     const userUpdate = {
         driverAvailability: status,
-        isConnected: status !== "offline",
+        desiredAvailability: online ? "online" : "offline",
+        isConnected: online,
+        notificationEligibleUntil,
         driverAvailabilityUpdatedAt: serverTimestamp(),
         lastSeenAt: serverTimestamp()
     };
@@ -384,11 +389,13 @@ async function setServiceDriverAvailability(status) {
         name: currentUser.name || "Driver",
         phone: currentUser.phone || "",
         driverAvailability: status,
+        desiredAvailability: online ? "online" : "offline",
         verificationStatus: currentUser.verificationStatus || "pending_review",
         vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
         vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
         vehicle_type: inferVehicleType(currentUser),
-        isConnected: status !== "offline",
+        isConnected: online,
+        notificationEligibleUntil,
         updatedAt: serverTimestamp(),
         lastSeenAt: serverTimestamp()
     };
@@ -969,14 +976,20 @@ async function writeDriverLocation(position) {
     if (Number.isFinite(Number(position.driverAccuracy))) telemetryData.driverAccuracy = Number(position.driverAccuracy);
     const availability = currentRide ? "busy" : "searching";
     currentUser.driverAvailability = availability;
+    currentUser.desiredAvailability = "online";
+    const notificationEligibleUntil = new Date(Date.now() + 30 * 60 * 1000);
 
     const writes = [
         updateDoc(doc(db, "users", currentUser.uid), {
             driverLocation: locationData,
             ...telemetryData,
             driverAvailability: availability,
+            desiredAvailability: "online",
             isConnected: true,
             lastSeenAt: serverTimestamp(),
+            lastAppSeenAt: serverTimestamp(),
+            lastLocationAt: serverTimestamp(),
+            notificationEligibleUntil,
             driverAvailabilityUpdatedAt: serverTimestamp()
         }),
         setDoc(doc(db, "driverPresence", currentUser.uid), {
@@ -986,12 +999,16 @@ async function writeDriverLocation(position) {
             driverLocation: locationData,
             ...telemetryData,
             driverAvailability: availability,
+            desiredAvailability: "online",
             verificationStatus: currentUser.verificationStatus || "pending_review",
             vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
             vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
             vehicle_type: inferVehicleType(currentUser),
             isConnected: true,
             lastSeenAt: serverTimestamp(),
+            lastAppSeenAt: serverTimestamp(),
+            lastLocationAt: serverTimestamp(),
+            notificationEligibleUntil,
             updatedAt: serverTimestamp()
         }, { merge: true })
     ];

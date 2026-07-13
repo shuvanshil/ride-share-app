@@ -1131,10 +1131,26 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     existing.animationFrame = requestAnimationFrame(step);
 }
 
+const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
+
+function getTimestampMs(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function isLiveDriverVisible(driver) {
     const location = driver.driverLocation || {};
-    return driver.isConnected === true
+    const lastLocationAt = getTimestampMs(driver.lastLocationAt || driver.lastSeenAt || driver.updatedAt);
+    const hasFreshLocation = lastLocationAt
+        ? Date.now() - lastLocationAt <= DRIVER_LOCATION_VISIBLE_MS
+        : driver.isConnected === true;
+
+    return driver.desiredAvailability !== "offline"
         && driver.driverAvailability !== "offline"
+        && hasFreshLocation
         && Number.isFinite(Number(location.lat))
         && Number.isFinite(Number(location.lng));
 }

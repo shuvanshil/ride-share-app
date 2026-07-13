@@ -19,6 +19,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize services and export them for use in auth.js, map.js, and app.js
+export { app };
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
