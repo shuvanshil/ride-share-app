@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260712-location-ux';
+import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260713-webicons';
 import { getRideService } from './fare-policy.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 

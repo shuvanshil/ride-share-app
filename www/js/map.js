@@ -319,6 +319,11 @@ function addGoogleMapStyles() {
             font-weight: 800;
         }
 
+        .destination-suggestion-pin .webicon {
+            width: 18px;
+            height: 18px;
+        }
+
         .destination-suggestion-main {
             display: block;
             font-size: 0.94rem;
@@ -1584,7 +1589,7 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
     if (!pickups.length) {
         suggestions.innerHTML = `
             <button class="destination-suggestion-item use-current-pickup-item" type="button">
-                <span class="destination-suggestion-pin">&#8982;</span>
+                <span class="destination-suggestion-pin"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></span>
                 <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
             </button>
             <button class="destination-map-pick-btn choose-pickup-on-map-btn" type="button">Select pickup on map</button>
@@ -1599,13 +1604,13 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
     suggestions.innerHTML = `
         <div class="destination-suggestions-title">Pickup search results</div>
         <button class="destination-suggestion-item use-current-pickup-item" type="button">
-            <span class="destination-suggestion-pin">&#8982;</span>
+            <span class="destination-suggestion-pin"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></span>
             <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
         </button>
         <button class="destination-map-pick-btn choose-pickup-on-map-btn" type="button">Select pickup on map</button>
         ${pickups.map((pickup, index) => `
             <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
-                <span class="destination-suggestion-pin">&#8982;</span>
+                <span class="destination-suggestion-pin"><span class="webicon webicon-current-location" aria-hidden="true"></span></span>
                 <span>
                     <strong class="destination-suggestion-main">${escapeHtml(pickup.mainName || pickup.name)}</strong>
                     <small class="destination-suggestion-sub">${escapeHtml(pickup.fullAddress || "Tripura, India")}</small>
@@ -2038,7 +2043,7 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
         <div class="destination-suggestions-title">Search results</div>
         ${destinations.map((destination, index) => `
             <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
-                <span class="destination-suggestion-pin">⌖</span>
+                <span class="destination-suggestion-pin"><span class="webicon webicon-destination" aria-hidden="true"></span></span>
                 <span>
                     <strong class="destination-suggestion-main">${escapeHtml(destination.mainName || destination.name)}</strong>
                     <small class="destination-suggestion-sub">${escapeHtml(destination.fullAddress || "Tripura, India")}</small>

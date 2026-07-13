@@ -14,6 +14,32 @@
     box-sizing: border-box;
 }
 
+/* Web icon system: SVG icons rendered as CSS masks so they always pick up
+   the surrounding element's text color (currentColor) — nav active/inactive
+   states, pickup/drop colors, etc. all keep working with zero extra rules. */
+.webicon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-color: currentColor;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+.webicon-home { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
+.webicon-history { -webkit-mask-image: url("../assets/icons/webicons/history.svg"); mask-image: url("../assets/icons/webicons/history.svg"); }
+.webicon-services { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
+.webicon-profile { -webkit-mask-image: url("../assets/icons/webicons/profile.svg"); mask-image: url("../assets/icons/webicons/profile.svg"); }
+.webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
+.webicon-use-current-location { -webkit-mask-image: url("../assets/icons/webicons/use-current-location.svg"); mask-image: url("../assets/icons/webicons/use-current-location.svg"); }
+
 html,
 body {
     width: 100%;
@@ -589,15 +615,30 @@ select {
     line-height: 1;
 }
 
+.pickup-dot.webicon {
+    width: 17px;
+    height: 17px;
+}
+
 .drop-pin {
     color: var(--gy-danger);
     font-size: 18px;
+}
+
+.drop-pin.webicon {
+    width: 18px;
+    height: 18px;
 }
 
 .field-action {
     color: var(--gy-muted);
     font-weight: 800;
     text-align: center;
+}
+
+.field-action .webicon {
+    width: 18px;
+    height: 18px;
 }
 
 .fare-pill {
@@ -985,6 +1026,12 @@ select {
 .bottom-nav span {
     font-size: 18px;
     line-height: 1;
+}
+
+.bottom-nav span.webicon {
+    width: 20px;
+    height: 20px;
+    margin-bottom: 1px;
 }
 
 .bottom-nav .active {
@@ -2709,6 +2756,11 @@ body.profile-editor-open {
     background: transparent;
     font-size: 18px;
     font-weight: 800;
+}
+
+.services-field-btn .webicon {
+    width: 19px;
+    height: 19px;
 }
 
 .services-map-card {

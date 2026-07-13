@@ -17,7 +17,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260712-location-ux">
+    <link rel="stylesheet" href="css/style.css?v=20260713-webicons">
 </head>
 <body>
     <div id="app-container" class="app-root services-app-root">
@@ -36,12 +36,12 @@
                 <div class="container p-0">
                     <div class="services-location-card" aria-label="Ride locations">
                         <div class="location-field services-location-field">
-                            <span class="pickup-dot">●</span>
+                            <span class="pickup-dot webicon webicon-current-location" aria-hidden="true"></span>
                             <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
-                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location">⌖</button>
+                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></button>
                         </div>
                         <div class="location-field services-location-field">
-                            <span class="drop-pin">📍</span>
+                            <span class="drop-pin webicon webicon-destination" aria-hidden="true"></span>
                             <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where to? village, street, town, or landmark" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
                             <button id="clear-drop-btn" class="field-action services-field-btn" type="button" aria-label="Clear destination">×</button>
                         </div>
@@ -101,10 +101,10 @@
             </section>
 
             <nav class="bottom-nav services-bottom-nav">
-                <button type="button" data-home-link><span>⌂</span>Home</button>
-                <button class="active" type="button"><span>▦</span>Services</button>
-                <button id="passenger-history-btn" type="button"><span>◷</span>History</button>
-                <button type="button" onclick="window.location.href='profile.html'"><span>○</span>Profile</button>
+                <button type="button" data-home-link><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
+                <button class="active" type="button"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
+                <button id="passenger-history-btn" type="button"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
+                <button type="button" onclick="window.location.href='profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
             </nav>
         </main>
 

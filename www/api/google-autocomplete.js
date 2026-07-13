@@ -115,6 +115,15 @@ async function fetchTextSearch(input, key, lat, lng) {
         .map(normalizeTextSearchPlace);
 }
 
+// Mirrors the same-purpose filter in google-reverse-geocode.js: the first
+// address_components entry is often a bare street/plot number (e.g. "122"),
+// which is useless as a search-result name, so skip past numeric-only ones.
+function isMeaningfulLabel(value) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return false;
+    return !/^\d+[a-zA-Z]?$/.test(trimmed);
+}
+
 async function fetchGeocode(input, key) {
     const params = new URLSearchParams({
         address: input,
@@ -127,7 +136,10 @@ async function fetchGeocode(input, key) {
     return results.map((item) => {
         const location = item.geometry?.location || {};
         const fullAddress = item.formatted_address || "";
-        const mainName = item.address_components?.[0]?.long_name || fullAddress;
+        const firstMeaningfulComponent = (item.address_components || [])
+            .map((component) => component.long_name)
+            .find(isMeaningfulLabel);
+        const mainName = firstMeaningfulComponent || fullAddress;
 
         return {
             placeId: item.place_id || "",
