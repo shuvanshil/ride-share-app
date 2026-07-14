@@ -1,1 +1,1 @@
-LiphtUp - A local ride sharing platform 
+LiphtUp - A local ride sharing platform
