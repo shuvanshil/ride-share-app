@@ -18,6 +18,8 @@ const DRIVER_MARKER_ANIMATION_MAX_MS = 6000;
 const DRIVER_MARKER_COAST_MAX_MS = 4000;
 const DRIVER_MARKER_COAST_DAMPING = 0.6;
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
+const DRIVER_MARKER_NOISE_FLOOR_METERS = 4;
+const DRIVER_MARKER_COAST_MIN_DISTANCE_METERS = 6;
 const ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS = 25;
 const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
 const VEHICLE_MARKER_ASSETS = Object.freeze({
@@ -567,7 +569,6 @@ function addGoogleMapStyles() {
             height: 48px;
             pointer-events: auto;
             will-change: transform;
-            animation: vehicle-marker-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .rotating-vehicle-marker::before {
@@ -592,6 +593,7 @@ function addGoogleMapStyles() {
             transform-origin: 50% 50%;
             filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.35));
             user-select: none;
+            animation: vehicle-marker-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         @keyframes vehicle-marker-pop {
@@ -1152,6 +1154,11 @@ function beginDriverMarkerCoast(existing) {
     stopDriverMarkerCoast(existing);
 
     if (!existing.speedMetersPerSecond || existing.speedMetersPerSecond < 0.3) return;
+    // Guard against GPS jitter: a stationary vehicle can easily produce a
+    // couple of meters of noise between fixes, which (divided by a short
+    // duration) looks like a non-trivial speed. Only start coasting if the
+    // most recent fix reflected real, meaningful movement.
+    if (!existing.lastMoveDistanceMeters || existing.lastMoveDistanceMeters < DRIVER_MARKER_COAST_MIN_DISTANCE_METERS) return;
     if (existing.heading == null) return;
 
     const headingRad = (existing.heading * Math.PI) / 180;
@@ -1203,6 +1210,27 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
         existing.marker.setPosition(targetPosition);
         existing.marker.setHeading?.(targetHeading);
         existing.lastFixAt = now0;
+        existing.lastMoveDistanceMeters = 0;
+        existing.speedMetersPerSecond = 0;
+        return;
+    }
+
+    const distanceMeters = calculateDistanceMeters(startPosition, targetPosition);
+    existing.lastMoveDistanceMeters = distanceMeters;
+
+    // A stationary (or nearly stationary) vehicle's GPS fix wobbles by a few
+    // meters from one update to the next. Chasing that wobble is exactly
+    // what made parked/stopped vehicles look like they were glitching and
+    // creeping around the map. Below the noise floor we hold the marker
+    // exactly where it already is instead of animating toward the "new"
+    // position, and we never treat this as speed for coasting purposes.
+    if (distanceMeters < DRIVER_MARKER_NOISE_FLOOR_METERS) {
+        existing.lastFixAt = now0;
+        existing.speedMetersPerSecond = 0;
+        if (targetHeading != null) {
+            existing.heading = smoothHeading(existing.heading, targetHeading, 0.25);
+            existing.marker.setHeading?.(existing.heading);
+        }
         return;
     }
 
@@ -1212,7 +1240,6 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     // with the real-world update cadence, instead of snapping then idling.
     const sinceLastFix = existing.lastFixAt ? now0 - existing.lastFixAt : DRIVER_MARKER_ANIMATION_MS;
     const duration = Math.min(DRIVER_MARKER_ANIMATION_MAX_MS, Math.max(DRIVER_MARKER_ANIMATION_MIN_MS, sinceLastFix));
-    const distanceMeters = calculateDistanceMeters(startPosition, targetPosition);
     existing.speedMetersPerSecond = duration > 0 ? distanceMeters / (duration / 1000) : 0;
     existing.lastFixAt = now0;
 

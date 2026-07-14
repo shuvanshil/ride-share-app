@@ -152,6 +152,19 @@ function smoothHeading(previousHeading, nextHeading, strength = 0.35) {
     return normalizeHeading(previous + shortestHeadingDelta(previous, next) * strength);
 }
 
+function smoothGpsCoordinate(previousSmoothed, rawCoords, accuracyMeters) {
+    if (!previousSmoothed) return rawCoords;
+
+    const accuracyWeight = Number.isFinite(accuracyMeters)
+        ? Math.max(0.2, Math.min(1, 12 / Math.max(accuracyMeters, 6)))
+        : 0.6;
+
+    return {
+        lat: previousSmoothed.lat + ((rawCoords.lat - previousSmoothed.lat) * accuracyWeight),
+        lng: previousSmoothed.lng + ((rawCoords.lng - previousSmoothed.lng) * accuracyWeight)
+    };
+}
+
 function calculateBearing(from, to) {
     if (!from || !to) return null;
 
@@ -172,13 +185,13 @@ class RotatingVehicleMarker {
         this.element = document.createElement("div");
         this.element.className = "rotating-vehicle-marker";
         this.element.classList.toggle("is-live-tracked", Boolean(live));
-        this.element.style.cssText = "position:absolute;width:48px;height:48px;pointer-events:auto;will-change:transform;animation:vehicle-marker-pop 260ms cubic-bezier(0.34,1.56,0.64,1);";
+        this.element.style.cssText = "position:absolute;width:48px;height:48px;pointer-events:auto;will-change:transform;";
         this.element.style.zIndex = String(zIndex);
         this.element.title = title;
         this.image = document.createElement("img");
         this.image.alt = "";
         this.image.draggable = false;
-        this.image.style.cssText = "width:48px;height:48px;object-fit:contain;transform-origin:50% 50%;filter:drop-shadow(0 3px 6px rgba(15,23,42,0.35));user-select:none;";
+        this.image.style.cssText = "width:48px;height:48px;object-fit:contain;transform-origin:50% 50%;filter:drop-shadow(0 3px 6px rgba(15,23,42,0.35));user-select:none;animation:vehicle-marker-pop 260ms cubic-bezier(0.34,1.56,0.64,1);";
         this.element.appendChild(this.image);
         this.setVehicleType(vehicleType);
         this.setHeading(this.heading);
@@ -769,6 +782,7 @@ let routePolyline = null;
 let locationWatchId = null;
 let activeRideUnsubscribe = null;
 let lastPosition = null;
+let lastSmoothedPosition = null;
 let hasLiveGpsPosition = false;
 let lastRoutePosition = null;
 let lastRouteAt = 0;
@@ -927,6 +941,15 @@ function setNavigationMode(enabled) {
     navToggleButton?.setAttribute("aria-pressed", String(enabled));
     if (navToggleButton) navToggleButton.title = enabled ? "Navigation mode: on (tap for map view)" : "Map view (tap for navigation mode)";
 
+    const iconSpan = navToggleButton?.querySelector('.driver-nav-toggle-icon');
+    if (iconSpan) {
+        const maskUrl = enabled
+            ? 'url("https://upload.wikimedia.org/wikipedia/commons/d/de/Codex_icon_arrowUp.svg")'
+            : 'url("https://upload.wikimedia.org/wikipedia/commons/f/f7/Codex_icon_arrowNext.svg")';
+        iconSpan.style.webkitMaskImage = maskUrl;
+        iconSpan.style.maskImage = maskUrl;
+    }
+
     if (!map) return;
     if (enabled && currentTarget && lastPosition) {
         applyNavigationCamera(lastPosition, lastDriverHeading, true);
@@ -942,7 +965,7 @@ function ensureNavToggleButton() {
     navToggleButton.type = "button";
     navToggleButton.className = "driver-nav-toggle-btn";
     navToggleButton.setAttribute("aria-label", "Toggle navigation camera");
-    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true">&#8963;</span>';
+    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true"></span>';
     navToggleButton.addEventListener("click", () => setNavigationMode(!navigationModeEnabled));
     mapHost.parentElement.appendChild(navToggleButton);
     setNavigationMode(navigationModeEnabled);
@@ -1200,9 +1223,20 @@ async function writeDriverLocation(position) {
 
 async function handleLocation(position) {
     const previousPosition = lastPosition;
-    const coords = {
+    const rawCoords = {
         lat: position.coords.latitude,
         lng: position.coords.longitude
+    };
+    const smoothed = smoothGpsCoordinate(
+        lastSmoothedPosition,
+        rawCoords,
+        position.coords.accuracy
+    );
+    lastSmoothedPosition = smoothed;
+
+    const coords = {
+        lat: smoothed.lat,
+        lng: smoothed.lng
     };
     const telemetryResult = buildLocationTelemetry(coords, position.coords, previousPosition, lastDriverHeading);
     if (telemetryResult.heading != null) {
