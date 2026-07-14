@@ -25,6 +25,19 @@ const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 const DRIVER_NOTIFICATION_ELIGIBLE_MS = 30 * 60 * 1000;
+// Raw GPS fixes jitter by a few metres even while a vehicle is parked. Writing
+// every single watchPosition callback straight to Firestore is what made the
+// auto icon "glitch"/shift on both the driver's and the rider's map -- each
+// noisy fix was rendered as if the vehicle had actually moved. These gates
+// throttle writes to real movement, while still refreshing on a heartbeat so
+// the driver doesn't look stale/offline while stationary.
+const DRIVER_LOCATION_WRITE_DISTANCE_METERS = 8;
+const DRIVER_LOCATION_WRITE_MIN_INTERVAL_MS = 4000;
+// Slightly tighter gate while a ride is active, since the rider is watching
+// the car move in real time and expects more frequent updates than the
+// idle "searching for a ride" loop.
+const DRIVER_ACTIVE_LOCATION_WRITE_DISTANCE_METERS = 5;
+const DRIVER_ACTIVE_LOCATION_WRITE_MIN_INTERVAL_MS = 2500;
 
 let currentUser = null;
 let activeDriverLocationWatchId = null;
@@ -41,6 +54,14 @@ let lastPresenceHeading = null;
 let lastActiveHeadingPosition = null;
 let lastActiveHeading = null;
 let driverDutyOnline = true;
+// Smoothed (exponential moving average) coordinates + write-gate bookkeeping,
+// tracked separately for the "searching" presence watch and the "on trip" watch.
+let lastPresenceSmoothedPosition = null;
+let lastPresenceWrittenPosition = null;
+let lastPresenceWriteAt = 0;
+let lastActiveSmoothedPosition = null;
+let lastActiveWrittenPosition = null;
+let lastActiveWriteAt = 0;
 
 function addOptionalClickListener(elementId, handler) {
     const element = document.getElementById(elementId);
@@ -127,6 +148,42 @@ function calculateBearing(from, to) {
     const x = Math.cos(lat1) * Math.sin(lat2)
         - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
     return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+}
+
+// Blends a new raw GPS fix into the previous smoothed position instead of
+// trusting each fix outright. Fixes reported with poor accuracy are trusted
+// less, so a single noisy reading can't yank the marker sideways.
+function smoothGpsCoordinate(previousSmoothed, rawCoords, accuracyMeters) {
+    if (!previousSmoothed) return rawCoords;
+
+    const accuracyWeight = Number.isFinite(accuracyMeters)
+        ? Math.max(0.2, Math.min(1, 12 / Math.max(accuracyMeters, 6)))
+        : 0.6;
+
+    return {
+        lat: previousSmoothed.lat + ((rawCoords.lat - previousSmoothed.lat) * accuracyWeight),
+        lng: previousSmoothed.lng + ((rawCoords.lng - previousSmoothed.lng) * accuracyWeight)
+    };
+}
+
+// Only write a location update when the vehicle actually moved a meaningful
+// distance, or enough time has passed that a heartbeat write is due anyway
+// (so the driver doesn't fall out of "online" freshness checks while parked).
+function shouldWriteDriverLocation(
+    lastWrittenPosition,
+    lastWriteAt,
+    candidatePosition,
+    distanceThresholdMeters = DRIVER_LOCATION_WRITE_DISTANCE_METERS,
+    minIntervalMs = DRIVER_LOCATION_WRITE_MIN_INTERVAL_MS
+) {
+    if (!lastWrittenPosition) return true;
+
+    const elapsed = Date.now() - lastWriteAt;
+    const moved = distanceMeters(lastWrittenPosition, candidatePosition);
+    if (elapsed < minIntervalMs && moved < distanceThresholdMeters) {
+        return false;
+    }
+    return true;
 }
 
 function buildDriverTelemetry(coords, browserCoords, previousPosition, previousHeading) {
@@ -312,8 +369,21 @@ function startDriverPresenceTracking() {
     driverPresenceWatchId = navigator.geolocation.watchPosition(
         async (position) => {
             try {
-                const lat = position.coords.latitude;
-                const lng = position.coords.longitude;
+                const rawCoords = { lat: position.coords.latitude, lng: position.coords.longitude };
+                const smoothed = smoothGpsCoordinate(
+                    lastPresenceSmoothedPosition,
+                    rawCoords,
+                    position.coords.accuracy
+                );
+                lastPresenceSmoothedPosition = smoothed;
+
+                if (!shouldWriteDriverLocation(lastPresenceWrittenPosition, lastPresenceWriteAt, smoothed)) {
+                    return;
+                }
+                lastPresenceWrittenPosition = smoothed;
+                lastPresenceWriteAt = Date.now();
+
+                const { lat, lng } = smoothed;
                 const coords = { lat, lng };
                 const telemetryResult = buildDriverTelemetry(
                     coords,
