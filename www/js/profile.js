@@ -575,25 +575,34 @@ async function saveProfile(event) {
     }
 
     try {
-        await updateDoc(doc(db, "users", currentAuthUser.uid), updates);
+        try {
+            currentProfile = await saveProfileThroughBackend(currentAuthUser, updates);
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
 
-        if (currentProfile.role === "driver") {
-            try {
-                await setDoc(doc(db, "driverPresence", currentAuthUser.uid), {
-                    name: updates.name,
-                    phone: currentProfile.phone || currentAuthUser.phoneNumber || "",
-                    profilePhotoUrl: updates.profilePhotoUrl,
-                    vehicle_type: updates.vehicle_type,
-                    vehicle_model: updates.vehicle_model,
-                    vehicle_number: updates.vehicle_number,
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
-            } catch (presenceError) {
-                console.warn("Driver presence profile sync will retry from the driver console:", presenceError);
+            // Temporary migration fallback. This path is only for an
+            // unavailable backend, not for rejected or unauthorized writes.
+            await updateDoc(doc(db, "users", currentAuthUser.uid), updates);
+
+            if (currentProfile.role === "driver") {
+                try {
+                    await setDoc(doc(db, "driverPresence", currentAuthUser.uid), {
+                        name: updates.name,
+                        phone: currentProfile.phone || currentAuthUser.phoneNumber || "",
+                        profilePhotoUrl: updates.profilePhotoUrl,
+                        vehicle_type: updates.vehicle_type,
+                        vehicle_model: updates.vehicle_model,
+                        vehicle_number: updates.vehicle_number,
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                } catch (presenceError) {
+                    console.warn("Driver presence profile sync will retry from the driver console:", presenceError);
+                }
             }
+
+            currentProfile = { ...currentProfile, ...updates };
         }
 
-        currentProfile = { ...currentProfile, ...updates };
         cacheProfile(currentProfile);
         renderProfileSummary(currentProfile);
         setSavingState(false);
@@ -742,6 +751,32 @@ async function loadProfileThroughBackend(user) {
         throw new Error(data.error || 'Profile backend request failed.');
     }
     return data.profile;
+}
+
+async function saveProfileThroughBackend(user, updates) {
+    const { updatedAt, ...requestUpdates } = updates;
+    try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/profile', {
+            method: 'PATCH',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify(requestUpdates)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !data.profile) {
+            const error = new Error(data.error || 'Profile backend request failed.');
+            error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+            throw error;
+        }
+        return data.profile;
+    } catch (error) {
+        if (error?.backendUnavailable === undefined) error.backendUnavailable = true;
+        throw error;
+    }
 }
 
 onAuthStateChanged(auth, async (user) => {

@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, Header
 from firebase_admin import auth as fb_auth
 from firebase_admin import firestore as fb_firestore
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..core.config import get_env
 from ..core.errors import ApiError
@@ -38,6 +38,8 @@ def _normalize_email(value: Any) -> str:
 
 
 class ProfileInput(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     name: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
@@ -48,10 +50,6 @@ class ProfileInput(BaseModel):
     drivingLicenseNumber: Optional[str] = None
     upiId: Optional[str] = None
     termsAccepted: Optional[bool] = None
-
-    class Config:
-        extra = "allow"
-
 
 class RegisterAccountBody(BaseModel):
     verificationToken: Optional[str] = None
