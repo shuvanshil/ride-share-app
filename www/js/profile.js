@@ -729,6 +729,21 @@ function bindProfileActions() {
 
 bindProfileActions();
 
+async function loadProfileThroughBackend(user) {
+    const idToken = await user.getIdToken();
+    const response = await fetch('/api/profile', {
+        headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${idToken}`
+        }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok || !data.profile) {
+        throw new Error(data.error || 'Profile backend request failed.');
+    }
+    return data.profile;
+}
+
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         currentAuthUser = null;
@@ -753,23 +768,32 @@ onAuthStateChanged(auth, async (user) => {
     document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
 
     try {
-        const userSnap = await getDoc(doc(db, "users", user.uid));
-        currentProfile = userSnap.exists() ? userSnap.data() : {
-            uid: user.uid,
-            name: user.displayName || "LiphtUp User",
-            phone: user.phoneNumber || "",
-            role: "passenger"
-        };
+        // FastAPI is now the preferred profile read path. Firestore remains
+        // as a temporary fallback until the backend is deployed and verified.
+        currentProfile = await loadProfileThroughBackend(user);
         renderProfileSummary(currentProfile);
         cacheProfile(currentProfile);
     } catch (error) {
-        console.error("Profile load failed:", error);
-        currentProfile = {
-            uid: user.uid,
-            name: user.displayName || "LiphtUp User",
-            phone: user.phoneNumber || "",
-            role: "passenger"
-        };
-        renderProfileSummary(currentProfile);
+        console.warn("Profile backend load failed; using Firestore fallback:", error);
+        try {
+            const userSnap = await getDoc(doc(db, "users", user.uid));
+            currentProfile = userSnap.exists() ? userSnap.data() : {
+                uid: user.uid,
+                name: user.displayName || "LiphtUp User",
+                phone: user.phoneNumber || "",
+                role: "passenger"
+            };
+            renderProfileSummary(currentProfile);
+            cacheProfile(currentProfile);
+        } catch (fallbackError) {
+            console.error("Profile load failed:", fallbackError);
+            currentProfile = {
+                uid: user.uid,
+                name: user.displayName || "LiphtUp User",
+                phone: user.phoneNumber || "",
+                role: "passenger"
+            };
+            renderProfileSummary(currentProfile);
+        }
     }
 });

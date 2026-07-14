@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .core.errors import ApiError
-from .routers import account, google, notify, otp
+from .routers import account, auth, google, notify, otp, profile
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -67,6 +67,8 @@ app.include_router(google.router, prefix="/api")
 app.include_router(otp.router, prefix="/api")
 app.include_router(account.router, prefix="/api")
 app.include_router(notify.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(profile.router, prefix="/api")
 
 
 @app.get("/api/health")
