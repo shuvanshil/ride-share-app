@@ -981,7 +981,28 @@ async function cancelRideByPassenger(rideId) {
     if (!confirm("Are you sure you want to cancel your ride request?")) return;
 
     try {
-        await savePassengerVerifiedHistoryStatus(rideId, "cancelled_by_passenger");
+        try {
+            const idToken = await auth.currentUser?.getIdToken();
+            if (!idToken) throw new Error("Authentication is required.");
+
+            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${idToken}` }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+                const backendError = new Error(data.error || "Could not cancel this ride.");
+                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+                throw backendError;
+            }
+        } catch (backendError) {
+            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
+            if (!backendError.backendUnavailable) throw backendError;
+
+            // Temporary migration fallback while the deployed backend is
+            // being verified. Rejected requests never use this path.
+            await savePassengerVerifiedHistoryStatus(rideId, "cancelled_by_passenger");
+        }
 
         alert("Your ride request has been cancelled.");
         resetPassengerBookingUi();

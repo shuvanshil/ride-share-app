@@ -18,3 +18,9 @@ def test_profile_endpoint_requires_authentication() -> None:
     response = TestClient(app).get("/api/profile")
     assert response.status_code == 401
     assert response.json() == {"error": "Authentication is required."}
+
+
+def test_ride_cancellation_requires_authentication() -> None:
+    response = TestClient(app).post("/api/rides/example-ride/cancel")
+    assert response.status_code == 401
+    assert response.json() == {"error": "Authentication is required."}
