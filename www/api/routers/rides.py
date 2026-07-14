@@ -1,18 +1,151 @@
 """Server-authoritative ride lifecycle operations."""
 from __future__ import annotations
 
-from typing import Any
+import math
+import secrets
+from datetime import datetime, timezone
+from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, Depends
 from firebase_admin import firestore as fb_firestore
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.auth import current_user
+from ..core.config import get_env
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app
 
 router = APIRouter(prefix="/rides", tags=["rides"])
 
 ACTIVE_PASSENGER_STATUSES = {"pending", "accepted", "arrived", "started", "en_route"}
+DISPATCH_BATCH_SIZE = 10
+DISPATCH_TIMEOUT_MS = 45000
+DRIVER_LOCATION_VISIBLE_SECONDS = 15 * 60
+
+
+class RideCreateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pickupName: str = Field(min_length=1, max_length=200)
+    dropName: str = Field(min_length=1, max_length=200)
+    pickupLat: float
+    pickupLng: float
+    dropLat: float
+    dropLng: float
+    vehicleType: str = Field(min_length=1, max_length=20)
+    dropFullAddress: str = Field(default="", max_length=500)
+    dropSource: str = Field(default="", max_length=40)
+    dropProvider: str = Field(default="", max_length=40)
+    dropPlaceId: str = Field(default="", max_length=200)
+    dropEloc: str = Field(default="", max_length=100)
+    dropTypeHint: str = Field(default="", max_length=100)
+
+
+RIDE_SERVICES = {
+    "bike": {"name": "Bike / Scooty", "capacity": 1, "base": 15, "per_km": 7},
+    "auto": {"name": "Auto", "capacity": 3, "base": 25, "per_km": 12.5},
+}
+
+
+def _coordinate(value: float, minimum: float, maximum: float) -> float:
+    if not math.isfinite(value) or value < minimum or value > maximum:
+        raise ApiError("Invalid ride coordinates.", 400)
+    return round(value, 7)
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    radius = 6371.0
+    d_lat = math.radians(lat2 - lat1)
+    d_lng = math.radians(lng2 - lng1)
+    value = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lng / 2) ** 2
+    )
+    return radius * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
+
+
+def _timestamp_seconds(value: Any) -> Optional[float]:
+    if hasattr(value, "timestamp"):
+        return value.timestamp()
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def _driver_type(driver: dict[str, Any]) -> str:
+    text = " ".join(
+        str(driver.get(key) or "")
+        for key in ("vehicle_type", "vehicleType", "vehicle_model", "vehicleModel", "vehicleName")
+    ).lower()
+    if "auto" in text or "rickshaw" in text or "tuk" in text:
+        return "auto"
+    if "bike" in text or "scooter" in text or "activa" in text or "motorcycle" in text:
+        return "bike"
+    return ""
+
+
+def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc).timestamp()
+    candidates: list[dict[str, Any]] = []
+    for snapshot in db.collection("driverPresence").where("driverAvailability", "==", "searching").stream():
+        driver = snapshot.to_dict() or {}
+        location = driver.get("driverLocation") or {}
+        lat, lng = location.get("lat"), location.get("lng")
+        last_seen = _timestamp_seconds(driver.get("lastLocationAt") or driver.get("lastSeenAt") or driver.get("updatedAt"))
+        if (
+            driver.get("verificationStatus") != "approved"
+            or (last_seen is not None and now - last_seen > DRIVER_LOCATION_VISIBLE_SECONDS)
+            or (last_seen is None and not driver.get("isConnected"))
+            or not isinstance(lat, (int, float))
+            or not isinstance(lng, (int, float))
+            or _driver_type(driver) != vehicle_type
+        ):
+            continue
+        candidates.append({
+            "uid": str(driver.get("uid") or snapshot.id),
+            "distance": _haversine_km(pickup_lat, pickup_lng, float(lat), float(lng)),
+        })
+    candidates.sort(key=lambda item: item["distance"])
+    return candidates
+
+
+async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, drop_lng: float) -> tuple[float, int]:
+    key = get_env("GOOGLE_MAPS_SERVER_KEY")
+    if not key:
+        raise ApiError("Missing GOOGLE_MAPS_SERVER_KEY.", 500)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+            response = await client.post(
+                "https://routes.googleapis.com/directions/v2:computeRoutes",
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": key,
+                    "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+                },
+                json={
+                    "origin": {"location": {"latLng": {"latitude": pickup_lat, "longitude": pickup_lng}}},
+                    "destination": {"location": {"latLng": {"latitude": drop_lat, "longitude": drop_lng}}},
+                    "travelMode": "DRIVE",
+                    "routingPreference": "TRAFFIC_UNAWARE",
+                    "computeAlternativeRoutes": False,
+                    "units": "METRIC",
+                },
+            )
+        response.raise_for_status()
+        data = response.json()
+        route = (data.get("routes") or [None])[0]
+        if not route or not route.get("distanceMeters"):
+            raise ApiError("Google route not found.", 404)
+        duration = str(route.get("duration") or "0").rstrip("s")
+        return float(route["distanceMeters"]) / 1000, max(1, round(float(duration) / 60))
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not calculate the ride route.", 503, {"message": str(error)})
 
 
 def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
@@ -49,6 +182,104 @@ def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         "source": "fastapi_passenger_cancellation",
     }
+
+
+@router.post("")
+async def create_passenger_ride(
+    body: RideCreateBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Create a ride using server-calculated route, fare, PIN, and dispatch."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    service = RIDE_SERVICES.get(body.vehicleType.strip().lower())
+    if not service:
+        raise ApiError("Choose a supported ride service.", 400)
+    pickup_lat = _coordinate(body.pickupLat, -90, 90)
+    pickup_lng = _coordinate(body.pickupLng, -180, 180)
+    drop_lat = _coordinate(body.dropLat, -90, 90)
+    drop_lng = _coordinate(body.dropLng, -180, 180)
+    if _haversine_km(pickup_lat, pickup_lng, drop_lat, drop_lng) < 0.01:
+        raise ApiError("Pickup and destination must be different.", 400)
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile_snapshot = db.collection("users").document(uid).get()
+        profile = profile_snapshot.to_dict() or {}
+        distance_km, duration_minutes = await _server_route(pickup_lat, pickup_lng, drop_lat, drop_lng)
+        fare = round(service["base"] + distance_km * service["per_km"])
+        drivers = _available_drivers(db, pickup_lat, pickup_lng, body.vehicleType.strip().lower())
+        first_batch = drivers[:DISPATCH_BATCH_SIZE]
+        driver_ids = [driver["uid"] for driver in first_batch]
+        ride_ref = db.collection("rides").document()
+        transaction = db.transaction()
+
+        @fb_firestore.transactional
+        def create_transaction(tx):
+            active_query = (
+                db.collection("rides")
+                .where("passenger_id", "==", uid)
+                .where("status", "in", list(ACTIVE_PASSENGER_STATUSES))
+                .limit(1)
+            )
+            if list(active_query.stream(transaction=tx)):
+                raise ApiError("You already have an active ride request or an ongoing trip.", 409)
+            tx.set(ride_ref, ride_data)
+
+        ride_data = {
+            "passenger_id": uid,
+            "passenger_name": str(profile.get("name") or user.get("name") or "Passenger")[:80],
+            "passenger_phone": str(profile.get("phone") or user.get("phone_number") or "")[:40],
+            "pickup_name": body.pickupName.strip(),
+            "drop_name": body.dropName.strip(),
+            "drop_full_address": body.dropFullAddress.strip(),
+            "pickup_lat": pickup_lat,
+            "pickup_lng": pickup_lng,
+            "drop_lat": drop_lat,
+            "drop_lng": drop_lng,
+            "distance_km": round(distance_km, 2),
+            "duration_minutes": duration_minutes,
+            "fare": fare,
+            "fare_base": service["base"],
+            "fare_per_km": service["per_km"],
+            "fare_currency": "INR",
+            "vehicle_type": body.vehicleType.strip().lower(),
+            "service_name": service["name"],
+            "passenger_capacity": service["capacity"],
+            "status": "pending",
+            "driver_id": None,
+            "driver_name": None,
+            "driver_phone": None,
+            "vehicle_model": None,
+            "vehicle_number": None,
+            "driverAvailabilitySnapshot": None,
+            "payment_methods": ["cash", "upi"],
+            "payment_status": "pending",
+            "verification_pin": f"{secrets.randbelow(10000):04d}",
+            "eligible_driver_ids": driver_ids,
+            "notified_driver_ids": driver_ids,
+            "rejected_driver_ids": [],
+            "dispatch_batch_size": DISPATCH_BATCH_SIZE,
+            "dispatch_timeout_ms": DISPATCH_TIMEOUT_MS,
+            "dispatch_total_candidates": len(drivers),
+            "dispatch_round": 1 if driver_ids else 0,
+            "search_status": "searching_nearby_drivers" if driver_ids else "no_available_drivers",
+            "createdAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        create_transaction(transaction)
+        return {
+            "ok": True,
+            "rideId": ride_ref.id,
+            "verificationPin": ride_data["verification_pin"],
+            "notifiedDriverIds": driver_ids,
+            "ride": {key: value for key, value in ride_data.items() if key != "createdAt"},
+        }
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not create this ride request.", 503, {"message": str(error)})
 
 
 @router.post("/{ride_id}/cancel")

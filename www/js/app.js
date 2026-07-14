@@ -756,6 +756,27 @@ async function restorePassengerActiveRide() {
 // ==========================================
 // 2. PASSENGER ENGINE: SUBMIT REQUESTS
 // ==========================================
+async function createRideThroughBackend(payload) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+
+    const response = await fetch("/api/rides", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`
+        },
+        body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        const error = new Error(data.error || "Could not create this ride request.");
+        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        throw error;
+    }
+    return data;
+}
+
 const requestRideButton = document.getElementById('request-ride-btn');
 if (requestRideButton) {
 requestRideButton.addEventListener('click', async () => {
@@ -811,6 +832,33 @@ requestRideButton.addEventListener('click', async () => {
     requestBtn.disabled = true;
 
     try {
+        try {
+            const backendRide = await createRideThroughBackend({
+                pickupName: pickupText,
+                dropName: dropText,
+                pickupLat: Number(fareQuote.pickup_lat),
+                pickupLng: Number(fareQuote.pickup_lng),
+                dropLat: Number(fareQuote.drop_lat),
+                dropLng: Number(fareQuote.drop_lng),
+                vehicleType: requestedVehicleType,
+                dropFullAddress: fareQuote.drop_full_address || "",
+                dropSource: fareQuote.drop_source || "",
+                dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",
+                dropPlaceId: fareQuote.drop_place_id || "",
+                dropEloc: fareQuote.drop_eloc || "",
+                dropTypeHint: fareQuote.drop_type_hint || ""
+            });
+            notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
+            showPassengerCancelButton(backendRide.rideId);
+            renderPassengerVerificationPin(backendRide.verificationPin);
+            listenToRideStatusUpdates(backendRide.rideId);
+            return;
+        } catch (backendError) {
+            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
+            if (!backendError.backendUnavailable) throw backendError;
+            console.warn("Ride backend unavailable; using temporary Firestore fallback.", backendError);
+        }
+
         const verificationPin = generateVerificationPin();
         const [dispatchState, pickupGeocode, dropGeocode] = await Promise.all([
             buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng, requestedVehicleType),

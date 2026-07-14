@@ -24,3 +24,20 @@ def test_ride_cancellation_requires_authentication() -> None:
     response = TestClient(app).post("/api/rides/example-ride/cancel")
     assert response.status_code == 401
     assert response.json() == {"error": "Authentication is required."}
+
+
+def test_ride_creation_requires_authentication() -> None:
+    response = TestClient(app).post(
+        "/api/rides",
+        json={
+            "pickupName": "Pickup",
+            "dropName": "Drop",
+            "pickupLat": 23.83,
+            "pickupLng": 91.98,
+            "dropLat": 23.84,
+            "dropLng": 91.99,
+            "vehicleType": "bike",
+        },
+    )
+    assert response.status_code == 401
+    assert response.json() == {"error": "Authentication is required."}
