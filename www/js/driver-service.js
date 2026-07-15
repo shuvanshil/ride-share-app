@@ -446,6 +446,30 @@ async function acceptIncomingRide(rideId, button) {
 
     try {
         let acceptedRideData = null;
+        let acceptedThroughBackend = false;
+
+        try {
+            const idToken = await auth.currentUser?.getIdToken();
+            if (!idToken) throw new Error("Authentication is required.");
+            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${idToken}` }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+                const backendError = new Error(data.error || "Could not accept this ride.");
+                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+                throw backendError;
+            }
+            acceptedRideData = data.ride || {};
+            acceptedThroughBackend = true;
+        } catch (backendError) {
+            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
+            if (!backendError.backendUnavailable) throw backendError;
+            console.warn("Ride acceptance backend unavailable; using temporary Firestore fallback.", backendError);
+        }
+
+        if (!acceptedThroughBackend) {
         const rideRef = doc(db, "rides", rideId);
         const activeRideQuery = query(
             collection(db, "rides"),
@@ -492,6 +516,7 @@ async function acceptIncomingRide(rideId, button) {
                 updatedAt: serverTimestamp()
             });
         });
+        }
 
         await setServiceDriverAvailability("busy");
         renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });
@@ -1403,6 +1428,15 @@ async function verifyAndStartTrip(rideId) {
     }
 
     try {
+        try {
+            const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
+            renderActiveRideState(rideId, result.ride || { ...currentRide, status: "en_route" });
+            return;
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
+            console.warn("PIN transition backend unavailable; using temporary Firestore fallback.", backendError);
+        }
+
         const rideRef = doc(db, "rides", rideId);
         const rideSnap = await getDoc(rideRef);
 
@@ -1463,6 +1497,23 @@ async function verifyAndStartTrip(rideId) {
     }
 }
 
+async function transitionRideThroughBackend(rideId, action, pin = "") {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ action, pin })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        const error = new Error(data.error || "Could not update this ride.");
+        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        throw error;
+    }
+    return data;
+}
+
 async function completeRideJob() {
     if (!currentRideId) {
         alert("No active trip found to complete.");
@@ -1470,6 +1521,19 @@ async function completeRideJob() {
     }
 
     try {
+        try {
+            const result = await transitionRideThroughBackend(currentRideId, "complete");
+            const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
+            pendingPaymentRideId = currentRideId;
+            finalFareEl.innerText = `Rs ${finalFare}`;
+            paymentModal.classList.remove('d-none');
+            hideLifecyclePanel();
+            return;
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
+            console.warn("Completion backend unavailable; using temporary Firestore fallback.", backendError);
+        }
+
         const rideRef = doc(db, "rides", currentRideId);
         const rideSnap = await getDoc(rideRef);
         if (!rideSnap.exists()) return;
@@ -1536,6 +1600,15 @@ async function cancelRideByDriver() {
 
     try {
         const rideId = currentRideId;
+        try {
+            await transitionRideThroughBackend(rideId, "cancel");
+            alert("Trip cancelled successfully.");
+            return;
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
+            console.warn("Driver cancellation backend unavailable; using temporary Firestore fallback.", backendError);
+        }
+
         await runTransaction(db, async (transaction) => {
             const rideRef = doc(db, "rides", rideId);
             const rideSnap = await transaction.get(rideRef);
@@ -1642,6 +1715,14 @@ async function markRidePaidAndCreateHistory(rideId) {
     }
 
     try {
+        try {
+            await transitionRideThroughBackend(rideId, "mark_paid");
+            return true;
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
+            console.warn("Payment backend unavailable; using temporary Firestore fallback.", backendError);
+        }
+
         const rideRef = doc(db, "rides", rideId);
         const historyRef = doc(db, "tripHistory", rideId);
 

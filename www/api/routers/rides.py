@@ -42,6 +42,13 @@ class RideCreateBody(BaseModel):
     dropTypeHint: str = Field(default="", max_length=100)
 
 
+class DriverTransitionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = Field(min_length=1, max_length=30)
+    pin: str = Field(default="", max_length=4)
+
+
 RIDE_SERVICES = {
     "bike": {"name": "Bike / Scooty", "capacity": 1, "base": 15, "per_km": 7},
     "auto": {"name": "Auto", "capacity": 3, "base": 25, "per_km": 12.5},
@@ -184,6 +191,41 @@ def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _driver_history_update(ride_id: str, ride: dict[str, Any], status: str) -> dict[str, Any]:
+    """Build a server-owned history record for driver lifecycle transitions."""
+    cancelled = status == "cancelled_by_driver"
+    completed = status == "completed"
+    return {
+        "ride_id": ride_id,
+        "passenger_id": ride.get("passenger_id"),
+        "driver_id": ride.get("driver_id"),
+        "pickup_location": ride.get("pickup_display_address") or ride.get("pickup_name") or "Pickup not recorded",
+        "drop_location": ride.get("drop_display_address") or ride.get("drop_name") or "Drop not recorded",
+        "pickup_display_address": ride.get("pickup_display_address") or "",
+        "drop_display_address": ride.get("drop_display_address") or "",
+        "drop_full_address": ride.get("drop_full_address") or "",
+        "verifiedAt": ride.get("pinVerifiedAt") or fb_firestore.SERVER_TIMESTAMP,
+        "completedAt": fb_firestore.SERVER_TIMESTAMP if completed else None,
+        "cancelledAt": fb_firestore.SERVER_TIMESTAMP if cancelled else None,
+        "finalStatusAt": fb_firestore.SERVER_TIMESTAMP,
+        "distance_km": float(ride.get("distance_km") or 0),
+        "duration_minutes": float(ride.get("duration_minutes") or 0),
+        "fare_amount": float(ride.get("fare") or 0),
+        "trip_status": status,
+        "final_status": "completed" if completed else "cancelled" if cancelled else "verified",
+        "cancelled_by": "driver" if cancelled else "",
+        "payment_status": ride.get("payment_status") or "pending",
+        "driver_name": ride.get("driver_name") or "Driver",
+        "passenger_name": ride.get("passenger_name") or "Passenger",
+        "vehicle_model": ride.get("vehicle_model") or "Vehicle",
+        "vehicle_number": ride.get("vehicle_number") or "Number not recorded",
+        "vehicle_type": ride.get("vehicle_type") or "",
+        "service_name": ride.get("service_name") or "",
+        "source": "fastapi_driver_lifecycle",
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+
+
 @router.post("")
 async def create_passenger_ride(
     body: RideCreateBody,
@@ -282,6 +324,80 @@ async def create_passenger_ride(
         raise ApiError("Could not create this ride request.", 503, {"message": str(error)})
 
 
+@router.post("/{ride_id}/transition")
+def transition_driver_ride(
+    ride_id: str,
+    body: DriverTransitionBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Apply an authorized driver state transition in one Firestore transaction."""
+    uid = str(user.get("uid") or "").strip()
+    clean_ride_id = str(ride_id or "").strip()[:160]
+    action = body.action.strip().lower()
+    allowed = {
+        "verify_pin": ({"accepted", "arrived"}, "en_route"),
+        "complete": ({"started", "en_route"}, "completed"),
+        "cancel": ({"accepted", "arrived", "started", "en_route"}, "cancelled_by_driver"),
+        "mark_paid": ({"completed"}, "completed"),
+    }
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if not clean_ride_id:
+        raise ApiError("Ride ID is required.", 400)
+    if action not in allowed:
+        raise ApiError("Unsupported ride transition.", 400)
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        ride_ref = db.collection("rides").document(clean_ride_id)
+        history_ref = db.collection("tripHistory").document(clean_ride_id)
+        user_ref = db.collection("users").document(uid)
+        transaction = db.transaction()
+        result: dict[str, Any] = {}
+
+        @fb_firestore.transactional
+        def transition_transaction(tx):
+            snapshot = ride_ref.get(transaction=tx)
+            if not snapshot.exists:
+                raise ApiError("Ride not found.", 404)
+            ride = snapshot.to_dict() or {}
+            if ride.get("driver_id") != uid:
+                raise ApiError("Only the assigned driver can update this ride.", 403)
+            current_status = ride.get("status")
+            valid_statuses, next_status = allowed[action]
+            if current_status not in valid_statuses:
+                raise ApiError("This ride cannot be updated from its current state.", 409)
+            if action == "verify_pin" and str(ride.get("verification_pin") or "") != body.pin.strip():
+                raise ApiError("Incorrect verification PIN. Please verify with the passenger.", 400)
+
+            updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
+            if action == "verify_pin":
+                updates.update({"status": next_status, "pinVerifiedAt": fb_firestore.SERVER_TIMESTAMP, "startedAt": fb_firestore.SERVER_TIMESTAMP})
+            elif action == "complete":
+                updates.update({"status": next_status, "completedAt": fb_firestore.SERVER_TIMESTAMP})
+            elif action == "cancel":
+                updates.update({"status": next_status, "cancelledAt": fb_firestore.SERVER_TIMESTAMP})
+            elif action == "mark_paid":
+                updates.update({"payment_status": "paid", "payment_confirmed_by": uid, "paymentConfirmedAt": fb_firestore.SERVER_TIMESTAMP})
+            tx.update(ride_ref, updates)
+
+            result.update(ride)
+            result.update({"status": next_status, **({"payment_status": "paid"} if action == "mark_paid" else {})})
+            if action in {"complete", "cancel", "mark_paid"}:
+                tx.set(history_ref, _driver_history_update(clean_ride_id, {**ride, **result}, next_status), merge=True)
+            if action == "complete":
+                tx.update(user_ref, {"lifetime_earnings": fb_firestore.Increment(float(ride.get("fare") or 0)), "total_completed_trips": fb_firestore.Increment(1)})
+
+        transition_transaction(transaction)
+        if action in {"complete", "cancel"}:
+            db.collection("driverPresence").document(uid).set({"driverAvailability": "searching", "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+        return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": result}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not update this ride.", 503, {"message": str(error)})
+
+
 @router.post("/{ride_id}/cancel")
 def cancel_passenger_ride(
     ride_id: str,
@@ -332,3 +448,88 @@ def cancel_passenger_ride(
         raise
     except Exception as error:  # noqa: BLE001
         raise ApiError("Could not cancel this ride.", 503, {"message": str(error)})
+
+
+@router.post("/{ride_id}/accept")
+def accept_driver_ride(
+    ride_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Assign a pending eligible ride to the authenticated driver atomically."""
+    uid = str(user.get("uid") or "").strip()
+    clean_ride_id = str(ride_id or "").strip()[:160]
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if not clean_ride_id:
+        raise ApiError("Ride ID is required.", 400)
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        if profile.get("role") != "driver":
+            raise ApiError("Only approved drivers can accept rides.", 403)
+        driver_type = _driver_type(profile)
+        if driver_type not in RIDE_SERVICES:
+            raise ApiError("Your registered vehicle type is missing.", 403)
+
+        active = (
+            db.collection("rides")
+            .where("driver_id", "==", uid)
+            .where("status", "in", list(ACTIVE_PASSENGER_STATUSES - {"pending"}))
+            .limit(1)
+            .get()
+        )
+        if active:
+            raise ApiError("You already have an active ride.", 409)
+
+        ride_ref = db.collection("rides").document(clean_ride_id)
+        transaction = db.transaction()
+        accepted_ride: dict[str, Any] = {}
+
+        @fb_firestore.transactional
+        def accept_transaction(tx):
+            snapshot = ride_ref.get(transaction=tx)
+            if not snapshot.exists:
+                raise ApiError("Ride request no longer exists.", 404)
+            ride = snapshot.to_dict() or {}
+            if ride.get("status") != "pending" or ride.get("driver_id"):
+                raise ApiError("This ride was already accepted by another driver.", 409)
+            if ride.get("vehicle_type") != driver_type:
+                raise ApiError("This ride requires a matching registered vehicle.", 403)
+            if uid not in (ride.get("eligible_driver_ids") or []):
+                raise ApiError("This ride request is no longer available for you.", 403)
+
+            accepted_ride.update(ride)
+            accepted_ride.update({
+                "status": "accepted",
+                "driver_id": uid,
+                "driver_name": str(profile.get("name") or "Driver")[:80],
+                "driver_phone": str(profile.get("phone") or "")[:40],
+                "vehicle_model": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Vehicle")[:100],
+                "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
+                "vehicle_type": driver_type,
+            })
+            tx.update(ride_ref, {
+                "status": "accepted",
+                "driver_id": uid,
+                "driver_name": accepted_ride["driver_name"],
+                "driver_phone": accepted_ride["driver_phone"],
+                "vehicle_model": accepted_ride["vehicle_model"],
+                "vehicle_number": accepted_ride["vehicle_number"],
+                "vehicle_type": driver_type,
+                "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+
+        accept_transaction(transaction)
+        db.collection("driverPresence").document(uid).set({
+            "driverAvailability": "busy",
+            "desiredAvailability": "online",
+            "isConnected": True,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+        return {"ok": True, "rideId": clean_ride_id, "ride": accepted_ride}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not accept this ride.", 503, {"message": str(error)})

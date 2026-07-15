@@ -41,3 +41,18 @@ def test_ride_creation_requires_authentication() -> None:
     )
     assert response.status_code == 401
     assert response.json() == {"error": "Authentication is required."}
+
+
+def test_ride_acceptance_requires_authentication() -> None:
+    response = TestClient(app).post("/api/rides/example-ride/accept")
+    assert response.status_code == 401
+    assert response.json() == {"error": "Authentication is required."}
+
+
+def test_driver_transition_requires_authentication() -> None:
+    response = TestClient(app).post(
+        "/api/rides/example-ride/transition",
+        json={"action": "complete"},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"error": "Authentication is required."}
