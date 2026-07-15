@@ -842,6 +842,7 @@ function attachDriverTripListener(rideRef) {
             activeDriverRideData = null;
             activeDriverRenderedStatus = null;
             setDriverAvailability("searching");
+            if (isDriverDutyOnline()) startDriverPresenceTracking();
 
             if (activeDriverTripListener) activeDriverTripListener();
             return;
@@ -861,15 +862,38 @@ function attachDriverTripListener(rideRef) {
 function startDriverGpsBroadcast(rideRef) {
     if (!navigator.geolocation) return;
 
+    // Only one geolocation watcher may ever be active at a time. Running the
+    // idle "searching" presence watcher (startDriverPresenceTracking) at the
+    // same time as this active-ride watcher was the root cause of the auto
+    // icon "glitching"/jumping on both the driver's and the rider's map:
+    // two independent GPS fixes, smoothed and throttled completely
+    // separately, were racing to overwrite the same driverPresence document,
+    // so whichever watcher's callback happened to land last effectively
+    // "won", producing a jittery back-and-forth between two slightly
+    // different positions/headings on every real movement.
+    stopPresenceTracking();
+
     if (activeDriverLocationWatchId !== null) {
         navigator.geolocation.clearWatch(activeDriverLocationWatchId);
         activeDriverLocationWatchId = null;
     }
 
+    // Reset the active-ride smoothing/write-gate state so it doesn't carry
+    // over stale values from a previous trip.
+    lastActiveSmoothedPosition = null;
+    lastActiveWrittenPosition = null;
+    lastActiveWriteAt = 0;
+    lastActiveHeadingPosition = null;
+    lastActiveHeading = null;
+
     activeDriverLocationWatchId = navigator.geolocation.watchPosition(
         async (position) => {
             try {
                 const rawCoords = { lat: position.coords.latitude, lng: position.coords.longitude };
+                // Blend the raw fix instead of trusting it outright, exactly
+                // like the idle presence watcher does. Without this, GPS
+                // wobble of a few metres (very common even for a stationary
+                // vehicle) was being rendered directly as vehicle movement.
                 const smoothed = smoothGpsCoordinate(
                     lastActiveSmoothedPosition,
                     rawCoords,
@@ -886,7 +910,6 @@ function startDriverGpsBroadcast(rideRef) {
                 )) {
                     return;
                 }
-
                 lastActiveWrittenPosition = smoothed;
                 lastActiveWriteAt = Date.now();
 
@@ -907,17 +930,15 @@ function startDriverGpsBroadcast(rideRef) {
                         ...telemetryResult.telemetry
                     });
                     await updateDriverPresenceLocation(lat, lng, "busy", telemetryResult.telemetry);
-                    const gpsStatusNode = document.getElementById('gps-status');
-                    if (gpsStatusNode) gpsStatusNode.innerText = "GPS Active & Broadcasting";
+                    document.getElementById('gps-status').innerText = "GPS Active & Broadcasting";
                 }
             } catch (error) {
-                console.warn("Driver GPS broadcast update failed:", error);
+                console.warn("Active ride GPS broadcast failed:", error);
             }
         },
         (error) => {
             console.error("GPS Tracking Error:", error);
-            const gpsStatusNode = document.getElementById('gps-status');
-            if (gpsStatusNode) gpsStatusNode.innerText = "GPS Signal Lost. Please enable location.";
+            document.getElementById('gps-status').innerText = "GPS Signal Lost. Please enable location.";
         },
         { enableHighAccuracy: true, maximumAge: 0 }
     );
@@ -1168,6 +1189,7 @@ async function completeRideJob() {
         }
 
         await setDriverAvailability("searching");
+        if (isDriverDutyOnline()) startDriverPresenceTracking();
 
         document.getElementById('active-trip-container').classList.add('d-none');
         activeDriverRideData = null;
@@ -1244,6 +1266,7 @@ async function cancelRideByDriver(rideId) {
         currentlyAssignedRideId = null;
         setRideActive(false);
         await setDriverAvailability("searching");
+        if (isDriverDutyOnline()) startDriverPresenceTracking();
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
     }

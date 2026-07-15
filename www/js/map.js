@@ -569,6 +569,7 @@ function addGoogleMapStyles() {
             height: 48px;
             pointer-events: auto;
             will-change: transform;
+            animation: vehicle-marker-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .rotating-vehicle-marker::before {
@@ -593,7 +594,6 @@ function addGoogleMapStyles() {
             transform-origin: 50% 50%;
             filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.35));
             user-select: none;
-            animation: vehicle-marker-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         @keyframes vehicle-marker-pop {
@@ -1095,6 +1095,19 @@ function getRouteHeading(position, routePath = []) {
 }
 
 function resolveDriverHeading(existing, position, driver, routePath = []) {
+    const previousMarkerPosition = existing?.marker?.getPosition?.();
+    if (previousMarkerPosition) {
+        const previous = { lat: previousMarkerPosition.lat(), lng: previousMarkerPosition.lng() };
+        // A vehicle that hasn't actually moved beyond GPS noise doesn't have
+        // a new direction of travel. Recomputing the nearest-route-point (or
+        // a raw bearing) from noise alone is what made a parked/stopped
+        // vehicle's icon rotate back and forth in place, even though the
+        // marker's position was correctly held still elsewhere.
+        if (calculateDistanceMeters(previous, position) < DRIVER_MARKER_NOISE_FLOOR_METERS) {
+            return normalizeHeading(existing?.heading);
+        }
+    }
+
     const routeHeading = getRouteHeading(position, routePath);
     if (routeHeading != null) {
         return smoothHeading(existing?.heading, routeHeading, 0.45);
@@ -1301,6 +1314,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
     };
     const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
+    const isAssignedTrackedDriver = Boolean(assignedDriverTrackingDriverId) && driverId === assignedDriverTrackingDriverId;
     const heading = resolveDriverHeading(existing, position, driver, driver.activeRoutePath || []);
 
     if (!existing) {
@@ -1329,7 +1343,17 @@ function upsertGlobalDriverMarker(driverId, driver) {
     }
 
     setGlobalDriverMarkerVisibility(driverId, existing);
-    animateGlobalDriverMarker(existing, position, heading);
+    // While this driver is the assigned/tracked driver for an active ride,
+    // handleAssignedDriverLocation (fed by the ride document) is the single
+    // source of truth for this marker's position and heading. Letting this
+    // driverPresence-sourced listener ALSO animate the same marker meant two
+    // independently-timed Firestore updates were racing to move the same
+    // marker, each cancelling and restarting the other's in-flight tween -
+    // that's what produced the "shifting weirdly mid-map" glitch on the
+    // rider's screen. Metadata (title/vehicle type) is still kept in sync.
+    if (!isAssignedTrackedDriver) {
+        animateGlobalDriverMarker(existing, position, heading);
+    }
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
     existing.marker.setLiveTracked?.(driverId === assignedDriverTrackingDriverId);
     if (existing.vehicleType !== vehicleType) {
@@ -1338,7 +1362,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
         existing.vehicleType = vehicleType;
         updateVehicleMarkerLegend();
     }
-    if (heading != null && !existing.animationFrame) {
+    if (!isAssignedTrackedDriver && heading != null && !existing.animationFrame) {
         existing.heading = heading;
         existing.marker.setHeading?.(heading);
     }

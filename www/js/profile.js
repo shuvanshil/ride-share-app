@@ -575,25 +575,34 @@ async function saveProfile(event) {
     }
 
     try {
-        await updateDoc(doc(db, "users", currentAuthUser.uid), updates);
+        try {
+            currentProfile = await saveProfileThroughBackend(currentAuthUser, updates);
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
 
-        if (currentProfile.role === "driver") {
-            try {
-                await setDoc(doc(db, "driverPresence", currentAuthUser.uid), {
-                    name: updates.name,
-                    phone: currentProfile.phone || currentAuthUser.phoneNumber || "",
-                    profilePhotoUrl: updates.profilePhotoUrl,
-                    vehicle_type: updates.vehicle_type,
-                    vehicle_model: updates.vehicle_model,
-                    vehicle_number: updates.vehicle_number,
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
-            } catch (presenceError) {
-                console.warn("Driver presence profile sync will retry from the driver console:", presenceError);
+            // Temporary migration fallback. This path is only for an
+            // unavailable backend, not for rejected or unauthorized writes.
+            await updateDoc(doc(db, "users", currentAuthUser.uid), updates);
+
+            if (currentProfile.role === "driver") {
+                try {
+                    await setDoc(doc(db, "driverPresence", currentAuthUser.uid), {
+                        name: updates.name,
+                        phone: currentProfile.phone || currentAuthUser.phoneNumber || "",
+                        profilePhotoUrl: updates.profilePhotoUrl,
+                        vehicle_type: updates.vehicle_type,
+                        vehicle_model: updates.vehicle_model,
+                        vehicle_number: updates.vehicle_number,
+                        updatedAt: serverTimestamp()
+                    }, { merge: true });
+                } catch (presenceError) {
+                    console.warn("Driver presence profile sync will retry from the driver console:", presenceError);
+                }
             }
+
+            currentProfile = { ...currentProfile, ...updates };
         }
 
-        currentProfile = { ...currentProfile, ...updates };
         cacheProfile(currentProfile);
         renderProfileSummary(currentProfile);
         setSavingState(false);
@@ -729,6 +738,47 @@ function bindProfileActions() {
 
 bindProfileActions();
 
+async function loadProfileThroughBackend(user) {
+    const idToken = await user.getIdToken();
+    const response = await fetch('/api/profile', {
+        headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${idToken}`
+        }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok || !data.profile) {
+        throw new Error(data.error || 'Profile backend request failed.');
+    }
+    return data.profile;
+}
+
+async function saveProfileThroughBackend(user, updates) {
+    const { updatedAt, ...requestUpdates } = updates;
+    try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/profile', {
+            method: 'PATCH',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify(requestUpdates)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !data.profile) {
+            const error = new Error(data.error || 'Profile backend request failed.');
+            error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+            throw error;
+        }
+        return data.profile;
+    } catch (error) {
+        if (error?.backendUnavailable === undefined) error.backendUnavailable = true;
+        throw error;
+    }
+}
+
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         currentAuthUser = null;
@@ -753,23 +803,32 @@ onAuthStateChanged(auth, async (user) => {
     document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
 
     try {
-        const userSnap = await getDoc(doc(db, "users", user.uid));
-        currentProfile = userSnap.exists() ? userSnap.data() : {
-            uid: user.uid,
-            name: user.displayName || "LiphtUp User",
-            phone: user.phoneNumber || "",
-            role: "passenger"
-        };
+        // FastAPI is now the preferred profile read path. Firestore remains
+        // as a temporary fallback until the backend is deployed and verified.
+        currentProfile = await loadProfileThroughBackend(user);
         renderProfileSummary(currentProfile);
         cacheProfile(currentProfile);
     } catch (error) {
-        console.error("Profile load failed:", error);
-        currentProfile = {
-            uid: user.uid,
-            name: user.displayName || "LiphtUp User",
-            phone: user.phoneNumber || "",
-            role: "passenger"
-        };
-        renderProfileSummary(currentProfile);
+        console.warn("Profile backend load failed; using Firestore fallback:", error);
+        try {
+            const userSnap = await getDoc(doc(db, "users", user.uid));
+            currentProfile = userSnap.exists() ? userSnap.data() : {
+                uid: user.uid,
+                name: user.displayName || "LiphtUp User",
+                phone: user.phoneNumber || "",
+                role: "passenger"
+            };
+            renderProfileSummary(currentProfile);
+            cacheProfile(currentProfile);
+        } catch (fallbackError) {
+            console.error("Profile load failed:", fallbackError);
+            currentProfile = {
+                uid: user.uid,
+                name: user.displayName || "LiphtUp User",
+                phone: user.phoneNumber || "",
+                role: "passenger"
+            };
+            renderProfileSummary(currentProfile);
+        }
     }
 });
