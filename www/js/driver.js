@@ -278,6 +278,23 @@ function updateDutySwitchUi() {
     }
 }
 
+async function updateDriverAvailabilityThroughBackend(status) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch("/api/rides/driver-availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ status })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        const error = new Error(data.error || "Could not update driver availability.");
+        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        throw error;
+    }
+    return data;
+}
+
 async function setDriverAvailability(status) {
     if (!currentUser || currentUser.role !== "driver") return;
     currentUser.driverAvailability = status;
@@ -287,6 +304,19 @@ async function setDriverAvailability(status) {
 
     try {
         if (status === "offline") stopPresenceTracking();
+
+        try {
+            await updateDriverAvailabilityThroughBackend(status);
+            if (status === "online" || status === "searching" || status === "busy") {
+                registerDriverPushToken(db, currentUser.uid).catch((error) => {
+                    console.warn("Driver push token registration failed:", error);
+                });
+            }
+            return;
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
+            console.warn("Availability backend unavailable; using temporary Firestore fallback.", backendError);
+        }
 
         const online = status !== "offline";
         const notificationEligibleUntil = online ? getNotificationEligibleUntilDate() : new Date(0);

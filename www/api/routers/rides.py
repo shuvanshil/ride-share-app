@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
@@ -47,6 +47,14 @@ class DriverTransitionBody(BaseModel):
 
     action: str = Field(min_length=1, max_length=30)
     pin: str = Field(default="", max_length=4)
+
+
+class DriverAvailabilityBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(min_length=1, max_length=20)
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 RIDE_SERVICES = {
@@ -449,6 +457,66 @@ def expand_passenger_dispatch(
         raise
     except Exception as error:  # noqa: BLE001
         raise ApiError("Could not expand the driver search.", 503, {"message": str(error)})
+
+
+@router.post("/driver-availability")
+def update_driver_availability(
+    body: DriverAvailabilityBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Update driver availability and presence with server-owned identity fields."""
+    uid = str(user.get("uid") or "").strip()
+    status = body.status.strip().lower()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if status not in {"offline", "searching", "busy"}:
+        raise ApiError("Invalid driver availability status.", 400)
+    if (body.lat is None) != (body.lng is None):
+        raise ApiError("Both driver coordinates are required together.", 400)
+    if body.lat is not None:
+        lat = _coordinate(body.lat, -90, 90)
+        lng = _coordinate(body.lng, -180, 180)
+    else:
+        lat = lng = None
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        if profile.get("role") != "driver":
+            raise ApiError("Only drivers can update driver availability.", 403)
+        online = status != "offline"
+        user_update: dict[str, Any] = {
+            "driverAvailability": status,
+            "desiredAvailability": "online" if online else "offline",
+            "isConnected": online,
+            "notificationEligibleUntil": datetime.now(timezone.utc) + timedelta(minutes=30) if online else datetime.fromtimestamp(0, timezone.utc),
+            "driverAvailabilityUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        presence_update: dict[str, Any] = {
+            "uid": uid,
+            "name": str(profile.get("name") or "Driver")[:80],
+            "phone": str(profile.get("phone") or "")[:40],
+            "driverAvailability": status,
+            "desiredAvailability": "online" if online else "offline",
+            "verificationStatus": profile.get("verificationStatus") or "pending_review",
+            "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
+            "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
+            "vehicle_type": _driver_type(profile),
+            "isConnected": online,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        if lat is not None:
+            user_update["driverLocation"] = {"lat": lat, "lng": lng}
+            presence_update["driverLocation"] = {"lat": lat, "lng": lng}
+        db.collection("users").document(uid).set(user_update, merge=True)
+        db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+        return {"ok": True, "status": status}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not update driver availability.", 503, {"message": str(error)})
 
 
 @router.post("/{ride_id}/cancel")

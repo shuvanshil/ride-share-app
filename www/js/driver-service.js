@@ -392,6 +392,23 @@ function startIncomingRideListener() {
     });
 }
 
+async function updateDriverAvailabilityThroughBackend(status, locationData = null) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch("/api/rides/driver-availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ status, ...(locationData || {}) })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        const error = new Error(data.error || "Could not update driver availability.");
+        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        throw error;
+    }
+    return data;
+}
+
 async function setServiceDriverAvailability(status) {
     if (!currentUser?.uid) return;
 
@@ -400,6 +417,14 @@ async function setServiceDriverAvailability(status) {
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
     const online = status !== "offline";
     const notificationEligibleUntil = online ? new Date(Date.now() + 30 * 60 * 1000) : new Date(0);
+
+    try {
+        await updateDriverAvailabilityThroughBackend(status, locationData);
+        return;
+    } catch (backendError) {
+        if (!backendError?.backendUnavailable) throw backendError;
+        console.warn("Availability backend unavailable; using temporary Firestore fallback.", backendError);
+    }
 
     const userUpdate = {
         driverAvailability: status,
