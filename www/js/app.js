@@ -528,6 +528,30 @@ async function expandRideDispatch(rideId) {
     if (!currentUser || currentUser.role !== "passenger") return;
 
     try {
+        try {
+            const idToken = await auth.currentUser?.getIdToken();
+            if (!idToken) throw new Error("Authentication is required.");
+            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/dispatch`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${idToken}` }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+                const backendError = new Error(data.error || "Could not expand the driver search.");
+                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+                throw backendError;
+            }
+            if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
+            if (data.searchStatus === "no_more_available_drivers") {
+                document.getElementById('request-ride-btn').innerHTML = "No nearby drivers online. You can cancel and rebook.";
+                document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
+            }
+            return;
+        } catch (backendError) {
+            if (!backendError?.backendUnavailable) throw backendError;
+            console.warn("Dispatch backend unavailable; using temporary Firestore fallback.", backendError);
+        }
+
         const rideRef = doc(db, "rides", rideId);
         const rideSnap = await getDoc(rideRef);
         if (!rideSnap.exists()) return;

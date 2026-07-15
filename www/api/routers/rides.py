@@ -400,6 +400,57 @@ def transition_driver_ride(
         raise ApiError("Could not update this ride.", 503, {"message": str(error)})
 
 
+@router.post("/{ride_id}/dispatch")
+def expand_passenger_dispatch(
+    ride_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Expand a passenger's pending driver search without client Firestore writes."""
+    uid = str(user.get("uid") or "").strip()
+    clean_ride_id = str(ride_id or "").strip()[:160]
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if not clean_ride_id:
+        raise ApiError("Ride ID is required.", 400)
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        ride_ref = db.collection("rides").document(clean_ride_id)
+        snapshot = ride_ref.get()
+        if not snapshot.exists:
+            raise ApiError("Ride not found.", 404)
+        ride = snapshot.to_dict() or {}
+        if ride.get("passenger_id") != uid:
+            raise ApiError("Only the passenger can expand this search.", 403)
+        if ride.get("status") != "pending" or ride.get("driver_id"):
+            raise ApiError("Only pending unassigned rides can expand their search.", 409)
+
+        excluded = set(ride.get("notified_driver_ids") or []) | set(ride.get("rejected_driver_ids") or [])
+        all_candidates = _available_drivers(
+            db,
+            float(ride.get("pickup_lat")),
+            float(ride.get("pickup_lng")),
+            str(ride.get("vehicle_type") or ""),
+        )
+        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][: int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)]
+        notified = list(dict.fromkeys([*(ride.get("notified_driver_ids") or []), *next_batch]))
+        eligible = list(dict.fromkeys([*(ride.get("eligible_driver_ids") or []), *next_batch]))
+        updates = {
+            "eligible_driver_ids": eligible,
+            "notified_driver_ids": notified,
+            "dispatch_round": int(ride.get("dispatch_round") or 0) + (1 if next_batch else 0),
+            "last_dispatch_at": fb_firestore.SERVER_TIMESTAMP,
+            "search_status": "searching_nearby_drivers" if next_batch else "no_more_available_drivers",
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        ride_ref.update(updates)
+        return {"ok": True, "rideId": clean_ride_id, "driverIds": next_batch, "searchStatus": updates["search_status"]}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not expand the driver search.", 503, {"message": str(error)})
+
+
 @router.post("/{ride_id}/cancel")
 def cancel_passenger_ride(
     ride_id: str,
