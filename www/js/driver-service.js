@@ -1520,11 +1520,16 @@ async function completeRideJob() {
         return;
     }
 
+    // Keep the ID locally because the realtime listener may clear
+    // currentRideId immediately after the server changes the ride to
+    // `completed`.
+    const completedRideId = currentRideId;
+    pendingPaymentRideId = completedRideId;
+
     try {
         try {
-            const result = await transitionRideThroughBackend(currentRideId, "complete");
+            const result = await transitionRideThroughBackend(completedRideId, "complete");
             const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
-            pendingPaymentRideId = currentRideId;
             finalFareEl.innerText = `Rs ${finalFare}`;
             paymentModal.classList.remove('d-none');
             hideLifecyclePanel();
