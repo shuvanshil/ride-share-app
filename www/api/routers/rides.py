@@ -335,6 +335,8 @@ def transition_driver_ride(
     clean_ride_id = str(ride_id or "").strip()[:160]
     action = body.action.strip().lower()
     allowed = {
+        "arrive": ({"accepted"}, "arrived"),
+        "start": ({"arrived"}, "started"),
         "verify_pin": ({"accepted", "arrived"}, "en_route"),
         "complete": ({"started", "en_route"}, "completed"),
         "cancel": ({"accepted", "arrived", "started", "en_route"}, "cancelled_by_driver"),
