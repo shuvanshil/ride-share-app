@@ -1178,6 +1178,23 @@ async function refreshRoute(position, force = false) {
     }
 }
 
+async function updateDriverLocationThroughBackend(position, telemetry, rideId = null) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch("/api/rides/driver-location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ lat: position.lat, lng: position.lng, rideId, ...telemetry })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        const error = new Error(data.error || "Could not update driver GPS location.");
+        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        throw error;
+    }
+    return data;
+}
+
 async function writeDriverLocation(position) {
     if (!currentUser?.uid) return;
 
@@ -1192,6 +1209,13 @@ async function writeDriverLocation(position) {
     if (Number.isFinite(Number(position.driverHeading))) telemetryData.driverHeading = Number(position.driverHeading);
     if (Number.isFinite(Number(position.driverSpeed))) telemetryData.driverSpeed = Number(position.driverSpeed);
     if (Number.isFinite(Number(position.driverAccuracy))) telemetryData.driverAccuracy = Number(position.driverAccuracy);
+    try {
+        await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
+        return;
+    } catch (backendError) {
+        if (!backendError?.backendUnavailable) throw backendError;
+        console.warn("GPS backend unavailable; using temporary Firestore fallback.", backendError);
+    }
     const availability = currentRide ? "busy" : "searching";
     currentUser.driverAvailability = availability;
     currentUser.desiredAvailability = "online";

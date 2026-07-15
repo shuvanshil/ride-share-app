@@ -71,3 +71,12 @@ def test_driver_availability_requires_authentication() -> None:
     )
     assert response.status_code == 401
     assert response.json() == {"error": "Authentication is required."}
+
+
+def test_driver_location_requires_authentication() -> None:
+    response = TestClient(app).post(
+        "/api/rides/driver-location",
+        json={"lat": 23.83, "lng": 91.98},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"error": "Authentication is required."}

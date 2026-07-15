@@ -57,6 +57,17 @@ class DriverAvailabilityBody(BaseModel):
     lng: Optional[float] = None
 
 
+class DriverLocationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float
+    lng: float
+    rideId: Optional[str] = Field(default=None, max_length=160)
+    driverHeading: Optional[float] = None
+    driverSpeed: Optional[float] = None
+    driverAccuracy: Optional[float] = None
+
+
 RIDE_SERVICES = {
     "bike": {"name": "Bike / Scooty", "capacity": 1, "base": 15, "per_km": 7},
     "auto": {"name": "Auto", "capacity": 3, "base": 25, "per_km": 12.5},
@@ -517,6 +528,72 @@ def update_driver_availability(
         raise
     except Exception as error:  # noqa: BLE001
         raise ApiError("Could not update driver availability.", 503, {"message": str(error)})
+
+
+@router.post("/driver-location")
+def update_driver_location(
+    body: DriverLocationBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Write authenticated driver telemetry and, when assigned, ride location."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    lat = _coordinate(body.lat, -90, 90)
+    lng = _coordinate(body.lng, -180, 180)
+    if body.driverAccuracy is not None and (not math.isfinite(body.driverAccuracy) or body.driverAccuracy < 0):
+        raise ApiError("Invalid GPS accuracy.", 400)
+    if body.driverSpeed is not None and (not math.isfinite(body.driverSpeed) or body.driverSpeed < 0):
+        raise ApiError("Invalid GPS speed.", 400)
+    if body.driverHeading is not None and not math.isfinite(body.driverHeading):
+        raise ApiError("Invalid GPS heading.", 400)
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile_ref = db.collection("users").document(uid)
+        profile = profile_ref.get().to_dict() or {}
+        if profile.get("role") != "driver":
+            raise ApiError("Only drivers can update GPS location.", 403)
+        ride_id = str(body.rideId or "").strip()[:160]
+        availability = str(profile.get("driverAvailability") or "searching")
+        if ride_id:
+            ride_ref = db.collection("rides").document(ride_id)
+            ride = ride_ref.get().to_dict()
+            if not ride:
+                raise ApiError("Ride not found.", 404)
+            if ride.get("driver_id") != uid:
+                raise ApiError("Only the assigned driver can update this ride location.", 403)
+            if ride.get("status") not in ACTIVE_PASSENGER_STATUSES:
+                raise ApiError("This ride is no longer active.", 409)
+            availability = "busy"
+
+        location = {"lat": lat, "lng": lng}
+        telemetry = {key: value for key, value in {
+            "driverHeading": body.driverHeading,
+            "driverSpeed": body.driverSpeed,
+            "driverAccuracy": body.driverAccuracy,
+        }.items() if value is not None}
+        now = datetime.now(timezone.utc)
+        presence_update = {
+            "driverLocation": location,
+            **telemetry,
+            "driverAvailability": availability,
+            "desiredAvailability": "online",
+            "isConnected": True,
+            "lastSeenAt": now,
+            "lastAppSeenAt": now,
+            "lastLocationAt": now,
+            "updatedAt": now,
+        }
+        profile_ref.set({"driverLocation": location, **telemetry, "lastSeenAt": now, "lastLocationAt": now}, merge=True)
+        db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+        if ride_id:
+            db.collection("rides").document(ride_id).set({"driverLocation": location, **telemetry, "driverLocationUpdatedAt": now, "updatedAt": now}, merge=True)
+        return {"ok": True, "rideId": ride_id or None, "status": availability}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not update driver GPS location.", 503, {"message": str(error)})
 
 
 @router.post("/{ride_id}/cancel")

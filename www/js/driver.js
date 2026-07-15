@@ -362,6 +362,26 @@ async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "se
     currentUser.driverAvailability = availability;
     currentUser.desiredAvailability = "online";
 
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch("/api/rides/driver-location", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ lat, lng, rideId: currentlyAssignedRideId || null, ...telemetry })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            const backendError = new Error(data.error || "Could not update driver GPS location.");
+            backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+            throw backendError;
+        }
+        return;
+    } catch (backendError) {
+        if (!backendError?.backendUnavailable) throw backendError;
+        console.warn("GPS backend unavailable; using temporary Firestore fallback.", backendError);
+    }
+
     await setDoc(doc(db, "driverPresence", currentUser.uid), {
         uid: currentUser.uid,
         name: currentUser.name || "Driver",
