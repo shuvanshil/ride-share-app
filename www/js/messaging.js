@@ -1,4 +1,4 @@
-import { app } from './firebase-init.js';
+import { app, auth } from './firebase-init.js';
 import {
     doc,
     setDoc,
@@ -48,6 +48,26 @@ export async function registerDriverPushToken(db, uid) {
         userAgent: navigator.userAgent,
         updatedAt: new Date().toISOString()
     };
+
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch("/api/rides/driver-push-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ token, userAgent: navigator.userAgent, permission: "granted" })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            const backendError = new Error(data.error || "Could not register push token.");
+            backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+            throw backendError;
+        }
+        return { ok: true, token };
+    } catch (backendError) {
+        if (!backendError?.backendUnavailable) throw backendError;
+        console.warn("Push-token backend unavailable; using temporary Firestore fallback.", backendError);
+    }
 
     await Promise.allSettled([
         setDoc(doc(db, "users", uid), {

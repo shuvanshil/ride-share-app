@@ -68,6 +68,14 @@ class DriverLocationBody(BaseModel):
     driverAccuracy: Optional[float] = None
 
 
+class DriverPushTokenBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=20, max_length=4096)
+    userAgent: str = Field(default="", max_length=500)
+    permission: str = Field(default="granted", max_length=30)
+
+
 RIDE_SERVICES = {
     "bike": {"name": "Bike / Scooty", "capacity": 1, "base": 15, "per_km": 7},
     "auto": {"name": "Auto", "capacity": 3, "base": 25, "per_km": 12.5},
@@ -594,6 +602,42 @@ def update_driver_location(
         raise
     except Exception as error:  # noqa: BLE001
         raise ApiError("Could not update driver GPS location.", 503, {"message": str(error)})
+
+
+@router.post("/driver-push-token")
+def save_driver_push_token(
+    body: DriverPushTokenBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Store a push token only for the authenticated driver's own account."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if body.permission != "granted":
+        raise ApiError("Push permission is not granted.", 400)
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        if profile.get("role") != "driver":
+            raise ApiError("Only drivers can register driver push tokens.", 403)
+        token_detail = {
+            "token": body.token,
+            "userAgent": body.userAgent,
+            "updatedAt": datetime.now(timezone.utc),
+        }
+        update = {
+            "pushTokens": fb_firestore.ArrayUnion([body.token]),
+            "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
+            "notificationPermission": "granted",
+            "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        db.collection("users").document(uid).set(update, merge=True)
+        db.collection("driverPresence").document(uid).set(update, merge=True)
+        return {"ok": True}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not register driver push token.", 503, {"message": str(error)})
 
 
 @router.post("/{ride_id}/cancel")
