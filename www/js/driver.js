@@ -1059,49 +1059,13 @@ async function cancelRideByDriver(rideId) {
     if (!confirm("Warning: Cancelling active trips impacts your driver rating. Proceed?")) return;
 
     try {
-        try {
-            await transitionRideThroughBackend(rideId, "cancel");
-            document.getElementById('active-trip-container').classList.add('d-none');
-            activeDriverRideData = null;
-            activeDriverRenderedStatus = null;
-            currentlyAssignedRideId = null;
-            setRideActive(false);
-            await setDriverAvailability("searching");
-            alert("Trip aborted successfully. Status set to online.");
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Driver cancellation backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", rideId);
-
+        await transitionRideThroughBackend(rideId, "cancel");
         if (activeDriverTripListener) activeDriverTripListener();
 
         if (activeDriverLocationWatchId !== null) {
             navigator.geolocation.clearWatch(activeDriverLocationWatchId);
             activeDriverLocationWatchId = null;
         }
-
-        await runTransaction(db, async (transaction) => {
-            const rideSnap = await transaction.get(rideRef);
-            if (!rideSnap.exists()) return;
-            const rideData = rideSnap.data();
-
-            transaction.update(rideRef, {
-                status: "cancelled_by_driver",
-                cancelledAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-
-            if (rideData.pinVerifiedAt) {
-                transaction.set(doc(db, "tripHistory", rideId), buildTripHistoryFinalUpdate({
-                    ...rideData,
-                    ride_id: rideId,
-                    status: "cancelled_by_driver"
-                }, "cancelled_by_driver"), { merge: true });
-            }
-        });
 
         document.getElementById('active-trip-container').classList.add('d-none');
         activeDriverRideData = null;

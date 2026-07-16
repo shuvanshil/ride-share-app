@@ -1487,36 +1487,7 @@ async function cancelRideByDriver() {
 
     try {
         const rideId = currentRideId;
-        try {
-            await transitionRideThroughBackend(rideId, "cancel");
-            alert("Trip cancelled successfully.");
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Driver cancellation backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        await runTransaction(db, async (transaction) => {
-            const rideRef = doc(db, "rides", rideId);
-            const rideSnap = await transaction.get(rideRef);
-            if (!rideSnap.exists()) return;
-            const rideData = rideSnap.data();
-
-            transaction.update(rideRef, {
-                status: "cancelled_by_driver",
-                cancelledAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-
-            if (rideData.pinVerifiedAt) {
-                transaction.set(doc(db, "tripHistory", rideId), buildTripHistoryFinalUpdate({
-                    ...rideData,
-                    ride_id: rideId,
-                    status: "cancelled_by_driver"
-                }, "cancelled_by_driver"), { merge: true });
-            }
-        });
-
+        await transitionRideThroughBackend(rideId, "cancel");
         alert("Trip cancelled successfully.");
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
