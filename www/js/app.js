@@ -528,66 +528,20 @@ async function expandRideDispatch(rideId) {
     if (!currentUser || currentUser.role !== "passenger") return;
 
     try {
-        try {
-            const idToken = await auth.currentUser?.getIdToken();
-            if (!idToken) throw new Error("Authentication is required.");
-            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/dispatch`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${idToken}` }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.ok) {
-                const backendError = new Error(data.error || "Could not expand the driver search.");
-                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
-                throw backendError;
-            }
-            if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
-            if (data.searchStatus === "no_more_available_drivers") {
-                document.getElementById('request-ride-btn').innerHTML = "No nearby drivers online. You can cancel and rebook.";
-                document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
-            }
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Dispatch backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", rideId);
-        const rideSnap = await getDoc(rideRef);
-        if (!rideSnap.exists()) return;
-
-        const ride = rideSnap.data();
-        if (ride.status !== "pending" || ride.passenger_id !== currentUser.uid) return;
-
-        const alreadyNotified = ride.notified_driver_ids || [];
-        const rejectedDrivers = ride.rejected_driver_ids || [];
-        const excludedIds = [...alreadyNotified, ...rejectedDrivers];
-        const nearestDrivers = await fetchNearestAvailableDrivers(ride.pickup_lat, ride.pickup_lng, excludedIds, ride.vehicle_type || "");
-        const nextBatch = nearestDrivers.slice(0, ride.dispatch_batch_size || DISPATCH_BATCH_SIZE);
-        const nextBatchIds = nextBatch.map((driver) => driver.uid || driver.id);
-
-        if (!nextBatchIds.length) {
-            await updateDoc(rideRef, {
-                search_status: "no_more_available_drivers",
-                updatedAt: serverTimestamp()
-            });
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/dispatch`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
+        if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
+        if (data.searchStatus === "no_more_available_drivers") {
             document.getElementById('request-ride-btn').innerHTML = "No nearby drivers online. You can cancel and rebook.";
             document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
-            return;
         }
-
-        const updatedEligibleIds = [...new Set([...(ride.eligible_driver_ids || []), ...nextBatchIds])];
-        const updatedNotifiedIds = [...new Set([...alreadyNotified, ...nextBatchIds])];
-
-        await updateDoc(rideRef, {
-            eligible_driver_ids: updatedEligibleIds,
-            notified_driver_ids: updatedNotifiedIds,
-            dispatch_round: (ride.dispatch_round || 0) + 1,
-            search_status: "expanded_driver_search",
-            last_dispatch_at: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        });
-        notifyRideDrivers(rideId, nextBatchIds).catch(() => {});
+        return;
     } catch (error) {
         console.error("Ride dispatch expansion failed:", error);
     }
@@ -856,89 +810,25 @@ requestRideButton.addEventListener('click', async () => {
     requestBtn.disabled = true;
 
     try {
-        try {
-            const backendRide = await createRideThroughBackend({
-                pickupName: pickupText,
-                dropName: dropText,
-                pickupLat: Number(fareQuote.pickup_lat),
-                pickupLng: Number(fareQuote.pickup_lng),
-                dropLat: Number(fareQuote.drop_lat),
-                dropLng: Number(fareQuote.drop_lng),
-                vehicleType: requestedVehicleType,
-                dropFullAddress: fareQuote.drop_full_address || "",
-                dropSource: fareQuote.drop_source || "",
-                dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",
-                dropPlaceId: fareQuote.drop_place_id || "",
-                dropEloc: fareQuote.drop_eloc || "",
-                dropTypeHint: fareQuote.drop_type_hint || ""
-            });
-            notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
-            showPassengerCancelButton(backendRide.rideId);
-            renderPassengerVerificationPin(backendRide.verificationPin);
-            listenToRideStatusUpdates(backendRide.rideId);
-            return;
-        } catch (backendError) {
-            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
-            if (!backendError.backendUnavailable) throw backendError;
-            console.warn("Ride backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const verificationPin = generateVerificationPin();
-        const [dispatchState, pickupGeocode, dropGeocode] = await Promise.all([
-            buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng, requestedVehicleType),
-            reverseGeocodeRidePoint(fareQuote.pickup_lat, fareQuote.pickup_lng),
-            reverseGeocodeRidePoint(fareQuote.drop_lat, fareQuote.drop_lng)
-        ]);
-        const rideData = {
-            passenger_id: currentUser.uid,
-            passenger_name: currentUser.name,
-            passenger_phone: currentUser.phone,
-            pickup_name: pickupText,
-            drop_name: dropText,
-            drop_full_address: fareQuote.drop_full_address || "",
-            ...buildRideAddressFields("pickup", pickupGeocode, pickupText),
-            ...buildRideAddressFields("drop", dropGeocode || {
-                fullAddress: fareQuote.drop_full_address || "",
-                displayAddress: fareQuote.drop_full_address || "",
-                name: dropText
-            }, dropText),
-            drop_source: fareQuote.drop_source || "",
-            drop_provider: fareQuote.drop_provider || fareQuote.drop_source || "",
-            drop_place_id: fareQuote.drop_place_id || "",
-            drop_eloc: fareQuote.drop_eloc || "",
-            drop_type_hint: fareQuote.drop_type_hint || "",
-            pickup_lat: fareQuote.pickup_lat || null,
-            pickup_lng: fareQuote.pickup_lng || null,
-            drop_lat: fareQuote.drop_lat || null,
-            drop_lng: fareQuote.drop_lng || null,
-            distance_km: fareQuote.distance_km || null,
-            duration_minutes: fareQuote.duration_minutes || null,
-            fare: fareAmount,
-            fare_base: service.baseFare,
-            fare_per_km: service.perKmRate,
-            fare_currency: "INR",
-            vehicle_type: requestedVehicleType,
-            service_name: service.name,
-            passenger_capacity: service.capacity,
-            status: "pending",
-            driver_id: null,
-            driver_name: null,
-            driver_phone: null,
-            vehicle_model: null,
-            vehicle_number: null,
-            driverAvailabilitySnapshot: null,
-            payment_methods: ["cash", "upi"],
-            payment_status: "pending",
-            verification_pin: verificationPin,
-            ...dispatchState,
-            createdAt: serverTimestamp()
-        };
-
-        const docRef = await addDoc(collection(db, "rides"), rideData);
-        notifyRideDrivers(docRef.id, dispatchState.notified_driver_ids).catch(() => {});
-        showPassengerCancelButton(docRef.id);
-        renderPassengerVerificationPin(verificationPin);
-        listenToRideStatusUpdates(docRef.id);
+        const backendRide = await createRideThroughBackend({
+            pickupName: pickupText,
+            dropName: dropText,
+            pickupLat: Number(fareQuote.pickup_lat),
+            pickupLng: Number(fareQuote.pickup_lng),
+            dropLat: Number(fareQuote.drop_lat),
+            dropLng: Number(fareQuote.drop_lng),
+            vehicleType: requestedVehicleType,
+            dropFullAddress: fareQuote.drop_full_address || "",
+            dropSource: fareQuote.drop_source || "",
+            dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",
+            dropPlaceId: fareQuote.drop_place_id || "",
+            dropEloc: fareQuote.drop_eloc || "",
+            dropTypeHint: fareQuote.drop_type_hint || ""
+        });
+        notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
+        showPassengerCancelButton(backendRide.rideId);
+        renderPassengerVerificationPin(backendRide.verificationPin);
+        listenToRideStatusUpdates(backendRide.rideId);
 
     } catch (error) {
         console.error("Database Write Failure:", error);
@@ -1053,27 +943,16 @@ async function cancelRideByPassenger(rideId) {
     if (!confirm("Are you sure you want to cancel your ride request?")) return;
 
     try {
-        try {
-            const idToken = await auth.currentUser?.getIdToken();
-            if (!idToken) throw new Error("Authentication is required.");
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
 
-            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${idToken}` }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.ok) {
-                const backendError = new Error(data.error || "Could not cancel this ride.");
-                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
-                throw backendError;
-            }
-        } catch (backendError) {
-            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
-            if (!backendError.backendUnavailable) throw backendError;
-
-            // Temporary migration fallback while the deployed backend is
-            // being verified. Rejected requests never use this path.
-            await savePassengerVerifiedHistoryStatus(rideId, "cancelled_by_passenger");
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || "Could not cancel this ride.");
         }
 
         alert("Your ride request has been cancelled.");
