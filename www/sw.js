@@ -2,12 +2,12 @@ importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js");
 
 firebase.initializeApp({
-    apiKey: "AIzaSyAd7xnD4z_ydfG82QVAw3mijlvKzhpkIvK",
+    apiKey: "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU",
     authDomain: "tripura-rideshare.firebaseapp.com",
     projectId: "tripura-rideshare",
     storageBucket: "tripura-rideshare.firebasestorage.app",
     messagingSenderId: "678756320479",
-    appId: "1:678756320479:web:d545a36ff2083a833fd56a"
+    appId: "1:678756320479:web:3861739b218640bb3fd56a"
 });
 
 const messaging = firebase.messaging();
