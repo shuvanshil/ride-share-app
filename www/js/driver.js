@@ -319,50 +319,20 @@ async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "se
     if (!currentUser || currentUser.role !== "driver") return;
     if (!isDriverDutyOnline() && fallbackAvailability !== "busy") return;
 
-    const availability = currentlyAssignedRideId ? "busy" : currentUser.driverAvailability || fallbackAvailability;
-    const notificationEligibleUntil = getNotificationEligibleUntilDate();
-    currentUser.driverAvailability = availability;
+    currentUser.driverAvailability = currentlyAssignedRideId ? "busy" : currentUser.driverAvailability || fallbackAvailability;
     currentUser.desiredAvailability = "online";
 
-    try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-        const response = await fetch("/api/rides/driver-location", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-            body: JSON.stringify({ lat, lng, rideId: currentlyAssignedRideId || null, ...telemetry })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.ok) {
-            const backendError = new Error(data.error || "Could not update driver GPS location.");
-            backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
-            throw backendError;
-        }
-        return;
-    } catch (backendError) {
-        if (!backendError?.backendUnavailable) throw backendError;
-        console.warn("GPS backend unavailable; using temporary Firestore fallback.", backendError);
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch("/api/rides/driver-location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ lat, lng, rideId: currentlyAssignedRideId || null, ...telemetry })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Could not update driver GPS location.");
     }
-
-    await setDoc(doc(db, "driverPresence", currentUser.uid), {
-        uid: currentUser.uid,
-        name: currentUser.name || "Driver",
-        phone: currentUser.phone || "",
-        driverLocation: { lat, lng },
-        driverAvailability: availability,
-        desiredAvailability: "online",
-        ...telemetry,
-        verificationStatus: currentUser.verificationStatus || "pending_review",
-        vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
-        vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
-        vehicle_type: inferVehicleTypeFromProfile(currentUser),
-        isConnected: true,
-        lastSeenAt: serverTimestamp(),
-        lastAppSeenAt: serverTimestamp(),
-        lastLocationAt: serverTimestamp(),
-        notificationEligibleUntil,
-        updatedAt: serverTimestamp()
-    }, { merge: true });
 }
 
 function startDriverPresenceTracking() {
@@ -405,17 +375,6 @@ function startDriverPresenceTracking() {
                 );
                 lastPresenceHeadingPosition = coords;
                 lastPresenceHeading = telemetryResult.heading;
-                await updateDoc(doc(db, "users", currentUser.uid), {
-                    driverLocation: { lat, lng },
-                    ...telemetryResult.telemetry,
-                    driverAvailability: currentlyAssignedRideId ? "busy" : "searching",
-                    desiredAvailability: "online",
-                    isConnected: true,
-                    lastSeenAt: serverTimestamp(),
-                    lastAppSeenAt: serverTimestamp(),
-                    lastLocationAt: serverTimestamp(),
-                    notificationEligibleUntil: getNotificationEligibleUntilDate()
-                });
                 await updateDriverPresenceLocation(lat, lng, "searching", telemetryResult.telemetry);
             } catch (error) {
                 console.warn("Driver presence update failed:", error);

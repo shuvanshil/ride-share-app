@@ -1107,67 +1107,7 @@ async function writeDriverLocation(position) {
     if (Number.isFinite(Number(position.driverHeading))) telemetryData.driverHeading = Number(position.driverHeading);
     if (Number.isFinite(Number(position.driverSpeed))) telemetryData.driverSpeed = Number(position.driverSpeed);
     if (Number.isFinite(Number(position.driverAccuracy))) telemetryData.driverAccuracy = Number(position.driverAccuracy);
-    try {
-        await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
-        return;
-    } catch (backendError) {
-        if (!backendError?.backendUnavailable) throw backendError;
-        console.warn("GPS backend unavailable; using temporary Firestore fallback.", backendError);
-    }
-    const availability = currentRide ? "busy" : "searching";
-    currentUser.driverAvailability = availability;
-    currentUser.desiredAvailability = "online";
-    const notificationEligibleUntil = new Date(Date.now() + 30 * 60 * 1000);
-
-    const writes = [
-        updateDoc(doc(db, "users", currentUser.uid), {
-            driverLocation: locationData,
-            ...telemetryData,
-            driverAvailability: availability,
-            desiredAvailability: "online",
-            isConnected: true,
-            lastSeenAt: serverTimestamp(),
-            lastAppSeenAt: serverTimestamp(),
-            lastLocationAt: serverTimestamp(),
-            notificationEligibleUntil,
-            driverAvailabilityUpdatedAt: serverTimestamp()
-        }),
-        setDoc(doc(db, "driverPresence", currentUser.uid), {
-            uid: currentUser.uid,
-            name: currentUser.name || "Driver",
-            phone: currentUser.phone || "",
-            driverLocation: locationData,
-            ...telemetryData,
-            driverAvailability: availability,
-            desiredAvailability: "online",
-            verificationStatus: currentUser.verificationStatus || "pending_review",
-            vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
-            vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
-            vehicle_type: inferVehicleType(currentUser),
-            isConnected: true,
-            lastSeenAt: serverTimestamp(),
-            lastAppSeenAt: serverTimestamp(),
-            lastLocationAt: serverTimestamp(),
-            notificationEligibleUntil,
-            updatedAt: serverTimestamp()
-        }, { merge: true })
-    ];
-
-    if (currentRideId) {
-        writes.push(updateDoc(doc(db, "rides", currentRideId), {
-            driverLocation: locationData,
-            ...telemetryData,
-            driverLocationUpdatedAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        }));
-    }
-
-    const results = await Promise.allSettled(writes);
-    results.forEach((result) => {
-        if (result.status === "rejected") {
-            console.warn("A driver location write failed:", result.reason);
-        }
-    });
+    await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
 }
 
 async function handleLocation(position) {
