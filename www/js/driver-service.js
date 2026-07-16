@@ -470,78 +470,17 @@ async function acceptIncomingRide(rideId, button) {
     }
 
     try {
-        let acceptedRideData = null;
-        let acceptedThroughBackend = false;
-
-        try {
-            const idToken = await auth.currentUser?.getIdToken();
-            if (!idToken) throw new Error("Authentication is required.");
-            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${idToken}` }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.ok) {
-                const backendError = new Error(data.error || "Could not accept this ride.");
-                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
-                throw backendError;
-            }
-            acceptedRideData = data.ride || {};
-            acceptedThroughBackend = true;
-        } catch (backendError) {
-            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
-            if (!backendError.backendUnavailable) throw backendError;
-            console.warn("Ride acceptance backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        if (!acceptedThroughBackend) {
-        const rideRef = doc(db, "rides", rideId);
-        const activeRideQuery = query(
-            collection(db, "rides"),
-            where("driver_id", "==", currentUser.uid),
-            where("status", "in", ACTIVE_RIDE_STATUSES)
-        );
-        const activeRideSnap = await getDocs(activeRideQuery);
-
-        if (!activeRideSnap.empty) {
-            throw new Error("You already have an active ride.");
-        }
-
-        await runTransaction(db, async (transaction) => {
-            const rideSnap = await transaction.get(rideRef);
-            if (!rideSnap.exists()) {
-                throw new Error("Ride request no longer exists.");
-            }
-
-            const rideData = rideSnap.data();
-            acceptedRideData = rideData;
-
-            if (rideData.status !== "pending" || rideData.driver_id) {
-                throw new Error("This ride was already accepted by another driver.");
-            }
-
-            const driverVehicleType = getDriverRequestVehicleType(currentUser);
-            if (!driverVehicleType || rideData.vehicle_type !== driverVehicleType) {
-                throw new Error(`This ${getServiceLabel(rideData.vehicle_type)} request requires a matching registered vehicle.`);
-            }
-
-            if (!Array.isArray(rideData.eligible_driver_ids) || !rideData.eligible_driver_ids.includes(currentUser.uid)) {
-                throw new Error("This ride request is no longer available for you.");
-            }
-
-            transaction.update(rideRef, {
-                status: "accepted",
-                driver_id: currentUser.uid,
-                driver_name: currentUser.name,
-                driver_phone: currentUser.phone,
-                vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || currentUser.vehicleName || "Registered Vehicle",
-                vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || currentUser.vehicleNo || "Vehicle number pending",
-                vehicle_type: driverVehicleType,
-                acceptedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
         });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || "Could not accept this ride.");
         }
+        const acceptedRideData = data.ride || {};
 
         await setServiceDriverAvailability("busy");
         renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });

@@ -975,80 +975,16 @@ function startDriverGpsBroadcast(rideRef) {
 async function acceptRideJob(rideId) {
     try {
         stopRideRequestRing();
-        let acceptedRideData = null;
-        try {
-            const result = await acceptRideThroughBackend(rideId);
-            acceptedRideData = result.ride || {};
-            await setDriverAvailability("busy");
-            currentlyAssignedRideId = rideId;
-            setRideActive(true);
-            activeDriverRideData = acceptedRideData;
-            document.getElementById('active-trip-container').classList.remove('d-none');
-            renderActiveTripStatus("accepted", activeDriverRideData);
-            attachDriverTripListener(doc(db, "rides", rideId));
-            startDriverGpsBroadcast(doc(db, "rides", rideId));
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Ride acceptance backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", rideId);
-        const driverActiveRideQuery = query(
-            collection(db, "rides"),
-            where("driver_id", "==", currentUser.uid),
-            where("status", "in", DRIVER_ACTIVE_STATUSES)
-        );
-        const activeRideSnap = await getDocs(driverActiveRideQuery);
-
-        if (!activeRideSnap.empty) {
-            throw new Error("You already have an active ride.");
-        }
-
-        await runTransaction(db, async (transaction) => {
-            const rideSnap = await transaction.get(rideRef);
-
-            if (!rideSnap.exists()) {
-                throw new Error("Ride request no longer exists.");
-            }
-
-            const rideData = rideSnap.data();
-            acceptedRideData = rideData;
-
-            if (rideData.status !== "pending" || rideData.driver_id) {
-                throw new Error("This ride was already accepted by another driver.");
-            }
-
-            const driverVehicleType = inferVehicleTypeFromProfile(currentUser);
-            if (!driverVehicleType || rideData.vehicle_type !== driverVehicleType) {
-                throw new Error(`This ${getServiceLabel(rideData.vehicle_type)} request requires a matching registered vehicle.`);
-            }
-
-            if (!Array.isArray(rideData.eligible_driver_ids) || !rideData.eligible_driver_ids.includes(currentUser.uid)) {
-                throw new Error("This ride request is no longer available for you.");
-            }
-
-            transaction.update(rideRef, {
-                status: "accepted",
-                driver_id: currentUser.uid,
-                driver_name: currentUser.name,
-                driver_phone: currentUser.phone,
-                vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || currentUser.vehicleName || "Registered Vehicle",
-                vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || currentUser.vehicleNo || "Vehicle number pending",
-                vehicle_type: driverVehicleType,
-                acceptedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-        });
-
+        const result = await acceptRideThroughBackend(rideId);
+        const acceptedRideData = result.ride || {};
         await setDriverAvailability("busy");
         currentlyAssignedRideId = rideId;
         setRideActive(true);
-        activeDriverRideData = { ...acceptedRideData, status: "accepted" };
+        activeDriverRideData = acceptedRideData;
         document.getElementById('active-trip-container').classList.remove('d-none');
         renderActiveTripStatus("accepted", activeDriverRideData);
-        attachDriverTripListener(rideRef);
-        startDriverGpsBroadcast(rideRef);
+        attachDriverTripListener(doc(db, "rides", rideId));
+        startDriverGpsBroadcast(doc(db, "rides", rideId));
     } catch (error) {
         console.error("Failed to commit transactional state adjustment:", error);
         alert(error.message || "Could not accept this ride.");
