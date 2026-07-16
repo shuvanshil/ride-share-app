@@ -718,49 +718,7 @@ async function markRidePaidAndCreateHistory(rideId) {
     }
 
     try {
-        try {
-            await transitionRideThroughBackend(rideId, "mark_paid");
-            return true;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Payment backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", rideId);
-        const historyRef = doc(db, "tripHistory", rideId);
-
-        await runTransaction(db, async (transaction) => {
-            const rideSnap = await transaction.get(rideRef);
-            if (!rideSnap.exists()) {
-                throw new Error("Ride document no longer exists.");
-            }
-
-            const rideData = rideSnap.data();
-            if (rideData.status !== "completed") {
-                throw new Error("Only completed rides can be moved into trip history.");
-            }
-
-            if (rideData.driver_id !== currentUser.uid) {
-                throw new Error("Only the assigned driver can confirm this payment.");
-            }
-
-            transaction.update(rideRef, {
-                payment_status: "paid",
-                payment_confirmed_by: currentUser.uid,
-                paymentConfirmedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-
-            const historyRecord = buildTripHistoryRecord(rideId, {
-                ...rideData,
-                status: "completed",
-                payment_status: "paid",
-                source: "client_payment_confirmation"
-            });
-            delete historyRecord.createdAt;
-            transaction.set(historyRef, historyRecord, { merge: true });
-        });
-
+        await transitionRideThroughBackend(rideId, "mark_paid");
         return true;
     } catch (error) {
         console.error("Trip history creation failed:", error);
