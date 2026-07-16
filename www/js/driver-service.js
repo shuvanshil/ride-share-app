@@ -415,48 +415,7 @@ async function setServiceDriverAvailability(status) {
     currentUser.driverAvailability = status;
     currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
-    const online = status !== "offline";
-    const notificationEligibleUntil = online ? new Date(Date.now() + 30 * 60 * 1000) : new Date(0);
-
-    try {
-        await updateDriverAvailabilityThroughBackend(status, locationData);
-        return;
-    } catch (backendError) {
-        if (!backendError?.backendUnavailable) throw backendError;
-        console.warn("Availability backend unavailable; using temporary Firestore fallback.", backendError);
-    }
-
-    const userUpdate = {
-        driverAvailability: status,
-        desiredAvailability: online ? "online" : "offline",
-        isConnected: online,
-        notificationEligibleUntil,
-        driverAvailabilityUpdatedAt: serverTimestamp(),
-        lastSeenAt: serverTimestamp()
-    };
-    if (locationData) userUpdate.driverLocation = locationData;
-
-    const presenceUpdate = {
-        uid: currentUser.uid,
-        name: currentUser.name || "Driver",
-        phone: currentUser.phone || "",
-        driverAvailability: status,
-        desiredAvailability: online ? "online" : "offline",
-        verificationStatus: currentUser.verificationStatus || "pending_review",
-        vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
-        vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
-        vehicle_type: inferVehicleType(currentUser),
-        isConnected: online,
-        notificationEligibleUntil,
-        updatedAt: serverTimestamp(),
-        lastSeenAt: serverTimestamp()
-    };
-    if (locationData) presenceUpdate.driverLocation = locationData;
-
-    await Promise.allSettled([
-        updateDoc(doc(db, "users", currentUser.uid), userUpdate),
-        setDoc(doc(db, "driverPresence", currentUser.uid), presenceUpdate, { merge: true })
-    ]);
+    await updateDriverAvailabilityThroughBackend(status, locationData);
 }
 
 async function acceptIncomingRide(rideId, button) {

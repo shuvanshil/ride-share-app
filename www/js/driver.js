@@ -304,46 +304,8 @@ async function setDriverAvailability(status) {
 
     try {
         if (status === "offline") stopPresenceTracking();
-
-        try {
-            await updateDriverAvailabilityThroughBackend(status);
-            if (status === "online" || status === "searching" || status === "busy") {
-                registerDriverPushToken(db, currentUser.uid).catch((error) => {
-                    console.warn("Driver push token registration failed:", error);
-                });
-            }
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Availability backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const online = status !== "offline";
-        const notificationEligibleUntil = online ? getNotificationEligibleUntilDate() : new Date(0);
-
-        await updateDoc(doc(db, "users", currentUser.uid), {
-            driverAvailability: status,
-            desiredAvailability: online ? "online" : "offline",
-            isConnected: online,
-            notificationEligibleUntil,
-            driverAvailabilityUpdatedAt: serverTimestamp()
-        });
-        await setDoc(doc(db, "driverPresence", currentUser.uid), {
-            uid: currentUser.uid,
-            name: currentUser.name || "Driver",
-            phone: currentUser.phone || "",
-            driverAvailability: status,
-            desiredAvailability: online ? "online" : "offline",
-            verificationStatus: currentUser.verificationStatus || "pending_review",
-            vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
-            vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
-            vehicle_type: inferVehicleTypeFromProfile(currentUser),
-            isConnected: online,
-            notificationEligibleUntil,
-            updatedAt: serverTimestamp()
-        }, { merge: true });
-
-        if (online) {
+        await updateDriverAvailabilityThroughBackend(status);
+        if (status === "online" || status === "searching" || status === "busy") {
             registerDriverPushToken(db, currentUser.uid).catch((error) => {
                 console.warn("Driver push token registration failed:", error);
             });
