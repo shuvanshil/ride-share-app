@@ -7,12 +7,12 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU",
+  apiKey: "AIzaSyAd7xnD4z_ydfG82QVAw3mijlvKzhpkIvK",
   authDomain: "tripura-rideshare.firebaseapp.com",
   projectId: "tripura-rideshare",
   storageBucket: "tripura-rideshare.firebasestorage.app",
   messagingSenderId: "678756320479",
-  appId: "1:678756320479:web:3861739b218640bb3fd56a"
+  appId: "1:678756320479:web:d545a36ff2083a833fd56a"
 };
 
 // Initialize the core Firebase App instance

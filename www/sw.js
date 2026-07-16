@@ -2,16 +2,16 @@ importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"
 importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js");
 
 firebase.initializeApp({
-    apiKey: "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU",
+    apiKey: "AIzaSyAd7xnD4z_ydfG82QVAw3mijlvKzhpkIvK",
     authDomain: "tripura-rideshare.firebaseapp.com",
     projectId: "tripura-rideshare",
     storageBucket: "tripura-rideshare.firebasestorage.app",
     messagingSenderId: "678756320479",
-    appId: "1:678756320479:web:3861739b218640bb3fd56a"
+    appId: "1:678756320479:web:d545a36ff2083a833fd56a"
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v25-driver-push";
+const CACHE_VERSION = "liphtup-shell-v26-push-web-app";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [

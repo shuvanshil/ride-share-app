@@ -27,7 +27,7 @@ DRIVER_PRIVACY_POLICY_VERSION = "2026-07-10"
 
 ACTIVE_PASSENGER_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"]
 ACTIVE_DRIVER_STATUSES = ["accepted", "arrived", "started", "en_route"]
-FIREBASE_WEB_API_KEY_FALLBACK = "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU"
+FIREBASE_WEB_API_KEY_FALLBACK = "AIzaSyAd7xnD4z_ydfG82QVAw3mijlvKzhpkIvK"
 
 
 def _clean_string(value: Any, max_length: int = 200) -> str:
