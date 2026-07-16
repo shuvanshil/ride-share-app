@@ -1015,55 +1015,10 @@ async function updateActiveRideStatus(nextStatus) {
 
     try {
         const backendAction = { arrived: "arrive", started: "start" }[nextStatus];
-        if (backendAction) {
-            try {
-                const result = await transitionRideThroughBackend(currentlyAssignedRideId, backendAction);
-                activeDriverRideData = result.ride || { ...activeDriverRideData, status: nextStatus };
-                renderActiveTripStatus(nextStatus, activeDriverRideData);
-                return;
-            } catch (backendError) {
-                if (!backendError?.backendUnavailable) throw backendError;
-                console.warn("Status backend unavailable; using temporary Firestore fallback.", backendError);
-            }
-        }
-
-        const rideRef = doc(db, "rides", currentlyAssignedRideId);
-        const rideSnap = await getDoc(rideRef);
-
-        if (!rideSnap.exists()) {
-            alert("This ride no longer exists.");
-            return;
-        }
-
-        const rideData = rideSnap.data();
-        const allowedTransitions = {
-            accepted: ["arrived"],
-            arrived: ["started"],
-            started: ["completed"]
-        };
-
-        if (rideData.driver_id !== currentUser.uid) {
-            alert("Only the assigned driver can update this trip.");
-            return;
-        }
-
-        if (!allowedTransitions[rideData.status]?.includes(nextStatus)) {
-            alert(`Cannot move ride from ${rideData.status} to ${nextStatus}.`);
-            return;
-        }
-
-        const timestampField = {
-            arrived: "arrivedAt",
-            started: "startedAt"
-        }[nextStatus];
-
-        await updateDoc(rideRef, {
-            status: nextStatus,
-            [timestampField]: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        });
-
-        renderActiveTripStatus(nextStatus);
+        if (!backendAction) throw new Error(`Unsupported ride status: ${nextStatus}.`);
+        const result = await transitionRideThroughBackend(currentlyAssignedRideId, backendAction);
+        activeDriverRideData = result.ride || { ...activeDriverRideData, status: nextStatus };
+        renderActiveTripStatus(nextStatus, activeDriverRideData);
     } catch (error) {
         console.error("Trip status update failed:", error);
         alert("Could not update trip status. Please try again.");
@@ -1085,75 +1040,13 @@ async function verifyAndStartTrip(rideId) {
     }
 
     try {
-        try {
-            const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
-            activeDriverRideData = result.ride || { ...activeDriverRideData, status: "en_route" };
-            renderActiveTripStatus("en_route", activeDriverRideData);
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("PIN backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", rideId);
-        const rideSnap = await getDoc(rideRef);
-
-        if (!rideSnap.exists()) {
-            alert("This ride no longer exists.");
-            return;
-        }
-
-        const rideData = rideSnap.data();
-
-        if (rideData.driver_id !== currentUser.uid) {
-            alert("Only the assigned driver can verify this ride.");
-            return;
-        }
-
-        if (String(rideData.verification_pin || "") !== typedPin) {
-            alert("Incorrect verification PIN. Please verify with the passenger.");
-            return;
-        }
-
-        let verifiedRideData = null;
-        await runTransaction(db, async (transaction) => {
-            const freshRideSnap = await transaction.get(rideRef);
-            if (!freshRideSnap.exists()) {
-                throw new Error("This ride no longer exists.");
-            }
-
-            const freshRideData = freshRideSnap.data();
-            if (freshRideData.driver_id !== currentUser.uid) {
-                throw new Error("Only the assigned driver can verify this ride.");
-            }
-
-            if (String(freshRideData.verification_pin || "") !== typedPin) {
-                throw new Error("Incorrect verification PIN. Please verify with the passenger.");
-            }
-
-            verifiedRideData = freshRideData;
-            transaction.update(rideRef, {
-                status: "en_route",
-                pinVerifiedAt: serverTimestamp(),
-                startedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-        });
-
-        if (verifiedRideData) {
-            setDoc(doc(db, "tripHistory", rideId), buildTripHistoryRecord(rideId, {
-                ...verifiedRideData,
-                status: "verified",
-                payment_status: verifiedRideData.payment_status || "pending"
-            }), { merge: true }).catch((historyError) => {
-                console.warn("Trip history save after PIN verification failed:", historyError);
-            });
-        }
+        const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
+        activeDriverRideData = result.ride || { ...activeDriverRideData, status: "en_route" };
 
         const verificationPanel = document.getElementById('verification-pin-panel');
         if (verificationPanel) verificationPanel.classList.add('d-none');
 
-        renderActiveTripStatus("en_route");
+        renderActiveTripStatus("en_route", activeDriverRideData);
     } catch (error) {
         console.error("PIN verification failed:", error);
         alert("Could not verify PIN. Please try again.");
