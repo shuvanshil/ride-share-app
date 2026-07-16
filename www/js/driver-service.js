@@ -1454,53 +1454,8 @@ async function completeRideJob() {
     pendingPaymentRideId = completedRideId;
 
     try {
-        try {
-            const result = await transitionRideThroughBackend(completedRideId, "complete");
-            const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
-            finalFareEl.innerText = `Rs ${finalFare}`;
-            paymentModal.classList.remove('d-none');
-            hideLifecyclePanel();
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Completion backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", currentRideId);
-        const rideSnap = await getDoc(rideRef);
-        if (!rideSnap.exists()) return;
-
-        const rideData = rideSnap.data();
-        if (!["started", "en_route"].includes(rideData.status)) {
-            alert("Verify the passenger PIN before completing this trip.");
-            return;
-        }
-
-        const finalFare = parseFloat(rideData.fare || 0);
-        pendingPaymentRideId = currentRideId;
-
-        await runTransaction(db, async (transaction) => {
-            const freshRideSnap = await transaction.get(rideRef);
-            if (!freshRideSnap.exists()) return;
-            const freshRideData = freshRideSnap.data();
-
-            transaction.update(rideRef, {
-                status: "completed",
-                completedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-            transaction.set(doc(db, "tripHistory", currentRideId), buildTripHistoryFinalUpdate({
-                ...freshRideData,
-                ride_id: currentRideId,
-                status: "completed"
-            }, "completed"), { merge: true });
-        });
-
-        await updateDoc(doc(db, "users", currentUser.uid), {
-            lifetime_earnings: increment(finalFare),
-            total_completed_trips: increment(1)
-        });
-
+        const result = await transitionRideThroughBackend(completedRideId, "complete");
+        const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
         finalFareEl.innerText = `Rs ${finalFare}`;
 
         const driverUPI = currentUser.upiId;

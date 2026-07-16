@@ -1061,64 +1061,9 @@ async function completeRideJob() {
 
     const completedRideId = currentlyAssignedRideId;
     try {
-        try {
-            const result = await transitionRideThroughBackend(completedRideId, "complete");
-            const finalFare = parseFloat(result.ride?.fare || activeDriverRideData?.fare || 0);
-            pendingDriverPaymentRideId = completedRideId;
-            document.getElementById('driver-final-fare').innerText = `Rs ${finalFare}`;
-            document.getElementById('driver-payment-view').classList.remove('d-none');
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Completion backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", currentlyAssignedRideId);
-        const rideSnap = await getDoc(rideRef);
-        if (!rideSnap.exists()) return;
-
-        const rideData = rideSnap.data();
-        if (rideData.status !== "en_route") {
-            alert("Verify the passenger PIN before completing this trip.");
-            return;
-        }
-
-        const finalFare = parseFloat(rideData.fare || 0);
-
-        await runTransaction(db, async (transaction) => {
-            const freshRideSnap = await transaction.get(rideRef);
-            if (!freshRideSnap.exists()) return;
-            const freshRideData = freshRideSnap.data();
-
-            transaction.update(rideRef, {
-                status: "completed",
-                completedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-            transaction.set(doc(db, "tripHistory", currentlyAssignedRideId), buildTripHistoryFinalUpdate({
-                ...freshRideData,
-                ride_id: currentlyAssignedRideId,
-                status: "completed"
-            }, "completed"), { merge: true });
-        });
-
-        if (activeDriverTripListener) activeDriverTripListener();
-
-        await updateDoc(doc(db, "users", currentUser.uid), {
-            lifetime_earnings: increment(finalFare),
-            total_completed_trips: increment(1)
-        });
-
-        if (activeDriverLocationWatchId !== null) {
-            navigator.geolocation.clearWatch(activeDriverLocationWatchId);
-            activeDriverLocationWatchId = null;
-        }
-
-        await setDriverAvailability("searching");
-
-        document.getElementById('active-trip-container').classList.add('d-none');
-        activeDriverRideData = null;
-        activeDriverRenderedStatus = null;
+        const result = await transitionRideThroughBackend(completedRideId, "complete");
+        const finalFare = parseFloat(result.ride?.fare || activeDriverRideData?.fare || 0);
+        pendingDriverPaymentRideId = completedRideId;
         document.getElementById('driver-final-fare').innerText = `Rs ${finalFare}`;
 
         const driverUPI = currentUser.upiId;
@@ -1135,7 +1080,9 @@ async function completeRideJob() {
         }
 
         document.getElementById('driver-payment-view').classList.remove('d-none');
-        pendingDriverPaymentRideId = currentlyAssignedRideId;
+        if (activeDriverTripListener) activeDriverTripListener();
+        activeDriverRideData = null;
+        activeDriverRenderedStatus = null;
         currentlyAssignedRideId = null;
         setRideActive(false);
     } catch (error) {
