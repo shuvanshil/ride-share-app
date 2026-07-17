@@ -558,11 +558,8 @@ async function saveProfile(event) {
         const vehicleNumber = inputs.vehicleNumber.value.trim().toUpperCase();
         Object.assign(updates, {
             vehicleType,
-            vehicle_type: vehicleType,
             vehicleModel,
-            vehicle_model: vehicleModel,
             vehicleNumber,
-            vehicle_number: vehicleNumber,
             drivingLicenseNumber: inputs.license.value.trim().toUpperCase(),
             upiId: inputs.upi.value.trim().toLowerCase()
         });
