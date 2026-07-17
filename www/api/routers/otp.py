@@ -18,6 +18,10 @@ from ..core.otp import (
     fetch_two_factor_json,
     normalize_phone,
     normalize_purpose,
+    mark_otp_verified,
+    record_failed_otp_attempt,
+    record_otp_session,
+    reserve_otp_send,
     two_factor_phone,
 )
 
@@ -45,6 +49,7 @@ async def send_otp(body: SendOtpBody) -> dict[str, Any]:
         raise ApiError("Enter a valid 10-digit Indian mobile number.", 400)
 
     try:
+        reserve_otp_send(phone, purpose)
         api_key = require_env("TWOFACTOR_API_KEY")
         template_name = (get_env("TWOFACTOR_OTP_TEMPLATE", OTP_TEMPLATE_NAME) or "").strip()
 
@@ -64,9 +69,9 @@ async def send_otp(body: SendOtpBody) -> dict[str, Any]:
             raise ApiError(
                 "Could not send OTP.",
                 502,
-                {"providerStatus": data.get("Status") or "", "providerDetails": data.get("Details") or ""},
             )
 
+        record_otp_session(phone, purpose, str(data.get("Details")))
         return {
             "ok": True,
             "phone": phone,
@@ -76,8 +81,8 @@ async def send_otp(body: SendOtpBody) -> dict[str, Any]:
         }
     except ApiError:
         raise
-    except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not send OTP. Please try again.", 500, {"message": str(error)})
+    except Exception:  # noqa: BLE001
+        raise ApiError("Could not send OTP. Please try again.", 500)
 
 
 @router.post("/verify-otp")
@@ -116,12 +121,13 @@ async def verify_otp(body: VerifyOtpBody) -> dict[str, Any]:
         matched = details == "otp matched" or (status == "success" and "matched" in details)
 
         if not matched:
+            record_failed_otp_attempt(phone, purpose, otp_session_id)
             raise ApiError(
                 "That OTP is incorrect or expired.",
                 400,
-                {"providerStatus": data.get("Status") or "", "providerDetails": data.get("Details") or ""},
             )
 
+        mark_otp_verified(phone, purpose, otp_session_id)
         return {
             "ok": True,
             "phone": phone,
@@ -130,5 +136,5 @@ async def verify_otp(body: VerifyOtpBody) -> dict[str, Any]:
         }
     except ApiError:
         raise
-    except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not verify OTP. Please try again.", 500, {"message": str(error)})
+    except Exception:  # noqa: BLE001
+        raise ApiError("Could not verify OTP. Please try again.", 500)
