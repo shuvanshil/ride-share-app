@@ -1,11 +1,5 @@
 import { app, auth } from './firebase-init.js';
 import {
-    doc,
-    setDoc,
-    serverTimestamp,
-    arrayUnion
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import {
     getMessaging,
     getToken,
     isSupported
@@ -14,7 +8,7 @@ import {
 const DRIVER_PUSH_VAPID_KEY = "BJXKOjn7PQPRpnLMcXW5xe_blAib33GSjpIpTzQtH5Pw7IzxxNaWpwgGox7QxQFaObpvhSrc1vck4uY4bRrCkSl";
 let lastOpenNotificationAt = 0;
 
-export async function registerDriverPushToken(db, uid) {
+export async function registerDriverPushToken(_db, uid) {
     if (!uid || !("Notification" in window) || !("serviceWorker" in navigator)) {
         return { ok: false, reason: "unsupported" };
     }
@@ -27,10 +21,6 @@ export async function registerDriverPushToken(db, uid) {
         : await Notification.requestPermission();
 
     if (permission !== "granted") {
-        await setDoc(doc(db, "driverPresence", uid), {
-            notificationPermission: permission,
-            pushUpdatedAt: serverTimestamp()
-        }, { merge: true });
         return { ok: false, reason: permission };
     }
 
@@ -42,12 +32,6 @@ export async function registerDriverPushToken(db, uid) {
     });
 
     if (!token) return { ok: false, reason: "empty-token" };
-
-    const tokenData = {
-        token,
-        userAgent: navigator.userAgent,
-        updatedAt: new Date().toISOString()
-    };
 
     try {
         const idToken = await auth.currentUser?.getIdToken();
@@ -66,25 +50,9 @@ export async function registerDriverPushToken(db, uid) {
         return { ok: true, token };
     } catch (backendError) {
         if (!backendError?.backendUnavailable) throw backendError;
-        console.warn("Push-token backend unavailable; using temporary Firestore fallback.", backendError);
+        console.warn("Push-token backend unavailable; token was not stored.", backendError);
+        return { ok: false, reason: "backend-unavailable" };
     }
-
-    await Promise.allSettled([
-        setDoc(doc(db, "users", uid), {
-            pushTokens: arrayUnion(token),
-            pushTokenDetails: arrayUnion(tokenData),
-            notificationPermission: "granted",
-            pushUpdatedAt: serverTimestamp()
-        }, { merge: true }),
-        setDoc(doc(db, "driverPresence", uid), {
-            pushTokens: arrayUnion(token),
-            pushTokenDetails: arrayUnion(tokenData),
-            notificationPermission: "granted",
-            pushUpdatedAt: serverTimestamp()
-        }, { merge: true })
-    ]);
-
-    return { ok: true, token };
 }
 
 export function startRideRequestRing(ride = {}) {
