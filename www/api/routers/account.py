@@ -5,6 +5,7 @@ reset-password.js, and delete-account.js.
 from __future__ import annotations
 
 import re
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -21,6 +22,7 @@ from ..core.firebase import get_admin_app
 from ..core.otp import verify_token
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DRIVER_TERMS_VERSION = "2026-07-10"
 DRIVER_PRIVACY_POLICY_VERSION = "2026-07-10"
@@ -310,6 +312,13 @@ async def _verify_password(email: str, password: str) -> Optional[dict[str, Any]
         data = {}
 
     if response.is_error:
+        provider_error = data.get("error") if isinstance(data, dict) else None
+        provider_code = provider_error.get("message") if isinstance(provider_error, dict) else "unknown"
+        logger.warning(
+            "Firebase password verification rejected: status=%s code=%s",
+            response.status_code,
+            provider_code,
+        )
         return None
     return data
 
@@ -482,7 +491,11 @@ async def delete_account(body: DeleteAccountBody, authorization: Optional[str] =
         email = auth_user.email or profile.get("email") or ""
         password_check = await _verify_password(email, password)
 
-        if not password_check or password_check.get("localId") != uid:
+        if not password_check:
+            logger.warning("Account deletion password verification failed before UID comparison")
+            raise ApiError("The password you entered is incorrect.", 401)
+        if password_check.get("localId") != uid:
+            logger.warning("Account deletion password verification returned a different Firebase user")
             raise ApiError("The password you entered is incorrect.", 401)
 
         _delete_account_data(
