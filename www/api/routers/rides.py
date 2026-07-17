@@ -184,7 +184,7 @@ async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, d
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not calculate the ride route.", 503, {"message": str(error)})
+        raise ApiError("Could not calculate the ride route.", 503)
 
 
 def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
@@ -354,7 +354,7 @@ async def create_passenger_ride(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not create this ride request.", 503, {"message": str(error)})
+        raise ApiError("Could not create this ride request.", 503)
 
 
 @router.post("/{ride_id}/transition")
@@ -432,7 +432,7 @@ def transition_driver_ride(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not update this ride.", 503, {"message": str(error)})
+        raise ApiError("Could not update this ride.", 503)
 
 
 @router.post("/{ride_id}/dispatch")
@@ -485,7 +485,7 @@ def expand_passenger_dispatch(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not expand the driver search.", 503, {"message": str(error)})
+        raise ApiError("Could not expand the driver search.", 503)
 
 
 @router.post("/driver-availability")
@@ -544,7 +544,7 @@ def update_driver_availability(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not update driver availability.", 503, {"message": str(error)})
+        raise ApiError("Could not update driver availability.", 503)
 
 
 @router.post("/driver-location")
@@ -609,7 +609,7 @@ def update_driver_location(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not update driver GPS location.", 503, {"message": str(error)})
+        raise ApiError("Could not update driver GPS location.", 503)
 
 
 @router.post("/driver-push-token")
@@ -644,7 +644,7 @@ def save_driver_push_token(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not register driver push token.", 503, {"message": str(error)})
+        raise ApiError("Could not register driver push token.", 503)
 
 
 @router.post("/{ride_id}/cancel")
@@ -698,7 +698,7 @@ def cancel_passenger_ride(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not cancel this ride.", 503, {"message": str(error)})
+        raise ApiError("Could not cancel this ride.", 503)
 
 
 @router.post("/{ride_id}/accept")
@@ -783,4 +783,4 @@ def accept_driver_ride(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not accept this ride.", 503, {"message": str(error)})
+        raise ApiError("Could not accept this ride.", 503)

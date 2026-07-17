@@ -232,7 +232,7 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
                 auth_client.delete_user(created_uid)
             except Exception:  # noqa: BLE001
                 pass
-        raise ApiError("Could not create account. Please try again.", 500, {"message": str(error)})
+        raise ApiError("Could not create account. Please try again.", 500)
 
 
 @router.post("/reset-password")
@@ -285,7 +285,7 @@ async def reset_password(body: ResetPasswordBody) -> dict[str, Any]:
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not update password. Please try again.", 500, {"message": str(error)})
+        raise ApiError("Could not update password. Please try again.", 500)
 
 
 def _get_bearer_token(authorization: Optional[str]) -> str:
@@ -496,7 +496,7 @@ async def delete_account(body: DeleteAccountBody, authorization: Optional[str] =
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not delete your account. Please try again.", 500, {"message": str(error)})
+        raise ApiError("Could not delete your account. Please try again.", 500)
 
 
 def _clean_profile_value(value: Any, limit: int) -> str:
@@ -577,7 +577,7 @@ def get_profile(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
         db = fb_firestore.client(get_admin_app())
         snapshot = db.collection("users").document(uid).get()
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not load your profile.", 503, {"message": str(error)})
+        raise ApiError("Could not load your profile.", 503)
 
     if not snapshot.exists:
         raise ApiError("User profile not found.", 404)
@@ -643,4 +643,4 @@ def update_profile(
     except fb_auth.EmailAlreadyExistsError:
         raise ApiError("That email address is already in use.", 409)
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not save your profile.", 503, {"message": str(error)})
+        raise ApiError("Could not save your profile.", 503)

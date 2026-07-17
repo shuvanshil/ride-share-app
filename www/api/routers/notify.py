@@ -159,4 +159,4 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not send ride notifications.", 500, {"message": str(error)})
+        raise ApiError("Could not send ride notifications.", 500)

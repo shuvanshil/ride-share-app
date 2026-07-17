@@ -276,7 +276,7 @@ async def google_autocomplete(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001 - mirror the catch-all in the original handler
-        raise ApiError("Google autocomplete failed", 500, {"message": str(error)})
+        raise ApiError("Google autocomplete failed", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +327,7 @@ async def google_place_detail(placeId: str = Query("")) -> dict[str, Any]:  # no
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Google place detail failed", 500, {"message": str(error)})
+        raise ApiError("Google place detail failed", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +461,7 @@ async def google_reverse_geocode(lat: Optional[str] = Query(None), lng: Optional
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Google reverse geocode failed", 500, {"message": str(error)})
+        raise ApiError("Google reverse geocode failed", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -528,4 +528,4 @@ async def google_route(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Google route failed", 500, {"message": str(error)})
+        raise ApiError("Google route failed", 500)
