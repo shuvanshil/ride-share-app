@@ -57,8 +57,10 @@ async def http_error_handler(_request: Request, exc: StarletteHTTPException) -> 
 @app.exception_handler(Exception)
 async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     # Last-resort safety net so the frontend always gets the {"error": ...}
-    # shape it expects, instead of a raw 500 HTML page.
-    return JSONResponse(status_code=500, content={"error": "Internal server error", "message": str(exc)})
+    # shape it expects, instead of a raw 500 HTML page. Do not expose the
+    # exception text: it may contain provider, credential, or infrastructure
+    # details that belong only in server logs.
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
 # All routers are mounted under /api to match the original Vercel function

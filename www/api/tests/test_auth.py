@@ -1,7 +1,10 @@
+import asyncio
+import json
+
 from api.core.auth import extract_bearer_token
 from fastapi.testclient import TestClient
 
-from api.index import app
+from api.index import app, unhandled_error_handler
 
 
 def test_extract_bearer_token_accepts_case_insensitive_scheme() -> None:
@@ -89,3 +92,9 @@ def test_driver_push_token_requires_authentication() -> None:
     )
     assert response.status_code == 401
     assert response.json() == {"error": "Authentication is required."}
+
+
+def test_unhandled_errors_do_not_expose_exception_details() -> None:
+    response = asyncio.run(unhandled_error_handler(None, RuntimeError("secret provider detail")))
+    assert response.status_code == 500
+    assert json.loads(response.body) == {"error": "Internal server error"}
