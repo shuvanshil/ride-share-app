@@ -1,11 +1,5 @@
-import { auth, db } from './firebase-init.js';
-import {
-    doc,
-    getDoc,
-    serverTimestamp,
-    setDoc,
-    updateDoc
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { auth } from './firebase-init.js';
+import { serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
@@ -575,33 +569,7 @@ async function saveProfile(event) {
     }
 
     try {
-        try {
-            currentProfile = await saveProfileThroughBackend(currentAuthUser, updates);
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-
-            // Temporary migration fallback. This path is only for an
-            // unavailable backend, not for rejected or unauthorized writes.
-            await updateDoc(doc(db, "users", currentAuthUser.uid), updates);
-
-            if (currentProfile.role === "driver") {
-                try {
-                    await setDoc(doc(db, "driverPresence", currentAuthUser.uid), {
-                        name: updates.name,
-                        phone: currentProfile.phone || currentAuthUser.phoneNumber || "",
-                        profilePhotoUrl: updates.profilePhotoUrl,
-                        vehicle_type: updates.vehicle_type,
-                        vehicle_model: updates.vehicle_model,
-                        vehicle_number: updates.vehicle_number,
-                        updatedAt: serverTimestamp()
-                    }, { merge: true });
-                } catch (presenceError) {
-                    console.warn("Driver presence profile sync will retry from the driver console:", presenceError);
-                }
-            }
-
-            currentProfile = { ...currentProfile, ...updates };
-        }
+        currentProfile = await saveProfileThroughBackend(currentAuthUser, updates);
 
         cacheProfile(currentProfile);
         renderProfileSummary(currentProfile);
@@ -803,32 +771,17 @@ onAuthStateChanged(auth, async (user) => {
     document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
 
     try {
-        // FastAPI is now the preferred profile read path. Firestore remains
-        // as a temporary fallback until the backend is deployed and verified.
         currentProfile = await loadProfileThroughBackend(user);
         renderProfileSummary(currentProfile);
         cacheProfile(currentProfile);
     } catch (error) {
-        console.warn("Profile backend load failed; using Firestore fallback:", error);
-        try {
-            const userSnap = await getDoc(doc(db, "users", user.uid));
-            currentProfile = userSnap.exists() ? userSnap.data() : {
-                uid: user.uid,
-                name: user.displayName || "LiphtUp User",
-                phone: user.phoneNumber || "",
-                role: "passenger"
-            };
-            renderProfileSummary(currentProfile);
-            cacheProfile(currentProfile);
-        } catch (fallbackError) {
-            console.error("Profile load failed:", fallbackError);
-            currentProfile = {
-                uid: user.uid,
-                name: user.displayName || "LiphtUp User",
-                phone: user.phoneNumber || "",
-                role: "passenger"
-            };
-            renderProfileSummary(currentProfile);
-        }
+        console.error("Profile backend load failed:", error);
+        currentProfile = {
+            uid: user.uid,
+            name: user.displayName || "LiphtUp User",
+            phone: user.phoneNumber || "",
+            role: "passenger"
+        };
+        renderProfileSummary(currentProfile);
     }
 });
