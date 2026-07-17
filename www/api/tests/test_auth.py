@@ -2,9 +2,11 @@ import asyncio
 import json
 
 from api.core.auth import extract_bearer_token
+from api.core.errors import ApiError
 from fastapi.testclient import TestClient
 
 from api.index import app, unhandled_error_handler
+from api.routers.rides import _require_role
 
 
 def test_extract_bearer_token_accepts_case_insensitive_scheme() -> None:
@@ -98,3 +100,15 @@ def test_unhandled_errors_do_not_expose_exception_details() -> None:
     response = asyncio.run(unhandled_error_handler(None, RuntimeError("secret provider detail")))
     assert response.status_code == 500
     assert json.loads(response.body) == {"error": "Internal server error"}
+
+
+def test_role_guard_rejects_the_wrong_account_role() -> None:
+    _require_role({"role": "driver"}, "driver", "driver only")
+
+    try:
+        _require_role({"role": "passenger"}, "driver", "driver only")
+    except ApiError as error:
+        assert error.status_code == 403
+        assert error.message == "driver only"
+    else:
+        raise AssertionError("Expected a passenger to be rejected by the driver guard")

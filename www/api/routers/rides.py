@@ -122,6 +122,11 @@ def _driver_type(driver: dict[str, Any]) -> str:
     return ""
 
 
+def _require_role(profile: dict[str, Any], expected_role: str, message: str) -> None:
+    if profile.get("role") != expected_role:
+        raise ApiError(message, 403)
+
+
 def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc).timestamp()
     candidates: list[dict[str, Any]] = []
@@ -277,6 +282,7 @@ async def create_passenger_ride(
         db = fb_firestore.client(get_admin_app())
         profile_snapshot = db.collection("users").document(uid).get()
         profile = profile_snapshot.to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can create ride requests.")
         distance_km, duration_minutes = await _server_route(pickup_lat, pickup_lng, drop_lat, drop_lng)
         fare = round(service["base"] + distance_km * service["per_km"])
         drivers = _available_drivers(db, pickup_lat, pickup_lng, body.vehicleType.strip().lower())
@@ -378,6 +384,8 @@ def transition_driver_ride(
 
     try:
         db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_role(profile, "driver", "Only drivers can update rides.")
         ride_ref = db.collection("rides").document(clean_ride_id)
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         user_ref = db.collection("users").document(uid)
@@ -442,6 +450,8 @@ def expand_passenger_dispatch(
 
     try:
         db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can expand this search.")
         ride_ref = db.collection("rides").document(clean_ride_id)
         snapshot = ride_ref.get()
         if not snapshot.exists:
@@ -501,8 +511,7 @@ def update_driver_availability(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        if profile.get("role") != "driver":
-            raise ApiError("Only drivers can update driver availability.", 403)
+        _require_role(profile, "driver", "Only drivers can update driver availability.")
         online = status != "offline"
         user_update: dict[str, Any] = {
             "driverAvailability": status,
@@ -560,8 +569,7 @@ def update_driver_location(
         db = fb_firestore.client(get_admin_app())
         profile_ref = db.collection("users").document(uid)
         profile = profile_ref.get().to_dict() or {}
-        if profile.get("role") != "driver":
-            raise ApiError("Only drivers can update GPS location.", 403)
+        _require_role(profile, "driver", "Only drivers can update GPS location.")
         ride_id = str(body.rideId or "").strip()[:160]
         availability = str(profile.get("driverAvailability") or "searching")
         if ride_id:
@@ -618,8 +626,7 @@ def save_driver_push_token(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        if profile.get("role") != "driver":
-            raise ApiError("Only drivers can register driver push tokens.", 403)
+        _require_role(profile, "driver", "Only drivers can register driver push tokens.")
         token_detail = {
             "token": body.token,
             "userAgent": body.userAgent,
@@ -655,6 +662,8 @@ def cancel_passenger_ride(
 
     try:
         db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can cancel passenger rides.")
         ride_ref = db.collection("rides").document(clean_ride_id)
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         transaction = db.transaction()
