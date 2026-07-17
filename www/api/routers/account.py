@@ -609,7 +609,8 @@ def update_profile(
         role = "driver" if existing.get("role") == "driver" else "passenger"
         updates = _validate_profile_update(body, role)
 
-        fb_auth.update_user(uid, email=updates["email"], display_name=updates["name"])
+        auth_client = fb_auth.Client(app)
+        auth_client.update_user(uid, email=updates["email"], display_name=updates["name"])
         user_ref.update(updates)
 
         phone = existing.get("phone") or user.get("phone_number") or ""
