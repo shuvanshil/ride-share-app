@@ -199,7 +199,6 @@ async def fetch_two_factor_json(url: str) -> dict[str, Any]:
         data = {}
 
     if response.is_error:
-        message = data.get("Details") or data.get("Status") or f"2Factor HTTP {response.status_code}"
-        raise ApiError(message, response.status_code, {"upstreamData": data})
+        raise ApiError("OTP provider request failed.", 502)
 
     return data

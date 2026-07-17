@@ -14,7 +14,7 @@ from firebase_admin import auth as fb_auth
 from firebase_admin import firestore as fb_firestore
 from pydantic import BaseModel, ConfigDict
 
-from ..core.config import get_env
+from ..core.config import get_env, require_env
 from ..core.auth import current_user
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app
@@ -27,7 +27,6 @@ DRIVER_PRIVACY_POLICY_VERSION = "2026-07-10"
 
 ACTIVE_PASSENGER_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"]
 ACTIVE_DRIVER_STATUSES = ["accepted", "arrived", "started", "en_route"]
-FIREBASE_WEB_API_KEY_FALLBACK = "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU"
 
 
 def _clean_string(value: Any, max_length: int = 200) -> str:
@@ -294,7 +293,7 @@ def _get_bearer_token(authorization: Optional[str]) -> str:
 
 
 async def _verify_password(email: str, password: str) -> Optional[dict[str, Any]]:
-    web_api_key = get_env("FIREBASE_WEB_API_KEY", FIREBASE_WEB_API_KEY_FALLBACK)
+    web_api_key = require_env("FIREBASE_WEB_API_KEY")
     if not email or not password or not web_api_key:
         return None
 

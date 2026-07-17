@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import pytest
 
 from api.core.errors import ApiError
 from api.index import app
@@ -50,3 +51,34 @@ def test_unexpected_otp_error_does_not_expose_exception_details(monkeypatch) -> 
 
     assert response.status_code == 500
     assert response.json() == {"error": "Could not send OTP. Please try again."}
+
+
+def test_otp_provider_http_error_does_not_expose_provider_payload(monkeypatch) -> None:
+    from api.core import otp as otp_core
+
+    class FakeResponse:
+        is_error = True
+        status_code = 503
+
+        def json(self):
+            return {"Status": "Error", "Details": "private provider diagnostic"}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+        async def get(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(otp_core.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    with pytest.raises(ApiError) as caught:
+        import asyncio
+        asyncio.run(otp_core.fetch_two_factor_json("https://provider.invalid"))
+
+    assert caught.value.status_code == 502
+    assert caught.value.message == "OTP provider request failed."
+    assert caught.value.extra == {}

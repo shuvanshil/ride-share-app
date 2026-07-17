@@ -33,9 +33,7 @@ async def fetch_json(
     headers: Optional[dict[str, str]] = None,
     json_body: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Equivalent of fetchJson() in _google.js: raises ApiError with the
-    upstream status code + parsed body attached when the response isn't ok.
-    """
+    """Fetch a Google response without exposing provider details publicly."""
     request_headers = {"Accept": "application/json", **(headers or {})}
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -49,16 +47,7 @@ async def fetch_json(
         data = {}
 
     if response.is_error:
-        message = (
-            (data.get("error") or {}).get("message")
-            if isinstance(data.get("error"), dict)
-            else data.get("error_message")
-        ) or f"HTTP {response.status_code}"
-        raise ApiError(
-            message,
-            response.status_code,
-            {"upstreamStatus": response.status_code, "upstreamData": data},
-        )
+        raise ApiError("Google provider request failed.", 502)
 
     return data
 

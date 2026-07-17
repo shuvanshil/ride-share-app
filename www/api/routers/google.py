@@ -202,18 +202,12 @@ async def _collect_safe(label: str, debug: list[dict[str, Any]], task) -> list[d
         debug.append({"label": label, "ok": True, "count": len(results)})
         return results
     except ApiError as error:
-        upstream = error.extra.get("upstreamData") or {}
-        message = (
-            (upstream.get("error") or {}).get("message")
-            if isinstance(upstream.get("error"), dict)
-            else upstream.get("error_message")
-        ) or error.message
         debug.append(
             {
                 "label": label,
                 "ok": False,
                 "status": error.status_code or 0,
-                "message": message,
+                "message": "Provider lookup failed.",
             }
         )
         return []
@@ -270,8 +264,6 @@ async def google_autocomplete(
                 break
 
         payload: dict[str, Any] = {"results": _dedupe(results)[:8]}
-        if debug == "1":
-            payload["debug"] = debug_entries
         return payload
     except ApiError:
         raise
