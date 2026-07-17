@@ -45,8 +45,9 @@ service cloud.firestore {
     }
 
     match /driverMapPresence/{driverId} {
-      // Contains only coarse, non-contact map data for live availability.
-      allow read: if signedIn();
+      // Contains only coarse, non-contact map data for guest-mode availability.
+      // All writes remain server-only through FastAPI.
+      allow read: if true;
       allow create, update, delete: if false;
     }
 
