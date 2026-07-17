@@ -6,7 +6,7 @@ from api.core.errors import ApiError
 from fastapi.testclient import TestClient
 
 from api.index import app, unhandled_error_handler
-from api.routers.rides import _require_role
+from api.routers.rides import _require_approved_driver, _require_role
 
 
 def test_extract_bearer_token_accepts_case_insensitive_scheme() -> None:
@@ -112,3 +112,20 @@ def test_role_guard_rejects_the_wrong_account_role() -> None:
         assert error.message == "driver only"
     else:
         raise AssertionError("Expected a passenger to be rejected by the driver guard")
+
+
+def test_approved_driver_guard_rejects_unapproved_driver() -> None:
+    _require_approved_driver({"role": "driver", "verificationStatus": "approved"}, "approved driver only")
+
+    for profile in (
+        {"role": "driver", "verificationStatus": "pending_review"},
+        {"role": "driver", "verificationStatus": "suspended"},
+        {"role": "passenger", "verificationStatus": "approved"},
+    ):
+        try:
+            _require_approved_driver(profile, "approved driver only")
+        except ApiError as error:
+            assert error.status_code == 403
+            assert error.message == "approved driver only"
+        else:
+            raise AssertionError("Expected a non-approved driver profile to be rejected")

@@ -127,6 +127,20 @@ def _require_role(profile: dict[str, Any], expected_role: str, message: str) -> 
         raise ApiError(message, 403)
 
 
+def _require_approved_driver(profile: dict[str, Any], message: str) -> None:
+    if profile.get("role") != "driver" or profile.get("verificationStatus") != "approved":
+        raise ApiError(message, 403)
+
+
+def _coarse_location(location: Optional[dict[str, float]]) -> Optional[dict[str, float]]:
+    if not location:
+        return None
+    return {
+        "lat": round(float(location["lat"]), 2),
+        "lng": round(float(location["lng"]), 2),
+    }
+
+
 def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc).timestamp()
     candidates: list[dict[str, Any]] = []
@@ -385,7 +399,7 @@ def transition_driver_ride(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        _require_role(profile, "driver", "Only drivers can update rides.")
+        _require_approved_driver(profile, "Only approved drivers can update rides.")
         ride_ref = db.collection("rides").document(clean_ride_id)
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         user_ref = db.collection("users").document(uid)
@@ -427,7 +441,9 @@ def transition_driver_ride(
 
         transition_transaction(transaction)
         if action in {"complete", "cancel"}:
-            db.collection("driverPresence").document(uid).set({"driverAvailability": "searching", "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+            availability_update = {"driverAvailability": "searching", "updatedAt": fb_firestore.SERVER_TIMESTAMP}
+            db.collection("driverPresence").document(uid).set(availability_update, merge=True)
+            db.collection("driverMapPresence").document(uid).set(availability_update, merge=True)
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": result}
     except ApiError:
         raise
@@ -511,7 +527,7 @@ def update_driver_availability(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        _require_role(profile, "driver", "Only drivers can update driver availability.")
+        _require_approved_driver(profile, "Only approved drivers can update driver availability.")
         online = status != "offline"
         user_update: dict[str, Any] = {
             "driverAvailability": status,
@@ -535,11 +551,21 @@ def update_driver_availability(
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
         }
+        map_presence_update = {
+            key: presence_update[key]
+            for key in (
+                "uid", "name", "driverAvailability", "desiredAvailability",
+                "verificationStatus", "vehicle_model", "vehicle_type", "isConnected",
+                "updatedAt", "lastSeenAt",
+            )
+        }
         if lat is not None:
             user_update["driverLocation"] = {"lat": lat, "lng": lng}
             presence_update["driverLocation"] = {"lat": lat, "lng": lng}
+            map_presence_update["driverLocation"] = _coarse_location({"lat": lat, "lng": lng})
         db.collection("users").document(uid).set(user_update, merge=True)
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+        db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
         return {"ok": True, "status": status}
     except ApiError:
         raise
@@ -569,7 +595,7 @@ def update_driver_location(
         db = fb_firestore.client(get_admin_app())
         profile_ref = db.collection("users").document(uid)
         profile = profile_ref.get().to_dict() or {}
-        _require_role(profile, "driver", "Only drivers can update GPS location.")
+        _require_approved_driver(profile, "Only approved drivers can update GPS location.")
         ride_id = str(body.rideId or "").strip()[:160]
         availability = str(profile.get("driverAvailability") or "searching")
         if ride_id:
@@ -603,6 +629,20 @@ def update_driver_location(
         }
         profile_ref.set({"driverLocation": location, **telemetry, "lastSeenAt": now, "lastLocationAt": now}, merge=True)
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+        db.collection("driverMapPresence").document(uid).set({
+            "uid": uid,
+            "name": str(profile.get("name") or "Driver")[:80],
+            "driverAvailability": availability,
+            "desiredAvailability": "online",
+            "verificationStatus": profile.get("verificationStatus"),
+            "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
+            "vehicle_type": _driver_type(profile),
+            "driverLocation": _coarse_location(location),
+            "isConnected": True,
+            "lastSeenAt": now,
+            "lastLocationAt": now,
+            "updatedAt": now,
+        }, merge=True)
         if ride_id:
             db.collection("rides").document(ride_id).set({"driverLocation": location, **telemetry, "driverLocationUpdatedAt": now, "updatedAt": now}, merge=True)
         return {"ok": True, "rideId": ride_id or None, "status": availability}
@@ -626,7 +666,7 @@ def save_driver_push_token(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        _require_role(profile, "driver", "Only drivers can register driver push tokens.")
+        _require_approved_driver(profile, "Only approved drivers can register driver push tokens.")
         token_detail = {
             "token": body.token,
             "userAgent": body.userAgent,
@@ -717,8 +757,7 @@ def accept_driver_ride(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        if profile.get("role") != "driver":
-            raise ApiError("Only approved drivers can accept rides.", 403)
+        _require_approved_driver(profile, "Only approved drivers can accept rides.")
         driver_type = _driver_type(profile)
         if driver_type not in RIDE_SERVICES:
             raise ApiError("Your registered vehicle type is missing.", 403)
@@ -774,6 +813,12 @@ def accept_driver_ride(
 
         accept_transaction(transaction)
         db.collection("driverPresence").document(uid).set({
+            "driverAvailability": "busy",
+            "desiredAvailability": "online",
+            "isConnected": True,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+        db.collection("driverMapPresence").document(uid).set({
             "driverAvailability": "busy",
             "desiredAvailability": "online",
             "isConnected": True,

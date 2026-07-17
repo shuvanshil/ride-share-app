@@ -421,6 +421,7 @@ def _delete_account_data(auth_client: fb_auth.Client, db, uid: str, profile: dic
     if role == "driver":
         try:
             db.collection("driverPresence").document(uid).delete()
+            db.collection("driverMapPresence").document(uid).delete()
         except Exception:  # noqa: BLE001
             pass
 
@@ -621,14 +622,23 @@ def update_profile(
             )
 
         if role == "driver":
-            db.collection("driverPresence").document(uid).set(
+            private_presence_update = {
+                "name": updates["name"],
+                "phone": phone,
+                "profilePhotoUrl": updates["profilePhotoUrl"],
+                "vehicle_type": updates["vehicle_type"],
+                "vehicle_model": updates["vehicle_model"],
+                "vehicle_number": updates["vehicle_number"],
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            }
+            db.collection("driverPresence").document(uid).set(private_presence_update, merge=True)
+            db.collection("driverMapPresence").document(uid).set(
                 {
+                    "uid": uid,
                     "name": updates["name"],
-                    "phone": phone,
-                    "profilePhotoUrl": updates["profilePhotoUrl"],
                     "vehicle_type": updates["vehicle_type"],
                     "vehicle_model": updates["vehicle_model"],
-                    "vehicle_number": updates["vehicle_number"],
+                    "verificationStatus": existing.get("verificationStatus") or "pending_review",
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                 },
                 merge=True,

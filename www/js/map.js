@@ -1553,7 +1553,7 @@ function startGlobalDriverPresenceListener() {
 
     clearGlobalDriverMarkers();
     updateVehicleMarkerLegend();
-    globalDriversUnsubscribe = onSnapshot(collection(db, "driverPresence"), (snapshot) => {
+    globalDriversUnsubscribe = onSnapshot(collection(db, "driverMapPresence"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             const driverId = change.doc.id;
             const driver = { id: driverId, ...change.doc.data() };

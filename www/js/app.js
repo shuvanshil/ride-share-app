@@ -436,7 +436,7 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
     }
 
     const excludedSet = new Set(excludedDriverIds.filter(Boolean));
-    const driversQuery = query(collection(db, "driverPresence"), where("driverAvailability", "==", "searching"));
+    const driversQuery = query(collection(db, "driverMapPresence"), where("driverAvailability", "==", "searching"));
     const driversSnap = await getDocs(driversQuery);
 
     return driversSnap.docs
