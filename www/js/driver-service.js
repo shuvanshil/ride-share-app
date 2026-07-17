@@ -11,13 +11,9 @@ import {
     doc,
     getDoc,
     getDocs,
-    increment,
     onSnapshot,
     query,
-    runTransaction,
     serverTimestamp,
-    setDoc,
-    updateDoc,
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";

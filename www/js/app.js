@@ -1,15 +1,12 @@
 import { auth, db } from './firebase-init.js';
 import { 
     collection, 
-    addDoc, 
     doc, 
-    updateDoc, 
     getDoc,
     getDocs,
     query, 
     where,
     onSnapshot,
-    runTransaction,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { calculateServiceFare, getRideService } from './fare-policy.js';
@@ -588,83 +585,6 @@ function getRideHistoryAddress(ride = {}, kind = "pickup") {
         : [ride.drop_display_address, ride.drop_formatted_address, ride.drop_full_address, ride.drop_landmark, ride.drop_name];
     return candidates.map(cleanAddressPart).find(Boolean) || fallback;
 }
-
-function buildPassengerHistoryUpdate(rideId, rideData, status) {
-    const isCancelled = status === "cancelled_by_passenger" || status === "cancelled_by_driver";
-    const cancelledBy = status === "cancelled_by_passenger" ? "passenger" : status === "cancelled_by_driver" ? "driver" : "";
-
-    return {
-        ride_id: rideId,
-        passenger_id: rideData.passenger_id || null,
-        driver_id: rideData.driver_id || null,
-        pickup_location: getRideHistoryAddress(rideData, "pickup"),
-        pickup_display_address: rideData.pickup_display_address || "",
-        pickup_formatted_address: rideData.pickup_formatted_address || "",
-        pickup_landmark: rideData.pickup_landmark || "",
-        drop_location: getRideHistoryAddress(rideData, "drop"),
-        drop_display_address: rideData.drop_display_address || "",
-        drop_formatted_address: rideData.drop_formatted_address || rideData.drop_full_address || "",
-        drop_full_address: rideData.drop_full_address || "",
-        drop_landmark: rideData.drop_landmark || "",
-        verifiedAt: rideData.pinVerifiedAt || rideData.verifiedAt || serverTimestamp(),
-        completedAt: status === "completed" ? rideData.completedAt || serverTimestamp() : null,
-        cancelledAt: isCancelled ? rideData.cancelledAt || serverTimestamp() : null,
-        finalStatusAt: status === "completed"
-            ? rideData.completedAt || serverTimestamp()
-            : isCancelled
-                ? rideData.cancelledAt || serverTimestamp()
-                : null,
-        distance_km: Number(rideData.distance_km || 0),
-        duration_minutes: Number(rideData.duration_minutes || 0),
-        fare_amount: Number(rideData.fare || 0),
-        trip_status: status || "verified",
-        final_status: status === "completed" ? "completed" : isCancelled ? "cancelled" : "verified",
-        cancelled_by: cancelledBy,
-        payment_status: rideData.payment_status || "pending",
-        driver_name: rideData.driver_name || "Driver",
-        passenger_name: rideData.passenger_name || "Passenger",
-        vehicle_model: rideData.vehicle_model || "Vehicle",
-        vehicle_number: rideData.vehicle_number || "Number not recorded",
-        vehicle_details: `${rideData.vehicle_model || "Vehicle"} - ${rideData.vehicle_number || "Number not recorded"}`,
-        vehicle_type: rideData.vehicle_type || "",
-        service_name: rideData.service_name || getRideService(rideData.vehicle_type)?.name || "",
-        passenger_capacity: Number(rideData.passenger_capacity || (rideData.vehicle_type === "auto" ? 4 : 1)),
-        source: "client_passenger_status_sync",
-        updatedAt: serverTimestamp()
-    };
-}
-
-async function savePassengerVerifiedHistoryStatus(rideId, status) {
-    const rideRef = doc(db, "rides", rideId);
-    const historyRef = doc(db, "tripHistory", rideId);
-
-    await runTransaction(db, async (transaction) => {
-        const rideSnap = await transaction.get(rideRef);
-        if (!rideSnap.exists()) {
-            throw new Error("Ride document no longer exists.");
-        }
-
-        const rideData = rideSnap.data();
-        if (rideData.passenger_id !== currentUser?.uid) {
-            throw new Error("Only the passenger can cancel this ride.");
-        }
-
-        const update = {
-            status,
-            cancelledAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        };
-        transaction.update(rideRef, update);
-
-        if (rideData.pinVerifiedAt) {
-            transaction.set(historyRef, buildPassengerHistoryUpdate(rideId, {
-                ...rideData,
-                status
-            }, status), { merge: true });
-        }
-    });
-}
-
 
 // ==========================================
 // 1. ROLE-BASED APPLICATION ROUTER

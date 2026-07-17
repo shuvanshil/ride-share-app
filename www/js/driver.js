@@ -2,16 +2,12 @@ import { auth, db } from './firebase-init.js';
 import {
     collection,
     doc,
-    setDoc,
-    updateDoc,
     getDoc,
     getDocs,
     query,
     where,
     onSnapshot,
     serverTimestamp,
-    increment,
-    runTransaction
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
@@ -835,10 +831,6 @@ function startDriverGpsBroadcast(rideRef) {
             lastActiveHeading = telemetryResult.heading;
 
             if (currentlyAssignedRideId) {
-                await updateDoc(rideRef, {
-                    driverLocation: { lat, lng },
-                    ...telemetryResult.telemetry
-                });
                 await updateDriverPresenceLocation(lat, lng, "busy", telemetryResult.telemetry);
                 document.getElementById('gps-status').innerText = "GPS Active & Broadcasting";
             }
