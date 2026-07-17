@@ -1135,17 +1135,26 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-window.addEventListener('beforeunload', () => {
-    if (currentUser?.role === "driver") {
-        updateDoc(doc(db, "users", currentUser.uid), {
-            isConnected: false,
-            lastAppSeenAt: serverTimestamp(),
-            driverAvailabilityUpdatedAt: serverTimestamp()
-        }).catch(() => {});
-        setDoc(doc(db, "driverPresence", currentUser.uid), {
-            isConnected: false,
-            lastAppSeenAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        }, { merge: true }).catch(() => {});
+async function markDriverOfflineOnExit() {
+    if (currentUser?.role !== "driver") return;
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) return;
+        await fetch("/api/rides/driver-availability", {
+            method: "POST",
+            keepalive: true,
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ status: "offline" })
+        });
+    } catch {
+        // The browser may terminate the request during unload; stale GPS data
+        // is rejected by the backend after its visibility timeout.
     }
+}
+
+window.addEventListener('beforeunload', () => {
+    void markDriverOfflineOnExit();
 });
