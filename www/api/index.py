@@ -32,7 +32,11 @@ app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=No
 
 @app.exception_handler(ApiError)
 async def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
+    headers = {}
+    retry_after = exc.extra.get("retryAfter")
+    if retry_after is not None:
+        headers["Retry-After"] = str(retry_after)
+    return JSONResponse(status_code=exc.status_code, content=exc.to_payload(), headers=headers)
 
 
 @app.exception_handler(RequestValidationError)

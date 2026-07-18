@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from ..core.config import get_env, require_env
@@ -24,6 +24,7 @@ from ..core.otp import (
     reserve_otp_send,
     two_factor_phone,
 )
+from ..core.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 
@@ -41,12 +42,13 @@ class VerifyOtpBody(BaseModel):
 
 
 @router.post("/send-otp")
-async def send_otp(body: SendOtpBody) -> dict[str, Any]:
+async def send_otp(request: Request, body: SendOtpBody) -> dict[str, Any]:
     phone = normalize_phone(body.phone)
     purpose = normalize_purpose(body.purpose)
 
     if not phone:
         raise ApiError("Enter a valid 10-digit Indian mobile number.", 400)
+    enforce_rate_limit(request, "otp-send", 10, 60 * 60, subject=purpose)
 
     try:
         reserve_otp_send(phone, purpose)
@@ -86,7 +88,7 @@ async def send_otp(body: SendOtpBody) -> dict[str, Any]:
 
 
 @router.post("/verify-otp")
-async def verify_otp(body: VerifyOtpBody) -> dict[str, Any]:
+async def verify_otp(request: Request, body: VerifyOtpBody) -> dict[str, Any]:
     phone = normalize_phone(body.phone)
     purpose = normalize_purpose(body.purpose)
     otp = (body.otp or "").strip()
@@ -100,6 +102,7 @@ async def verify_otp(body: VerifyOtpBody) -> dict[str, Any]:
         raise ApiError("Enter the OTP sent to your phone.", 400)
     if not otp_session_id:
         raise ApiError("OTP session is missing. Request a new OTP.", 400)
+    enforce_rate_limit(request, "otp-verify", 30, 60 * 60, subject=purpose)
 
     try:
         api_key = require_env("TWOFACTOR_API_KEY")

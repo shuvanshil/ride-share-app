@@ -7,6 +7,8 @@ from api.routers import otp as otp_router
 
 
 def test_send_otp_returns_rate_limit_without_provider_details(monkeypatch) -> None:
+    monkeypatch.setattr(otp_router, "enforce_rate_limit", lambda *_args, **_kwargs: None)
+
     def reject_send(*_args, **_kwargs):
         raise ApiError("Please wait before requesting another OTP.", 429)
 
@@ -22,6 +24,8 @@ def test_send_otp_returns_rate_limit_without_provider_details(monkeypatch) -> No
 
 
 def test_otp_provider_failure_does_not_expose_provider_response(monkeypatch) -> None:
+    monkeypatch.setattr(otp_router, "enforce_rate_limit", lambda *_args, **_kwargs: None)
+
     async def provider_response(_url):
         return {"Status": "Error", "Details": "internal provider diagnostic"}
 
@@ -39,6 +43,8 @@ def test_otp_provider_failure_does_not_expose_provider_response(monkeypatch) -> 
 
 
 def test_unexpected_otp_error_does_not_expose_exception_details(monkeypatch) -> None:
+    monkeypatch.setattr(otp_router, "enforce_rate_limit", lambda *_args, **_kwargs: None)
+
     def unexpected_failure(*_args, **_kwargs):
         raise RuntimeError("firestore credential detail")
 
