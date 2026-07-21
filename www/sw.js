@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v25-driver-push";
+const CACHE_VERSION = "liphtup-shell-v27-dialog-seo";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -24,6 +24,7 @@ const APP_SHELL = [
     "history.html",
     "login.html",
     "manifest.webmanifest",
+    "favicon.ico",
     "css/style.css",
     "css/driver-service.css",
     "js/firebase-init.js",
@@ -37,6 +38,7 @@ const APP_SHELL = [
     "js/login.js",
     "js/map.js",
     "js/fare-policy.js",
+    "js/dialog.js",
     "js/navigation.js",
     "js/pwa.js",
     "js/messaging.js",
@@ -45,6 +47,8 @@ const APP_SHELL = [
     "assets/icons/liphtup-icon-512.png",
     "assets/icons/liphtup-icon-1024.png",
     "assets/icons/liphtup-icon-maskable-512.png",
+    "assets/icons/favicon-32.png",
+    "assets/icons/favicon-16.png",
     "assets/liphtup-logo.jpeg",
     "assets/vehicle-markers/bike-marker.png",
     "assets/vehicle-markers/auto-marker.png",
@@ -54,9 +58,18 @@ const APP_SHELL = [
 ].map((path) => new URL(path, BASE_URL).href);
 
 self.addEventListener("install", (event) => {
+    // Pre-cache each app-shell file independently. cache.addAll() is atomic and
+    // would abort the ENTIRE install (leaving the old service worker/cache in
+    // control indefinitely) if even a single URL failed to fetch. Caching each
+    // file on its own means one missing/renamed asset can't silently block the
+    // whole app from ever updating.
     event.waitUntil(
         caches.open(CACHE_VERSION)
-            .then((cache) => cache.addAll(APP_SHELL))
+            .then((cache) => Promise.all(
+                APP_SHELL.map((url) => cache.add(url).catch((error) => {
+                    console.warn("Service worker: could not pre-cache", url, error);
+                }))
+            ))
             .then(() => self.skipWaiting())
     );
 });

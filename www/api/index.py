@@ -32,7 +32,11 @@ app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=No
 
 @app.exception_handler(ApiError)
 async def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
+    headers = {}
+    retry_after = exc.extra.get("retryAfter")
+    if retry_after is not None:
+        headers["Retry-After"] = str(retry_after)
+    return JSONResponse(status_code=exc.status_code, content=exc.to_payload(), headers=headers)
 
 
 @app.exception_handler(RequestValidationError)
@@ -57,8 +61,10 @@ async def http_error_handler(_request: Request, exc: StarletteHTTPException) -> 
 @app.exception_handler(Exception)
 async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     # Last-resort safety net so the frontend always gets the {"error": ...}
-    # shape it expects, instead of a raw 500 HTML page.
-    return JSONResponse(status_code=500, content={"error": "Internal server error", "message": str(exc)})
+    # shape it expects, instead of a raw 500 HTML page. Do not expose the
+    # exception text: it may contain provider, credential, or infrastructure
+    # details that belong only in server logs.
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
 # All routers are mounted under /api to match the original Vercel function

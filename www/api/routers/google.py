@@ -9,7 +9,7 @@ import re
 from typing import Any, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from ..core.errors import ApiError
 from ..core.google_client import (
@@ -18,6 +18,7 @@ from ..core.google_client import (
     number_or_null,
     require_server_key,
 )
+from ..core.rate_limit import enforce_rate_limit
 
 router = APIRouter()
 
@@ -202,18 +203,12 @@ async def _collect_safe(label: str, debug: list[dict[str, Any]], task) -> list[d
         debug.append({"label": label, "ok": True, "count": len(results)})
         return results
     except ApiError as error:
-        upstream = error.extra.get("upstreamData") or {}
-        message = (
-            (upstream.get("error") or {}).get("message")
-            if isinstance(upstream.get("error"), dict)
-            else upstream.get("error_message")
-        ) or error.message
         debug.append(
             {
                 "label": label,
                 "ok": False,
                 "status": error.status_code or 0,
-                "message": message,
+                "message": "Provider lookup failed.",
             }
         )
         return []
@@ -239,6 +234,7 @@ def _dedupe(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 @router.get("/google-autocomplete")
 async def google_autocomplete(
+    request: Request,
     q: str = Query(""),
     lat: Optional[str] = Query(None),
     lng: Optional[str] = Query(None),
@@ -247,6 +243,9 @@ async def google_autocomplete(
     query = (q or "").strip()
     if len(query) < 2:
         return {"results": []}
+    if len(query) > 200:
+        raise ApiError("Search query is too long.", 400)
+    enforce_rate_limit(request, "google-autocomplete", 120, 60)
 
     lat_num = number_or_null(lat)
     lng_num = number_or_null(lng)
@@ -270,13 +269,11 @@ async def google_autocomplete(
                 break
 
         payload: dict[str, Any] = {"results": _dedupe(results)[:8]}
-        if debug == "1":
-            payload["debug"] = debug_entries
         return payload
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001 - mirror the catch-all in the original handler
-        raise ApiError("Google autocomplete failed", 500, {"message": str(error)})
+        raise ApiError("Google autocomplete failed", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -303,10 +300,13 @@ def _normalize_place(place: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/google-place-detail")
-async def google_place_detail(placeId: str = Query("")) -> dict[str, Any]:  # noqa: N803 - matches querystring name
+async def google_place_detail(request: Request, placeId: str = Query("")) -> dict[str, Any]:  # noqa: N803 - matches querystring name
     place_id = (placeId or "").strip()
     if not place_id:
         raise ApiError("Missing placeId", 400)
+    if len(place_id) > 200:
+        raise ApiError("Place ID is too long.", 400)
+    enforce_rate_limit(request, "google-place-detail", 30, 60)
 
     try:
         key = require_server_key()
@@ -327,7 +327,7 @@ async def google_place_detail(placeId: str = Query("")) -> dict[str, Any]:  # no
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Google place detail failed", 500, {"message": str(error)})
+        raise ApiError("Google place detail failed", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -420,11 +420,12 @@ def _pick_best_result(results: list[dict[str, Any]]):
 
 
 @router.get("/google-reverse-geocode")
-async def google_reverse_geocode(lat: Optional[str] = Query(None), lng: Optional[str] = Query(None)) -> dict[str, Any]:
+async def google_reverse_geocode(request: Request, lat: Optional[str] = Query(None), lng: Optional[str] = Query(None)) -> dict[str, Any]:
     lat_num = number_or_null(lat)
     lng_num = number_or_null(lng)
     if lat_num is None or lng_num is None:
         raise ApiError("Missing lat/lng", 400)
+    enforce_rate_limit(request, "google-reverse-geocode", 60, 60)
 
     try:
         key = require_server_key()
@@ -461,7 +462,7 @@ async def google_reverse_geocode(lat: Optional[str] = Query(None), lng: Optional
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Google reverse geocode failed", 500, {"message": str(error)})
+        raise ApiError("Google reverse geocode failed", 500)
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +480,7 @@ def _parse_duration_seconds(value: Any) -> Optional[float]:
 
 @router.get("/google-route")
 async def google_route(
+    request: Request,
     originLat: Optional[str] = Query(None),  # noqa: N803
     originLng: Optional[str] = Query(None),  # noqa: N803
     destinationLat: Optional[str] = Query(None),  # noqa: N803
@@ -491,6 +493,7 @@ async def google_route(
 
     if origin_lat is None or origin_lng is None or destination_lat is None or destination_lng is None:
         raise ApiError("Missing route coordinates", 400)
+    enforce_rate_limit(request, "google-route", 30, 60)
 
     try:
         key = require_server_key()
@@ -528,4 +531,4 @@ async def google_route(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Google route failed", 500, {"message": str(error)})
+        raise ApiError("Google route failed", 500)

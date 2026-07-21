@@ -5,6 +5,7 @@ reset-password.js, and delete-account.js.
 from __future__ import annotations
 
 import re
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -14,20 +15,20 @@ from firebase_admin import auth as fb_auth
 from firebase_admin import firestore as fb_firestore
 from pydantic import BaseModel, ConfigDict
 
-from ..core.config import get_env
+from ..core.config import get_env, require_env
 from ..core.auth import current_user
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app
 from ..core.otp import verify_token
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DRIVER_TERMS_VERSION = "2026-07-10"
 DRIVER_PRIVACY_POLICY_VERSION = "2026-07-10"
 
 ACTIVE_PASSENGER_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"]
 ACTIVE_DRIVER_STATUSES = ["accepted", "arrived", "started", "en_route"]
-FIREBASE_WEB_API_KEY_FALLBACK = "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU"
 
 
 def _clean_string(value: Any, max_length: int = 200) -> str:
@@ -232,7 +233,7 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
                 auth_client.delete_user(created_uid)
             except Exception:  # noqa: BLE001
                 pass
-        raise ApiError("Could not create account. Please try again.", 500, {"message": str(error)})
+        raise ApiError("Could not create account. Please try again.", 500)
 
 
 @router.post("/reset-password")
@@ -285,7 +286,7 @@ async def reset_password(body: ResetPasswordBody) -> dict[str, Any]:
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not update password. Please try again.", 500, {"message": str(error)})
+        raise ApiError("Could not update password. Please try again.", 500)
 
 
 def _get_bearer_token(authorization: Optional[str]) -> str:
@@ -294,7 +295,7 @@ def _get_bearer_token(authorization: Optional[str]) -> str:
 
 
 async def _verify_password(email: str, password: str) -> Optional[dict[str, Any]]:
-    web_api_key = get_env("FIREBASE_WEB_API_KEY", FIREBASE_WEB_API_KEY_FALLBACK)
+    web_api_key = require_env("FIREBASE_WEB_API_KEY")
     if not email or not password or not web_api_key:
         return None
 
@@ -311,6 +312,13 @@ async def _verify_password(email: str, password: str) -> Optional[dict[str, Any]
         data = {}
 
     if response.is_error:
+        provider_error = data.get("error") if isinstance(data, dict) else None
+        provider_code = provider_error.get("message") if isinstance(provider_error, dict) else "unknown"
+        logger.warning(
+            "Firebase password verification rejected: status=%s code=%s",
+            response.status_code,
+            provider_code,
+        )
         return None
     return data
 
@@ -421,6 +429,7 @@ def _delete_account_data(auth_client: fb_auth.Client, db, uid: str, profile: dic
     if role == "driver":
         try:
             db.collection("driverPresence").document(uid).delete()
+            db.collection("driverMapPresence").document(uid).delete()
         except Exception:  # noqa: BLE001
             pass
 
@@ -482,7 +491,11 @@ async def delete_account(body: DeleteAccountBody, authorization: Optional[str] =
         email = auth_user.email or profile.get("email") or ""
         password_check = await _verify_password(email, password)
 
-        if not password_check or password_check.get("localId") != uid:
+        if not password_check:
+            logger.warning("Account deletion password verification failed before UID comparison")
+            raise ApiError("The password you entered is incorrect.", 401)
+        if password_check.get("localId") != uid:
+            logger.warning("Account deletion password verification returned a different Firebase user")
             raise ApiError("The password you entered is incorrect.", 401)
 
         _delete_account_data(
@@ -496,7 +509,7 @@ async def delete_account(body: DeleteAccountBody, authorization: Optional[str] =
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not delete your account. Please try again.", 500, {"message": str(error)})
+        raise ApiError("Could not delete your account. Please try again.", 500)
 
 
 def _clean_profile_value(value: Any, limit: int) -> str:
@@ -577,7 +590,7 @@ def get_profile(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
         db = fb_firestore.client(get_admin_app())
         snapshot = db.collection("users").document(uid).get()
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not load your profile.", 503, {"message": str(error)})
+        raise ApiError("Could not load your profile.", 503)
 
     if not snapshot.exists:
         raise ApiError("User profile not found.", 404)
@@ -609,7 +622,8 @@ def update_profile(
         role = "driver" if existing.get("role") == "driver" else "passenger"
         updates = _validate_profile_update(body, role)
 
-        fb_auth.update_user(uid, email=updates["email"], display_name=updates["name"])
+        auth_client = fb_auth.Client(app)
+        auth_client.update_user(uid, email=updates["email"], display_name=updates["name"])
         user_ref.update(updates)
 
         phone = existing.get("phone") or user.get("phone_number") or ""
@@ -620,14 +634,23 @@ def update_profile(
             )
 
         if role == "driver":
-            db.collection("driverPresence").document(uid).set(
+            private_presence_update = {
+                "name": updates["name"],
+                "phone": phone,
+                "profilePhotoUrl": updates["profilePhotoUrl"],
+                "vehicle_type": updates["vehicle_type"],
+                "vehicle_model": updates["vehicle_model"],
+                "vehicle_number": updates["vehicle_number"],
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            }
+            db.collection("driverPresence").document(uid).set(private_presence_update, merge=True)
+            db.collection("driverMapPresence").document(uid).set(
                 {
+                    "uid": uid,
                     "name": updates["name"],
-                    "phone": phone,
-                    "profilePhotoUrl": updates["profilePhotoUrl"],
                     "vehicle_type": updates["vehicle_type"],
                     "vehicle_model": updates["vehicle_model"],
-                    "vehicle_number": updates["vehicle_number"],
+                    "verificationStatus": existing.get("verificationStatus") or "pending_review",
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                 },
                 merge=True,
@@ -642,4 +665,4 @@ def update_profile(
     except fb_auth.EmailAlreadyExistsError:
         raise ApiError("That email address is already in use.", 409)
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not save your profile.", 503, {"message": str(error)})
+        raise ApiError("Could not save your profile.", 503)

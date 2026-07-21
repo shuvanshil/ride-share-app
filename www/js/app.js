@@ -1,18 +1,16 @@
 import { auth, db } from './firebase-init.js';
 import { 
     collection, 
-    addDoc, 
     doc, 
-    updateDoc, 
     getDoc,
     getDocs,
     query, 
     where,
     onSnapshot,
-    runTransaction,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { calculateServiceFare, getRideService } from './fare-policy.js';
+import { showAlert, showConfirm } from './dialog.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -439,7 +437,7 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
     }
 
     const excludedSet = new Set(excludedDriverIds.filter(Boolean));
-    const driversQuery = query(collection(db, "driverPresence"), where("driverAvailability", "==", "searching"));
+    const driversQuery = query(collection(db, "driverMapPresence"), where("driverAvailability", "==", "searching"));
     const driversSnap = await getDocs(driversQuery);
 
     return driversSnap.docs
@@ -528,42 +526,20 @@ async function expandRideDispatch(rideId) {
     if (!currentUser || currentUser.role !== "passenger") return;
 
     try {
-        const rideRef = doc(db, "rides", rideId);
-        const rideSnap = await getDoc(rideRef);
-        if (!rideSnap.exists()) return;
-
-        const ride = rideSnap.data();
-        if (ride.status !== "pending" || ride.passenger_id !== currentUser.uid) return;
-
-        const alreadyNotified = ride.notified_driver_ids || [];
-        const rejectedDrivers = ride.rejected_driver_ids || [];
-        const excludedIds = [...alreadyNotified, ...rejectedDrivers];
-        const nearestDrivers = await fetchNearestAvailableDrivers(ride.pickup_lat, ride.pickup_lng, excludedIds, ride.vehicle_type || "");
-        const nextBatch = nearestDrivers.slice(0, ride.dispatch_batch_size || DISPATCH_BATCH_SIZE);
-        const nextBatchIds = nextBatch.map((driver) => driver.uid || driver.id);
-
-        if (!nextBatchIds.length) {
-            await updateDoc(rideRef, {
-                search_status: "no_more_available_drivers",
-                updatedAt: serverTimestamp()
-            });
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/dispatch`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
+        if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
+        if (data.searchStatus === "no_more_available_drivers") {
             document.getElementById('request-ride-btn').innerHTML = "No nearby drivers online. You can cancel and rebook.";
             document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
-            return;
         }
-
-        const updatedEligibleIds = [...new Set([...(ride.eligible_driver_ids || []), ...nextBatchIds])];
-        const updatedNotifiedIds = [...new Set([...alreadyNotified, ...nextBatchIds])];
-
-        await updateDoc(rideRef, {
-            eligible_driver_ids: updatedEligibleIds,
-            notified_driver_ids: updatedNotifiedIds,
-            dispatch_round: (ride.dispatch_round || 0) + 1,
-            search_status: "expanded_driver_search",
-            last_dispatch_at: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        });
-        notifyRideDrivers(rideId, nextBatchIds).catch(() => {});
+        return;
     } catch (error) {
         console.error("Ride dispatch expansion failed:", error);
     }
@@ -610,83 +586,6 @@ function getRideHistoryAddress(ride = {}, kind = "pickup") {
         : [ride.drop_display_address, ride.drop_formatted_address, ride.drop_full_address, ride.drop_landmark, ride.drop_name];
     return candidates.map(cleanAddressPart).find(Boolean) || fallback;
 }
-
-function buildPassengerHistoryUpdate(rideId, rideData, status) {
-    const isCancelled = status === "cancelled_by_passenger" || status === "cancelled_by_driver";
-    const cancelledBy = status === "cancelled_by_passenger" ? "passenger" : status === "cancelled_by_driver" ? "driver" : "";
-
-    return {
-        ride_id: rideId,
-        passenger_id: rideData.passenger_id || null,
-        driver_id: rideData.driver_id || null,
-        pickup_location: getRideHistoryAddress(rideData, "pickup"),
-        pickup_display_address: rideData.pickup_display_address || "",
-        pickup_formatted_address: rideData.pickup_formatted_address || "",
-        pickup_landmark: rideData.pickup_landmark || "",
-        drop_location: getRideHistoryAddress(rideData, "drop"),
-        drop_display_address: rideData.drop_display_address || "",
-        drop_formatted_address: rideData.drop_formatted_address || rideData.drop_full_address || "",
-        drop_full_address: rideData.drop_full_address || "",
-        drop_landmark: rideData.drop_landmark || "",
-        verifiedAt: rideData.pinVerifiedAt || rideData.verifiedAt || serverTimestamp(),
-        completedAt: status === "completed" ? rideData.completedAt || serverTimestamp() : null,
-        cancelledAt: isCancelled ? rideData.cancelledAt || serverTimestamp() : null,
-        finalStatusAt: status === "completed"
-            ? rideData.completedAt || serverTimestamp()
-            : isCancelled
-                ? rideData.cancelledAt || serverTimestamp()
-                : null,
-        distance_km: Number(rideData.distance_km || 0),
-        duration_minutes: Number(rideData.duration_minutes || 0),
-        fare_amount: Number(rideData.fare || 0),
-        trip_status: status || "verified",
-        final_status: status === "completed" ? "completed" : isCancelled ? "cancelled" : "verified",
-        cancelled_by: cancelledBy,
-        payment_status: rideData.payment_status || "pending",
-        driver_name: rideData.driver_name || "Driver",
-        passenger_name: rideData.passenger_name || "Passenger",
-        vehicle_model: rideData.vehicle_model || "Vehicle",
-        vehicle_number: rideData.vehicle_number || "Number not recorded",
-        vehicle_details: `${rideData.vehicle_model || "Vehicle"} - ${rideData.vehicle_number || "Number not recorded"}`,
-        vehicle_type: rideData.vehicle_type || "",
-        service_name: rideData.service_name || getRideService(rideData.vehicle_type)?.name || "",
-        passenger_capacity: Number(rideData.passenger_capacity || (rideData.vehicle_type === "auto" ? 4 : 1)),
-        source: "client_passenger_status_sync",
-        updatedAt: serverTimestamp()
-    };
-}
-
-async function savePassengerVerifiedHistoryStatus(rideId, status) {
-    const rideRef = doc(db, "rides", rideId);
-    const historyRef = doc(db, "tripHistory", rideId);
-
-    await runTransaction(db, async (transaction) => {
-        const rideSnap = await transaction.get(rideRef);
-        if (!rideSnap.exists()) {
-            throw new Error("Ride document no longer exists.");
-        }
-
-        const rideData = rideSnap.data();
-        if (rideData.passenger_id !== currentUser?.uid) {
-            throw new Error("Only the passenger can cancel this ride.");
-        }
-
-        const update = {
-            status,
-            cancelledAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        };
-        transaction.update(rideRef, update);
-
-        if (rideData.pinVerifiedAt) {
-            transaction.set(historyRef, buildPassengerHistoryUpdate(rideId, {
-                ...rideData,
-                status
-            }, status), { merge: true });
-        }
-    });
-}
-
 
 // ==========================================
 // 1. ROLE-BASED APPLICATION ROUTER
@@ -796,7 +695,7 @@ requestRideButton.addEventListener('click', async () => {
         && Number.isFinite(Number(fareQuote.drop_lng));
 
     if (!dropText || !service || !hasValidRoute || !Number.isFinite(fareAmount) || fareAmount <= 0) {
-        alert("Please select a destination and choose Bike or Auto before confirming your ride.");
+        await showAlert("Please select a destination and choose Bike or Auto before confirming your ride.");
         return;
     }
 
@@ -810,12 +709,12 @@ requestRideButton.addEventListener('click', async () => {
 
         const activeRideSnap = await getDocs(activeRideQuery); 
         if (!activeRideSnap.empty) {
-            alert("You already have an active ride request or an ongoing trip!");
+            await showAlert("You already have an active ride request or an ongoing trip!");
             return; 
         }
     } catch (queryError) {
         console.error("Active ride validation failed:", queryError);
-        alert("Network synchronization error. Please try again.");
+        await showAlert("Network synchronization error. Please try again.");
         return;
     }
 
@@ -832,89 +731,25 @@ requestRideButton.addEventListener('click', async () => {
     requestBtn.disabled = true;
 
     try {
-        try {
-            const backendRide = await createRideThroughBackend({
-                pickupName: pickupText,
-                dropName: dropText,
-                pickupLat: Number(fareQuote.pickup_lat),
-                pickupLng: Number(fareQuote.pickup_lng),
-                dropLat: Number(fareQuote.drop_lat),
-                dropLng: Number(fareQuote.drop_lng),
-                vehicleType: requestedVehicleType,
-                dropFullAddress: fareQuote.drop_full_address || "",
-                dropSource: fareQuote.drop_source || "",
-                dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",
-                dropPlaceId: fareQuote.drop_place_id || "",
-                dropEloc: fareQuote.drop_eloc || "",
-                dropTypeHint: fareQuote.drop_type_hint || ""
-            });
-            notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
-            showPassengerCancelButton(backendRide.rideId);
-            renderPassengerVerificationPin(backendRide.verificationPin);
-            listenToRideStatusUpdates(backendRide.rideId);
-            return;
-        } catch (backendError) {
-            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
-            if (!backendError.backendUnavailable) throw backendError;
-            console.warn("Ride backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const verificationPin = generateVerificationPin();
-        const [dispatchState, pickupGeocode, dropGeocode] = await Promise.all([
-            buildInitialDispatchState(fareQuote.pickup_lat, fareQuote.pickup_lng, requestedVehicleType),
-            reverseGeocodeRidePoint(fareQuote.pickup_lat, fareQuote.pickup_lng),
-            reverseGeocodeRidePoint(fareQuote.drop_lat, fareQuote.drop_lng)
-        ]);
-        const rideData = {
-            passenger_id: currentUser.uid,
-            passenger_name: currentUser.name,
-            passenger_phone: currentUser.phone,
-            pickup_name: pickupText,
-            drop_name: dropText,
-            drop_full_address: fareQuote.drop_full_address || "",
-            ...buildRideAddressFields("pickup", pickupGeocode, pickupText),
-            ...buildRideAddressFields("drop", dropGeocode || {
-                fullAddress: fareQuote.drop_full_address || "",
-                displayAddress: fareQuote.drop_full_address || "",
-                name: dropText
-            }, dropText),
-            drop_source: fareQuote.drop_source || "",
-            drop_provider: fareQuote.drop_provider || fareQuote.drop_source || "",
-            drop_place_id: fareQuote.drop_place_id || "",
-            drop_eloc: fareQuote.drop_eloc || "",
-            drop_type_hint: fareQuote.drop_type_hint || "",
-            pickup_lat: fareQuote.pickup_lat || null,
-            pickup_lng: fareQuote.pickup_lng || null,
-            drop_lat: fareQuote.drop_lat || null,
-            drop_lng: fareQuote.drop_lng || null,
-            distance_km: fareQuote.distance_km || null,
-            duration_minutes: fareQuote.duration_minutes || null,
-            fare: fareAmount,
-            fare_base: service.baseFare,
-            fare_per_km: service.perKmRate,
-            fare_currency: "INR",
-            vehicle_type: requestedVehicleType,
-            service_name: service.name,
-            passenger_capacity: service.capacity,
-            status: "pending",
-            driver_id: null,
-            driver_name: null,
-            driver_phone: null,
-            vehicle_model: null,
-            vehicle_number: null,
-            driverAvailabilitySnapshot: null,
-            payment_methods: ["cash", "upi"],
-            payment_status: "pending",
-            verification_pin: verificationPin,
-            ...dispatchState,
-            createdAt: serverTimestamp()
-        };
-
-        const docRef = await addDoc(collection(db, "rides"), rideData);
-        notifyRideDrivers(docRef.id, dispatchState.notified_driver_ids).catch(() => {});
-        showPassengerCancelButton(docRef.id);
-        renderPassengerVerificationPin(verificationPin);
-        listenToRideStatusUpdates(docRef.id);
+        const backendRide = await createRideThroughBackend({
+            pickupName: pickupText,
+            dropName: dropText,
+            pickupLat: Number(fareQuote.pickup_lat),
+            pickupLng: Number(fareQuote.pickup_lng),
+            dropLat: Number(fareQuote.drop_lat),
+            dropLng: Number(fareQuote.drop_lng),
+            vehicleType: requestedVehicleType,
+            dropFullAddress: fareQuote.drop_full_address || "",
+            dropSource: fareQuote.drop_source || "",
+            dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",
+            dropPlaceId: fareQuote.drop_place_id || "",
+            dropEloc: fareQuote.drop_eloc || "",
+            dropTypeHint: fareQuote.drop_type_hint || ""
+        });
+        notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
+        showPassengerCancelButton(backendRide.rideId);
+        renderPassengerVerificationPin(backendRide.verificationPin);
+        listenToRideStatusUpdates(backendRide.rideId);
 
     } catch (error) {
         console.error("Database Write Failure:", error);
@@ -923,7 +758,7 @@ requestRideButton.addEventListener('click', async () => {
         requestBtn.innerHTML = 'Find Ride';
         requestBtn.className = "gy-btn gy-btn-primary w-100";
         requestBtn.disabled = false;
-        alert(error.message || "Could not create this ride request. Please try again.");
+        await showAlert(error.message || "Could not create this ride request. Please try again.");
     }
 });
 }
@@ -943,7 +778,7 @@ function listenToRideStatusUpdates(rideId) {
 
         // FIXED: Added handling for when a driver cancels mid-trip
         if (ride.status === "cancelled_by_driver") {
-            alert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
+            showAlert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
             resetPassengerBookingUi();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
@@ -1022,37 +857,26 @@ function listenToRideStatusUpdates(rideId) {
 async function cancelRideByPassenger(rideId) {
     rideId = rideId || currentPassengerRideId;
     if (!rideId) {
-        alert("No active ride found to cancel.");
+        await showAlert("No active ride found to cancel.");
         return;
     }
 
-    if (!confirm("Are you sure you want to cancel your ride request?")) return;
+    if (!(await showConfirm("Are you sure you want to cancel your ride request?"))) return;
 
     try {
-        try {
-            const idToken = await auth.currentUser?.getIdToken();
-            if (!idToken) throw new Error("Authentication is required.");
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
 
-            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${idToken}` }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.ok) {
-                const backendError = new Error(data.error || "Could not cancel this ride.");
-                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
-                throw backendError;
-            }
-        } catch (backendError) {
-            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
-            if (!backendError.backendUnavailable) throw backendError;
-
-            // Temporary migration fallback while the deployed backend is
-            // being verified. Rejected requests never use this path.
-            await savePassengerVerifiedHistoryStatus(rideId, "cancelled_by_passenger");
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || "Could not cancel this ride.");
         }
 
-        alert("Your ride request has been cancelled.");
+        await showAlert("Your ride request has been cancelled.");
         resetPassengerBookingUi();
 
         if (activeRideListener) {
@@ -1061,7 +885,7 @@ async function cancelRideByPassenger(rideId) {
         }
     } catch (error) {
         console.error("Failed to cancel ride:", error);
-        alert(error.message || "Could not cancel this ride. Please try again.");
+        await showAlert(error.message || "Could not cancel this ride. Please try again.");
     }
 }
 

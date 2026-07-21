@@ -57,8 +57,7 @@ body {
 
 .driver-map-stage {
     position: relative;
-    min-height: 480px;
-    height: clamp(480px, 62dvh, 640px);
+    min-height: 360px;
     margin: 14px 16px;
     border: 1px solid var(--driver-line);
     border-radius: 8px;
@@ -204,17 +203,13 @@ body {
 }
 
 .driver-nav-toggle-icon {
-    width: 20px;
-    height: 20px;
-    display: block;
-    object-fit: contain;
-    transition: filter 160ms ease;
+    font-size: 20px;
+    line-height: 1;
+    transition: transform 220ms ease;
 }
 
 .driver-nav-toggle-btn.is-active .driver-nav-toggle-icon {
-    /* The source icons are dark strokes on a transparent background; force
-       them to white so they stay legible on the green "active" button. */
-    filter: brightness(0) invert(1);
+    transform: rotate(45deg);
 }
 
 .driver-route-panel:not(.d-none) ~ .driver-nav-toggle-btn {

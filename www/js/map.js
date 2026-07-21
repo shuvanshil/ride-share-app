@@ -1,5 +1,6 @@
 import { db } from './firebase-init.js';
-import { calculateFareOptions } from './fare-policy.js';
+import { calculateFareOptions, isDistanceServiceable, MAX_SERVICEABLE_DISTANCE_KM } from './fare-policy.js';
+import { showAlert } from './dialog.js';
 import {
     collection,
     onSnapshot
@@ -1095,19 +1096,6 @@ function getRouteHeading(position, routePath = []) {
 }
 
 function resolveDriverHeading(existing, position, driver, routePath = []) {
-    const previousMarkerPosition = existing?.marker?.getPosition?.();
-    if (previousMarkerPosition) {
-        const previous = { lat: previousMarkerPosition.lat(), lng: previousMarkerPosition.lng() };
-        // A vehicle that hasn't actually moved beyond GPS noise doesn't have
-        // a new direction of travel. Recomputing the nearest-route-point (or
-        // a raw bearing) from noise alone is what made a parked/stopped
-        // vehicle's icon rotate back and forth in place, even though the
-        // marker's position was correctly held still elsewhere.
-        if (calculateDistanceMeters(previous, position) < DRIVER_MARKER_NOISE_FLOOR_METERS) {
-            return normalizeHeading(existing?.heading);
-        }
-    }
-
     const routeHeading = getRouteHeading(position, routePath);
     if (routeHeading != null) {
         return smoothHeading(existing?.heading, routeHeading, 0.45);
@@ -1314,7 +1302,6 @@ function upsertGlobalDriverMarker(driverId, driver) {
     };
     const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
-    const isAssignedTrackedDriver = Boolean(assignedDriverTrackingDriverId) && driverId === assignedDriverTrackingDriverId;
     const heading = resolveDriverHeading(existing, position, driver, driver.activeRoutePath || []);
 
     if (!existing) {
@@ -1343,17 +1330,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
     }
 
     setGlobalDriverMarkerVisibility(driverId, existing);
-    // While this driver is the assigned/tracked driver for an active ride,
-    // handleAssignedDriverLocation (fed by the ride document) is the single
-    // source of truth for this marker's position and heading. Letting this
-    // driverPresence-sourced listener ALSO animate the same marker meant two
-    // independently-timed Firestore updates were racing to move the same
-    // marker, each cancelling and restarting the other's in-flight tween -
-    // that's what produced the "shifting weirdly mid-map" glitch on the
-    // rider's screen. Metadata (title/vehicle type) is still kept in sync.
-    if (!isAssignedTrackedDriver) {
-        animateGlobalDriverMarker(existing, position, heading);
-    }
+    animateGlobalDriverMarker(existing, position, heading);
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
     existing.marker.setLiveTracked?.(driverId === assignedDriverTrackingDriverId);
     if (existing.vehicleType !== vehicleType) {
@@ -1362,7 +1339,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
         existing.vehicleType = vehicleType;
         updateVehicleMarkerLegend();
     }
-    if (!isAssignedTrackedDriver && heading != null && !existing.animationFrame) {
+    if (heading != null && !existing.animationFrame) {
         existing.heading = heading;
         existing.marker.setHeading?.(heading);
     }
@@ -1577,7 +1554,7 @@ function startGlobalDriverPresenceListener() {
 
     clearGlobalDriverMarkers();
     updateVehicleMarkerLegend();
-    globalDriversUnsubscribe = onSnapshot(collection(db, "driverPresence"), (snapshot) => {
+    globalDriversUnsubscribe = onSnapshot(collection(db, "driverMapPresence"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             const driverId = change.doc.id;
             const driver = { id: driverId, ...change.doc.data() };
@@ -1912,7 +1889,7 @@ function showCenterMapPicker(kind) {
 
 function startPickupMapPick(pickupInput) {
     if (!window.mapInstance) {
-        alert("Map is not ready yet. Please wait a moment and try again.");
+        showAlert("Map is not ready yet. Please wait a moment and try again.");
         return;
     }
 
@@ -2310,7 +2287,7 @@ function buildSelectedDestination(destination) {
 
 function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmountSpan) {
     if (!window.mapInstance) {
-        alert("Map is not ready yet. Please wait a moment and try again.");
+        showAlert("Map is not ready yet. Please wait a moment and try again.");
         return;
     }
 
@@ -2435,6 +2412,16 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         fareAmountSpan.innerText = "Road route unavailable";
         fareQuoteBox.classList.remove("d-none");
         fareQuoteBox.classList.add("d-flex");
+        return true;
+    }
+
+    if (!isDistanceServiceable(distance)) {
+        window.latestFareQuote = null;
+        window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+        fareAmountSpan.innerText = "Outside service area";
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+        showAlert(`This destination is about ${distance.toFixed(0)} km away, which is beyond LiphtUp's current service area of ${MAX_SERVICEABLE_DISTANCE_KM} km. Please choose a closer destination.`);
         return true;
     }
 

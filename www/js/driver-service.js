@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
+import { showAlert, showConfirm } from './dialog.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -11,13 +12,9 @@ import {
     doc,
     getDoc,
     getDocs,
-    increment,
     onSnapshot,
     query,
-    runTransaction,
     serverTimestamp,
-    setDoc,
-    updateDoc,
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -32,27 +29,12 @@ const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 const DRIVER_LOCATION_CACHE_KEY = "liphtup_last_driver_location";
 const DEFAULT_DRIVER_LOCATION = Object.freeze({ lat: 24.3124, lng: 92.0135 });
 const DRIVER_NAV_MODE_CACHE_KEY = "liphtup_driver_nav_mode";
-// Flat/north-up map view vs. heading-up navigation follow, shown on the
-// camera-angle toggle button.
-const NAV_TOGGLE_ICON_URLS = Object.freeze({
-    overview: "https://upload.wikimedia.org/wikipedia/commons/d/de/Codex_icon_arrowUp.svg",
-    navigation: "https://upload.wikimedia.org/wikipedia/commons/f/f7/Codex_icon_arrowNext.svg"
-});
 const NAV_CAMERA_TILT = 55;
 const NAV_CAMERA_ZOOM = 18;
 const DRIVER_MARKER_ANIM_MIN_MS = 700;
 const DRIVER_MARKER_ANIM_MAX_MS = 6000;
 const DRIVER_MARKER_ANIM_DEFAULT_MS = 700;
 const CAMERA_ROTATE_ANIM_MS = 700;
-// Raw GPS fixes jitter by a few metres even while the vehicle is parked.
-// Chasing that jitter directly is what made the driver's own auto icon
-// glitch/shift and spin in place. These mirror the equivalent guards used
-// for other vehicles' markers in map.js.
-const DRIVER_MARKER_NOISE_FLOOR_METERS = 4;
-const DRIVER_GPS_SMOOTHING_MIN_WEIGHT = 0.2;
-const DRIVER_GPS_SMOOTHING_MAX_WEIGHT = 1;
-const DRIVER_GPS_SMOOTHING_REFERENCE_ACCURACY_METERS = 12;
-const DRIVER_GPS_SMOOTHING_MIN_ACCURACY_METERS = 6;
 
 const mapHost = document.getElementById('driver-service-map');
 const statusText = document.getElementById('driver-service-status');
@@ -407,46 +389,30 @@ function startIncomingRideListener() {
     });
 }
 
+async function updateDriverAvailabilityThroughBackend(status, locationData = null) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch("/api/rides/driver-availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ status, ...(locationData || {}) })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        const error = new Error(data.error || "Could not update driver availability.");
+        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        throw error;
+    }
+    return data;
+}
+
 async function setServiceDriverAvailability(status) {
     if (!currentUser?.uid) return;
 
     currentUser.driverAvailability = status;
     currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
-    const online = status !== "offline";
-    const notificationEligibleUntil = online ? new Date(Date.now() + 30 * 60 * 1000) : new Date(0);
-
-    const userUpdate = {
-        driverAvailability: status,
-        desiredAvailability: online ? "online" : "offline",
-        isConnected: online,
-        notificationEligibleUntil,
-        driverAvailabilityUpdatedAt: serverTimestamp(),
-        lastSeenAt: serverTimestamp()
-    };
-    if (locationData) userUpdate.driverLocation = locationData;
-
-    const presenceUpdate = {
-        uid: currentUser.uid,
-        name: currentUser.name || "Driver",
-        phone: currentUser.phone || "",
-        driverAvailability: status,
-        desiredAvailability: online ? "online" : "offline",
-        verificationStatus: currentUser.verificationStatus || "pending_review",
-        vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
-        vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
-        vehicle_type: inferVehicleType(currentUser),
-        isConnected: online,
-        notificationEligibleUntil,
-        updatedAt: serverTimestamp(),
-        lastSeenAt: serverTimestamp()
-    };
-    if (locationData) presenceUpdate.driverLocation = locationData;
-
-    await Promise.allSettled([
-        updateDoc(doc(db, "users", currentUser.uid), userUpdate),
-        setDoc(doc(db, "driverPresence", currentUser.uid), presenceUpdate, { merge: true })
-    ]);
+    await updateDriverAvailabilityThroughBackend(status, locationData);
 }
 
 async function acceptIncomingRide(rideId, button) {
@@ -460,78 +426,17 @@ async function acceptIncomingRide(rideId, button) {
     }
 
     try {
-        let acceptedRideData = null;
-        let acceptedThroughBackend = false;
-
-        try {
-            const idToken = await auth.currentUser?.getIdToken();
-            if (!idToken) throw new Error("Authentication is required.");
-            const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${idToken}` }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.ok) {
-                const backendError = new Error(data.error || "Could not accept this ride.");
-                backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
-                throw backendError;
-            }
-            acceptedRideData = data.ride || {};
-            acceptedThroughBackend = true;
-        } catch (backendError) {
-            if (backendError?.backendUnavailable === undefined) backendError.backendUnavailable = true;
-            if (!backendError.backendUnavailable) throw backendError;
-            console.warn("Ride acceptance backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        if (!acceptedThroughBackend) {
-        const rideRef = doc(db, "rides", rideId);
-        const activeRideQuery = query(
-            collection(db, "rides"),
-            where("driver_id", "==", currentUser.uid),
-            where("status", "in", ACTIVE_RIDE_STATUSES)
-        );
-        const activeRideSnap = await getDocs(activeRideQuery);
-
-        if (!activeRideSnap.empty) {
-            throw new Error("You already have an active ride.");
-        }
-
-        await runTransaction(db, async (transaction) => {
-            const rideSnap = await transaction.get(rideRef);
-            if (!rideSnap.exists()) {
-                throw new Error("Ride request no longer exists.");
-            }
-
-            const rideData = rideSnap.data();
-            acceptedRideData = rideData;
-
-            if (rideData.status !== "pending" || rideData.driver_id) {
-                throw new Error("This ride was already accepted by another driver.");
-            }
-
-            const driverVehicleType = getDriverRequestVehicleType(currentUser);
-            if (!driverVehicleType || rideData.vehicle_type !== driverVehicleType) {
-                throw new Error(`This ${getServiceLabel(rideData.vehicle_type)} request requires a matching registered vehicle.`);
-            }
-
-            if (!Array.isArray(rideData.eligible_driver_ids) || !rideData.eligible_driver_ids.includes(currentUser.uid)) {
-                throw new Error("This ride request is no longer available for you.");
-            }
-
-            transaction.update(rideRef, {
-                status: "accepted",
-                driver_id: currentUser.uid,
-                driver_name: currentUser.name,
-                driver_phone: currentUser.phone,
-                vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || currentUser.vehicleName || "Registered Vehicle",
-                vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || currentUser.vehicleNo || "Vehicle number pending",
-                vehicle_type: driverVehicleType,
-                acceptedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
         });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || "Could not accept this ride.");
         }
+        const acceptedRideData = data.ride || {};
 
         await setServiceDriverAvailability("busy");
         renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });
@@ -539,7 +444,7 @@ async function acceptIncomingRide(rideId, button) {
         statusText.innerText = "Ride accepted - route is loading";
     } catch (error) {
         console.error("Driver service ride acceptance failed:", error);
-        alert(error.message || "Could not accept this ride.");
+        await showAlert(error.message || "Could not accept this ride.");
         if (button) {
             button.disabled = false;
             button.innerText = "Accept Ride Request";
@@ -626,28 +531,6 @@ function distanceMeters(pointA, pointB) {
     const value = Math.sin(deltaLat / 2) ** 2
         + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
     return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
-}
-
-// Blends a new raw GPS fix into the previous smoothed position instead of
-// trusting each fix outright, so a single noisy reading can't yank the
-// driver's own marker sideways. Mirrors driver.js's smoothGpsCoordinate.
-function smoothGpsCoordinate(previousSmoothed, rawCoords, accuracyMeters) {
-    if (!previousSmoothed) return rawCoords;
-
-    const accuracyWeight = Number.isFinite(accuracyMeters)
-        ? Math.max(
-            DRIVER_GPS_SMOOTHING_MIN_WEIGHT,
-            Math.min(
-                DRIVER_GPS_SMOOTHING_MAX_WEIGHT,
-                DRIVER_GPS_SMOOTHING_REFERENCE_ACCURACY_METERS / Math.max(accuracyMeters, DRIVER_GPS_SMOOTHING_MIN_ACCURACY_METERS)
-            )
-        )
-        : 0.6;
-
-    return {
-        lat: previousSmoothed.lat + ((rawCoords.lat - previousSmoothed.lat) * accuracyWeight),
-        lng: previousSmoothed.lng + ((rawCoords.lng - previousSmoothed.lng) * accuracyWeight)
-    };
 }
 
 function renderActivePassengerContact(ride = {}) {
@@ -789,18 +672,6 @@ function animateDriverMarkerTo(position, heading = null) {
         return;
     }
 
-    // A stationary (or nearly stationary) vehicle's GPS fix wobbles by a few
-    // metres from one update to the next. Chasing that wobble - both in
-    // position and by re-pointing the icon - is exactly what made a
-    // parked/stopped vehicle look like it was glitching and creeping/
-    // spinning in place. Below the noise floor, hold the marker exactly
-    // where it already is and leave its heading alone.
-    if (distanceMeters(start, position) < DRIVER_MARKER_NOISE_FLOOR_METERS) {
-        driverMarkerAnimationFrame = null;
-        lastDriverMarkerFixAt = now0;
-        return;
-    }
-
     // Match the glide duration to however long it actually took for this GPS
     // fix to arrive, so the marker (and nav camera) are always in motion
     // instead of snapping into place and then sitting still.
@@ -843,7 +714,6 @@ let routePolyline = null;
 let locationWatchId = null;
 let activeRideUnsubscribe = null;
 let lastPosition = null;
-let lastSmoothedGpsPosition = null;
 let hasLiveGpsPosition = false;
 let lastRoutePosition = null;
 let lastRouteAt = 0;
@@ -1001,10 +871,6 @@ function setNavigationMode(enabled) {
     navToggleButton?.classList.toggle("is-active", enabled);
     navToggleButton?.setAttribute("aria-pressed", String(enabled));
     if (navToggleButton) navToggleButton.title = enabled ? "Navigation mode: on (tap for map view)" : "Map view (tap for navigation mode)";
-    const toggleIcon = navToggleButton?.querySelector(".driver-nav-toggle-icon");
-    if (toggleIcon) {
-        toggleIcon.src = enabled ? NAV_TOGGLE_ICON_URLS.navigation : NAV_TOGGLE_ICON_URLS.overview;
-    }
 
     if (!map) return;
     if (enabled && currentTarget && lastPosition) {
@@ -1021,7 +887,7 @@ function ensureNavToggleButton() {
     navToggleButton.type = "button";
     navToggleButton.className = "driver-nav-toggle-btn";
     navToggleButton.setAttribute("aria-label", "Toggle navigation camera");
-    navToggleButton.innerHTML = `<img class="driver-nav-toggle-icon" src="${NAV_TOGGLE_ICON_URLS.overview}" alt="" aria-hidden="true">`;
+    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true">&#8963;</span>';
     navToggleButton.addEventListener("click", () => setNavigationMode(!navigationModeEnabled));
     mapHost.parentElement.appendChild(navToggleButton);
     setNavigationMode(navigationModeEnabled);
@@ -1129,15 +995,9 @@ function getRouteHeading(position) {
 function buildLocationTelemetry(coords, browserCoords, previousPosition, previousHeading) {
     const telemetry = {};
     const gpsHeading = normalizeHeading(browserCoords?.heading);
+    const routeHeading = currentTarget ? getRouteHeading(coords) : null;
     const moved = distanceMeters(previousPosition, coords);
-    const hasMovedEnoughForHeading = moved >= DRIVER_HEADING_MIN_DISTANCE_METERS;
-    // Gate the route-following heading on real movement too - without this,
-    // the nearest-route-point lookup was recomputed on every single GPS fix
-    // (including pure noise), and near a bend in the road two adjacent
-    // "nearest points" can face different directions, so a stationary
-    // vehicle's icon would flip back and forth between them.
-    const routeHeading = (currentTarget && hasMovedEnoughForHeading) ? getRouteHeading(coords) : null;
-    const calculatedHeading = hasMovedEnoughForHeading
+    const calculatedHeading = moved >= DRIVER_HEADING_MIN_DISTANCE_METERS
         ? calculateBearing(previousPosition, coords)
         : null;
     const heading = routeHeading ?? gpsHeading ?? calculatedHeading ?? normalizeHeading(previousHeading);
@@ -1213,6 +1073,23 @@ async function refreshRoute(position, force = false) {
     }
 }
 
+async function updateDriverLocationThroughBackend(position, telemetry, rideId = null) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch("/api/rides/driver-location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ lat: position.lat, lng: position.lng, rideId, ...telemetry })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        const error = new Error(data.error || "Could not update driver GPS location.");
+        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        throw error;
+    }
+    return data;
+}
+
 async function writeDriverLocation(position) {
     if (!currentUser?.uid) return;
 
@@ -1227,71 +1104,15 @@ async function writeDriverLocation(position) {
     if (Number.isFinite(Number(position.driverHeading))) telemetryData.driverHeading = Number(position.driverHeading);
     if (Number.isFinite(Number(position.driverSpeed))) telemetryData.driverSpeed = Number(position.driverSpeed);
     if (Number.isFinite(Number(position.driverAccuracy))) telemetryData.driverAccuracy = Number(position.driverAccuracy);
-    const availability = currentRide ? "busy" : "searching";
-    currentUser.driverAvailability = availability;
-    currentUser.desiredAvailability = "online";
-    const notificationEligibleUntil = new Date(Date.now() + 30 * 60 * 1000);
-
-    const writes = [
-        updateDoc(doc(db, "users", currentUser.uid), {
-            driverLocation: locationData,
-            ...telemetryData,
-            driverAvailability: availability,
-            desiredAvailability: "online",
-            isConnected: true,
-            lastSeenAt: serverTimestamp(),
-            lastAppSeenAt: serverTimestamp(),
-            lastLocationAt: serverTimestamp(),
-            notificationEligibleUntil,
-            driverAvailabilityUpdatedAt: serverTimestamp()
-        }),
-        setDoc(doc(db, "driverPresence", currentUser.uid), {
-            uid: currentUser.uid,
-            name: currentUser.name || "Driver",
-            phone: currentUser.phone || "",
-            driverLocation: locationData,
-            ...telemetryData,
-            driverAvailability: availability,
-            desiredAvailability: "online",
-            verificationStatus: currentUser.verificationStatus || "pending_review",
-            vehicle_model: currentUser.vehicle_model || currentUser.vehicleModel || "",
-            vehicle_number: currentUser.vehicle_number || currentUser.vehicleNumber || "",
-            vehicle_type: inferVehicleType(currentUser),
-            isConnected: true,
-            lastSeenAt: serverTimestamp(),
-            lastAppSeenAt: serverTimestamp(),
-            lastLocationAt: serverTimestamp(),
-            notificationEligibleUntil,
-            updatedAt: serverTimestamp()
-        }, { merge: true })
-    ];
-
-    if (currentRideId) {
-        writes.push(updateDoc(doc(db, "rides", currentRideId), {
-            driverLocation: locationData,
-            ...telemetryData,
-            driverLocationUpdatedAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        }));
-    }
-
-    const results = await Promise.allSettled(writes);
-    results.forEach((result) => {
-        if (result.status === "rejected") {
-            console.warn("A driver location write failed:", result.reason);
-        }
-    });
+    await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
 }
 
 async function handleLocation(position) {
     const previousPosition = lastPosition;
-    const rawCoords = {
+    const coords = {
         lat: position.coords.latitude,
         lng: position.coords.longitude
     };
-    const smoothed = smoothGpsCoordinate(lastSmoothedGpsPosition, rawCoords, position.coords.accuracy);
-    lastSmoothedGpsPosition = smoothed;
-    const coords = { lat: smoothed.lat, lng: smoothed.lng };
     const telemetryResult = buildLocationTelemetry(coords, position.coords, previousPosition, lastDriverHeading);
     if (telemetryResult.heading != null) {
         coords.driverHeading = telemetryResult.heading;
@@ -1478,7 +1299,7 @@ function renderActiveRideState(rideId, ride) {
 
 async function verifyAndStartTrip(rideId) {
     if (!rideId) {
-        alert("No active ride found for PIN verification.");
+        await showAlert("No active ride found for PIN verification.");
         return;
     }
 
@@ -1486,77 +1307,16 @@ async function verifyAndStartTrip(rideId) {
     const typedPin = pinInput ? pinInput.value.trim() : "";
 
     if (!/^\d{4}$/.test(typedPin)) {
-        alert("Please enter the 4-digit passenger PIN.");
+        await showAlert("Please enter the 4-digit passenger PIN.");
         return;
     }
 
     try {
-        try {
-            const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
-            renderActiveRideState(rideId, result.ride || { ...currentRide, status: "en_route" });
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("PIN transition backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", rideId);
-        const rideSnap = await getDoc(rideRef);
-
-        if (!rideSnap.exists()) {
-            alert("This ride no longer exists.");
-            return;
-        }
-
-        const rideData = rideSnap.data();
-
-        if (rideData.driver_id !== currentUser.uid) {
-            alert("Only the assigned driver can verify this ride.");
-            return;
-        }
-
-        if (String(rideData.verification_pin || "") !== typedPin) {
-            alert("Incorrect verification PIN. Please verify with the passenger.");
-            return;
-        }
-
-        let verifiedRideData = null;
-        await runTransaction(db, async (transaction) => {
-            const freshRideSnap = await transaction.get(rideRef);
-            if (!freshRideSnap.exists()) {
-                throw new Error("This ride no longer exists.");
-            }
-
-            const freshRideData = freshRideSnap.data();
-            if (freshRideData.driver_id !== currentUser.uid) {
-                throw new Error("Only the assigned driver can verify this ride.");
-            }
-
-            if (String(freshRideData.verification_pin || "") !== typedPin) {
-                throw new Error("Incorrect verification PIN. Please verify with the passenger.");
-            }
-
-            verifiedRideData = freshRideData;
-            transaction.update(rideRef, {
-                status: "en_route",
-                pinVerifiedAt: serverTimestamp(),
-                startedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-        });
-
-        if (verifiedRideData) {
-            setDoc(doc(db, "tripHistory", rideId), buildTripHistoryRecord(rideId, {
-                ...verifiedRideData,
-                status: "verified",
-                payment_status: verifiedRideData.payment_status || "pending"
-            }), { merge: true }).catch((historyError) => {
-                console.warn("Trip history save after PIN verification failed:", historyError);
-            });
-        }
+        const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
+        renderActiveRideState(rideId, result.ride || { ...currentRide, status: "en_route" });
     } catch (error) {
         console.error("PIN verification failed:", error);
-        alert("Could not verify PIN. Please try again.");
+        await showAlert("Could not verify PIN. Please try again.");
     }
 }
 
@@ -1579,59 +1339,19 @@ async function transitionRideThroughBackend(rideId, action, pin = "") {
 
 async function completeRideJob() {
     if (!currentRideId) {
-        alert("No active trip found to complete.");
+        await showAlert("No active trip found to complete.");
         return;
     }
 
+    // Keep the ID locally because the realtime listener may clear
+    // currentRideId immediately after the server changes the ride to
+    // `completed`.
+    const completedRideId = currentRideId;
+    pendingPaymentRideId = completedRideId;
+
     try {
-        try {
-            const result = await transitionRideThroughBackend(currentRideId, "complete");
-            const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
-            pendingPaymentRideId = currentRideId;
-            finalFareEl.innerText = `Rs ${finalFare}`;
-            paymentModal.classList.remove('d-none');
-            hideLifecyclePanel();
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Completion backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", currentRideId);
-        const rideSnap = await getDoc(rideRef);
-        if (!rideSnap.exists()) return;
-
-        const rideData = rideSnap.data();
-        if (!["started", "en_route"].includes(rideData.status)) {
-            alert("Verify the passenger PIN before completing this trip.");
-            return;
-        }
-
-        const finalFare = parseFloat(rideData.fare || 0);
-        pendingPaymentRideId = currentRideId;
-
-        await runTransaction(db, async (transaction) => {
-            const freshRideSnap = await transaction.get(rideRef);
-            if (!freshRideSnap.exists()) return;
-            const freshRideData = freshRideSnap.data();
-
-            transaction.update(rideRef, {
-                status: "completed",
-                completedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-            transaction.set(doc(db, "tripHistory", currentRideId), buildTripHistoryFinalUpdate({
-                ...freshRideData,
-                ride_id: currentRideId,
-                status: "completed"
-            }, "completed"), { merge: true });
-        });
-
-        await updateDoc(doc(db, "users", currentUser.uid), {
-            lifetime_earnings: increment(finalFare),
-            total_completed_trips: increment(1)
-        });
-
+        const result = await transitionRideThroughBackend(completedRideId, "complete");
+        const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
         finalFareEl.innerText = `Rs ${finalFare}`;
 
         const driverUPI = currentUser.upiId;
@@ -1642,61 +1362,32 @@ async function completeRideJob() {
         } else {
             upiQrImage.src = "";
             upiQrImage.classList.add('d-none');
-            alert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+            await showAlert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
         }
 
         paymentModal.classList.remove('d-none');
         hideLifecyclePanel();
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
-        alert("Database connection dropped during checkout.");
+        await showAlert("Database connection dropped during checkout.");
     }
 }
 
 async function cancelRideByDriver() {
     if (!currentRideId) {
-        alert("No active trip found to cancel.");
+        await showAlert("No active trip found to cancel.");
         return;
     }
 
-    if (!confirm("Warning: Cancelling active trips impacts your driver rating. Proceed?")) return;
+    if (!(await showConfirm("Warning: Cancelling active trips impacts your driver rating. Proceed?"))) return;
 
     try {
         const rideId = currentRideId;
-        try {
-            await transitionRideThroughBackend(rideId, "cancel");
-            alert("Trip cancelled successfully.");
-            return;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Driver cancellation backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        await runTransaction(db, async (transaction) => {
-            const rideRef = doc(db, "rides", rideId);
-            const rideSnap = await transaction.get(rideRef);
-            if (!rideSnap.exists()) return;
-            const rideData = rideSnap.data();
-
-            transaction.update(rideRef, {
-                status: "cancelled_by_driver",
-                cancelledAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-
-            if (rideData.pinVerifiedAt) {
-                transaction.set(doc(db, "tripHistory", rideId), buildTripHistoryFinalUpdate({
-                    ...rideData,
-                    ride_id: rideId,
-                    status: "cancelled_by_driver"
-                }, "cancelled_by_driver"), { merge: true });
-            }
-        });
-
-        alert("Trip cancelled successfully.");
+        await transitionRideThroughBackend(rideId, "cancel");
+        await showAlert("Trip cancelled successfully.");
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
-        alert("Could not cancel the active trip.");
+        await showAlert("Could not cancel the active trip.");
     }
 }
 
@@ -1773,58 +1464,16 @@ function buildTripHistoryFinalUpdate(rideData, status) {
 
 async function markRidePaidAndCreateHistory(rideId) {
     if (!rideId) {
-        alert("No completed ride found for payment confirmation.");
+        await showAlert("No completed ride found for payment confirmation.");
         return false;
     }
 
     try {
-        try {
-            await transitionRideThroughBackend(rideId, "mark_paid");
-            return true;
-        } catch (backendError) {
-            if (!backendError?.backendUnavailable) throw backendError;
-            console.warn("Payment backend unavailable; using temporary Firestore fallback.", backendError);
-        }
-
-        const rideRef = doc(db, "rides", rideId);
-        const historyRef = doc(db, "tripHistory", rideId);
-
-        await runTransaction(db, async (transaction) => {
-            const rideSnap = await transaction.get(rideRef);
-            if (!rideSnap.exists()) {
-                throw new Error("Ride document no longer exists.");
-            }
-
-            const rideData = rideSnap.data();
-            if (rideData.status !== "completed") {
-                throw new Error("Only completed rides can be moved into trip history.");
-            }
-
-            if (rideData.driver_id !== currentUser.uid) {
-                throw new Error("Only the assigned driver can confirm this payment.");
-            }
-
-            transaction.update(rideRef, {
-                payment_status: "paid",
-                payment_confirmed_by: currentUser.uid,
-                paymentConfirmedAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-            });
-
-            const historyRecord = buildTripHistoryRecord(rideId, {
-                ...rideData,
-                status: "completed",
-                payment_status: "paid",
-                source: "client_payment_confirmation"
-            });
-            delete historyRecord.createdAt;
-            transaction.set(historyRef, historyRecord, { merge: true });
-        });
-
+        await transitionRideThroughBackend(rideId, "mark_paid");
         return true;
     } catch (error) {
         console.error("Trip history creation failed:", error);
-        alert(error.message || "Could not confirm payment and save trip history.");
+        await showAlert(error.message || "Could not confirm payment and save trip history.");
         return false;
     }
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
@@ -49,10 +49,56 @@ class DriverTransitionBody(BaseModel):
     pin: str = Field(default="", max_length=4)
 
 
+class DriverAvailabilityBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(min_length=1, max_length=20)
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class DriverLocationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float
+    lng: float
+    rideId: Optional[str] = Field(default=None, max_length=160)
+    driverHeading: Optional[float] = None
+    driverSpeed: Optional[float] = None
+    driverAccuracy: Optional[float] = None
+
+
+class DriverPushTokenBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=20, max_length=4096)
+    userAgent: str = Field(default="", max_length=500)
+    permission: str = Field(default="granted", max_length=30)
+
+
 RIDE_SERVICES = {
-    "bike": {"name": "Bike / Scooty", "capacity": 1, "base": 15, "per_km": 7},
-    "auto": {"name": "Auto", "capacity": 3, "base": 25, "per_km": 12.5},
+    "bike": {"name": "Bike / Scooty", "capacity": 1, "base": 15, "per_km": 7, "min_fare": 15},
+    "auto": {"name": "Auto", "capacity": 3, "base": 25, "per_km": 12.5, "min_fare": 25},
 }
+
+# Keep in sync with js/fare-policy.js: distance beyond LONG_TRIP_THRESHOLD_KM is
+# billed at a reduced rate, and anything beyond MAX_SERVICEABLE_DISTANCE_KM is
+# outside the current service area.
+MAX_SERVICEABLE_DISTANCE_KM = 120
+LONG_TRIP_THRESHOLD_KM = 20
+LONG_TRIP_RATE_MULTIPLIER = 0.85
+
+
+def _calculate_fare(service: dict[str, Any], distance_km: float) -> int:
+    """Mirrors calculateServiceFare() in js/fare-policy.js."""
+    billable_km = min(distance_km, LONG_TRIP_THRESHOLD_KM)
+    long_trip_km = max(0.0, distance_km - LONG_TRIP_THRESHOLD_KM)
+    fare = (
+        service["base"]
+        + (billable_km * service["per_km"])
+        + (long_trip_km * service["per_km"] * LONG_TRIP_RATE_MULTIPLIER)
+    )
+    return max(round(fare), service["min_fare"])
 
 
 def _coordinate(value: float, minimum: float, maximum: float) -> float:
@@ -93,6 +139,25 @@ def _driver_type(driver: dict[str, Any]) -> str:
     if "bike" in text or "scooter" in text or "activa" in text or "motorcycle" in text:
         return "bike"
     return ""
+
+
+def _require_role(profile: dict[str, Any], expected_role: str, message: str) -> None:
+    if profile.get("role") != expected_role:
+        raise ApiError(message, 403)
+
+
+def _require_approved_driver(profile: dict[str, Any], message: str) -> None:
+    if profile.get("role") != "driver" or profile.get("verificationStatus") != "approved":
+        raise ApiError(message, 403)
+
+
+def _coarse_location(location: Optional[dict[str, float]]) -> Optional[dict[str, float]]:
+    if not location:
+        return None
+    return {
+        "lat": round(float(location["lat"]), 2),
+        "lng": round(float(location["lng"]), 2),
+    }
 
 
 def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
@@ -152,7 +217,7 @@ async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, d
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not calculate the ride route.", 503, {"message": str(error)})
+        raise ApiError("Could not calculate the ride route.", 503)
 
 
 def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
@@ -250,8 +315,11 @@ async def create_passenger_ride(
         db = fb_firestore.client(get_admin_app())
         profile_snapshot = db.collection("users").document(uid).get()
         profile = profile_snapshot.to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can create ride requests.")
         distance_km, duration_minutes = await _server_route(pickup_lat, pickup_lng, drop_lat, drop_lng)
-        fare = round(service["base"] + distance_km * service["per_km"])
+        if not math.isfinite(distance_km) or distance_km < 0 or distance_km > MAX_SERVICEABLE_DISTANCE_KM:
+            raise ApiError("This destination is outside LiphtUp's current service area.", 400)
+        fare = _calculate_fare(service, distance_km)
         drivers = _available_drivers(db, pickup_lat, pickup_lng, body.vehicleType.strip().lower())
         first_batch = drivers[:DISPATCH_BATCH_SIZE]
         driver_ids = [driver["uid"] for driver in first_batch]
@@ -321,7 +389,7 @@ async def create_passenger_ride(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not create this ride request.", 503, {"message": str(error)})
+        raise ApiError("Could not create this ride request.", 503)
 
 
 @router.post("/{ride_id}/transition")
@@ -335,6 +403,8 @@ def transition_driver_ride(
     clean_ride_id = str(ride_id or "").strip()[:160]
     action = body.action.strip().lower()
     allowed = {
+        "arrive": ({"accepted"}, "arrived"),
+        "start": ({"arrived"}, "started"),
         "verify_pin": ({"accepted", "arrived"}, "en_route"),
         "complete": ({"started", "en_route"}, "completed"),
         "cancel": ({"accepted", "arrived", "started", "en_route"}, "cancelled_by_driver"),
@@ -349,6 +419,8 @@ def transition_driver_ride(
 
     try:
         db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_approved_driver(profile, "Only approved drivers can update rides.")
         ride_ref = db.collection("rides").document(clean_ride_id)
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         user_ref = db.collection("users").document(uid)
@@ -390,12 +462,250 @@ def transition_driver_ride(
 
         transition_transaction(transaction)
         if action in {"complete", "cancel"}:
-            db.collection("driverPresence").document(uid).set({"driverAvailability": "searching", "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+            availability_update = {"driverAvailability": "searching", "updatedAt": fb_firestore.SERVER_TIMESTAMP}
+            db.collection("driverPresence").document(uid).set(availability_update, merge=True)
+            db.collection("driverMapPresence").document(uid).set(availability_update, merge=True)
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": result}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not update this ride.", 503, {"message": str(error)})
+        raise ApiError("Could not update this ride.", 503)
+
+
+@router.post("/{ride_id}/dispatch")
+def expand_passenger_dispatch(
+    ride_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Expand a passenger's pending driver search without client Firestore writes."""
+    uid = str(user.get("uid") or "").strip()
+    clean_ride_id = str(ride_id or "").strip()[:160]
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if not clean_ride_id:
+        raise ApiError("Ride ID is required.", 400)
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can expand this search.")
+        ride_ref = db.collection("rides").document(clean_ride_id)
+        snapshot = ride_ref.get()
+        if not snapshot.exists:
+            raise ApiError("Ride not found.", 404)
+        ride = snapshot.to_dict() or {}
+        if ride.get("passenger_id") != uid:
+            raise ApiError("Only the passenger can expand this search.", 403)
+        if ride.get("status") != "pending" or ride.get("driver_id"):
+            raise ApiError("Only pending unassigned rides can expand their search.", 409)
+
+        excluded = set(ride.get("notified_driver_ids") or []) | set(ride.get("rejected_driver_ids") or [])
+        all_candidates = _available_drivers(
+            db,
+            float(ride.get("pickup_lat")),
+            float(ride.get("pickup_lng")),
+            str(ride.get("vehicle_type") or ""),
+        )
+        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][: int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)]
+        notified = list(dict.fromkeys([*(ride.get("notified_driver_ids") or []), *next_batch]))
+        eligible = list(dict.fromkeys([*(ride.get("eligible_driver_ids") or []), *next_batch]))
+        updates = {
+            "eligible_driver_ids": eligible,
+            "notified_driver_ids": notified,
+            "dispatch_round": int(ride.get("dispatch_round") or 0) + (1 if next_batch else 0),
+            "last_dispatch_at": fb_firestore.SERVER_TIMESTAMP,
+            "search_status": "searching_nearby_drivers" if next_batch else "no_more_available_drivers",
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        ride_ref.update(updates)
+        return {"ok": True, "rideId": clean_ride_id, "driverIds": next_batch, "searchStatus": updates["search_status"]}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not expand the driver search.", 503)
+
+
+@router.post("/driver-availability")
+def update_driver_availability(
+    body: DriverAvailabilityBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Update driver availability and presence with server-owned identity fields."""
+    uid = str(user.get("uid") or "").strip()
+    status = body.status.strip().lower()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if status not in {"offline", "searching", "busy"}:
+        raise ApiError("Invalid driver availability status.", 400)
+    if (body.lat is None) != (body.lng is None):
+        raise ApiError("Both driver coordinates are required together.", 400)
+    if body.lat is not None:
+        lat = _coordinate(body.lat, -90, 90)
+        lng = _coordinate(body.lng, -180, 180)
+    else:
+        lat = lng = None
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_approved_driver(profile, "Only approved drivers can update driver availability.")
+        online = status != "offline"
+        user_update: dict[str, Any] = {
+            "driverAvailability": status,
+            "desiredAvailability": "online" if online else "offline",
+            "isConnected": online,
+            "notificationEligibleUntil": datetime.now(timezone.utc) + timedelta(minutes=30) if online else datetime.fromtimestamp(0, timezone.utc),
+            "driverAvailabilityUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        presence_update: dict[str, Any] = {
+            "uid": uid,
+            "name": str(profile.get("name") or "Driver")[:80],
+            "phone": str(profile.get("phone") or "")[:40],
+            "driverAvailability": status,
+            "desiredAvailability": "online" if online else "offline",
+            "verificationStatus": profile.get("verificationStatus") or "pending_review",
+            "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
+            "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
+            "vehicle_type": _driver_type(profile),
+            "isConnected": online,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        map_presence_update = {
+            key: presence_update[key]
+            for key in (
+                "uid", "name", "driverAvailability", "desiredAvailability",
+                "verificationStatus", "vehicle_model", "vehicle_type", "isConnected",
+                "updatedAt", "lastSeenAt",
+            )
+        }
+        if lat is not None:
+            user_update["driverLocation"] = {"lat": lat, "lng": lng}
+            presence_update["driverLocation"] = {"lat": lat, "lng": lng}
+            map_presence_update["driverLocation"] = _coarse_location({"lat": lat, "lng": lng})
+        db.collection("users").document(uid).set(user_update, merge=True)
+        db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+        db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
+        return {"ok": True, "status": status}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not update driver availability.", 503)
+
+
+@router.post("/driver-location")
+def update_driver_location(
+    body: DriverLocationBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Write authenticated driver telemetry and, when assigned, ride location."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    lat = _coordinate(body.lat, -90, 90)
+    lng = _coordinate(body.lng, -180, 180)
+    if body.driverAccuracy is not None and (not math.isfinite(body.driverAccuracy) or body.driverAccuracy < 0):
+        raise ApiError("Invalid GPS accuracy.", 400)
+    if body.driverSpeed is not None and (not math.isfinite(body.driverSpeed) or body.driverSpeed < 0):
+        raise ApiError("Invalid GPS speed.", 400)
+    if body.driverHeading is not None and not math.isfinite(body.driverHeading):
+        raise ApiError("Invalid GPS heading.", 400)
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile_ref = db.collection("users").document(uid)
+        profile = profile_ref.get().to_dict() or {}
+        _require_approved_driver(profile, "Only approved drivers can update GPS location.")
+        ride_id = str(body.rideId or "").strip()[:160]
+        availability = str(profile.get("driverAvailability") or "searching")
+        if ride_id:
+            ride_ref = db.collection("rides").document(ride_id)
+            ride = ride_ref.get().to_dict()
+            if not ride:
+                raise ApiError("Ride not found.", 404)
+            if ride.get("driver_id") != uid:
+                raise ApiError("Only the assigned driver can update this ride location.", 403)
+            if ride.get("status") not in ACTIVE_PASSENGER_STATUSES:
+                raise ApiError("This ride is no longer active.", 409)
+            availability = "busy"
+
+        location = {"lat": lat, "lng": lng}
+        telemetry = {key: value for key, value in {
+            "driverHeading": body.driverHeading,
+            "driverSpeed": body.driverSpeed,
+            "driverAccuracy": body.driverAccuracy,
+        }.items() if value is not None}
+        now = datetime.now(timezone.utc)
+        presence_update = {
+            "driverLocation": location,
+            **telemetry,
+            "driverAvailability": availability,
+            "desiredAvailability": "online",
+            "isConnected": True,
+            "lastSeenAt": now,
+            "lastAppSeenAt": now,
+            "lastLocationAt": now,
+            "updatedAt": now,
+        }
+        profile_ref.set({"driverLocation": location, **telemetry, "lastSeenAt": now, "lastLocationAt": now}, merge=True)
+        db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+        db.collection("driverMapPresence").document(uid).set({
+            "uid": uid,
+            "name": str(profile.get("name") or "Driver")[:80],
+            "driverAvailability": availability,
+            "desiredAvailability": "online",
+            "verificationStatus": profile.get("verificationStatus"),
+            "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
+            "vehicle_type": _driver_type(profile),
+            "driverLocation": _coarse_location(location),
+            "isConnected": True,
+            "lastSeenAt": now,
+            "lastLocationAt": now,
+            "updatedAt": now,
+        }, merge=True)
+        if ride_id:
+            db.collection("rides").document(ride_id).set({"driverLocation": location, **telemetry, "driverLocationUpdatedAt": now, "updatedAt": now}, merge=True)
+        return {"ok": True, "rideId": ride_id or None, "status": availability}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not update driver GPS location.", 503)
+
+
+@router.post("/driver-push-token")
+def save_driver_push_token(
+    body: DriverPushTokenBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Store a push token only for the authenticated driver's own account."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if body.permission != "granted":
+        raise ApiError("Push permission is not granted.", 400)
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_approved_driver(profile, "Only approved drivers can register driver push tokens.")
+        token_detail = {
+            "token": body.token,
+            "userAgent": body.userAgent,
+            "updatedAt": datetime.now(timezone.utc),
+        }
+        update = {
+            "pushTokens": fb_firestore.ArrayUnion([body.token]),
+            "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
+            "notificationPermission": "granted",
+            "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        db.collection("users").document(uid).set(update, merge=True)
+        db.collection("driverPresence").document(uid).set(update, merge=True)
+        return {"ok": True}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not register driver push token.", 503)
 
 
 @router.post("/{ride_id}/cancel")
@@ -413,6 +723,8 @@ def cancel_passenger_ride(
 
     try:
         db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can cancel passenger rides.")
         ride_ref = db.collection("rides").document(clean_ride_id)
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         transaction = db.transaction()
@@ -447,7 +759,7 @@ def cancel_passenger_ride(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not cancel this ride.", 503, {"message": str(error)})
+        raise ApiError("Could not cancel this ride.", 503)
 
 
 @router.post("/{ride_id}/accept")
@@ -466,8 +778,7 @@ def accept_driver_ride(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        if profile.get("role") != "driver":
-            raise ApiError("Only approved drivers can accept rides.", 403)
+        _require_approved_driver(profile, "Only approved drivers can accept rides.")
         driver_type = _driver_type(profile)
         if driver_type not in RIDE_SERVICES:
             raise ApiError("Your registered vehicle type is missing.", 403)
@@ -528,8 +839,14 @@ def accept_driver_ride(
             "isConnected": True,
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         }, merge=True)
+        db.collection("driverMapPresence").document(uid).set({
+            "driverAvailability": "busy",
+            "desiredAvailability": "online",
+            "isConnected": True,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }, merge=True)
         return {"ok": True, "rideId": clean_ride_id, "ride": accepted_ride}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not accept this ride.", 503, {"message": str(error)})
+        raise ApiError("Could not accept this ride.", 503)

@@ -751,6 +751,51 @@ select {
     text-decoration: none;
 }
 
+.feature-row img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.service-areas {
+    margin: 6px 0 14px;
+    padding: 16px;
+    border-radius: 8px;
+    background: var(--gy-muted-bg);
+}
+
+.service-areas .section-title {
+    margin: 0 0 6px;
+}
+
+.service-areas-copy {
+    margin: 0 0 12px;
+    color: var(--gy-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.service-areas-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.service-areas-list a {
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--gy-border);
+    color: var(--gy-green);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.service-areas-list a:hover {
+    background: var(--gy-green-soft);
+}
+
 .heritage-card {
     min-height: 118px;
     margin-bottom: 12px;
@@ -3313,4 +3358,97 @@ body.profile-editor-open {
     cursor: not-allowed;
     background-color: #f3f4f6;
     color: #374151;
+}
+
+/* ===== Global in-app dialog (replaces browser alert()/confirm()) ===== */
+.lu-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.72);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.lu-dialog-overlay.is-open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.lu-dialog-box {
+    width: min(100%, 380px);
+    background: var(--gy-bg);
+    border: 1px solid var(--gy-border);
+    border-radius: 16px;
+    padding: 26px 22px 20px;
+    box-shadow: var(--gy-shadow);
+    text-align: center;
+    transform: translateY(14px) scale(0.98);
+    transition: transform 200ms ease;
+    outline: none;
+}
+
+.lu-dialog-overlay.is-open .lu-dialog-box {
+    transform: translateY(0) scale(1);
+}
+
+.lu-dialog-message {
+    margin: 0 0 22px;
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--gy-text);
+    white-space: pre-line;
+    overflow-wrap: break-word;
+}
+
+.lu-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.lu-dialog-actions.lu-dialog-single {
+    grid-template-columns: 1fr;
+}
+
+.lu-dialog-btn {
+    min-height: 48px;
+    border: 0;
+    border-radius: 10px;
+    font-weight: 800;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.lu-dialog-btn:active {
+    transform: scale(0.97);
+}
+
+.lu-dialog-btn-ok {
+    color: #fff;
+    background: var(--gy-green);
+    box-shadow: 0 10px 22px rgba(26, 122, 46, 0.22);
+}
+
+.lu-dialog-btn-cancel {
+    color: var(--gy-muted);
+    background: var(--gy-muted-bg);
+}
+
+.lu-dialog-btn-cancel.d-none {
+    display: none;
+}
+
+@media (max-width: 380px) {
+    .lu-dialog-box {
+        width: 100%;
+        padding: 22px 18px 16px;
+    }
 }
