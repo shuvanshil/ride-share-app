@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v27-dialog-seo";
+const CACHE_VERSION = "liphtup-shell-v28-favicon";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [

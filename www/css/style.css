@@ -757,45 +757,6 @@ select {
     object-fit: contain;
 }
 
-.service-areas {
-    margin: 6px 0 14px;
-    padding: 16px;
-    border-radius: 8px;
-    background: var(--gy-muted-bg);
-}
-
-.service-areas .section-title {
-    margin: 0 0 6px;
-}
-
-.service-areas-copy {
-    margin: 0 0 12px;
-    color: var(--gy-muted);
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.service-areas-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.service-areas-list a {
-    padding: 8px 14px;
-    border-radius: 999px;
-    background: #fff;
-    border: 1px solid var(--gy-border);
-    color: var(--gy-green);
-    font-size: 13px;
-    font-weight: 700;
-    text-decoration: none;
-}
-
-.service-areas-list a:hover {
-    background: var(--gy-green-soft);
-}
-
 .heritage-card {
     min-height: 118px;
     margin-bottom: 12px;
