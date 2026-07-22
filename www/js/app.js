@@ -908,4 +908,3 @@ addOptionalClickListener('invite-friends-btn', () => {
     setInviteFriendsStatus("");
     inviteFriends();
 });
-
