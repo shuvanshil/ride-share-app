@@ -75,6 +75,18 @@ let lastDriverHeading = null;
 let incomingRideUnsubscribe = null;
 let acceptRideInProgress = false;
 
+function formatFareAmount(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? `Rs ${Math.round(amount)}` : "Rs 0";
+}
+
+function fareAdjustmentMessage(ride, fallback = "") {
+    const adjustment = ride?.fare_adjustment;
+    if (adjustment?.message) return adjustment.message;
+    if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
+    return fallback;
+}
+
 warmGoogleMaps();
 
 const VEHICLE_MARKER_ASSETS = Object.freeze({
@@ -1352,7 +1364,7 @@ async function completeRideJob() {
     try {
         const result = await transitionRideThroughBackend(completedRideId, "complete");
         const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
-        finalFareEl.innerText = `Rs ${finalFare}`;
+        finalFareEl.innerText = formatFareAmount(finalFare);
 
         const driverUPI = currentUser.upiId;
         if (driverUPI) {
@@ -1366,6 +1378,7 @@ async function completeRideJob() {
         }
 
         paymentModal.classList.remove('d-none');
+        await showAlert(fareAdjustmentMessage(result.ride, `Final fare: ${formatFareAmount(finalFare)}.`));
         hideLifecyclePanel();
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
@@ -1383,8 +1396,8 @@ async function cancelRideByDriver() {
 
     try {
         const rideId = currentRideId;
-        await transitionRideThroughBackend(rideId, "cancel");
-        await showAlert("Trip cancelled successfully.");
+        const result = await transitionRideThroughBackend(rideId, "cancel");
+        await showAlert(fareAdjustmentMessage(result.ride, "Trip cancelled. You are back online."));
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
         await showAlert("Could not cancel the active trip.");
@@ -1488,8 +1501,19 @@ function startActiveRideListener() {
         where("status", "in", ACTIVE_RIDE_STATUSES)
     );
 
-    activeRideUnsubscribe = onSnapshot(activeRideQuery, (snapshot) => {
+    activeRideUnsubscribe = onSnapshot(activeRideQuery, async (snapshot) => {
         if (snapshot.empty) {
+            if (currentRideId) {
+                try {
+                    const rideSnap = await getDoc(doc(db, "rides", currentRideId));
+                    const ride = rideSnap.exists() ? rideSnap.data() : null;
+                    if (ride?.status === "cancelled_by_passenger") {
+                        await showAlert("Passenger cancelled this ride. You are back online.");
+                    }
+                } catch (error) {
+                    console.warn("Could not check final ride status:", error);
+                }
+            }
             renderIdleState();
             return;
         }

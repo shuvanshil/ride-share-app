@@ -27,6 +27,19 @@ let activeRideListener = null;          // For Passenger monitoring
 let activeDispatchExpansionTimer = null;
 
 let currentPassengerRideId = null;
+let currentPassengerRideData = null;
+
+function formatFareAmount(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? `Rs ${Math.round(amount)}` : "Rs 0";
+}
+
+function fareAdjustmentMessage(ride, fallback = "") {
+    const adjustment = ride?.fare_adjustment;
+    if (adjustment?.message) return adjustment.message;
+    if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
+    return fallback;
+}
 
 function cleanAddressPart(value) {
     return String(value || "").trim();
@@ -325,6 +338,7 @@ function showPassengerCancelButton(rideId) {
 
 function hidePassengerCancelButton() {
     currentPassengerRideId = null;
+    currentPassengerRideData = null;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.add('d-none');
 }
@@ -770,6 +784,7 @@ function listenToRideStatusUpdates(rideId) {
     activeRideListener = onSnapshot(doc(db, "rides", rideId), (docSnap) => {
         if (!docSnap.exists()) return;
         const ride = docSnap.data();
+        currentPassengerRideData = ride;
 
         if (ACTIVE_RIDE_STATUSES.includes(ride.status)) {
             setPassengerDestinationLocked(true, ride.drop_name || "", ride.pickup_name || "");
@@ -778,7 +793,8 @@ function listenToRideStatusUpdates(rideId) {
 
         // FIXED: Added handling for when a driver cancels mid-trip
         if (ride.status === "cancelled_by_driver") {
-            showAlert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
+            const message = fareAdjustmentMessage(ride, "Please request a new ride.");
+            showAlert(`Your driver cancelled the trip. ${message}`);
             resetPassengerBookingUi();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
@@ -846,8 +862,9 @@ function listenToRideStatusUpdates(rideId) {
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
             const finalFare = ride.fare || "0.00";
-            document.getElementById('passenger-final-fare').innerText = `₹${finalFare}`;
             document.getElementById('passenger-payment-view').classList.remove('d-none');
+            document.getElementById('passenger-final-fare').innerText = formatFareAmount(finalFare);
+            showAlert(fareAdjustmentMessage(ride, `Final fare: ${formatFareAmount(finalFare)}.`));
             
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
         }
@@ -861,7 +878,14 @@ async function cancelRideByPassenger(rideId) {
         return;
     }
 
-    if (!(await showConfirm("Are you sure you want to cancel your ride request?"))) return;
+    const status = currentPassengerRideData?.status || "";
+    const cancelMessage = ["started", "en_route"].includes(status)
+        ? "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully."
+        : ["accepted", "arrived"].includes(status)
+            ? "Cancel this ride? Your driver will be notified immediately."
+            : "Cancel this ride request?";
+
+    if (!(await showConfirm(cancelMessage, { okText: "Cancel ride", cancelText: "Keep ride" }))) return;
 
     try {
         const idToken = await auth.currentUser?.getIdToken();
@@ -876,7 +900,7 @@ async function cancelRideByPassenger(rideId) {
             throw new Error(data.error || "Could not cancel this ride.");
         }
 
-        await showAlert("Your ride request has been cancelled.");
+        await showAlert("Your ride has been cancelled.");
         resetPassengerBookingUi();
 
         if (activeRideListener) {
@@ -908,4 +932,3 @@ addOptionalClickListener('invite-friends-btn', () => {
     setInviteFriendsStatus("");
     inviteFriends();
 });
-

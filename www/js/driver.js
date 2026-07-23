@@ -60,6 +60,18 @@ let lastActiveSmoothedPosition = null;
 let lastActiveWrittenPosition = null;
 let lastActiveWriteAt = 0;
 
+function formatFareAmount(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? `Rs ${Math.round(amount)}` : "Rs 0";
+}
+
+function fareAdjustmentMessage(ride, fallback = "") {
+    const adjustment = ride?.fare_adjustment;
+    if (adjustment?.message) return adjustment.message;
+    if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
+    return fallback;
+}
+
 function addOptionalClickListener(elementId, handler) {
     const element = document.getElementById(elementId);
     if (element) {
@@ -780,7 +792,7 @@ function attachDriverTripListener(rideRef) {
         const currentRideData = docSnap.data();
 
         if (currentRideData.status === "cancelled_by_passenger") {
-            showAlert("The passenger has cancelled this ride request.");
+            showAlert("Passenger cancelled this ride. You are back online.");
             setRideActive(false);
 
             if (activeDriverLocationWatchId !== null) {
@@ -936,7 +948,7 @@ async function completeRideJob() {
         const result = await transitionRideThroughBackend(completedRideId, "complete");
         const finalFare = parseFloat(result.ride?.fare || activeDriverRideData?.fare || 0);
         pendingDriverPaymentRideId = completedRideId;
-        document.getElementById('driver-final-fare').innerText = `Rs ${finalFare}`;
+        document.getElementById('driver-final-fare').innerText = formatFareAmount(finalFare);
 
         const driverUPI = currentUser.upiId;
         const upiQrImage = document.getElementById('upi-qr-image');
@@ -952,6 +964,7 @@ async function completeRideJob() {
         }
 
         document.getElementById('driver-payment-view').classList.remove('d-none');
+        await showAlert(fareAdjustmentMessage(result.ride, `Final fare: ${formatFareAmount(finalFare)}.`));
         if (activeDriverTripListener) activeDriverTripListener();
         activeDriverRideData = null;
         activeDriverRenderedStatus = null;
@@ -973,7 +986,7 @@ async function cancelRideByDriver(rideId) {
     if (!(await showConfirm("Warning: Cancelling active trips impacts your driver rating. Proceed?"))) return;
 
     try {
-        await transitionRideThroughBackend(rideId, "cancel");
+        const result = await transitionRideThroughBackend(rideId, "cancel");
         if (activeDriverTripListener) activeDriverTripListener();
 
         if (activeDriverLocationWatchId !== null) {
@@ -984,7 +997,7 @@ async function cancelRideByDriver(rideId) {
         document.getElementById('active-trip-container').classList.add('d-none');
         activeDriverRideData = null;
         activeDriverRenderedStatus = null;
-        await showAlert("Trip aborted successfully. Status set to online.");
+        await showAlert(fareAdjustmentMessage(result.ride, "Trip cancelled. You are back online."));
 
         currentlyAssignedRideId = null;
         setRideActive(false);

@@ -87,6 +87,9 @@ RIDE_SERVICES = {
 MAX_SERVICEABLE_DISTANCE_KM = 120
 LONG_TRIP_THRESHOLD_KM = 20
 LONG_TRIP_RATE_MULTIPLIER = 0.85
+FULL_FARE_PROGRESS_RATIO = 0.9
+ZERO_TRAVEL_THRESHOLD_KM = 0.01
+FREE_DROPOFF_EXTRA_KM = 0.1
 
 
 def _calculate_fare(service: dict[str, Any], distance_km: float) -> int:
@@ -99,6 +102,118 @@ def _calculate_fare(service: dict[str, Any], distance_km: float) -> int:
         + (long_trip_km * service["per_km"] * LONG_TRIP_RATE_MULTIPLIER)
     )
     return max(round(fare), service["min_fare"])
+
+
+def _ride_service(ride: dict[str, Any]) -> dict[str, Any]:
+    service = RIDE_SERVICES.get(str(ride.get("vehicle_type") or "").lower())
+    if service:
+        return service
+    return {
+        "name": ride.get("service_name") or "Ride",
+        "capacity": 1,
+        "base": float(ride.get("fare_base") or 0),
+        "per_km": float(ride.get("fare_per_km") or 0),
+        "min_fare": float(ride.get("fare_base") or 0),
+    }
+
+
+def _location_from_ride(ride: dict[str, Any], key: str) -> Optional[dict[str, float]]:
+    value = ride.get(key)
+    if not isinstance(value, dict):
+        return None
+    lat, lng = value.get("lat"), value.get("lng")
+    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+        return {"lat": float(lat), "lng": float(lng)}
+    return None
+
+
+def _finite_float(value: Any, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) else default
+
+
+def _format_rupees(value: float) -> str:
+    return f"Rs {round(value):g}"
+
+
+def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]:
+    original_fare = _finite_float(ride.get("fare"))
+    planned_km = max(0.0, _finite_float(ride.get("distance_km")))
+    service = _ride_service(ride)
+    status = str(ride.get("status") or "")
+    pickup = {"lat": _finite_float(ride.get("pickup_lat")), "lng": _finite_float(ride.get("pickup_lng"))}
+    drop = {"lat": _finite_float(ride.get("drop_lat")), "lng": _finite_float(ride.get("drop_lng"))}
+    current = _location_from_ride(ride, "driverLocation")
+
+    onboard = status in {"started", "en_route"} or bool(ride.get("pinVerifiedAt"))
+    distance_to_drop_km = planned_km
+    extra_dropoff_km = 0.0
+    progress_ratio = 0.0
+    travelled_km = 0.0
+    charged_distance_km = planned_km
+    reason = "full_trip"
+    note = f"Final fare is {_format_rupees(original_fare)}."
+    final_fare = original_fare
+
+    if current and planned_km > 0:
+        distance_to_drop_km = _haversine_km(current["lat"], current["lng"], drop["lat"], drop["lng"])
+        pickup_to_current_km = _haversine_km(pickup["lat"], pickup["lng"], current["lat"], current["lng"])
+        progress_ratio = max(0.0, min(1.0, pickup_to_current_km / planned_km))
+        travelled_km = max(0.0, min(pickup_to_current_km, planned_km))
+        if pickup_to_current_km > planned_km and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:
+            extra_dropoff_km = distance_to_drop_km
+
+    if not onboard:
+        final_fare = 0
+        charged_distance_km = 0
+        reason = "not_picked_up"
+        note = "Passenger trip did not start, so no fare is charged."
+    elif not current:
+        reason = "gps_unavailable"
+        note = f"GPS was unavailable at trip end. Fare stays {_format_rupees(original_fare)}."
+    elif travelled_km <= ZERO_TRAVEL_THRESHOLD_KM:
+        final_fare = 0
+        charged_distance_km = 0
+        reason = "zero_passenger_travel"
+        note = "No travel after pickup was detected, so the fare is Rs 0."
+    elif progress_ratio < FULL_FARE_PROGRESS_RATIO:
+        charged_distance_km = travelled_km
+        final_fare = _calculate_fare(service, charged_distance_km)
+        reason = "partial_trip"
+        note = (
+            f"Only {round(progress_ratio * 100)}% of the trip was completed. "
+            f"Reduced fare: {_format_rupees(final_fare)}."
+        )
+    elif action == "complete" and extra_dropoff_km > FREE_DROPOFF_EXTRA_KM:
+        extra_billable_km = extra_dropoff_km - FREE_DROPOFF_EXTRA_KM
+        charged_distance_km = planned_km + extra_billable_km
+        final_fare = _calculate_fare(service, charged_distance_km)
+        reason = "extra_after_drop"
+        note = (
+            f"Drop was {round(extra_dropoff_km * 1000)}m past the destination. "
+            f"Final fare: {_format_rupees(final_fare)}."
+        )
+    else:
+        charged_distance_km = planned_km
+        final_fare = original_fare
+        reason = "full_trip_threshold"
+        note = f"At least 90% of the trip was completed. Fare stays {_format_rupees(final_fare)}."
+
+    return {
+        "original_fare": round(original_fare),
+        "final_fare": round(final_fare),
+        "planned_distance_km": round(planned_km, 3),
+        "travelled_after_pickup_km": round(travelled_km, 3),
+        "charged_distance_km": round(charged_distance_km, 3),
+        "distance_to_drop_km": round(distance_to_drop_km, 3),
+        "extra_dropoff_distance_km": round(extra_dropoff_km, 3),
+        "progress_ratio": round(progress_ratio, 4),
+        "reason": reason,
+        "message": note,
+    }
 
 
 def _coordinate(value: float, minimum: float, maximum: float) -> float:
@@ -241,6 +356,8 @@ def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
         "distance_km": float(ride.get("distance_km") or 0),
         "duration_minutes": float(ride.get("duration_minutes") or 0),
         "fare_amount": float(ride.get("fare") or 0),
+        "quoted_fare_amount": float(ride.get("quoted_fare") or ride.get("fare_original") or ride.get("fare") or 0),
+        "fare_adjustment": ride.get("fare_adjustment") or {},
         "trip_status": "cancelled_by_passenger",
         "final_status": "cancelled",
         "cancelled_by": "passenger",
@@ -276,6 +393,8 @@ def _driver_history_update(ride_id: str, ride: dict[str, Any], status: str) -> d
         "distance_km": float(ride.get("distance_km") or 0),
         "duration_minutes": float(ride.get("duration_minutes") or 0),
         "fare_amount": float(ride.get("fare") or 0),
+        "quoted_fare_amount": float(ride.get("quoted_fare") or ride.get("fare_original") or ride.get("fare") or 0),
+        "fare_adjustment": ride.get("fare_adjustment") or {},
         "trip_status": status,
         "final_status": "completed" if completed else "cancelled" if cancelled else "verified",
         "cancelled_by": "driver" if cancelled else "",
@@ -352,6 +471,8 @@ async def create_passenger_ride(
             "distance_km": round(distance_km, 2),
             "duration_minutes": duration_minutes,
             "fare": fare,
+            "quoted_fare": fare,
+            "fare_original": fare,
             "fare_base": service["base"],
             "fare_per_km": service["per_km"],
             "fare_currency": "INR",
@@ -446,15 +567,34 @@ def transition_driver_ride(
             if action == "verify_pin":
                 updates.update({"status": next_status, "pinVerifiedAt": fb_firestore.SERVER_TIMESTAMP, "startedAt": fb_firestore.SERVER_TIMESTAMP})
             elif action == "complete":
-                updates.update({"status": next_status, "completedAt": fb_firestore.SERVER_TIMESTAMP})
+                fare_adjustment = _driver_fare_adjustment(ride, action)
+                updates.update({
+                    "status": next_status,
+                    "completedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "fare": fare_adjustment["final_fare"],
+                    "fare_adjustment": fare_adjustment,
+                    "fareFinalizedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
             elif action == "cancel":
-                updates.update({"status": next_status, "cancelledAt": fb_firestore.SERVER_TIMESTAMP})
+                fare_adjustment = _driver_fare_adjustment(ride, action)
+                updates.update({
+                    "status": next_status,
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "fare": fare_adjustment["final_fare"],
+                    "fare_adjustment": fare_adjustment,
+                    "fareFinalizedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
             elif action == "mark_paid":
                 updates.update({"payment_status": "paid", "payment_confirmed_by": uid, "paymentConfirmedAt": fb_firestore.SERVER_TIMESTAMP})
             tx.update(ride_ref, updates)
 
             result.update(ride)
-            result.update({"status": next_status, **({"payment_status": "paid"} if action == "mark_paid" else {})})
+            result["status"] = next_status
+            if action in {"complete", "cancel"}:
+                result["fare"] = fare_adjustment["final_fare"]
+                result["fare_adjustment"] = fare_adjustment
+            if action == "mark_paid":
+                result["payment_status"] = "paid"
             if action in {"complete", "cancel", "mark_paid"}:
                 tx.set(history_ref, _driver_history_update(clean_ride_id, {**ride, **result}, next_status), merge=True)
             if action == "complete":
