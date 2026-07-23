@@ -983,7 +983,7 @@ async function cancelRideByDriver(rideId) {
         return;
     }
 
-    if (!(await showConfirm("Warning: Cancelling active trips impacts your driver rating. Proceed?"))) return;
+    if (!(await showConfirm("Are you sure you want to cancel this trip and proceed?"))) return;
 
     try {
         const result = await transitionRideThroughBackend(rideId, "cancel");
