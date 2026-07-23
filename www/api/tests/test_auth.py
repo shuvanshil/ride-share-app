@@ -6,7 +6,7 @@ from api.core.errors import ApiError
 from fastapi.testclient import TestClient
 
 from api.index import app, unhandled_error_handler
-from api.routers.rides import _require_approved_driver, _require_role
+from api.routers.rides import _driver_fare_adjustment, _require_approved_driver, _require_role
 
 
 def test_extract_bearer_token_accepts_case_insensitive_scheme() -> None:
@@ -129,3 +129,56 @@ def test_approved_driver_guard_rejects_unapproved_driver() -> None:
             assert error.message == "approved driver only"
         else:
             raise AssertionError("Expected a non-approved driver profile to be rejected")
+
+
+def base_completed_ride(driver_lat: float, driver_lng: float) -> dict:
+    return {
+        "status": "en_route",
+        "pinVerifiedAt": "2026-07-23T10:00:00+00:00",
+        "pickup_lat": 0.0,
+        "pickup_lng": 0.0,
+        "drop_lat": 0.0,
+        "drop_lng": 0.1,
+        "driverLocation": {"lat": driver_lat, "lng": driver_lng},
+        "distance_km": 11.12,
+        "fare": 93,
+        "quoted_fare": 93,
+        "vehicle_type": "bike",
+    }
+
+
+def test_driver_fare_adjustment_zero_travel_after_pickup() -> None:
+    adjustment = _driver_fare_adjustment(base_completed_ride(0.0, 0.0), "cancel")
+
+    assert adjustment["final_fare"] == 0
+    assert adjustment["reason"] == "zero_passenger_travel"
+
+
+def test_driver_fare_adjustment_reduces_before_ninety_percent() -> None:
+    adjustment = _driver_fare_adjustment(base_completed_ride(0.0, 0.05), "cancel")
+
+    assert adjustment["reason"] == "partial_trip"
+    assert adjustment["final_fare"] < adjustment["original_fare"]
+    assert adjustment["progress_ratio"] < 0.9
+
+
+def test_driver_fare_adjustment_keeps_full_fare_at_ninety_percent() -> None:
+    adjustment = _driver_fare_adjustment(base_completed_ride(0.0, 0.091), "cancel")
+
+    assert adjustment["reason"] == "full_trip_threshold"
+    assert adjustment["final_fare"] == adjustment["original_fare"]
+
+
+def test_driver_fare_adjustment_does_not_charge_extra_before_drop() -> None:
+    adjustment = _driver_fare_adjustment(base_completed_ride(0.0, 0.095), "complete")
+
+    assert adjustment["reason"] == "full_trip_threshold"
+    assert adjustment["final_fare"] == adjustment["original_fare"]
+
+
+def test_driver_fare_adjustment_adds_only_after_free_dropoff_buffer() -> None:
+    adjustment = _driver_fare_adjustment(base_completed_ride(0.0, 0.102), "complete")
+
+    assert adjustment["reason"] == "extra_after_drop"
+    assert adjustment["final_fare"] > adjustment["original_fare"]
+    assert adjustment["extra_dropoff_distance_km"] > 0.1

@@ -9,6 +9,7 @@ import {
     signInWithEmailAndPassword,
     signOut
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { showAlert as showAppAlert } from './dialog.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const OTP_RESEND_DELAY_SECONDS = 60;
@@ -140,7 +141,7 @@ function formatPhoneFromValue(value, showAlert = true) {
         if (showAlert) {
             const message = "Enter a valid 10-digit Indian mobile number.";
             setAuthStatus(message, true);
-            alert(message);
+            showAppAlert(message);
         }
         return null;
     }
@@ -288,7 +289,7 @@ async function sendOTP() {
         console.error("2Factor OTP send failed:", error);
         const message = getAuthErrorMessage(error, "Could not send the OTP. Please try again.");
         setAuthStatus(message, true);
-        alert(message);
+        await showAppAlert(message);
         sendOtpBtn.disabled = false;
         sendOtpBtn.textContent = authMode === "register" ? "Send Registration OTP" : "Send Reset OTP";
         resendOtpBtn.disabled = false;
@@ -335,12 +336,12 @@ async function loginWithPassword() {
     const password = document.getElementById('login-password').value;
 
     if (!identifier) {
-        alert("Enter your phone number or email address.");
+        await showAppAlert("Enter your phone number or email address.");
         return;
     }
 
     if (!password) {
-        alert("Enter your password.");
+        await showAppAlert("Enter your password.");
         return;
     }
 
@@ -364,7 +365,7 @@ async function loginWithPassword() {
         console.error("Password login failed:", error);
         const message = getAuthErrorMessage(error, error.message || "Could not login. Please try again.");
         setAuthStatus(message, true);
-        alert(message);
+        await showAppAlert(message);
         passwordLoginBtn.disabled = false;
         passwordLoginBtn.textContent = "Login";
     }
@@ -376,12 +377,12 @@ async function verifyOTP() {
     const code = document.getElementById('otp-code').value.trim();
 
     if (!/^\d{6}$/.test(code)) {
-        alert("Enter the full 6-digit confirmation pin.");
+        await showAppAlert("Enter the full 6-digit confirmation pin.");
         return;
     }
 
     if (!otpSessionId || !requestedPhoneNumber) {
-        alert("Please request an OTP first.");
+        await showAppAlert("Please request an OTP first.");
         return;
     }
 
@@ -413,7 +414,7 @@ async function verifyOTP() {
         if (authMode === "register") {
             const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
             if (existingPhoneLogin?.email) {
-                alert("An account already exists for this mobile number. Please login or use forgot password.");
+                await showAppAlert("An account already exists for this mobile number. Please login or use forgot password.");
                 setAuthMode("login");
                 return;
             }
@@ -437,7 +438,7 @@ async function verifyOTP() {
         console.error("OTP verification failed:", error);
         const message = getAuthErrorMessage(error, error.message || "Could not verify the OTP. Please try again.");
         setAuthStatus(message, true);
-        alert(message);
+        await showAppAlert(message);
         verifyOtpBtn.disabled = false;
         verifyOtpBtn.textContent = authMode === "register" ? "Verify & Continue" : "Verify OTP";
     }
@@ -465,23 +466,23 @@ async function finalizeRegistration() {
     const password = document.getElementById('user-password').value;
 
     if (!verifiedPhoneNumber || !otpVerificationToken) {
-        alert("Your phone verification session is missing. Please verify OTP again.");
+        await showAppAlert("Your phone verification session is missing. Please verify OTP again.");
         return;
     }
 
     if (name.length < 2) {
-        alert("Enter your full name.");
+        await showAppAlert("Enter your full name.");
         return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        alert("Please enter a valid email address.");
+        await showAppAlert("Please enter a valid email address.");
         return;
     }
 
     const passwordError = getRegistrationPasswordError();
     if (passwordError) {
-        alert(passwordError);
+        await showAppAlert(passwordError);
         return;
     }
 
@@ -495,12 +496,12 @@ async function finalizeRegistration() {
         const upiId = document.getElementById('driver-upi-id').value.trim();
 
         if (!vehicleType || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
-            alert("Drivers must select Bike or Auto and add all required vehicle and payment details.");
+            await showAppAlert("Drivers must select Bike or Auto and add all required vehicle and payment details.");
             return;
         }
 
         if (!driverAgreementCheckbox.checked) {
-            alert("Please agree to LiphtUp's Terms and Conditions & Privacy Policy to create a driver account.");
+            await showAppAlert("Please agree to LiphtUp's Terms and Conditions & Privacy Policy to create a driver account.");
             return;
         }
 
@@ -554,7 +555,7 @@ async function finalizeRegistration() {
         console.error("Registration failed:", error);
         const message = getAuthErrorMessage(error, error.message || "Your phone was verified, but the account could not be created. Please try again.");
         setAuthStatus(message, true);
-        alert(message);
+        await showAppAlert(message);
         registerBtn.disabled = false;
         registerBtn.textContent = "Create Account";
         updateRegistrationSubmitState();
@@ -569,12 +570,12 @@ async function updateForgottenPassword() {
     const passwordError = validatePasswordPair(newPassword, confirmPassword);
 
     if (!verifiedPhoneNumber || !otpVerificationToken) {
-        alert("Your OTP session is missing. Please verify again.");
+        await showAppAlert("Your OTP session is missing. Please verify again.");
         return;
     }
 
     if (passwordError) {
-        alert(passwordError);
+        await showAppAlert(passwordError);
         return;
     }
 
@@ -596,7 +597,7 @@ async function updateForgottenPassword() {
             throw new Error(data.error || data.message || "Could not update your password. Please try again.");
         }
 
-        alert("Password updated successfully.");
+        await showAppAlert("Password updated successfully.");
         document.getElementById('login-identifier').value = data.email || verifiedPhoneNumber;
         document.getElementById('login-password').value = "";
         setAuthMode("login");
@@ -604,7 +605,7 @@ async function updateForgottenPassword() {
         console.error("Password reset failed:", error);
         const message = getAuthErrorMessage(error, error.message || "Could not update your password. Please try again.");
         setAuthStatus(message, true);
-        alert(message);
+        await showAppAlert(message);
         resetPasswordBtn.disabled = false;
         resetPasswordBtn.textContent = "Update Password";
     }

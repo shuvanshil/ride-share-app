@@ -10,6 +10,7 @@ import {
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { calculateServiceFare, getRideService } from './fare-policy.js';
+import { showAlert, showConfirm } from './dialog.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -26,6 +27,19 @@ let activeRideListener = null;          // For Passenger monitoring
 let activeDispatchExpansionTimer = null;
 
 let currentPassengerRideId = null;
+let currentPassengerRideData = null;
+
+function formatFareAmount(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? `Rs ${Math.round(amount)}` : "Rs 0";
+}
+
+function fareAdjustmentMessage(ride, fallback = "") {
+    const adjustment = ride?.fare_adjustment;
+    if (adjustment?.message) return adjustment.message;
+    if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
+    return fallback;
+}
 
 function cleanAddressPart(value) {
     return String(value || "").trim();
@@ -324,6 +338,7 @@ function showPassengerCancelButton(rideId) {
 
 function hidePassengerCancelButton() {
     currentPassengerRideId = null;
+    currentPassengerRideData = null;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.add('d-none');
 }
@@ -694,7 +709,7 @@ requestRideButton.addEventListener('click', async () => {
         && Number.isFinite(Number(fareQuote.drop_lng));
 
     if (!dropText || !service || !hasValidRoute || !Number.isFinite(fareAmount) || fareAmount <= 0) {
-        alert("Please select a destination and choose Bike or Auto before confirming your ride.");
+        await showAlert("Please select a destination and choose Bike or Auto before confirming your ride.");
         return;
     }
 
@@ -708,12 +723,12 @@ requestRideButton.addEventListener('click', async () => {
 
         const activeRideSnap = await getDocs(activeRideQuery); 
         if (!activeRideSnap.empty) {
-            alert("You already have an active ride request or an ongoing trip!");
+            await showAlert("You already have an active ride request or an ongoing trip!");
             return; 
         }
     } catch (queryError) {
         console.error("Active ride validation failed:", queryError);
-        alert("Network synchronization error. Please try again.");
+        await showAlert("Network synchronization error. Please try again.");
         return;
     }
 
@@ -757,7 +772,7 @@ requestRideButton.addEventListener('click', async () => {
         requestBtn.innerHTML = 'Find Ride';
         requestBtn.className = "gy-btn gy-btn-primary w-100";
         requestBtn.disabled = false;
-        alert(error.message || "Could not create this ride request. Please try again.");
+        await showAlert(error.message || "Could not create this ride request. Please try again.");
     }
 });
 }
@@ -769,6 +784,7 @@ function listenToRideStatusUpdates(rideId) {
     activeRideListener = onSnapshot(doc(db, "rides", rideId), (docSnap) => {
         if (!docSnap.exists()) return;
         const ride = docSnap.data();
+        currentPassengerRideData = ride;
 
         if (ACTIVE_RIDE_STATUSES.includes(ride.status)) {
             setPassengerDestinationLocked(true, ride.drop_name || "", ride.pickup_name || "");
@@ -777,7 +793,8 @@ function listenToRideStatusUpdates(rideId) {
 
         // FIXED: Added handling for when a driver cancels mid-trip
         if (ride.status === "cancelled_by_driver") {
-            alert("Your driver had to cancel the trip due to an unexpected issue. Please request a new ride.");
+            const message = fareAdjustmentMessage(ride, "Please request a new ride.");
+            showAlert(`Your driver cancelled the trip. ${message}`);
             resetPassengerBookingUi();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
@@ -845,8 +862,9 @@ function listenToRideStatusUpdates(rideId) {
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
             const finalFare = ride.fare || "0.00";
-            document.getElementById('passenger-final-fare').innerText = `₹${finalFare}`;
             document.getElementById('passenger-payment-view').classList.remove('d-none');
+            document.getElementById('passenger-final-fare').innerText = formatFareAmount(finalFare);
+            showAlert(fareAdjustmentMessage(ride, `Final fare: ${formatFareAmount(finalFare)}.`));
             
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
         }
@@ -856,11 +874,18 @@ function listenToRideStatusUpdates(rideId) {
 async function cancelRideByPassenger(rideId) {
     rideId = rideId || currentPassengerRideId;
     if (!rideId) {
-        alert("No active ride found to cancel.");
+        await showAlert("No active ride found to cancel.");
         return;
     }
 
-    if (!confirm("Are you sure you want to cancel your ride request?")) return;
+    const status = currentPassengerRideData?.status || "";
+    const cancelMessage = ["started", "en_route"].includes(status)
+        ? "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully."
+        : ["accepted", "arrived"].includes(status)
+            ? "Cancel this ride? Your driver will be notified immediately."
+            : "Cancel this ride request?";
+
+    if (!(await showConfirm(cancelMessage, { okText: "Cancel ride", cancelText: "Keep ride" }))) return;
 
     try {
         const idToken = await auth.currentUser?.getIdToken();
@@ -875,7 +900,7 @@ async function cancelRideByPassenger(rideId) {
             throw new Error(data.error || "Could not cancel this ride.");
         }
 
-        alert("Your ride request has been cancelled.");
+        await showAlert("Your ride has been cancelled.");
         resetPassengerBookingUi();
 
         if (activeRideListener) {
@@ -884,7 +909,7 @@ async function cancelRideByPassenger(rideId) {
         }
     } catch (error) {
         console.error("Failed to cancel ride:", error);
-        alert(error.message || "Could not cancel this ride. Please try again.");
+        await showAlert(error.message || "Could not cancel this ride. Please try again.");
     }
 }
 
@@ -907,4 +932,3 @@ addOptionalClickListener('invite-friends-btn', () => {
     setInviteFriendsStatus("");
     inviteFriends();
 });
-

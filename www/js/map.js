@@ -1,5 +1,6 @@
 import { db } from './firebase-init.js';
-import { calculateFareOptions } from './fare-policy.js';
+import { calculateFareOptions, isDistanceServiceable, MAX_SERVICEABLE_DISTANCE_KM } from './fare-policy.js';
+import { showAlert } from './dialog.js';
 import {
     collection,
     onSnapshot
@@ -1888,7 +1889,7 @@ function showCenterMapPicker(kind) {
 
 function startPickupMapPick(pickupInput) {
     if (!window.mapInstance) {
-        alert("Map is not ready yet. Please wait a moment and try again.");
+        showAlert("Map is not ready yet. Please wait a moment and try again.");
         return;
     }
 
@@ -2286,7 +2287,7 @@ function buildSelectedDestination(destination) {
 
 function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmountSpan) {
     if (!window.mapInstance) {
-        alert("Map is not ready yet. Please wait a moment and try again.");
+        showAlert("Map is not ready yet. Please wait a moment and try again.");
         return;
     }
 
@@ -2411,6 +2412,16 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         fareAmountSpan.innerText = "Road route unavailable";
         fareQuoteBox.classList.remove("d-none");
         fareQuoteBox.classList.add("d-flex");
+        return true;
+    }
+
+    if (!isDistanceServiceable(distance)) {
+        window.latestFareQuote = null;
+        window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+        fareAmountSpan.innerText = "Outside service area";
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+        showAlert(`This destination is about ${distance.toFixed(0)} km away, which is beyond LiphtUp's current service area of ${MAX_SERVICEABLE_DISTANCE_KM} km. Please choose a closer destination.`);
         return true;
     }
 

@@ -11,6 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
+import { showAlert, showConfirm } from './dialog.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -58,6 +59,18 @@ let lastPresenceWriteAt = 0;
 let lastActiveSmoothedPosition = null;
 let lastActiveWrittenPosition = null;
 let lastActiveWriteAt = 0;
+
+function formatFareAmount(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? `Rs ${Math.round(amount)}` : "Rs 0";
+}
+
+function fareAdjustmentMessage(ride, fallback = "") {
+    const adjustment = ride?.fare_adjustment;
+    if (adjustment?.message) return adjustment.message;
+    if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
+    return fallback;
+}
 
 function addOptionalClickListener(elementId, handler) {
     const element = document.getElementById(elementId);
@@ -630,7 +643,7 @@ function buildTripHistoryFinalUpdate(rideData, status) {
 
 async function markRidePaidAndCreateHistory(rideId) {
     if (!rideId) {
-        alert("No completed ride found for payment confirmation.");
+        await showAlert("No completed ride found for payment confirmation.");
         return false;
     }
 
@@ -639,7 +652,7 @@ async function markRidePaidAndCreateHistory(rideId) {
         return true;
     } catch (error) {
         console.error("Trip history creation failed:", error);
-        alert(error.message || "Could not confirm payment and save trip history.");
+        await showAlert(error.message || "Could not confirm payment and save trip history.");
         return false;
     }
 }
@@ -779,7 +792,7 @@ function attachDriverTripListener(rideRef) {
         const currentRideData = docSnap.data();
 
         if (currentRideData.status === "cancelled_by_passenger") {
-            alert("The passenger has cancelled this ride request.");
+            showAlert("Passenger cancelled this ride. You are back online.");
             setRideActive(false);
 
             if (activeDriverLocationWatchId !== null) {
@@ -858,7 +871,7 @@ async function acceptRideJob(rideId) {
         startDriverGpsBroadcast(doc(db, "rides", rideId));
     } catch (error) {
         console.error("Failed to commit transactional state adjustment:", error);
-        alert(error.message || "Could not accept this ride.");
+        await showAlert(error.message || "Could not accept this ride.");
     }
 }
 
@@ -892,13 +905,13 @@ async function updateActiveRideStatus(nextStatus) {
         renderActiveTripStatus(nextStatus, activeDriverRideData);
     } catch (error) {
         console.error("Trip status update failed:", error);
-        alert("Could not update trip status. Please try again.");
+        await showAlert("Could not update trip status. Please try again.");
     }
 }
 
 async function verifyAndStartTrip(rideId) {
     if (!rideId) {
-        alert("No active ride found for PIN verification.");
+        await showAlert("No active ride found for PIN verification.");
         return;
     }
 
@@ -906,7 +919,7 @@ async function verifyAndStartTrip(rideId) {
     const typedPin = pinInput ? pinInput.value.trim() : "";
 
     if (!/^\d{4}$/.test(typedPin)) {
-        alert("Please enter the 4-digit passenger PIN.");
+        await showAlert("Please enter the 4-digit passenger PIN.");
         return;
     }
 
@@ -920,7 +933,7 @@ async function verifyAndStartTrip(rideId) {
         renderActiveTripStatus("en_route", activeDriverRideData);
     } catch (error) {
         console.error("PIN verification failed:", error);
-        alert("Could not verify PIN. Please try again.");
+        await showAlert("Could not verify PIN. Please try again.");
     }
 }
 
@@ -935,7 +948,7 @@ async function completeRideJob() {
         const result = await transitionRideThroughBackend(completedRideId, "complete");
         const finalFare = parseFloat(result.ride?.fare || activeDriverRideData?.fare || 0);
         pendingDriverPaymentRideId = completedRideId;
-        document.getElementById('driver-final-fare').innerText = `Rs ${finalFare}`;
+        document.getElementById('driver-final-fare').innerText = formatFareAmount(finalFare);
 
         const driverUPI = currentUser.upiId;
         const upiQrImage = document.getElementById('upi-qr-image');
@@ -947,10 +960,11 @@ async function completeRideJob() {
         } else {
             upiQrImage.src = "";
             upiQrImage.classList.add('d-none');
-            alert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+            await showAlert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
         }
 
         document.getElementById('driver-payment-view').classList.remove('d-none');
+        await showAlert(fareAdjustmentMessage(result.ride, `Final fare: ${formatFareAmount(finalFare)}.`));
         if (activeDriverTripListener) activeDriverTripListener();
         activeDriverRideData = null;
         activeDriverRenderedStatus = null;
@@ -958,21 +972,21 @@ async function completeRideJob() {
         setRideActive(false);
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
-        alert("Database connection dropped during checkout.");
+        await showAlert("Database connection dropped during checkout.");
     }
 }
 
 async function cancelRideByDriver(rideId) {
     rideId = rideId || currentlyAssignedRideId;
     if (!rideId) {
-        alert("No active trip found to cancel.");
+        await showAlert("No active trip found to cancel.");
         return;
     }
 
-    if (!confirm("Warning: Cancelling active trips impacts your driver rating. Proceed?")) return;
+    if (!(await showConfirm("Warning: Cancelling active trips impacts your driver rating. Proceed?"))) return;
 
     try {
-        await transitionRideThroughBackend(rideId, "cancel");
+        const result = await transitionRideThroughBackend(rideId, "cancel");
         if (activeDriverTripListener) activeDriverTripListener();
 
         if (activeDriverLocationWatchId !== null) {
@@ -983,7 +997,7 @@ async function cancelRideByDriver(rideId) {
         document.getElementById('active-trip-container').classList.add('d-none');
         activeDriverRideData = null;
         activeDriverRenderedStatus = null;
-        alert("Trip aborted successfully. Status set to online.");
+        await showAlert(fareAdjustmentMessage(result.ride, "Trip cancelled. You are back online."));
 
         currentlyAssignedRideId = null;
         setRideActive(false);
@@ -1094,7 +1108,7 @@ addOptionalClickListener('logout-btn', async () => {
         window.location.href = "login.html";
     } catch (error) {
         console.error("Logout failed:", error);
-        alert("Could not logout. Please try again.");
+        await showAlert("Could not logout. Please try again.");
     }
 });
 
