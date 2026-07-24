@@ -44,6 +44,7 @@ let pickupSearchAbortController = null;
 let destinationSearchRequestId = 0;
 let pickupSearchRequestId = 0;
 const autocompleteCache = new Map();
+let googleAutocompleteService = null;
 let destinationMapPickMode = null;
 let pickupMapPickMode = null;
 let centerMapPickerElement = null;
@@ -1620,6 +1621,10 @@ export async function initializeMapEngine() {
     window.selectedDestination = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
 
+    // Bind input handlers before the map SDK finishes loading so typing can
+    // start the Places lookup immediately instead of waiting for map startup.
+    setupFareEngineListeners();
+    setupPickupSearchListeners();
     await loadGoogleMaps();
     addGoogleMapStyles();
 
@@ -2150,6 +2155,12 @@ async function searchGoogleAutocomplete(query, kind) {
     const cached = getCachedAutocompleteResults(query);
     if (cached) return cached;
 
+    const clientResults = await searchClientGoogleAutocomplete(query);
+    if (Array.isArray(clientResults) && clientResults.length) {
+        cacheAutocompleteResults(query, clientResults);
+        return clientResults;
+    }
+
     const controller = new AbortController();
     if (kind === "pickup") pickupSearchAbortController = controller;
     else destinationSearchAbortController = controller;
@@ -2183,6 +2194,56 @@ async function searchGoogleAutocomplete(query, kind) {
         if (error.name !== "AbortError") console.warn(`Google ${kind} search failed:`, error);
         return [];
     }
+}
+
+function searchClientGoogleAutocomplete(query) {
+    const maps = getGoogleMaps();
+    const places = maps?.places;
+    if (!query.trim()) return Promise.resolve(null);
+    if (!places?.AutocompleteService) {
+        return loadGoogleMaps()
+            .then(() => searchClientGoogleAutocomplete(query))
+            .catch(() => null);
+    }
+
+    if (!googleAutocompleteService) {
+        googleAutocompleteService = new places.AutocompleteService();
+    }
+
+    const location = new maps.LatLng(
+        Number(userLatitude || TRIPURA_CENTER.lat),
+        Number(userLongitude || TRIPURA_CENTER.lng)
+    );
+
+    return new Promise((resolve) => {
+        googleAutocompleteService.getPlacePredictions({
+            input: query.trim(),
+            location,
+            radius: 50000,
+            componentRestrictions: { country: "in" }
+        }, (predictions, status) => {
+            if (status !== places.PlacesServiceStatus.OK && status !== "OK") {
+                resolve([]);
+                return;
+            }
+
+            resolve((Array.isArray(predictions) ? predictions : []).map((prediction) => ({
+                placeId: prediction.place_id || "",
+                name: prediction.structured_formatting?.main_text || prediction.description || "",
+                mainName: prediction.structured_formatting?.main_text || prediction.description || "",
+                fullAddress: prediction.structured_formatting?.secondary_text || prediction.description || "",
+                types: Array.isArray(prediction.types) ? prediction.types : [],
+                lat: null,
+                lng: null,
+                typeHint: getPlaceTypeHint(prediction),
+                source: "google",
+                provider: "google"
+            })));
+        });
+    }).catch((error) => {
+        console.warn("Google client autocomplete failed:", error);
+        return null;
+    });
 }
 
 async function resolveGooglePlace(destination) {
