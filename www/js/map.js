@@ -9,7 +9,9 @@ import {
 const DEFAULT_PICKUP = { lat: 24.3124, lng: 92.0135 };
 const TRIPURA_CENTER = { lat: 23.8315, lng: 91.9882 };
 const PICKUP_CACHE_KEY = "liphtup_last_passenger_pickup";
-const DESTINATION_SEARCH_DEBOUNCE_MS = 150;
+const DESTINATION_SEARCH_DEBOUNCE_MS = 90;
+const AUTOCOMPLETE_CACHE_TTL_MS = 2 * 60 * 1000;
+const AUTOCOMPLETE_CACHE_MAX_ENTRIES = 40;
 const MAX_VISIBLE_SUGGESTIONS = 5;
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
@@ -39,6 +41,9 @@ let destinationSearchTimer = null;
 let destinationSearchAbortController = null;
 let pickupSearchTimer = null;
 let pickupSearchAbortController = null;
+let destinationSearchRequestId = 0;
+let pickupSearchRequestId = 0;
+const autocompleteCache = new Map();
 let destinationMapPickMode = null;
 let pickupMapPickMode = null;
 let centerMapPickerElement = null;
@@ -1696,14 +1701,22 @@ function setupPickupSearchListeners() {
         window.dispatchEvent(new CustomEvent("fare-quote-reset"));
         clearRouteAndDestination();
 
-        if (query.length < 2) {
+        if (query.length < 1) {
             hidePickupSuggestions();
             return;
         }
 
+        const cachedPickups = getCachedAutocompleteResults(query);
+        if (cachedPickups) {
+            showPickupSuggestions(pickupInput, cachedPickups.slice(0, MAX_VISIBLE_SUGGESTIONS));
+        } else {
+            hidePickupSuggestions();
+        }
+
         pickupSearchTimer = setTimeout(async () => {
+            const requestId = ++pickupSearchRequestId;
             const pickups = await searchGooglePickups(query);
-            if (pickupInput.readOnly || pickupInput.value.trim() !== query) return;
+            if (requestId !== pickupSearchRequestId || pickupInput.readOnly || pickupInput.value.trim() !== query) return;
             showPickupSuggestions(pickupInput, pickups.slice(0, MAX_VISIBLE_SUGGESTIONS));
         }, DESTINATION_SEARCH_DEBOUNCE_MS);
     });
@@ -1726,33 +1739,7 @@ function hidePickupSuggestions() {
 }
 
 async function searchGooglePickups(query) {
-    pickupSearchAbortController = new AbortController();
-    const signal = pickupSearchAbortController.signal;
-
-    try {
-        const params = new URLSearchParams({
-            q: query,
-            lat: String(userLatitude || TRIPURA_CENTER.lat),
-            lng: String(userLongitude || TRIPURA_CENTER.lng)
-        });
-        const response = await fetch(`/api/google-autocomplete?${params.toString()}`, {
-            signal,
-            headers: { Accept: "application/json" }
-        });
-        const data = await response.json().catch(() => ({}));
-        if (signal.aborted || !response.ok) return [];
-
-        return (Array.isArray(data.results) ? data.results : []).map((place) => ({
-            ...place,
-            ...normalizeCoordinatePair(place.lat, place.lng),
-            typeHint: place.typeHint || getPlaceTypeHint(place),
-            source: "google",
-            provider: "google"
-        }));
-    } catch (error) {
-        if (error.name !== "AbortError") console.warn("Google pickup search failed:", error);
-        return [];
-    }
+    return searchGoogleAutocomplete(query, "pickup");
 }
 
 function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
@@ -2018,7 +2005,7 @@ function setupFareEngineListeners() {
             destinationSearchAbortController = null;
         }
 
-        if (query.length < 2) {
+        if (query.length < 1) {
             resetDestinationFareState(fareQuoteBox);
             hideDestinationSuggestions();
             return;
@@ -2029,10 +2016,18 @@ function setupFareEngineListeners() {
         fareQuoteBox.classList.add("d-flex");
         window.latestFareQuote = null;
 
+        const cachedDestinations = getCachedAutocompleteResults(query);
+        if (cachedDestinations) {
+            showDestinationSuggestions(dropInput, cachedDestinations.slice(0, MAX_VISIBLE_SUGGESTIONS), fareQuoteBox, fareAmountSpan);
+            fareQuoteBox.classList.add("d-none");
+            fareQuoteBox.classList.remove("d-flex");
+        }
+
         destinationSearchTimer = setTimeout(async () => {
+            const requestId = ++destinationSearchRequestId;
             const destinations = await searchGoogleDestinations(query);
 
-            if (passengerDestinationLocked || dropInput.readOnly || dropInput.value.trim() !== query) {
+            if (requestId !== destinationSearchRequestId || passengerDestinationLocked || dropInput.readOnly || dropInput.value.trim() !== query) {
                 return;
             }
 
@@ -2109,38 +2104,83 @@ function hideDestinationSuggestions() {
 }
 
 async function searchGoogleDestinations(query) {
-    destinationSearchAbortController = new AbortController();
-    const signal = destinationSearchAbortController.signal;
+    return searchGoogleAutocomplete(query, "destination");
+}
+
+function normalizeAutocompleteQuery(query) {
+    return String(query || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function getAutocompleteLocationKey() {
+    const lat = Number(userLatitude || TRIPURA_CENTER.lat).toFixed(2);
+    const lng = Number(userLongitude || TRIPURA_CENTER.lng).toFixed(2);
+    return `${lat},${lng}`;
+}
+
+function getCachedAutocompleteResults(query) {
+    const normalizedQuery = normalizeAutocompleteQuery(query);
+    if (!normalizedQuery) return null;
+
+    const locationKey = getAutocompleteLocationKey();
+    const now = Date.now();
+    let bestMatch = null;
+    for (const [key, entry] of autocompleteCache) {
+        if (now - entry.timestamp > AUTOCOMPLETE_CACHE_TTL_MS) {
+            autocompleteCache.delete(key);
+            continue;
+        }
+        if (entry.locationKey !== locationKey || !entry.query.startsWith(normalizedQuery)) continue;
+        if (!bestMatch || entry.query.length < bestMatch.query.length) bestMatch = entry;
+    }
+    return bestMatch ? bestMatch.results : null;
+}
+
+function cacheAutocompleteResults(query, results) {
+    const locationKey = getAutocompleteLocationKey();
+    const normalizedQuery = normalizeAutocompleteQuery(query);
+    const key = `${locationKey}|${normalizedQuery}`;
+    autocompleteCache.delete(key);
+    autocompleteCache.set(key, { query: normalizedQuery, locationKey, results, timestamp: Date.now() });
+    while (autocompleteCache.size > AUTOCOMPLETE_CACHE_MAX_ENTRIES) {
+        autocompleteCache.delete(autocompleteCache.keys().next().value);
+    }
+}
+
+async function searchGoogleAutocomplete(query, kind) {
+    const cached = getCachedAutocompleteResults(query);
+    if (cached) return cached;
+
+    const controller = new AbortController();
+    if (kind === "pickup") pickupSearchAbortController = controller;
+    else destinationSearchAbortController = controller;
 
     try {
+        // The API keeps its two-character guard. Add the service area only for
+        // the first character so the frontend can begin searching immediately.
+        const requestQuery = query.trim().length === 1 ? `${query.trim()} Tripura` : query.trim();
         const params = new URLSearchParams({
-            q: query,
+            q: requestQuery,
             lat: String(userLatitude || TRIPURA_CENTER.lat),
             lng: String(userLongitude || TRIPURA_CENTER.lng)
         });
         const response = await fetch(`/api/google-autocomplete?${params.toString()}`, {
-            signal,
+            signal: controller.signal,
             headers: { Accept: "application/json" }
         });
         const data = await response.json().catch(() => ({}));
-        if (signal.aborted) return [];
-        if (!response.ok) {
-            console.warn("Google destination search failed:", data.error || response.statusText);
-            return [];
-        }
+        if (controller.signal.aborted || !response.ok) return [];
 
-        return (Array.isArray(data.results) ? data.results : [])
-            .map((destination) => ({
-                ...destination,
-                ...normalizeCoordinatePair(destination.lat, destination.lng),
-                typeHint: destination.typeHint || getPlaceTypeHint(destination),
-                source: "google",
-                provider: "google"
-            }));
+        const results = (Array.isArray(data.results) ? data.results : []).map((place) => ({
+            ...place,
+            ...normalizeCoordinatePair(place.lat, place.lng),
+            typeHint: place.typeHint || getPlaceTypeHint(place),
+            source: "google",
+            provider: "google"
+        }));
+        cacheAutocompleteResults(query, results);
+        return results;
     } catch (error) {
-        if (error.name !== "AbortError") {
-            console.warn("Google destination search failed:", error);
-        }
+        if (error.name !== "AbortError") console.warn(`Google ${kind} search failed:`, error);
         return [];
     }
 }
