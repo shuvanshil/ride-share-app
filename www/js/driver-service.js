@@ -425,6 +425,7 @@ async function setServiceDriverAvailability(status) {
     currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
     await updateDriverAvailabilityThroughBackend(status, locationData);
+    cacheProfile(currentUser);
 }
 
 async function acceptIncomingRide(rideId, button) {

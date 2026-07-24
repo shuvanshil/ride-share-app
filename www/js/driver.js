@@ -314,6 +314,7 @@ async function setDriverAvailability(status) {
     try {
         if (status === "offline") stopPresenceTracking();
         await updateDriverAvailabilityThroughBackend(status);
+        cacheProfile(currentUser);
         if (status === "online" || status === "searching" || status === "busy") {
             registerDriverPushToken(db, currentUser.uid).catch((error) => {
                 console.warn("Driver push token registration failed:", error);
@@ -1059,7 +1060,6 @@ addOptionalClickListener('cancel-driver-trip-btn', () => cancelRideByDriver());
 addOptionalClickListener('driver-history-btn', () => {
     window.location.href = 'history.html';
 });
-
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const checked = event.target.checked;
     event.target.disabled = true;
@@ -1139,28 +1139,4 @@ onAuthStateChanged(auth, async (user) => {
     } catch (error) {
         console.warn("Driver auth session lookup failed:", error);
     }
-});
-
-async function markDriverOfflineOnExit() {
-    if (currentUser?.role !== "driver") return;
-    try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) return;
-        await fetch("/api/rides/driver-availability", {
-            method: "POST",
-            keepalive: true,
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
-            },
-            body: JSON.stringify({ status: "offline" })
-        });
-    } catch {
-        // The browser may terminate the request during unload; stale GPS data
-        // is rejected by the backend after its visibility timeout.
-    }
-}
-
-window.addEventListener('beforeunload', () => {
-    void markDriverOfflineOnExit();
 });

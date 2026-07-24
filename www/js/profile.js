@@ -1,6 +1,7 @@
 import { auth } from './firebase-init.js';
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { markCurrentDriverOffline } from './driver-availability.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const APP_SHARE_URL = "https://liphtup.in/";
@@ -391,6 +392,7 @@ function setDeleteState(isDeleting) {
 
 async function logoutCurrentUser() {
     sessionStorage.removeItem(PROFILE_CACHE_KEY);
+    await markCurrentDriverOffline();
     await signOut(auth);
     window.location.href = 'login.html';
 }

@@ -2,6 +2,7 @@ import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { showAlert } from './dialog.js';
+import { markCurrentDriverOffline } from './driver-availability.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 let sessionReadyDispatched = false;
@@ -76,6 +77,7 @@ bootstrapFromCache();
 document.getElementById('logout-btn')?.addEventListener('click', async () => {
     try {
         clearCachedProfile();
+        await markCurrentDriverOffline();
         await signOut(auth);
         window.location.href = "login.html";
     } catch (error) {
