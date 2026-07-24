@@ -2206,6 +2206,49 @@ function searchClientGoogleAutocomplete(query) {
             .catch(() => null);
     }
 
+    if (places.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+        const center = {
+            lat: Number(userLatitude || TRIPURA_CENTER.lat),
+            lng: Number(userLongitude || TRIPURA_CENTER.lng)
+        };
+        return places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+            input: query.trim(),
+            includedRegionCodes: ["in"],
+            locationBias: { circle: { center, radius: 50000 } }
+        }).then(({ suggestions = [] }) => suggestions
+            .map((suggestion) => suggestion.placePrediction)
+            .filter(Boolean)
+            .map((prediction) => {
+                const mainName = prediction.structuredFormat?.mainText?.text
+                    || prediction.mainText?.text
+                    || prediction.text?.text
+                    || "";
+                const fullAddress = prediction.structuredFormat?.secondaryText?.text
+                    || prediction.secondaryText?.text
+                    || prediction.text?.text
+                    || "";
+                return {
+                    placeId: prediction.placeId || "",
+                    name: mainName,
+                    mainName,
+                    fullAddress,
+                    types: Array.isArray(prediction.types) ? prediction.types : [],
+                    lat: null,
+                    lng: null,
+                    typeHint: getPlaceTypeHint(prediction),
+                    source: "google",
+                    provider: "google"
+                };
+            }))
+            .catch(() => searchLegacyGoogleAutocomplete(query, maps, places));
+    }
+
+    return searchLegacyGoogleAutocomplete(query, maps, places);
+}
+
+function searchLegacyGoogleAutocomplete(query, maps, places) {
+    if (!places.AutocompleteService) return Promise.resolve(null);
+
     if (!googleAutocompleteService) {
         googleAutocompleteService = new places.AutocompleteService();
     }
