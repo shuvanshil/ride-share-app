@@ -35,6 +35,14 @@ const DRIVER_MARKER_ANIM_MIN_MS = 700;
 const DRIVER_MARKER_ANIM_MAX_MS = 6000;
 const DRIVER_MARKER_ANIM_DEFAULT_MS = 700;
 const CAMERA_ROTATE_ANIM_MS = 700;
+// See the matching comments in js/map.js: these keep the driver's own
+// vehicle icon snapped onto the real road route (instead of drifting off
+// it from ordinary GPS inaccuracy) and keep its heading matched to the
+// route monotonically, so noisy GPS pings on a winding road can't make the
+// icon momentarily face backward.
+const ROUTE_SNAP_MAX_METERS = 45;
+const ROUTE_MATCH_BACKWARD_TOLERANCE = 2;
+const ROUTE_MATCH_SEARCH_WINDOW = 60;
 
 const mapHost = document.getElementById('driver-service-map');
 const statusText = document.getElementById('driver-service-status');
@@ -171,6 +179,62 @@ function calculateBearing(from, to) {
     const x = Math.cos(lat1) * Math.sin(lat2)
         - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
     return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+}
+
+// See js/map.js for the full rationale: projects `point` onto the segment
+// [segStart, segEnd] and returns how far along it (0..1) the closest point
+// falls, using a flat-plane approximation that's accurate enough for the
+// short segments making up a Google Routes polyline.
+function projectFractionOntoSegment(point, segStart, segEnd) {
+    const lngScale = Math.cos((segStart.lat * Math.PI) / 180) || 1e-9;
+    const segLat = segEnd.lat - segStart.lat;
+    const segLng = (segEnd.lng - segStart.lng) * lngScale;
+    const pointLat = point.lat - segStart.lat;
+    const pointLng = (point.lng - segStart.lng) * lngScale;
+
+    const segLengthSq = (segLat * segLat) + (segLng * segLng);
+    if (segLengthSq <= 1e-18) return 0;
+
+    const fraction = ((pointLat * segLat) + (pointLng * segLng)) / segLengthSq;
+    return Math.max(0, Math.min(1, fraction));
+}
+
+// Finds the closest point to `position` on `routePath`, searching only a
+// small window around `lastIndex` so GPS jitter on a winding/looping road
+// can't match a distant part of the route and flip the heading backward.
+// Falls back to a full search the first time or when the window has nothing
+// within ROUTE_SNAP_MAX_METERS.
+function matchPositionToRoute(position, routePath, lastIndex = -1) {
+    if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
+
+    const searchFullRange = lastIndex < 0;
+    const windowStart = searchFullRange
+        ? 0
+        : Math.max(0, lastIndex - ROUTE_MATCH_BACKWARD_TOLERANCE);
+    const windowEnd = searchFullRange
+        ? routePath.length - 2
+        : Math.min(routePath.length - 2, lastIndex + ROUTE_MATCH_SEARCH_WINDOW);
+
+    let best = null;
+    for (let i = windowStart; i <= windowEnd; i += 1) {
+        const segStart = routePath[i];
+        const segEnd = routePath[i + 1];
+        const fraction = projectFractionOntoSegment(position, segStart, segEnd);
+        const projected = {
+            lat: segStart.lat + ((segEnd.lat - segStart.lat) * fraction),
+            lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
+        };
+        const distance = distanceMeters(position, projected);
+        if (!best || distance < best.distanceMeters) {
+            best = { index: i, point: projected, distanceMeters: distance, heading: calculateBearing(segStart, segEnd) };
+        }
+    }
+
+    if (!searchFullRange && (!best || best.distanceMeters > ROUTE_SNAP_MAX_METERS)) {
+        return matchPositionToRoute(position, routePath, -1);
+    }
+
+    return best;
 }
 
 class RotatingVehicleMarker {
@@ -737,6 +801,8 @@ let routeRefreshQueued = false;
 let firstRouteFitComplete = false;
 let routeRetryTimer = null;
 let activeRoutePath = [];
+let driverRouteMatchIndex = -1;
+let driverLastRoutePathRef = null;
 let navToggleButton = null;
 let cameraAnimationFrame = null;
 let lastCameraHeading = 0;
@@ -986,29 +1052,30 @@ function drawRoute(path) {
     fitActiveRoute(path);
 }
 
-function getRouteHeading(position) {
-    if (!position || activeRoutePath.length < 2) return null;
-
-    let bestIndex = -1;
-    let bestDistance = Infinity;
-    activeRoutePath.forEach((point, index) => {
-        const distance = distanceMeters(position, point);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            bestIndex = index;
-        }
-    });
-
-    if (bestIndex < 0) return null;
-    const nextPoint = activeRoutePath[bestIndex + 1] || activeRoutePath[bestIndex];
-    const previousPoint = activeRoutePath[bestIndex - 1] || activeRoutePath[bestIndex];
-    return calculateBearing(previousPoint, nextPoint);
+// Finds where on the known route the driver's own vehicle currently is,
+// snapping onto it (see matchPositionToRoute above) so this driver's own
+// marker renders on the road instead of drifting off it, and so its heading
+// tracks the route's direction instead of flipping backward on GPS jitter.
+// Returns null when there's no usable route (falls back to GPS heading).
+function resolveRouteMatch(position) {
+    if (driverLastRoutePathRef !== activeRoutePath) {
+        driverRouteMatchIndex = -1;
+        driverLastRoutePathRef = activeRoutePath;
+    }
+    const match = matchPositionToRoute(position, activeRoutePath, driverRouteMatchIndex);
+    if (!match || match.distanceMeters > ROUTE_SNAP_MAX_METERS) {
+        driverRouteMatchIndex = -1;
+        return null;
+    }
+    driverRouteMatchIndex = match.index;
+    return match;
 }
 
 function buildLocationTelemetry(coords, browserCoords, previousPosition, previousHeading) {
     const telemetry = {};
     const gpsHeading = normalizeHeading(browserCoords?.heading);
-    const routeHeading = currentTarget ? getRouteHeading(coords) : null;
+    const routeMatch = currentTarget ? resolveRouteMatch(coords) : null;
+    const routeHeading = routeMatch?.heading ?? null;
     const moved = distanceMeters(previousPosition, coords);
     const calculatedHeading = moved >= DRIVER_HEADING_MIN_DISTANCE_METERS
         ? calculateBearing(previousPosition, coords)
@@ -1019,7 +1086,14 @@ function buildLocationTelemetry(coords, browserCoords, previousPosition, previou
     if (Number.isFinite(Number(browserCoords?.speed))) telemetry.driverSpeed = Number(browserCoords.speed);
     if (Number.isFinite(Number(browserCoords?.accuracy))) telemetry.driverAccuracy = Number(browserCoords.accuracy);
 
-    return { telemetry, heading };
+    // `renderPosition` is only for drawing this driver's own marker on their
+    // own map -- snapped onto the road when we're confident enough (a close
+    // route match). The raw `coords` are still what get written to Firestore
+    // via telemetry/location writes, since that's the ground truth other
+    // clients (the passenger's map) work from and snap themselves.
+    const renderPosition = routeMatch ? routeMatch.point : coords;
+
+    return { telemetry, heading, renderPosition };
 }
 
 function updateRouteMetrics(routeDetails) {
@@ -1160,7 +1234,7 @@ async function handleLocation(position) {
         return;
     }
 
-    upsertDriverMarker(coords, telemetryResult.heading);
+    upsertDriverMarker(telemetryResult.renderPosition || coords, telemetryResult.heading);
 
     if (currentTarget) {
         upsertTargetMarker();

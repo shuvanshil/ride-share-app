@@ -25,6 +25,24 @@ const DRIVER_MARKER_NOISE_FLOOR_METERS = 4;
 const DRIVER_MARKER_COAST_MIN_DISTANCE_METERS = 6;
 const ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS = 25;
 const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
+// GPS on a phone is commonly 5-20m off (worse in "urban canyons"/dense
+// cover), which is why a raw GPS ping can render the vehicle icon off the
+// road entirely (on a building, footpath, etc). Whenever we already have the
+// actual road route (a Google-Routes polyline), we "snap" the rendered
+// marker onto the nearest point of that polyline instead of the raw ping -
+// but only within this radius, so a driver who has genuinely left the route
+// (wrong turn, reroute in progress) isn't incorrectly glued to the old path.
+const ROUTE_SNAP_MAX_METERS = 45;
+// Once we've matched the vehicle to a point on the route, only search a
+// small window forward/backward of that point next time, and never accept
+// a match that regresses more than this many points. Without this, GPS
+// jitter can transiently match a point on an earlier part of a winding/
+// looping road, which (a) can make the marker briefly jump backward and
+// (b) flips the derived heading to face the wrong way - the "vehicle
+// pointing backward" glitch. A monotonic match keeps both position and
+// heading moving forward in step with real travel.
+const ROUTE_MATCH_BACKWARD_TOLERANCE = 2;
+const ROUTE_MATCH_SEARCH_WINDOW = 60;
 const VEHICLE_MARKER_ASSETS = Object.freeze({
     bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
     auto: new URL("../assets/vehicle-markers/auto-marker.png", import.meta.url).href
@@ -148,6 +166,66 @@ function calculateBearing(from, to) {
     const x = Math.cos(lat1) * Math.sin(lat2)
         - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
     return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+}
+
+// Returns how far along [segStart, segEnd] (0..1) `point` projects to, using
+// a flat-plane approximation that's accurate enough for the short segments
+// (tens of metres) that make up a Google Routes polyline.
+function projectFractionOntoSegment(point, segStart, segEnd) {
+    const lngScale = Math.cos((segStart.lat * Math.PI) / 180) || 1e-9;
+    const segLat = segEnd.lat - segStart.lat;
+    const segLng = (segEnd.lng - segStart.lng) * lngScale;
+    const pointLat = point.lat - segStart.lat;
+    const pointLng = (point.lng - segStart.lng) * lngScale;
+
+    const segLengthSq = (segLat * segLat) + (segLng * segLng);
+    if (segLengthSq <= 1e-18) return 0;
+
+    const fraction = ((pointLat * segLat) + (pointLng * segLng)) / segLengthSq;
+    return Math.max(0, Math.min(1, fraction));
+}
+
+// Finds the closest point to `position` on `routePath` (an actual road
+// route), searching only a small window around `lastIndex` so a match can't
+// jump to a distant, coincidentally-close part of a winding/looping road -
+// which is what previously caused the vehicle icon to occasionally face
+// backward. Falls back to a full search the first time (lastIndex < 0) or
+// when nothing in the window is within ROUTE_SNAP_MAX_METERS (route
+// changed / driver went off-route).
+function matchPositionToRoute(position, routePath, lastIndex = -1) {
+    if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
+
+    const searchFullRange = lastIndex < 0;
+    const windowStart = searchFullRange
+        ? 0
+        : Math.max(0, lastIndex - ROUTE_MATCH_BACKWARD_TOLERANCE);
+    const windowEnd = searchFullRange
+        ? routePath.length - 2
+        : Math.min(routePath.length - 2, lastIndex + ROUTE_MATCH_SEARCH_WINDOW);
+
+    let best = null;
+    for (let i = windowStart; i <= windowEnd; i += 1) {
+        const segStart = routePath[i];
+        const segEnd = routePath[i + 1];
+        const fraction = projectFractionOntoSegment(position, segStart, segEnd);
+        const projected = {
+            lat: segStart.lat + ((segEnd.lat - segStart.lat) * fraction),
+            lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
+        };
+        const distanceMeters = calculateDistanceMeters(position, projected);
+        if (!best || distanceMeters < best.distanceMeters) {
+            best = { index: i, point: projected, distanceMeters, heading: calculateBearing(segStart, segEnd) };
+        }
+    }
+
+    // The windowed search found nothing close enough (route changed, or the
+    // driver has actually left the route) - fall back to a full search
+    // before giving up, rather than staying stuck on a stale window.
+    if (!searchFullRange && (!best || best.distanceMeters > ROUTE_SNAP_MAX_METERS)) {
+        return matchPositionToRoute(position, routePath, -1);
+    }
+
+    return best;
 }
 
 function getFallbackPickupLocation() {
@@ -1082,45 +1160,50 @@ function getDriverDocumentHeading(driver) {
     );
 }
 
-function getRouteHeading(position, routePath = []) {
-    if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
-
-    let bestIndex = -1;
-    let bestDistance = Infinity;
-    routePath.forEach((point, index) => {
-        const distance = calculateDistanceMeters(position, point);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            bestIndex = index;
-        }
-    });
-
-    if (bestIndex < 0) return null;
-    const nextPoint = routePath[bestIndex + 1] || routePath[bestIndex];
-    const previousPoint = routePath[bestIndex - 1] || routePath[bestIndex];
-    return calculateBearing(previousPoint, nextPoint);
-}
-
-function resolveDriverHeading(existing, position, driver, routePath = []) {
-    const routeHeading = getRouteHeading(position, routePath);
-    if (routeHeading != null) {
-        return smoothHeading(existing?.heading, routeHeading, 0.45);
+// Resolves both where to draw a driver's marker and which way it should
+// face. When a real road route is known (routePath), the raw GPS ping is
+// snapped onto the nearest point of that route within ROUTE_SNAP_MAX_METERS
+// - this is what keeps the vehicle icon on the road instead of drifting
+// onto buildings/footpaths from ordinary GPS inaccuracy - and the heading is
+// taken from that route segment's own direction, matched monotonically via
+// `existing.routeMatchIndex` so noisy pings can't flip the icon to face
+// backward. Falls back to the driver's own reported GPS heading, then to the
+// raw bearing between successive pings, when no usable route is available.
+function resolveDriverRenderState(existing, rawPosition, driver, routePath = []) {
+    if (existing && existing.lastRoutePathRef !== routePath) {
+        existing.routeMatchIndex = -1;
+        existing.lastRoutePathRef = routePath;
     }
+    const lastIndex = Number.isInteger(existing?.routeMatchIndex) ? existing.routeMatchIndex : -1;
+    const match = matchPositionToRoute(rawPosition, routePath, lastIndex);
+
+    if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
+        if (existing) existing.routeMatchIndex = match.index;
+        return {
+            position: match.point,
+            heading: match.heading != null ? smoothHeading(existing?.heading, match.heading, 0.45) : normalizeHeading(existing?.heading)
+        };
+    }
+
+    // No route, or the vehicle is too far from the known route to trust a
+    // snap (off-route / rerouting) - use the raw ping, and let the next
+    // route match start a fresh full search instead of resuming a stale one.
+    if (existing) existing.routeMatchIndex = -1;
 
     const documentHeading = getDriverDocumentHeading(driver);
     if (documentHeading != null) {
-        return smoothHeading(existing?.heading, documentHeading, 0.4);
+        return { position: rawPosition, heading: smoothHeading(existing?.heading, documentHeading, 0.4) };
     }
 
     const previousPosition = existing?.marker?.getPosition?.();
     if (previousPosition) {
         const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
-        if (calculateDistanceMeters(previous, position) >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
-            return smoothHeading(existing?.heading, calculateBearing(previous, position), 0.35);
+        if (calculateDistanceMeters(previous, rawPosition) >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
+            return { position: rawPosition, heading: smoothHeading(existing?.heading, calculateBearing(previous, rawPosition), 0.35) };
         }
     }
 
-    return normalizeHeading(existing?.heading);
+    return { position: rawPosition, heading: normalizeHeading(existing?.heading) };
 }
 
 function updateVehicleMarkerLegend() {
@@ -1302,13 +1385,13 @@ function upsertGlobalDriverMarker(driverId, driver) {
     if (!window.mapInstance) return;
 
     const location = driver.driverLocation || {};
-    const position = {
+    const rawPosition = {
         lat: Number(location.lat),
         lng: Number(location.lng)
     };
     const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
-    const heading = resolveDriverHeading(existing, position, driver, driver.activeRoutePath || []);
+    const { position, heading } = resolveDriverRenderState(existing, rawPosition, driver, driver.activeRoutePath || []);
 
     if (!existing) {
         const marker = new RotatingVehicleMarker({
@@ -1324,6 +1407,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
             marker,
             vehicleType,
             heading,
+            routeMatchIndex: -1,
             animationFrame: null,
             coastFrame: null,
             lastFixAt: performance.now(),
@@ -1475,11 +1559,11 @@ async function handleAssignedDriverLocation(event) {
     }
 
     const location = detail.driverLocation || detail;
-    const position = {
+    const rawPosition = {
         lat: Number(location.lat),
         lng: Number(location.lng)
     };
-    if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return;
+    if (!Number.isFinite(rawPosition.lat) || !Number.isFinite(rawPosition.lng)) return;
 
     const vehicleType = inferDriverVehicleType(detail);
     const target = getActiveRideTarget(detail);
@@ -1492,9 +1576,12 @@ async function handleAssignedDriverLocation(event) {
     if (target) {
         const targetKey = `${driverId}:${target.lat}:${target.lng}`;
         if (activeDriverRouteState.targetKey !== targetKey || !activeDriverRouteState.routePath.length) {
-            renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
+            renderAssignedDriverTracking(null, calculateDistanceMeters(rawPosition, target) / 1000);
         }
-        refreshActiveDriverRoute(detail, position, target).catch((error) => {
+        // Routing always uses the raw GPS fix (not a route-snapped point) as
+        // the origin, so a driver who has genuinely gone off-route gets a
+        // correct reroute rather than being measured from a stale spot.
+        refreshActiveDriverRoute(detail, rawPosition, target).catch((error) => {
             console.warn("Assigned driver route heading refresh failed:", error);
         });
     }
@@ -1502,7 +1589,7 @@ async function handleAssignedDriverLocation(event) {
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
     const existing = existingGlobal || activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
-    const heading = resolveDriverHeading(existing, position, detail, routePath);
+    const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath);
 
     if (existingGlobal) {
         if (activeDriverMarker) {
@@ -1534,6 +1621,7 @@ async function handleAssignedDriverLocation(event) {
             }),
             vehicleType,
             heading,
+            routeMatchIndex: -1,
             animationFrame: null,
             coastFrame: null,
             lastFixAt: performance.now(),

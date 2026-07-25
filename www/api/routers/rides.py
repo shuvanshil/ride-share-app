@@ -14,7 +14,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..core.auth import current_user
 from ..core.config import get_env
 from ..core.errors import ApiError
+from ..core.fare_policy import (
+    FREE_DROPOFF_EXTRA_KM,
+    FULL_FARE_PROGRESS_RATIO,
+    MAX_SERVICEABLE_DISTANCE_KM,
+    RIDE_SERVICES,
+    ZERO_TRAVEL_THRESHOLD_KM,
+    calculate_fare,
+)
 from ..core.firebase import get_admin_app
+from ..core.geo import decode_polyline, haversine_km, road_distance_along_route_km
 
 router = APIRouter(prefix="/rides", tags=["rides"])
 
@@ -76,32 +85,15 @@ class DriverPushTokenBody(BaseModel):
     permission: str = Field(default="granted", max_length=30)
 
 
-RIDE_SERVICES = {
-    "bike": {"name": "Bike / Scooty", "capacity": 1, "base": 15, "per_km": 7, "min_fare": 15},
-    "auto": {"name": "Auto", "capacity": 3, "base": 25, "per_km": 12.5, "min_fare": 25},
-}
-
-# Keep in sync with js/fare-policy.js: distance beyond LONG_TRIP_THRESHOLD_KM is
-# billed at a reduced rate, and anything beyond MAX_SERVICEABLE_DISTANCE_KM is
-# outside the current service area.
-MAX_SERVICEABLE_DISTANCE_KM = 120
-LONG_TRIP_THRESHOLD_KM = 20
-LONG_TRIP_RATE_MULTIPLIER = 0.85
-FULL_FARE_PROGRESS_RATIO = 0.9
-ZERO_TRAVEL_THRESHOLD_KM = 0.01
-FREE_DROPOFF_EXTRA_KM = 0.1
+# RIDE_SERVICES, MAX_SERVICEABLE_DISTANCE_KM, FULL_FARE_PROGRESS_RATIO,
+# FREE_DROPOFF_EXTRA_KM, and ZERO_TRAVEL_THRESHOLD_KM all come from
+# api/core/fare_policy.py, which reads /fare-policy.config.json -- the same
+# file js/fare-policy.js reads. Edit that JSON file to change pricing; there
+# is nothing fare-related to edit in this router.
 
 
 def _calculate_fare(service: dict[str, Any], distance_km: float) -> int:
-    """Mirrors calculateServiceFare() in js/fare-policy.js."""
-    billable_km = min(distance_km, LONG_TRIP_THRESHOLD_KM)
-    long_trip_km = max(0.0, distance_km - LONG_TRIP_THRESHOLD_KM)
-    fare = (
-        service["base"]
-        + (billable_km * service["per_km"])
-        + (long_trip_km * service["per_km"] * LONG_TRIP_RATE_MULTIPLIER)
-    )
-    return max(round(fare), service["min_fare"])
+    return calculate_fare(service, distance_km)
 
 
 def _ride_service(ride: dict[str, Any]) -> dict[str, Any]:
@@ -159,8 +151,28 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
     final_fare = original_fare
 
     if current and planned_km > 0:
+        # "How far past/short of the exact drop pin is the driver right now"
+        # is a small, local distance -- straight-line is fine there.
         distance_to_drop_km = _haversine_km(current["lat"], current["lng"], drop["lat"], drop["lng"])
-        pickup_to_current_km = _haversine_km(pickup["lat"], pickup["lng"], current["lat"], current["lng"])
+
+        # "How much of the trip has the driver actually covered" is NOT a
+        # small local distance -- it spans the whole route, so on a winding
+        # road straight-line (haversine) distance from pickup to the driver's
+        # current GPS ping is always shorter than the road distance actually
+        # driven, which would systematically under-count progress_ratio and
+        # under-pay the driver on non-straight routes. Use the real road
+        # route (the Google-Routes polyline saved when the ride was created)
+        # to measure distance travelled ALONG the road instead, falling back
+        # to straight-line only when no route polyline was stored (e.g. an
+        # older ride, or the routing call failed at creation time).
+        route_points = decode_polyline(str(ride.get("route_polyline") or ""))
+        road_travelled_km = road_distance_along_route_km(route_points, current)
+        pickup_to_current_km = (
+            road_travelled_km
+            if road_travelled_km is not None
+            else _haversine_km(pickup["lat"], pickup["lng"], current["lat"], current["lng"])
+        )
+
         progress_ratio = max(0.0, min(1.0, pickup_to_current_km / planned_km))
         travelled_km = max(0.0, min(pickup_to_current_km, planned_km))
         if pickup_to_current_km > planned_km and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:
@@ -223,14 +235,7 @@ def _coordinate(value: float, minimum: float, maximum: float) -> float:
 
 
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    radius = 6371.0
-    d_lat = math.radians(lat2 - lat1)
-    d_lng = math.radians(lng2 - lng1)
-    value = (
-        math.sin(d_lat / 2) ** 2
-        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lng / 2) ** 2
-    )
-    return radius * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
+    return haversine_km(lat1, lng1, lat2, lng2)
 
 
 def _timestamp_seconds(value: Any) -> Optional[float]:
@@ -300,7 +305,14 @@ def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: s
     return candidates
 
 
-async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, drop_lng: float) -> tuple[float, int]:
+async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, drop_lng: float) -> tuple[float, int, str]:
+    """Returns (distance_km, duration_minutes, encoded_polyline).
+
+    The polyline is saved on the ride so that later, when checking how much
+    of the trip the driver has actually covered, we can measure that
+    distance along the real road route instead of a straight line -- see
+    road_distance_along_route_km() in api/core/geo.py.
+    """
     key = get_env("GOOGLE_MAPS_SERVER_KEY")
     if not key:
         raise ApiError("Missing GOOGLE_MAPS_SERVER_KEY.", 500)
@@ -311,7 +323,7 @@ async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, d
                 headers={
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": key,
-                    "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+                    "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
                 },
                 json={
                     "origin": {"location": {"latLng": {"latitude": pickup_lat, "longitude": pickup_lng}}},
@@ -328,7 +340,8 @@ async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, d
         if not route or not route.get("distanceMeters"):
             raise ApiError("Google route not found.", 404)
         duration = str(route.get("duration") or "0").rstrip("s")
-        return float(route["distanceMeters"]) / 1000, max(1, round(float(duration) / 60))
+        encoded_polyline = str((route.get("polyline") or {}).get("encodedPolyline") or "")
+        return float(route["distanceMeters"]) / 1000, max(1, round(float(duration) / 60)), encoded_polyline
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
@@ -435,7 +448,7 @@ async def create_passenger_ride(
         profile_snapshot = db.collection("users").document(uid).get()
         profile = profile_snapshot.to_dict() or {}
         _require_role(profile, "passenger", "Only passengers can create ride requests.")
-        distance_km, duration_minutes = await _server_route(pickup_lat, pickup_lng, drop_lat, drop_lng)
+        distance_km, duration_minutes, route_polyline = await _server_route(pickup_lat, pickup_lng, drop_lat, drop_lng)
         if not math.isfinite(distance_km) or distance_km < 0 or distance_km > MAX_SERVICEABLE_DISTANCE_KM:
             raise ApiError("This destination is outside LiphtUp's current service area.", 400)
         fare = _calculate_fare(service, distance_km)
@@ -470,6 +483,11 @@ async def create_passenger_ride(
             "drop_lng": drop_lng,
             "distance_km": round(distance_km, 2),
             "duration_minutes": duration_minutes,
+            # Saved so post-trip fare adjustment can measure how much of the
+            # trip the driver actually drove along the real road, instead of
+            # a straight line -- see road_distance_along_route_km() in
+            # api/core/geo.py and _driver_fare_adjustment() below.
+            "route_polyline": route_polyline,
             "fare": fare,
             "quoted_fare": fare,
             "fare_original": fare,

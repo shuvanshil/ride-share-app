@@ -122,7 +122,7 @@ The normal path is `pending → accepted → arrived → started/en_route → co
 - `mark_paid`: only after completed; records driver and timestamp. This is a confirmation flag, not a payment gateway transaction.
 - GPS writes are smoothed/throttled in the browser and persisted through FastAPI to `users`, `driverPresence`, `driverMapPresence`, and the assigned ride.
 
-Fare policy: Bike base ₹15 + ₹7/km, Auto base ₹25 + ₹12.50/km, minimum equal to base. First 20 km use the full rate; distance after 20 km uses an 0.85 multiplier; distance above 120 km is rejected as outside service area. Keep `www/js/fare-policy.js` and `www/api/routers/rides.py` synchronized when changing pricing.
+Fare policy: `fare = base_fare + (full road distance in km * per_km_rate)`, floored at a minimum equal to base; distance above 120 km is rejected as outside the service area. All of these numbers (base fare, per-km rate, minimum, service-area cap, etc.) live in one shared file, `www/fare-policy.config.json` -- both `www/js/fare-policy.js` (browser quote) and `www/api/core/fare_policy.py` (server-authoritative charge, used by `www/api/routers/rides.py`) load that same JSON at runtime, so changing pricing only requires editing the JSON file.
 
 ## 8. Firestore data model and security
 
@@ -161,7 +161,7 @@ Account deletion blocks active rides, removes driver presence, removes the user/
 - Use `ApiError` for expected backend failures and preserve the `{"error": ...}` response shape. Do not leak provider/credential/exception details.
 - Validate request bodies with Pydantic, trim/limit strings, normalize phone/email, and authorize by token UID plus Firestore profile—not cached session data.
 - Treat ride transitions, acceptance, completion, cancellation, and history writes as transaction-sensitive. Preserve idempotency/conflict checks.
-- If changing fares, status names, Firestore fields, or API payloads, update both Python and browser code plus tests/docs.
+- If changing fares, edit `www/fare-policy.config.json` only (both Python and browser code read it at runtime). If changing status names, Firestore fields, or API payloads, update both Python and browser code plus tests/docs.
 - Keep secrets in Vercel environment variables. Firebase browser config is public client configuration; Admin credentials are not.
 - Test backend changes with `.venv\Scripts\python.exe -m pytest www\api\tests -q`. Browser E2E/Firestore Emulator coverage is planned but not yet implemented.
 
