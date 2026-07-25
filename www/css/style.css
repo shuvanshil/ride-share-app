@@ -1362,6 +1362,14 @@ select {
     font-weight: 800;
 }
 
+.fare-adjustment-note {
+    margin: 0 auto 12px;
+    max-width: 280px;
+    color: var(--gy-muted);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
 .qr-frame {
     width: 196px;
     height: 196px;

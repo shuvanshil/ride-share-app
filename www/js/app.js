@@ -41,6 +41,40 @@ function fareAdjustmentMessage(ride, fallback = "") {
     return fallback;
 }
 
+function formatDistancePastDestination(km) {
+    const meters = Math.round(Number(km) * 1000);
+    if (!Number.isFinite(meters) || meters <= 0) return "";
+    if (meters < 1000) return `${meters} meters`;
+    return `${(meters / 1000).toFixed(meters % 1000 === 0 ? 0 : 1)} km`;
+}
+
+function renderFareAdjustmentNote(elementId, ride) {
+    const noteEl = document.getElementById(elementId);
+    if (!noteEl) return;
+
+    const adjustment = ride?.fare_adjustment;
+    const finalFare = formatFareAmount(adjustment?.final_fare ?? ride?.fare);
+    const originalFare = Number(adjustment?.original_fare);
+    const adjustedFare = Number(adjustment?.final_fare ?? ride?.fare);
+    const addedFare = adjustedFare - originalFare;
+    let message = "";
+
+    if (adjustment?.reason === "extra_after_drop") {
+        const distanceText = formatDistancePastDestination(adjustment.extra_dropoff_distance_km);
+        const addedText = Number.isFinite(addedFare) && addedFare > 0
+            ? `, an additional ${formatFareAmount(addedFare)} was added`
+            : "";
+        message = distanceText
+            ? `Since the final drop-off was ${distanceText} past the original location${addedText}. Final fare: ${finalFare}.`
+            : fareAdjustmentMessage(ride, `Final fare: ${finalFare}.`);
+    } else if (adjustment?.reason && adjustment.final_fare !== adjustment.original_fare) {
+        message = fareAdjustmentMessage(ride, `Final fare: ${finalFare}.`);
+    }
+
+    noteEl.innerText = message;
+    noteEl.classList.toggle('d-none', !message);
+}
+
 function cleanAddressPart(value) {
     return String(value || "").trim();
 }
@@ -864,7 +898,7 @@ function listenToRideStatusUpdates(rideId) {
             const finalFare = ride.fare || "0.00";
             document.getElementById('passenger-payment-view').classList.remove('d-none');
             document.getElementById('passenger-final-fare').innerText = formatFareAmount(finalFare);
-            showAlert(fareAdjustmentMessage(ride, `Final fare: ${formatFareAmount(finalFare)}.`));
+            renderFareAdjustmentNote('passenger-fare-note', ride);
             
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
         }
