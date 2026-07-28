@@ -258,6 +258,49 @@ select {
     box-shadow: 0 0 0 4px rgba(26, 122, 46, 0.08);
 }
 
+.password-field {
+    position: relative;
+}
+
+.password-field > input {
+    padding-right: 48px;
+}
+
+.password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: #687281;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+    color: var(--gy-primary);
+    background: rgba(26, 122, 46, 0.08);
+    outline: none;
+}
+
+.password-toggle svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
 .gy-input-group {
     background: var(--gy-muted-bg);
     border-radius: 8px;
