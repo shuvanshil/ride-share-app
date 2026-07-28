@@ -48,6 +48,12 @@ function renderFareOptions(quote) {
     document.getElementById('bike-fare').innerText = `₹${quote.fare_options.bike}`;
     document.getElementById('auto-fare').innerText = `₹${quote.fare_options.auto}`;
     distanceLabel.innerText = `${Number(quote.distance_km).toFixed(1)} km`;
+    const headingCopy = serviceOptions.querySelector('.ride-service-heading p');
+    if (headingCopy) {
+        headingCopy.innerText = quote.is_night_fare
+            ? "Night fare applies from 10:00 PM to 4:30 AM."
+            : "Fares use the calculated road distance.";
+    }
     serviceOptions.classList.remove('d-none');
     selectRideService(selectedServiceType);
 }

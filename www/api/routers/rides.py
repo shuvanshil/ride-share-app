@@ -21,6 +21,7 @@ from ..core.fare_policy import (
     RIDE_SERVICES,
     ZERO_TRAVEL_THRESHOLD_KM,
     calculate_fare,
+    get_service_fare_policy,
 )
 from ..core.firebase import get_admin_app
 from ..core.geo import decode_polyline, haversine_km, road_distance_along_route_km
@@ -97,6 +98,16 @@ def _calculate_fare(service: dict[str, Any], distance_km: float) -> int:
 
 
 def _ride_service(ride: dict[str, Any]) -> dict[str, Any]:
+    fare_per_km = ride.get("fare_per_km")
+    fare_base = ride.get("fare_base")
+    if fare_per_km is not None and fare_base is not None:
+        return {
+            "name": ride.get("service_name") or "Ride",
+            "capacity": int(ride.get("passenger_capacity") or 1),
+            "base": float(fare_base or 0),
+            "per_km": float(fare_per_km or 0),
+            "min_fare": float(ride.get("fare_min") or fare_base or 0),
+        }
     service = RIDE_SERVICES.get(str(ride.get("vehicle_type") or "").lower())
     if service:
         return service
@@ -433,7 +444,8 @@ async def create_passenger_ride(
     if not uid:
         raise ApiError("Authenticated user identity is missing.", 401)
 
-    service = RIDE_SERVICES.get(body.vehicleType.strip().lower())
+    ride_requested_at = datetime.now(timezone.utc)
+    service = get_service_fare_policy(body.vehicleType.strip().lower(), ride_requested_at)
     if not service:
         raise ApiError("Choose a supported ride service.", 400)
     pickup_lat = _coordinate(body.pickupLat, -90, 90)
@@ -493,6 +505,9 @@ async def create_passenger_ride(
             "fare_original": fare,
             "fare_base": service["base"],
             "fare_per_km": service["per_km"],
+            "fare_min": service["min_fare"],
+            "fare_is_night": service["is_night_fare"],
+            "fare_requested_at": ride_requested_at.isoformat(),
             "fare_currency": "INR",
             "vehicle_type": body.vehicleType.strip().lower(),
             "service_name": service["name"],

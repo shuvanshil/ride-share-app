@@ -122,7 +122,7 @@ The normal path is `pending → accepted → arrived → started/en_route → co
 - `mark_paid`: only after completed; records driver and timestamp. This is a confirmation flag, not a payment gateway transaction.
 - GPS writes are smoothed/throttled in the browser and persisted through FastAPI to `users`, `driverPresence`, `driverMapPresence`, and the assigned ride.
 
-Fare policy: `fare = base_fare + (full road distance in km * per_km_rate)`, floored at a minimum equal to base; distance above 120 km is rejected as outside the service area. All of these numbers (base fare, per-km rate, minimum, service-area cap, etc.) live in one shared file, `www/fare-policy.config.json` -- both `www/js/fare-policy.js` (browser quote) and `www/api/core/fare_policy.py` (server-authoritative charge, used by `www/api/routers/rides.py`) load that same JSON at runtime, so changing pricing only requires editing the JSON file.
+Fare policy: `fare = base_fare + (full road distance in km * selected_per_km_rate)`, floored at the configured minimum; distance above 120 km is rejected as outside the service area. The selected per-km rate is based on ride request time. Normal rates use `perKmRate`; night rates use `nightPerKmRate` when the request is inside the configured `nightFare` window, currently 10:00 PM to 4:30 AM in `Asia/Kolkata`. All of these numbers (base fare, normal/night per-km rates, minimum, night window, service-area cap, etc.) live in one shared file, `www/fare-policy.config.json` -- both `www/js/fare-policy.js` (browser quote) and `www/api/core/fare_policy.py` (server-authoritative charge, used by `www/api/routers/rides.py`) load that same JSON at runtime.
 
 ## 8. Firestore data model and security
 

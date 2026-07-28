@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v27-combined-fare-note";
+const CACHE_VERSION = "liphtup-shell-v28-night-fare";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -24,6 +24,7 @@ const APP_SHELL = [
     "history.html",
     "login.html",
     "manifest.webmanifest",
+    "fare-policy.config.json",
     "favicon.ico",
     "css/style.css",
     "css/driver-service.css",
