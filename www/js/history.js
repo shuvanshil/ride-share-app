@@ -50,6 +50,18 @@ function isDriverAccount() {
     return historyState.profile?.role === "driver";
 }
 
+function getCachedProfile() {
+    try {
+        const cached = JSON.parse(sessionStorage.getItem("liphtup_user_profile") || "null");
+        if (cached?.uid && Date.now() - Number(cached.cachedAt || 0) <= 6 * 60 * 60 * 1000) {
+            return cached;
+        }
+    } catch {
+        // Continue with the Firestore profile.
+    }
+    return null;
+}
+
 function formatMoney(value) {
     const amount = Number(value || 0);
     return `₹${Math.round(amount)}`;
@@ -234,7 +246,7 @@ function stopHistoryRealtime() {
 function startHistoryRealtime() {
     if (!historyState.user) return;
     stopHistoryRealtime();
-    setLoadingState();
+    if (!historyState.trips.length) setLoadingState();
 
     const fieldName = isDriverAccount() ? "driver_id" : "passenger_id";
     const q = query(
@@ -250,6 +262,10 @@ function startHistoryRealtime() {
                 id: docSnap.id,
                 ...docSnap.data()
             }));
+            if (historyState.streamToken !== token) return;
+            historyState.trips = trips.sort((a, b) => getTripTime(b) - getTripTime(a));
+            renderTrips();
+
             const enrichedTrips = await Promise.all(trips.map(enrichTripHistoryAddress));
             if (historyState.streamToken !== token) return;
             historyState.trips = enrichedTrips.sort((a, b) => getTripTime(b) - getTripTime(a));
@@ -441,6 +457,22 @@ onAuthStateChanged(auth, async (user) => {
     document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
 
     historyState.user = user;
+    const cachedProfile = getCachedProfile();
+
+    if (cachedProfile?.uid === user.uid) {
+        historyState.profile = cachedProfile;
+        userContext.innerText = `${cachedProfile.name || "LiphtUp user"} • ${isDriverAccount() ? "driver" : "passenger"}`;
+        startHistoryRealtime();
+
+        loadUserProfile(user).then((profile) => {
+            const roleChanged = profile.role !== historyState.profile?.role;
+            historyState.profile = profile;
+            userContext.innerText = `${profile.name || "LiphtUp user"} • ${isDriverAccount() ? "driver" : "passenger"}`;
+            if (roleChanged) startHistoryRealtime();
+        }).catch((error) => console.warn("Could not refresh history profile:", error));
+        return;
+    }
+
     setLoadingState();
 
     try {

@@ -109,6 +109,18 @@ function cacheProfile(profile) {
     }
 }
 
+function getCachedProfile() {
+    try {
+        const cached = JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || "null");
+        if (cached?.uid && Date.now() - Number(cached.cachedAt || 0) <= 6 * 60 * 60 * 1000) {
+            return cached;
+        }
+    } catch {
+        // Continue with the authoritative backend profile.
+    }
+    return null;
+}
+
 function showError(message) {
     errorBox.innerText = message;
     errorBox.classList.remove('d-none');
@@ -768,6 +780,12 @@ onAuthStateChanged(auth, async (user) => {
     profileSessionButton.classList.remove('is-login');
     profileSessionButton.classList.remove('d-none');
     document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
+
+    const cachedProfile = getCachedProfile();
+    if (cachedProfile?.uid === user.uid) {
+        currentProfile = cachedProfile;
+        renderProfileSummary(currentProfile);
+    }
 
     try {
         currentProfile = await loadProfileThroughBackend(user);
