@@ -63,6 +63,8 @@ let destinationSearchRequestId = 0;
 let pickupSearchRequestId = 0;
 const autocompleteCache = new Map();
 let googleAutocompleteService = null;
+let googleBrowserKey = "";
+let autocompleteSessionToken = "";
 let destinationMapPickMode = null;
 let pickupMapPickMode = null;
 let centerMapPickerElement = null;
@@ -282,6 +284,7 @@ function getInitialPickupLocation() {
 }
 
 async function getGoogleBrowserKey() {
+    if (googleBrowserKey) return googleBrowserKey;
     const response = await fetch("/api/google-config", {
         headers: { Accept: "application/json" }
     });
@@ -291,7 +294,8 @@ async function getGoogleBrowserKey() {
         throw new Error(data.error || "Google Maps browser key is not configured.");
     }
 
-    return data.browserKey;
+    googleBrowserKey = data.browserKey;
+    return googleBrowserKey;
 }
 
 async function loadGoogleMaps() {
@@ -2328,10 +2332,74 @@ function searchClientGoogleAutocomplete(query) {
                     provider: "google"
                 };
             }))
-            .catch(() => searchLegacyGoogleAutocomplete(query, maps, places));
+            .catch(() => searchDirectGoogleAutocomplete(query)
+                .then((results) => results?.length ? results : searchLegacyGoogleAutocomplete(query, maps, places)));
     }
 
-    return searchLegacyGoogleAutocomplete(query, maps, places);
+    return searchDirectGoogleAutocomplete(query)
+        .then((results) => results?.length ? results : searchLegacyGoogleAutocomplete(query, maps, places));
+}
+
+async function searchDirectGoogleAutocomplete(query) {
+    try {
+        const key = await getGoogleBrowserKey();
+        if (!autocompleteSessionToken) {
+            autocompleteSessionToken = globalThis.crypto?.randomUUID?.()
+                || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        }
+
+        const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": key,
+                "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types"
+            },
+            body: JSON.stringify({
+                input: query.trim(),
+                includedRegionCodes: ["in"],
+                sessionToken: autocompleteSessionToken,
+                locationBias: {
+                    circle: {
+                        center: {
+                            latitude: Number(userLatitude || TRIPURA_CENTER.lat),
+                            longitude: Number(userLongitude || TRIPURA_CENTER.lng)
+                        },
+                        radius: 50000
+                    }
+                }
+            })
+        });
+        if (!response.ok) return null;
+
+        const data = await response.json().catch(() => ({}));
+        return (Array.isArray(data.suggestions) ? data.suggestions : [])
+            .map((suggestion) => suggestion.placePrediction)
+            .filter(Boolean)
+            .map((prediction) => {
+                const mainName = prediction.structuredFormat?.mainText?.text
+                    || prediction.text?.text
+                    || "";
+                const fullAddress = prediction.structuredFormat?.secondaryText?.text
+                    || prediction.text?.text
+                    || "";
+                return {
+                    placeId: prediction.placeId || "",
+                    name: mainName,
+                    mainName,
+                    fullAddress,
+                    types: Array.isArray(prediction.types) ? prediction.types : [],
+                    lat: null,
+                    lng: null,
+                    typeHint: getPlaceTypeHint(prediction),
+                    source: "google",
+                    provider: "google"
+                };
+            });
+    } catch (error) {
+        console.warn("Google direct autocomplete failed:", error);
+        return null;
+    }
 }
 
 function searchLegacyGoogleAutocomplete(query, maps, places) {
