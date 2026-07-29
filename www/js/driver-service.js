@@ -1604,6 +1604,8 @@ function startActiveRideListener() {
     if (!currentUser?.uid) return;
     if (activeRideUnsubscribe) activeRideUnsubscribe();
 
+    const requestedRideId = new URLSearchParams(window.location.search).get("rideId");
+
     const activeRideQuery = query(
         collection(db, "rides"),
         where("driver_id", "==", currentUser.uid),
@@ -1627,10 +1629,13 @@ function startActiveRideListener() {
             return;
         }
 
+        const requestedRide = requestedRideId
+            ? snapshot.docs.find((rideDoc) => rideDoc.id === requestedRideId)
+            : null;
         const existingRide = currentRideId
             ? snapshot.docs.find((rideDoc) => rideDoc.id === currentRideId)
             : null;
-        const activeRideDoc = existingRide || snapshot.docs[0];
+        const activeRideDoc = requestedRide || existingRide || snapshot.docs[0];
         renderActiveRideState(activeRideDoc.id, activeRideDoc.data());
     }, (error) => {
         console.error("Driver active ride listener failed:", error);

@@ -904,6 +904,12 @@ async function acceptRideJob(rideId) {
         renderActiveTripStatus("accepted", activeDriverRideData);
         attachDriverTripListener(doc(db, "rides", rideId));
         startDriverGpsBroadcast(doc(db, "rides", rideId));
+
+        // The navigation console owns the live pickup map. Pass the accepted
+        // ride ID so it can select this ride when its realtime listener starts.
+        const serviceUrl = new URL("driver-service.html", window.location.href);
+        serviceUrl.searchParams.set("rideId", rideId);
+        window.location.href = serviceUrl.href;
     } catch (error) {
         console.error("Failed to commit transactional state adjustment:", error);
         await showAlert(error.message || "Could not accept this ride.");
