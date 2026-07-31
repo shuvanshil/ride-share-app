@@ -360,6 +360,26 @@ def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: s
     return candidates
 
 
+def _availability_for_location_update(profile: dict[str, Any], ride_id: str) -> tuple[str, str]:
+    """Derive availability and persisted desiredAvailability for a location update.
+
+    Rules:
+    - If the driver is intentionally offline (desiredAvailability == 'offline'), preserve offline.
+    - If there's an active ride_id, availability is 'busy'.
+    - Otherwise availability is 'searching'.
+    Returns (availability, desiredAvailability)
+    """
+    desired = str(profile.get("desiredAvailability") or "").strip().lower()
+    if desired == "offline":
+        return "offline", "offline"
+    if ride_id:
+        # When a ride is active the driver is busy but their desiredAvailability
+        # remains whatever they had persisted (default to 'online').
+        return "busy", ("online" if desired != "offline" else "offline")
+    # Not offline and no active ride => searching
+    return "searching", ("online" if desired != "offline" else "offline")
+
+
 async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, drop_lng: float) -> tuple[float, int, str]:
     """Returns (distance_km, duration_minutes, encoded_polyline).
 
@@ -812,8 +832,12 @@ def update_driver_location(
         profile = profile_ref.get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update GPS location.")
         ride_id = str(body.rideId or "").strip()[:160]
-        availability = str(profile.get("driverAvailability") or "searching")
+        # Derive availability using the driver's persisted desiredAvailability
+        # so intentionally-offline drivers remain offline and active rides
+        # correctly mark the driver as busy.
+        availability, persisted_desired = _availability_for_location_update(profile, ride_id)
         if ride_id:
+            # Validate ride ownership and status when a ride_id is supplied.
             ride_ref = db.collection("rides").document(ride_id)
             ride = ride_ref.get().to_dict()
             if not ride:
@@ -822,7 +846,6 @@ def update_driver_location(
                 raise ApiError("Only the assigned driver can update this ride location.", 403)
             if ride.get("status") not in ACTIVE_PASSENGER_STATUSES:
                 raise ApiError("This ride is no longer active.", 409)
-            availability = "busy"
 
         location = {"lat": lat, "lng": lng}
         telemetry = {key: value for key, value in {
@@ -835,7 +858,7 @@ def update_driver_location(
             "driverLocation": location,
             **telemetry,
             "driverAvailability": availability,
-            "desiredAvailability": "online",
+            "desiredAvailability": persisted_desired,
             "isConnected": True,
             "lastSeenAt": now,
             "lastAppSeenAt": now,
@@ -848,7 +871,7 @@ def update_driver_location(
             "uid": uid,
             "name": str(profile.get("name") or "Driver")[:80],
             "driverAvailability": availability,
-            "desiredAvailability": "online",
+            "desiredAvailability": persisted_desired,
             "verificationStatus": profile.get("verificationStatus"),
             "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
             "vehicle_type": _driver_type(profile),
