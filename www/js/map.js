@@ -1078,7 +1078,7 @@ function ensurePassengerNavToggleButton(hostElement) {
 function setGlobalDriverMarkerVisibility(driverId, existing) {
     if (!existing?.marker?.setMap) return;
 
-    const shouldShow = !assignedDriverTrackingDriverId || driverId === assignedDriverTrackingDriverId;
+    const shouldShow = !assignedDriverTrackingDriverId;
     existing.marker.setMap(shouldShow ? window.mapInstance : null);
 }
 
@@ -1713,26 +1713,14 @@ async function handleAssignedDriverLocation(event) {
     }
 
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
-    const existing = existingGlobal || activeDriverMarker;
+    const existing = activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
     const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath);
     applyPassengerNavigationCamera(position, heading);
 
     if (existingGlobal) {
-        if (activeDriverMarker) {
-            if (activeDriverMarker.animationFrame) cancelAnimationFrame(activeDriverMarker.animationFrame);
-            stopDriverMarkerCoast(activeDriverMarker);
-            removeMarker(activeDriverMarker.marker);
-            activeDriverMarker = null;
-        }
-        animateGlobalDriverMarker(existingGlobal, position, heading);
-        if (heading != null && !existingGlobal.animationFrame) {
-            existingGlobal.heading = heading;
-            existingGlobal.marker.setHeading?.(heading);
-        }
-        existingGlobal.marker.setTitle(detail.driver_name || "Assigned Driver");
-        existingGlobal.marker.setLiveTracked?.(true);
-        return;
+        setGlobalDriverMarkerVisibility(driverId, existingGlobal);
+        existingGlobal.marker.setLiveTracked?.(false);
     }
 
     if (!activeDriverMarker) {

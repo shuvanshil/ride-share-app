@@ -864,10 +864,37 @@ function startDriverGpsBroadcast(rideRef) {
         activeDriverLocationWatchId = null;
     }
 
+    lastActiveSmoothedPosition = null;
+    lastActiveWrittenPosition = null;
+    lastActiveWriteAt = 0;
+    lastActiveHeadingPosition = null;
+    lastActiveHeading = null;
+
     activeDriverLocationWatchId = navigator.geolocation.watchPosition(
         async (position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
+            const rawCoords = { lat: position.coords.latitude, lng: position.coords.longitude };
+            const smoothed = smoothGpsCoordinate(
+                lastActiveSmoothedPosition,
+                rawCoords,
+                position.coords.accuracy
+            );
+            lastActiveSmoothedPosition = smoothed;
+
+            if (!shouldWriteDriverLocation(
+                lastActiveWrittenPosition,
+                lastActiveWriteAt,
+                smoothed,
+                DRIVER_ACTIVE_LOCATION_WRITE_DISTANCE_METERS,
+                DRIVER_ACTIVE_LOCATION_WRITE_MIN_INTERVAL_MS
+            )) {
+                return;
+            }
+
+            lastActiveWrittenPosition = smoothed;
+            lastActiveWriteAt = Date.now();
+
+            const lat = smoothed.lat;
+            const lng = smoothed.lng;
             const coords = { lat, lng };
             const telemetryResult = buildDriverTelemetry(
                 coords,
