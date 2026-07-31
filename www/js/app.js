@@ -9,7 +9,7 @@ import {
     onSnapshot,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { calculateServiceFare, getRideService } from './fare-policy.js';
+import { calculateServiceFare, getServiceFarePolicy } from './fare-policy.js';
 import { showAlert, showConfirm } from './dialog.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
@@ -338,6 +338,86 @@ function hidePassengerDriverCard() {
     if (driverCard) driverCard.classList.add('d-none');
 }
 
+// ==========================================
+// TRIP-IN-PROGRESS UI (post PIN verification)
+// ==========================================
+// Once the pickup PIN has been verified (status "started"/"en_route"), the
+// normal "choose your ride" booking surface is replaced by a full-height map
+// with a collapsible drawer showing the driver, fare, and PIN. See
+// css/style.css ".services-page.trip-live" / ".trip-progress-panel".
+let tripProgressPanelBound = false;
+
+function bindTripProgressPanel() {
+    if (tripProgressPanelBound) return;
+    tripProgressPanelBound = true;
+
+    const handle = document.getElementById('trip-progress-handle');
+    const panel = document.getElementById('trip-progress-panel');
+    if (!handle || !panel) return;
+
+    handle.addEventListener('click', () => {
+        const expanded = panel.classList.toggle('is-expanded');
+        handle.setAttribute('aria-expanded', String(expanded));
+        const label = document.getElementById('trip-progress-handle-label');
+        if (label) label.innerText = expanded ? "Trip in progress · Tap to hide details" : "Trip in progress · Tap for details";
+    });
+}
+
+function showTripProgressPanel(ride) {
+    const dashboardView = document.getElementById('dashboard-view');
+    const panel = document.getElementById('trip-progress-panel');
+    if (!dashboardView || !panel) return;
+
+    bindTripProgressPanel();
+    dashboardView.classList.add('trip-live');
+    panel.classList.remove('d-none');
+
+    const driverName = ride.driver_name || "Assigned Driver";
+    const vehicleModel = ride.vehicle_model || "Vehicle";
+    const vehicleNumber = ride.vehicle_number || "Number pending";
+    const driverPhone = ride.driver_phone || "";
+    const serviceLabel = ride.service_name || (ride.vehicle_type === "auto" ? "Auto" : "Bike / Scooty");
+
+    const driverBox = document.getElementById('trip-progress-driver');
+    if (driverBox) {
+        driverBox.innerHTML = `
+            <div class="d-flex justify-content-between align-items-start gap-3">
+                <div>
+                    <div class="fw-bold text-dark">${driverName}</div>
+                    <div class="small text-muted">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
+                </div>
+                ${driverPhone ? `
+                    <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
+                        Call Driver
+                    </a>
+                ` : ""}
+            </div>
+        `;
+    }
+
+    const fareEl = document.getElementById('trip-progress-fare');
+    if (fareEl) fareEl.innerText = Number.isFinite(Number(ride.fare)) ? `₹${ride.fare}` : "₹0";
+
+    const pinBox = document.getElementById('trip-progress-pin-box');
+    const pinEl = document.getElementById('trip-progress-pin');
+    if (pinEl && ride.verification_pin) {
+        pinEl.innerText = ride.verification_pin;
+        pinBox?.classList.remove('d-none');
+    } else {
+        pinBox?.classList.add('d-none');
+    }
+}
+
+function hideTripProgressPanel() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const panel = document.getElementById('trip-progress-panel');
+    dashboardView?.classList.remove('trip-live');
+    if (!panel) return;
+    panel.classList.add('d-none');
+    panel.classList.remove('is-expanded');
+    document.getElementById('trip-progress-handle')?.setAttribute('aria-expanded', 'false');
+}
+
 function dispatchPassengerDriverLocation(ride) {
     if (!ride?.driverLocation) return;
 
@@ -382,6 +462,7 @@ function resetPassengerBookingUi() {
     hidePassengerVerificationPin();
     hidePassengerDriverCard();
     hidePassengerCancelButton();
+    hideTripProgressPanel();
     setPassengerDestinationLocked(false);
     setPassengerServiceLocked(false);
     window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
@@ -643,7 +724,7 @@ window.addEventListener('user-session-ready', (e) => {
     console.log(`Session validated. Routing profile role: ${currentUser.role}`);
 
     if (currentUser.role === "driver") {
-        window.location.replace("driver.html");
+        window.location.replace("/driver");
         return;
     }
 
@@ -682,6 +763,9 @@ async function restorePassengerActiveRide() {
         setPassengerServiceLocked(true, activeRide);
         renderPassengerDriverCard(activeRide);
         renderPassengerVerificationPin(activeRide.verification_pin);
+        if (["started", "en_route"].includes(activeRide.status)) {
+            showTripProgressPanel(activeRide);
+        }
         if (activeRide.fare) {
             document.getElementById('fare-amount').innerText = `₹${activeRide.fare}`;
             document.getElementById('fare-quote-box').classList.remove('d-none');
@@ -734,8 +818,9 @@ requestRideButton.addEventListener('click', async () => {
     const requestBtn = document.getElementById('request-ride-btn');
     const fareQuote = window.latestFareQuote || {};
     const requestedVehicleType = window.selectedRideService?.id || "";
-    const service = getRideService(requestedVehicleType);
-    const fareAmount = calculateServiceFare(requestedVehicleType, fareQuote.distance_km);
+    const rideRequestedAt = new Date();
+    const service = getServiceFarePolicy(requestedVehicleType, rideRequestedAt);
+    const fareAmount = calculateServiceFare(requestedVehicleType, fareQuote.distance_km, rideRequestedAt);
 
     const hasValidRoute = Number.isFinite(Number(fareQuote.pickup_lat))
         && Number.isFinite(Number(fareQuote.pickup_lng))
@@ -796,7 +881,6 @@ requestRideButton.addEventListener('click', async () => {
         });
         notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
         showPassengerCancelButton(backendRide.rideId);
-        renderPassengerVerificationPin(backendRide.verificationPin);
         listenToRideStatusUpdates(backendRide.rideId);
 
     } catch (error) {
@@ -861,24 +945,28 @@ function listenToRideStatusUpdates(rideId) {
             clearDispatchExpansionTimer();
             renderPassengerDriverCard(ride);
             renderPassengerVerificationPin(ride.verification_pin);
+            hideTripProgressPanel();
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
             
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "arrived") {
             renderPassengerDriverCard(ride);
+            hideTripProgressPanel();
             requestBtn.innerHTML = 'Driver arrived at pickup.';
             requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
 
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "started") {
             renderPassengerDriverCard(ride);
+            showTripProgressPanel(ride);
             requestBtn.innerHTML = 'Trip started. Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "en_route") {
             renderPassengerDriverCard(ride);
+            showTripProgressPanel(ride);
             requestBtn.innerHTML = '🚗 Trip in Progress! Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
@@ -892,6 +980,7 @@ function listenToRideStatusUpdates(rideId) {
             hidePassengerVerificationPin();
             hidePassengerDriverCard();
             hidePassengerCancelButton();
+            hideTripProgressPanel();
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
@@ -959,7 +1048,7 @@ addOptionalClickListener('close-passenger-payment-btn', () => {
 });
 
 addOptionalClickListener('passenger-history-btn', () => {
-    window.location.href = 'history.html';
+    window.location.href = '/history';
 });
 
 addOptionalClickListener('invite-friends-btn', () => {

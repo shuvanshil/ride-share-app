@@ -26,8 +26,26 @@ async function loadFarePolicyConfig() {
 }
 
 const fareConfig = await loadFarePolicyConfig();
+const nightFareConfig = fareConfig.nightFare || {};
 
 export const MAX_SERVICEABLE_DISTANCE_KM = Number(fareConfig.maxServiceableDistanceKm);
+export const NIGHT_FARE_TIMEZONE = String(nightFareConfig.timezone || "Asia/Kolkata");
+
+function parseClockMinutes(value, fallback) {
+    const match = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return fallback;
+
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        return fallback;
+    }
+
+    return (hours * 60) + minutes;
+}
+
+const NIGHT_FARE_START_MINUTES = parseClockMinutes(nightFareConfig.start, 22 * 60);
+const NIGHT_FARE_END_MINUTES = parseClockMinutes(nightFareConfig.end, (4 * 60) + 30);
 
 export const RIDE_SERVICES = Object.freeze(
     Object.fromEntries(
@@ -40,6 +58,9 @@ export const RIDE_SERVICES = Object.freeze(
                 capacity: service.capacity,
                 baseFare: Number(service.baseFare),
                 perKmRate: Number(service.perKmRate),
+                nightPerKmRate: Number.isFinite(Number(service.nightPerKmRate))
+                    ? Number(service.nightPerKmRate)
+                    : Number(service.perKmRate),
                 minFare: Number(service.minFare)
             })
         ])
@@ -48,6 +69,50 @@ export const RIDE_SERVICES = Object.freeze(
 
 export function getRideService(serviceType) {
     return RIDE_SERVICES[String(serviceType || "").toLowerCase()] || null;
+}
+
+function getTimePartsInFareTimezone(requestedAt) {
+    const requestTime = requestedAt instanceof Date ? requestedAt : new Date(requestedAt);
+    if (Number.isNaN(requestTime.getTime())) return null;
+
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: NIGHT_FARE_TIMEZONE,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+    }).formatToParts(requestTime);
+
+    const rawHour = Number(parts.find((part) => part.type === "hour")?.value);
+    const minute = Number(parts.find((part) => part.type === "minute")?.value);
+    if (!Number.isInteger(rawHour) || !Number.isInteger(minute)) return null;
+
+    const hour = rawHour === 24 ? 0 : rawHour;
+    return { hour, minute };
+}
+
+export function isNightFareTime(requestedAt = new Date()) {
+    const timeParts = getTimePartsInFareTimezone(requestedAt);
+    if (!timeParts) return false;
+
+    const requestMinutes = (timeParts.hour * 60) + timeParts.minute;
+    if (NIGHT_FARE_START_MINUTES <= NIGHT_FARE_END_MINUTES) {
+        return requestMinutes >= NIGHT_FARE_START_MINUTES && requestMinutes < NIGHT_FARE_END_MINUTES;
+    }
+
+    return requestMinutes >= NIGHT_FARE_START_MINUTES || requestMinutes < NIGHT_FARE_END_MINUTES;
+}
+
+export function getServiceFarePolicy(serviceType, requestedAt = new Date()) {
+    const service = getRideService(serviceType);
+    if (!service) return null;
+
+    const isNightFare = isNightFareTime(requestedAt);
+    return Object.freeze({
+        ...service,
+        perKmRate: isNightFare ? service.nightPerKmRate : service.perKmRate,
+        normalPerKmRate: service.perKmRate,
+        isNightFare
+    });
 }
 
 /**
@@ -66,8 +131,8 @@ export function isDistanceServiceable(distanceKm) {
  * or the distance is invalid/out of range, so callers can distinguish
  * "can't price this" from a real fare of 0.
  */
-export function calculateServiceFare(serviceType, distanceKm) {
-    const service = getRideService(serviceType);
+export function calculateServiceFare(serviceType, distanceKm, requestedAt = new Date()) {
+    const service = getServiceFarePolicy(serviceType, requestedAt);
     if (!service || !isDistanceServiceable(distanceKm)) return null;
 
     const distance = Number(distanceKm);
@@ -76,11 +141,11 @@ export function calculateServiceFare(serviceType, distanceKm) {
     return Math.max(Math.round(fare), service.minFare);
 }
 
-export function calculateFareOptions(distanceKm) {
+export function calculateFareOptions(distanceKm, requestedAt = new Date()) {
     return Object.fromEntries(
         Object.keys(RIDE_SERVICES).map((serviceType) => [
             serviceType,
-            calculateServiceFare(serviceType, distanceKm)
+            calculateServiceFare(serviceType, distanceKm, requestedAt)
         ])
     );
 }

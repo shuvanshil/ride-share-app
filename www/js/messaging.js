@@ -75,7 +75,7 @@ export async function showRideRequestNotification(ride = {}) {
 
     const registration = await navigator.serviceWorker.ready;
     const rideId = ride.rideId || ride.id || "";
-    const url = new URL("driver.html", window.location.href);
+    const url = new URL("/driver", window.location.href);
     if (rideId) url.searchParams.set("rideId", rideId);
     url.searchParams.set("from", "open-alert");
 

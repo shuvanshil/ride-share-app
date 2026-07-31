@@ -904,6 +904,12 @@ async function acceptRideJob(rideId) {
         renderActiveTripStatus("accepted", activeDriverRideData);
         attachDriverTripListener(doc(db, "rides", rideId));
         startDriverGpsBroadcast(doc(db, "rides", rideId));
+
+        // The navigation console owns the live pickup map. Pass the accepted
+        // ride ID so it can select this ride when its realtime listener starts.
+        const serviceUrl = new URL("/driver-service", window.location.href);
+        serviceUrl.searchParams.set("rideId", rideId);
+        window.location.href = serviceUrl.href;
     } catch (error) {
         console.error("Failed to commit transactional state adjustment:", error);
         await showAlert(error.message || "Could not accept this ride.");
@@ -1068,7 +1074,7 @@ function startDriverConsole(profile) {
 
 function routeDriverProfile(profile) {
     if (profile.role !== "driver") {
-        window.location.replace("index.html");
+        window.location.replace("/index");
         return;
     }
 
@@ -1092,7 +1098,7 @@ addOptionalClickListener('start-trip-btn', () => updateActiveRideStatus("started
 addOptionalClickListener('complete-trip-btn', completeRideJob);
 addOptionalClickListener('cancel-driver-trip-btn', () => cancelRideByDriver());
 addOptionalClickListener('driver-history-btn', () => {
-    window.location.href = 'history.html';
+    window.location.href = '/history';
 });
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const checked = event.target.checked;
@@ -1139,7 +1145,7 @@ addOptionalClickListener('logout-btn', async () => {
         clearCachedProfile();
         await setDriverAvailability("offline");
         await signOut(auth);
-        window.location.href = "login.html";
+        window.location.href = "/login";
     } catch (error) {
         console.error("Logout failed:", error);
         await showAlert("Could not logout. Please try again.");
@@ -1157,7 +1163,7 @@ if ("serviceWorker" in navigator) {
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         clearCachedProfile();
-        window.location.replace("login.html");
+        window.location.replace("/login");
         return;
     }
 
@@ -1165,7 +1171,7 @@ onAuthStateChanged(auth, async (user) => {
         const userDocSnap = await getDoc(doc(db, "users", user.uid));
         if (!userDocSnap.exists()) {
             clearCachedProfile();
-            window.location.replace("login.html");
+            window.location.replace("/login");
             return;
         }
 

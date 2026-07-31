@@ -57,7 +57,8 @@ body {
 
 .driver-map-stage {
     position: relative;
-    min-height: 360px;
+    height: 62vh;
+    min-height: 520px;
     margin: 14px 16px;
     border: 1px solid var(--driver-line);
     border-radius: 8px;
@@ -203,13 +204,24 @@ body {
 }
 
 .driver-nav-toggle-icon {
-    font-size: 20px;
-    line-height: 1;
+    display: block;
+    width: 21px;
+    height: 21px;
+    background-color: currentColor;
+    -webkit-mask-image: url("../assets/icons/mapmode/map-mode.png");
+    mask-image: url("../assets/icons/mapmode/map-mode.png");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
     transition: transform 220ms ease;
 }
 
 .driver-nav-toggle-btn.is-active .driver-nav-toggle-icon {
-    transform: rotate(45deg);
+    -webkit-mask-image: url("../assets/icons/mapmode/navigation-mode.png");
+    mask-image: url("../assets/icons/mapmode/navigation-mode.png");
 }
 
 .driver-route-panel:not(.d-none) ~ .driver-nav-toggle-btn {

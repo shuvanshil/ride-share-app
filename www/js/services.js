@@ -1,7 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260713-webicons';
+import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260731-passenger-nav-camera';
 import { getRideService } from './fare-policy.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 
@@ -48,6 +48,12 @@ function renderFareOptions(quote) {
     document.getElementById('bike-fare').innerText = `₹${quote.fare_options.bike}`;
     document.getElementById('auto-fare').innerText = `₹${quote.fare_options.auto}`;
     distanceLabel.innerText = `${Number(quote.distance_km).toFixed(1)} km`;
+    const headingCopy = serviceOptions.querySelector('.ride-service-heading p');
+    if (headingCopy) {
+        headingCopy.innerText = quote.is_night_fare
+            ? "Night fare applies from 10:00 PM to 4:30 AM."
+            : "Fares use the calculated road distance.";
+    }
     serviceOptions.classList.remove('d-none');
     selectRideService(selectedServiceType);
 }
@@ -194,7 +200,7 @@ function bindServicesControls() {
         }
     });
     document.getElementById('booking-login-btn').addEventListener('click', () => {
-        window.location.href = 'login.html';
+        window.location.href = '/login';
     });
     document.getElementById('booking-login-close-btn').addEventListener('click', closeBookingLoginGate);
     bookingLoginGate.addEventListener('click', (event) => {
@@ -225,7 +231,7 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 
         const profile = userSnap.data();
         if (profile.role === "driver") {
-            window.location.replace('driver.html');
+            window.location.replace('/driver');
             return;
         }
 

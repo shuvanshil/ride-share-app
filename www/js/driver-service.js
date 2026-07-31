@@ -1000,7 +1000,7 @@ function ensureNavToggleButton() {
     navToggleButton.type = "button";
     navToggleButton.className = "driver-nav-toggle-btn";
     navToggleButton.setAttribute("aria-label", "Toggle navigation camera");
-    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true">&#8963;</span>';
+    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true"></span>';
     navToggleButton.addEventListener("click", () => setNavigationMode(!navigationModeEnabled));
     mapHost.parentElement.appendChild(navToggleButton);
     setNavigationMode(navigationModeEnabled);
@@ -1604,6 +1604,8 @@ function startActiveRideListener() {
     if (!currentUser?.uid) return;
     if (activeRideUnsubscribe) activeRideUnsubscribe();
 
+    const requestedRideId = new URLSearchParams(window.location.search).get("rideId");
+
     const activeRideQuery = query(
         collection(db, "rides"),
         where("driver_id", "==", currentUser.uid),
@@ -1627,10 +1629,13 @@ function startActiveRideListener() {
             return;
         }
 
+        const requestedRide = requestedRideId
+            ? snapshot.docs.find((rideDoc) => rideDoc.id === requestedRideId)
+            : null;
         const existingRide = currentRideId
             ? snapshot.docs.find((rideDoc) => rideDoc.id === currentRideId)
             : null;
-        const activeRideDoc = existingRide || snapshot.docs[0];
+        const activeRideDoc = requestedRide || existingRide || snapshot.docs[0];
         renderActiveRideState(activeRideDoc.id, activeRideDoc.data());
     }, (error) => {
         console.error("Driver active ride listener failed:", error);
@@ -1670,7 +1675,7 @@ retryButton.addEventListener('click', () => {
 });
 
 openConsoleButton.addEventListener('click', () => {
-    window.location.href = 'driver.html';
+    window.location.href = '/driver';
 });
 
 completeButton.addEventListener('click', completeRideJob);
@@ -1698,25 +1703,25 @@ closePaymentButton.addEventListener('click', async () => {
 
 onAuthStateChanged(auth, async (firebaseUser) => {
     if (!firebaseUser) {
-        window.location.replace('login.html');
+        window.location.replace('/login');
         return;
     }
 
     try {
         const profileSnap = await getDoc(doc(db, "users", firebaseUser.uid));
         if (!profileSnap.exists()) {
-            window.location.replace('login.html');
+            window.location.replace('/login');
             return;
         }
 
         const profile = profileSnap.data();
         if (profile.role !== "driver") {
-            window.location.replace('index.html');
+            window.location.replace('/index');
             return;
         }
 
         if (profile.verificationStatus !== "approved") {
-            window.location.replace('driver.html');
+            window.location.replace('/driver');
             return;
         }
 
