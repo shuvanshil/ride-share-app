@@ -1368,7 +1368,37 @@ select {
 }
 
 .receipt-card {
+    position: relative;
     text-align: center;
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(26, 122, 46, 0.18);
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--gy-muted);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.modal-close-btn:hover,
+.modal-close-btn:focus {
+    background: #fff;
+    transform: scale(1.05);
+    outline: none;
+}
+
+.modal-close-btn:focus-visible {
+    box-shadow: 0 0 0 4px rgba(26, 122, 46, 0.18);
 }
 
 .receipt-table {

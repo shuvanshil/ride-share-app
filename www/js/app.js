@@ -1042,6 +1042,10 @@ async function cancelRideByPassenger(rideId) {
 // ==========================================
 addOptionalClickListener('passenger-cancel-ride-btn', () => cancelRideByPassenger());
 
+addOptionalClickListener('passenger-payment-close-btn', () => {
+    document.getElementById('passenger-payment-view').classList.add('d-none');
+});
+
 addOptionalClickListener('close-passenger-payment-btn', () => {
     document.getElementById('passenger-payment-view').classList.add('d-none');
     window.location.reload(); 
