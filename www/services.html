@@ -12,7 +12,7 @@
     <meta name="description" content="Find nearby LiphtUp bike and auto drivers from your exact pickup location across Kailashahar, Kumarghat, Unakoti, Dharmanagar, Boulapassa and Kacharghat.">
     <meta name="keywords" content="LiphtUp booking, bike taxi Kailashahar, auto booking Kumarghat, Unakoti Tripura ride, Dharmanagar taxi, Boulapassa, Kacharghat">
     <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://liphtup.in/services.html">
+    <link rel="canonical" href="https://liphtup.in/services">
 
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="favicon.ico" sizes="any">
@@ -24,14 +24,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260721-dialog-seo">
+    <link rel="stylesheet" href="css/style.css?v=20260731-passenger-nav-cleanurls">
 </head>
 <body>
     <div id="app-container" class="app-root services-app-root">
         <main id="dashboard-view" class="services-page">
             <header class="services-app-head">
                 <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
-                <button class="guest-login-btn d-none" type="button" onclick="window.location.href='login.html'">Login</button>
+                <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login'">Login</button>
             </header>
 
             <section class="services-title-block">
@@ -54,7 +54,7 @@
                         </div>
                     </div>
 
-                    <section class="services-map-card" aria-label="Passenger live location map">
+                    <section id="services-map-card" class="services-map-card" aria-label="Passenger live location map">
                         <div class="services-map-head">
                             <div>
                                 <h2>Live pickup map</h2>
@@ -69,6 +69,27 @@
                             <span>Route calculated</span>
                             <strong id="fare-amount">Choose a ride</strong>
                         </div>
+
+                        <section id="trip-progress-panel" class="trip-progress-panel d-none" aria-live="polite">
+                            <button id="trip-progress-handle" class="trip-progress-handle" type="button" aria-expanded="false" aria-controls="trip-progress-details">
+                                <span class="trip-progress-handle-bar" aria-hidden="true"></span>
+                                <span class="trip-progress-handle-label" id="trip-progress-handle-label">Trip in progress · Tap for details</span>
+                                <span class="trip-progress-handle-icon" aria-hidden="true"></span>
+                            </button>
+                            <div id="trip-progress-details" class="trip-progress-details">
+                                <div class="trip-progress-driver" id="trip-progress-driver"></div>
+                                <div class="trip-progress-row">
+                                    <div class="trip-progress-fare">
+                                        <span>Fare</span>
+                                        <strong id="trip-progress-fare">₹0</strong>
+                                    </div>
+                                    <div class="trip-progress-pin" id="trip-progress-pin-box">
+                                        <span>Pickup PIN</span>
+                                        <strong id="trip-progress-pin">----</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
                     </section>
 
                     <section id="ride-service-options" class="ride-service-options d-none" aria-labelledby="ride-service-title">
@@ -111,7 +132,7 @@
                 <button type="button" data-home-link><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
                 <button class="active" type="button"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
                 <button id="passenger-history-btn" type="button"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-                <button type="button" onclick="window.location.href='profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+                <button type="button" onclick="window.location.href='/profile'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
             </nav>
         </main>
 
@@ -141,8 +162,8 @@
     <script type="module" src="js/firebase-init.js"></script>
     <script src="js/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
-    <script type="module" src="js/app.js?v=20260712-driver-addresses"></script>
-    <script type="module" src="js/services.js?v=20260712-wake-lock"></script>
+    <script type="module" src="js/app.js?v=20260731-trip-progress-pin"></script>
+    <script type="module" src="js/services.js?v=20260731-trip-progress-pin"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

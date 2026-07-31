@@ -53,7 +53,7 @@ function setGuestLoginVisibility(visible) {
 function renderSession(profile) {
     setGuestLoginVisibility(false);
     if (profile.role === "driver") {
-        window.location.replace("driver.html");
+        window.location.replace("/driver");
     } else {
         showPassengerHome();
     }
@@ -79,7 +79,7 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
         clearCachedProfile();
         await markCurrentDriverOffline();
         await signOut(auth);
-        window.location.href = "login.html";
+        window.location.href = "/login";
     } catch (error) {
         console.error("Logout failed:", error);
         await showAlert("Could not logout. Please try again.");

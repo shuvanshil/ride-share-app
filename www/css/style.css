@@ -2966,8 +2966,196 @@ body.profile-editor-open {
     font-weight: 700;
 }
 
+.passenger-nav-toggle-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 1px solid var(--gy-border);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--gy-muted);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+    transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.passenger-nav-toggle-btn:active {
+    transform: scale(0.92);
+}
+
+.passenger-nav-toggle-btn.is-active {
+    background: var(--gy-green);
+    color: #fff;
+    border-color: var(--gy-green);
+}
+
+.passenger-nav-toggle-icon {
+    display: block;
+    width: 20px;
+    height: 20px;
+    background-color: currentColor;
+    -webkit-mask-image: url("../assets/icons/mapmode/map-mode.png");
+    mask-image: url("../assets/icons/mapmode/map-mode.png");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+
+.passenger-nav-toggle-btn.is-active .passenger-nav-toggle-icon {
+    -webkit-mask-image: url("../assets/icons/mapmode/navigation-mode.png");
+    mask-image: url("../assets/icons/mapmode/navigation-mode.png");
+}
+
 .services-fare-pill {
     margin: 0;
+}
+
+/* Trip-in-progress layout: once the pickup PIN has been verified and the
+   trip is underway, the map grows to ~80% of the screen and a collapsible
+   drawer (driver, fare, PIN) overlays its bottom edge instead of the normal
+   "choose your ride" flow. */
+.services-page.trip-live .services-title-block,
+.services-page.trip-live .services-location-card,
+.services-page.trip-live #ride-service-options,
+.services-page.trip-live .services-fare-pill,
+.services-page.trip-live #services-map-card .services-map-head {
+    display: none;
+}
+
+.services-page.trip-live #services-map-card {
+    margin-top: 10px;
+}
+
+.services-page.trip-live #services-map-card .services-map-frame {
+    aspect-ratio: unset;
+    height: 80vh;
+}
+
+#services-map-card {
+    position: relative;
+}
+
+.trip-progress-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    border-radius: 16px 16px 0 0;
+    background: #fff;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+.trip-progress-handle {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    width: 100%;
+    padding: 10px 16px 12px;
+    border: 0;
+    background: transparent;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.trip-progress-handle-bar {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--gy-border);
+    margin-bottom: 6px;
+}
+
+.trip-progress-handle-label {
+    color: var(--gy-text);
+    font-size: 13px;
+    font-weight: 800;
+    text-align: left;
+}
+
+.trip-progress-handle-icon {
+    width: 9px;
+    height: 9px;
+    border-right: 2px solid var(--gy-muted);
+    border-bottom: 2px solid var(--gy-muted);
+    transform: rotate(-45deg);
+    transition: transform 200ms ease;
+}
+
+.trip-progress-panel.is-expanded .trip-progress-handle-icon {
+    transform: rotate(135deg);
+}
+
+.trip-progress-details {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0 16px;
+    transition: max-height 280ms ease, padding 280ms ease;
+}
+
+.trip-progress-panel.is-expanded .trip-progress-details {
+    max-height: 280px;
+    padding: 0 16px 16px;
+}
+
+.trip-progress-driver {
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--gy-border);
+}
+
+.trip-progress-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.trip-progress-fare,
+.trip-progress-pin {
+    padding: 10px;
+    border: 1px solid var(--gy-border);
+    border-radius: 10px;
+    text-align: center;
+}
+
+.trip-progress-fare span,
+.trip-progress-pin span {
+    display: block;
+    color: var(--gy-muted);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.trip-progress-fare strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--gy-text);
+    font-size: 20px;
+}
+
+.trip-progress-pin {
+    background: #FFF6D8;
+    border-color: #f0d98a;
+}
+
+.trip-progress-pin strong {
+    display: block;
+    margin-top: 4px;
+    color: #6B5E00;
+    font-size: 20px;
+    letter-spacing: 3px;
 }
 
 .ride-service-options {

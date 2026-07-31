@@ -246,7 +246,7 @@ function closeTermsSheet() {
 
 function openAccountSheet() {
     if (!currentAuthUser) {
-        window.location.href = 'login.html';
+        window.location.href = '/login';
         return;
     }
 
@@ -406,7 +406,7 @@ async function logoutCurrentUser() {
     sessionStorage.removeItem(PROFILE_CACHE_KEY);
     await markCurrentDriverOffline();
     await signOut(auth);
-    window.location.href = 'login.html';
+    window.location.href = '/login';
 }
 
 async function deleteAccount(event) {
@@ -452,7 +452,7 @@ async function deleteAccount(event) {
         } catch (signOutError) {
             console.warn("Local sign out after account deletion failed:", signOutError);
         }
-        window.location.replace('login.html');
+        window.location.replace('/login');
     } catch (error) {
         console.error("Account deletion failed:", error);
         setDeleteState(false);
@@ -596,7 +596,7 @@ async function saveProfile(event) {
 
 function bindProfileActions() {
     document.querySelector('[data-action="rides"]').addEventListener('click', () => {
-        window.location.href = 'history.html';
+        window.location.href = '/history';
     });
     document.querySelector('[data-action="contact"]').addEventListener('click', openContactSheet);
     document.querySelector('[data-action="help"]').addEventListener('click', openHelpSheet);
@@ -708,7 +708,7 @@ function bindProfileActions() {
 
     profileSessionButton.addEventListener('click', () => {
         if (!currentAuthUser) {
-            window.location.href = 'login.html';
+            window.location.href = '/login';
             return;
         }
         openAccountSheet();

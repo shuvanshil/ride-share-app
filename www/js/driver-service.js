@@ -1000,7 +1000,7 @@ function ensureNavToggleButton() {
     navToggleButton.type = "button";
     navToggleButton.className = "driver-nav-toggle-btn";
     navToggleButton.setAttribute("aria-label", "Toggle navigation camera");
-    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true">&#8963;</span>';
+    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true"></span>';
     navToggleButton.addEventListener("click", () => setNavigationMode(!navigationModeEnabled));
     mapHost.parentElement.appendChild(navToggleButton);
     setNavigationMode(navigationModeEnabled);
@@ -1675,7 +1675,7 @@ retryButton.addEventListener('click', () => {
 });
 
 openConsoleButton.addEventListener('click', () => {
-    window.location.href = 'driver.html';
+    window.location.href = '/driver';
 });
 
 completeButton.addEventListener('click', completeRideJob);
@@ -1703,25 +1703,25 @@ closePaymentButton.addEventListener('click', async () => {
 
 onAuthStateChanged(auth, async (firebaseUser) => {
     if (!firebaseUser) {
-        window.location.replace('login.html');
+        window.location.replace('/login');
         return;
     }
 
     try {
         const profileSnap = await getDoc(doc(db, "users", firebaseUser.uid));
         if (!profileSnap.exists()) {
-            window.location.replace('login.html');
+            window.location.replace('/login');
             return;
         }
 
         const profile = profileSnap.data();
         if (profile.role !== "driver") {
-            window.location.replace('index.html');
+            window.location.replace('/index');
             return;
         }
 
         if (profile.verificationStatus !== "approved") {
-            window.location.replace('driver.html');
+            window.location.replace('/driver');
             return;
         }
 

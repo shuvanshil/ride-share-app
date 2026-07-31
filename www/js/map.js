@@ -25,6 +25,13 @@ const DRIVER_MARKER_NOISE_FLOOR_METERS = 4;
 const DRIVER_MARKER_COAST_MIN_DISTANCE_METERS = 6;
 const ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS = 25;
 const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
+// Passenger-side heading-up navigation camera (mirrors the driver console's
+// applyNavigationCamera in driver-service.js) - rotates + tilts the map so
+// the assigned driver's direction of travel always points "up" on screen.
+const PASSENGER_NAV_MODE_CACHE_KEY = "liphtup_passenger_nav_mode";
+const PASSENGER_NAV_CAMERA_TILT = 50;
+const PASSENGER_NAV_CAMERA_ZOOM = 17;
+const PASSENGER_CAMERA_ROTATE_ANIM_MS = 700;
 // GPS on a phone is commonly 5-20m off (worse in "urban canyons"/dense
 // cover), which is why a raw GPS ping can render the vehicle icon off the
 // road entirely (on a building, footpath, etc). Whenever we already have the
@@ -90,6 +97,28 @@ let activeDriverRouteState = {
     queuedDetail: null
 };
 const globalDriverMarkers = new Map();
+let passengerNavToggleButton = null;
+let passengerNavigationModeEnabled = readCachedPassengerNavPreference();
+let passengerCameraAnimationFrame = null;
+let lastPassengerCameraHeading = 0;
+let passengerFirstRouteFitComplete = false;
+
+function readCachedPassengerNavPreference() {
+    try {
+        const cached = localStorage.getItem(PASSENGER_NAV_MODE_CACHE_KEY);
+        return cached === null ? true : cached === "1";
+    } catch {
+        return true;
+    }
+}
+
+function rememberPassengerNavPreference(enabled) {
+    try {
+        localStorage.setItem(PASSENGER_NAV_MODE_CACHE_KEY, enabled ? "1" : "0");
+    } catch {
+        // Private browsing may block storage; navigation mode still works this session.
+    }
+}
 
 function normalizeCoordinate(value) {
     const number = Number(value);
@@ -952,7 +981,98 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinati
     bounds.extend(driverPosition);
     bounds.extend(targetPosition);
     if (destinationPosition) bounds.extend(destinationPosition);
-    window.mapInstance.fitBounds(bounds, { top: 58, right: 42, bottom: 96, left: 42 });
+
+    if (!passengerFirstRouteFitComplete || !passengerNavigationModeEnabled) {
+        window.mapInstance.fitBounds(bounds, { top: 58, right: 42, bottom: 96, left: 42 });
+        passengerFirstRouteFitComplete = true;
+    }
+}
+
+function stopPassengerCameraAnimation() {
+    if (passengerCameraAnimationFrame) {
+        cancelAnimationFrame(passengerCameraAnimationFrame);
+        passengerCameraAnimationFrame = null;
+    }
+}
+
+// Rotates + tilts the passenger's map so the assigned driver's direction of
+// travel always points "up" on screen, the same heading-up navigation
+// experience the driver console gives the driver (see applyNavigationCamera
+// in driver-service.js). Only takes effect once there is an assigned driver
+// and the initial route overview has already been framed.
+function applyPassengerNavigationCamera(position, heading, instant = false) {
+    if (!window.mapInstance || !passengerNavigationModeEnabled || !position || !window.mapInstance.moveCamera) return;
+    if (!assignedDriverTrackingDriverId || !passengerFirstRouteFitComplete) return;
+
+    const targetHeading = normalizeHeading(heading) ?? lastPassengerCameraHeading;
+    const targetZoom = window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM;
+
+    if (instant) {
+        stopPassengerCameraAnimation();
+        window.mapInstance.moveCamera({ center: position, heading: targetHeading, tilt: PASSENGER_NAV_CAMERA_TILT, zoom: Math.max(targetZoom, PASSENGER_NAV_CAMERA_ZOOM) });
+        lastPassengerCameraHeading = targetHeading;
+        return;
+    }
+
+    stopPassengerCameraAnimation();
+    const startHeading = normalizeHeading(window.mapInstance.getHeading?.()) ?? lastPassengerCameraHeading;
+    const startedAt = performance.now();
+
+    const step = (now) => {
+        const progress = Math.min(1, (now - startedAt) / PASSENGER_CAMERA_ROTATE_ANIM_MS);
+        const eased = progress * progress * (3 - (2 * progress));
+        const nextHeading = smoothHeading(startHeading, targetHeading, eased);
+        window.mapInstance.moveCamera({ center: position, heading: nextHeading, tilt: PASSENGER_NAV_CAMERA_TILT, zoom: Math.max(window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM, PASSENGER_NAV_CAMERA_ZOOM) });
+        if (progress < 1) {
+            passengerCameraAnimationFrame = requestAnimationFrame(step);
+        } else {
+            lastPassengerCameraHeading = targetHeading;
+            passengerCameraAnimationFrame = null;
+        }
+    };
+    passengerCameraAnimationFrame = requestAnimationFrame(step);
+}
+
+function resetPassengerCameraToOverview() {
+    stopPassengerCameraAnimation();
+    if (!window.mapInstance || !window.mapInstance.moveCamera) return;
+    window.mapInstance.moveCamera({
+        center: window.mapInstance.getCenter?.(),
+        heading: 0,
+        tilt: 0,
+        zoom: window.mapInstance.getZoom() || 15
+    });
+    lastPassengerCameraHeading = 0;
+}
+
+function setPassengerNavigationMode(enabled) {
+    passengerNavigationModeEnabled = enabled;
+    rememberPassengerNavPreference(enabled);
+    passengerNavToggleButton?.classList.toggle("is-active", enabled);
+    passengerNavToggleButton?.setAttribute("aria-pressed", String(enabled));
+    if (passengerNavToggleButton) {
+        passengerNavToggleButton.title = enabled ? "Navigation mode: on (tap for map view)" : "Map view (tap for navigation mode)";
+    }
+
+    if (!window.mapInstance) return;
+    if (enabled && assignedDriverTrackingDriverId && activeDriverMarker) {
+        applyPassengerNavigationCamera(activeDriverMarker.marker?.position || activeDriverMarker, lastPassengerCameraHeading, true);
+    } else {
+        resetPassengerCameraToOverview();
+    }
+}
+
+function ensurePassengerNavToggleButton(hostElement) {
+    if (passengerNavToggleButton || !hostElement) return;
+
+    passengerNavToggleButton = document.createElement("button");
+    passengerNavToggleButton.type = "button";
+    passengerNavToggleButton.className = "passenger-nav-toggle-btn";
+    passengerNavToggleButton.setAttribute("aria-label", "Toggle navigation camera");
+    passengerNavToggleButton.innerHTML = '<span class="passenger-nav-toggle-icon" aria-hidden="true"></span>';
+    passengerNavToggleButton.addEventListener("click", () => setPassengerNavigationMode(!passengerNavigationModeEnabled));
+    hostElement.appendChild(passengerNavToggleButton);
+    setPassengerNavigationMode(passengerNavigationModeEnabled);
 }
 
 function setGlobalDriverMarkerVisibility(driverId, existing) {
@@ -1471,6 +1591,8 @@ function clearActiveDriverMarker() {
     removeMarker(activeDriverMarker?.marker);
     activeDriverMarker = null;
     assignedDriverTrackingDriverId = "";
+    passengerFirstRouteFitComplete = false;
+    resetPassengerCameraToOverview();
     clearAssignedDriverRoute();
     clearRouteAndDestination();
     resetActiveDriverRouteState();
@@ -1594,6 +1716,7 @@ async function handleAssignedDriverLocation(event) {
     const existing = existingGlobal || activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
     const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath);
+    applyPassengerNavigationCamera(position, heading);
 
     if (existingGlobal) {
         if (activeDriverMarker) {
@@ -1732,16 +1855,19 @@ export async function initializeMapEngine() {
     if (mainMapShell) {
         mainMapShell.destroy();
         mainMapShell = null;
+        passengerNavToggleButton = null;
     }
 
     mainMapShell = await createRideMapSurface(mapContainer, {
         center: coords,
         zoom: 15,
         zoomControl: true,
-        fullscreenControl: true
+        fullscreenControl: true,
+        enableCameraRotation: true
     });
 
     window.mapInstance = mainMapShell.map;
+    ensurePassengerNavToggleButton(mapContainer);
     addPickupMarker(coords);
     if (pendingAssignedDriverDetail) {
         const detail = pendingAssignedDriverDetail;

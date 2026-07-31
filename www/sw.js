@@ -11,18 +11,18 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v28-night-fare";
+const CACHE_VERSION = "liphtup-shell-v29-clean-urls";
 const BASE_URL = new URL("./", self.location.href);
-const OFFLINE_URL = new URL("offline.html", BASE_URL).href;
+const OFFLINE_URL = new URL("/offline", BASE_URL).href;
 const APP_SHELL = [
-    "offline.html",
-    "index.html",
-    "driver.html",
-    "driver-service.html",
-    "services.html",
-    "profile.html",
-    "history.html",
-    "login.html",
+    "/offline",
+    "/index",
+    "/driver",
+    "/driver-service",
+    "/services",
+    "/profile",
+    "/history",
+    "/login",
     "manifest.webmanifest",
     "fare-policy.config.json",
     "favicon.ico",
@@ -131,7 +131,7 @@ self.addEventListener("message", (event) => {
 
 function getRideNotificationUrl(data = {}) {
     const rideId = data.rideId || data.ride_id || "";
-    const url = new URL("driver.html", BASE_URL);
+    const url = new URL("/driver", BASE_URL);
     if (rideId) url.searchParams.set("rideId", rideId);
     url.searchParams.set("from", "push");
     return url.href;
@@ -167,7 +167,7 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener("notificationclick", (event) => {
     event.notification.close();
-    const targetUrl = event.notification.data?.url || new URL("driver.html?from=push", BASE_URL).href;
+    const targetUrl = event.notification.data?.url || new URL("/driver?from=push", BASE_URL).href;
 
     event.waitUntil((async () => {
         const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });

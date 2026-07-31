@@ -521,7 +521,11 @@ async def create_passenger_ride(
             "driverAvailabilitySnapshot": None,
             "payment_methods": ["cash", "upi"],
             "payment_status": "pending",
-            "verification_pin": f"{secrets.randbelow(10000):04d}",
+            # No PIN is assigned at request time. It is only generated once a
+            # driver accepts the ride (see accept_driver_ride below), so the
+            # passenger never sees a pickup PIN before there is an assigned
+            # driver to share it with.
+            "verification_pin": None,
             "eligible_driver_ids": driver_ids,
             "notified_driver_ids": driver_ids,
             "rejected_driver_ids": [],
@@ -536,7 +540,6 @@ async def create_passenger_ride(
         return {
             "ok": True,
             "rideId": ride_ref.id,
-            "verificationPin": ride_data["verification_pin"],
             "notifiedDriverIds": driver_ids,
             "ride": {key: value for key, value in ride_data.items() if key != "createdAt"},
         }
@@ -983,6 +986,10 @@ def accept_driver_ride(
             if uid not in (ride.get("eligible_driver_ids") or []):
                 raise ApiError("This ride request is no longer available for you.", 403)
 
+            # The pickup verification PIN is assigned only now, at the moment
+            # a driver actually accepts -- never at ride-request time.
+            verification_pin = str(ride.get("verification_pin") or "").strip() or f"{secrets.randbelow(10000):04d}"
+
             accepted_ride.update(ride)
             accepted_ride.update({
                 "status": "accepted",
@@ -992,6 +999,7 @@ def accept_driver_ride(
                 "vehicle_model": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Vehicle")[:100],
                 "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
                 "vehicle_type": driver_type,
+                "verification_pin": verification_pin,
             })
             tx.update(ride_ref, {
                 "status": "accepted",
@@ -1001,6 +1009,7 @@ def accept_driver_ride(
                 "vehicle_model": accepted_ride["vehicle_model"],
                 "vehicle_number": accepted_ride["vehicle_number"],
                 "vehicle_type": driver_type,
+                "verification_pin": verification_pin,
                 "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             })

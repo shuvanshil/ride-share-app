@@ -299,7 +299,7 @@ function renderEmptyState() {
     const roleText = isDriverAccount() ? "driven" : "booked";
     const filterText = getFilterLabel();
     const actionLabel = isDriverAccount() ? "Go Home" : "Book a Ride";
-    const actionLink = isDriverAccount() ? "driver.html" : "index.html";
+    const actionLink = isDriverAccount() ? "/driver" : "/index";
 
     historyList.innerHTML = `
         <div class="history-empty-card">
@@ -447,7 +447,7 @@ onAuthStateChanged(auth, async (user) => {
                 <div class="history-empty-icon">○</div>
                 <h3>You are not logged in</h3>
                 <p>Please login to view your ride history.</p>
-                <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='login.html'">Go to Login</button>
+                <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='/login'">Go to Login</button>
             </div>
         `;
         renderSummary([]);

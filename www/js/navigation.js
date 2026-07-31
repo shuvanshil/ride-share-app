@@ -10,11 +10,11 @@ function getCachedRole() {
 }
 
 function getRoleHomeUrl() {
-    return getCachedRole() === "driver" ? "driver.html" : "index.html";
+    return getCachedRole() === "driver" ? "/driver" : "/index";
 }
 
 function getRoleServiceUrl() {
-    return getCachedRole() === "driver" ? "driver-service.html" : "services.html";
+    return getCachedRole() === "driver" ? "/driver-service" : "/services";
 }
 
 window.liphtUpGoHome = function liphtUpGoHome() {

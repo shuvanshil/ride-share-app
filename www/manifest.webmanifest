@@ -4,7 +4,7 @@
   "short_name": "LiphtUp",
   "description": "Local ride booking and driver service for Tripura.",
   "lang": "en-IN",
-  "start_url": "./index.html",
+  "start_url": "./index",
   "scope": "./",
   "gcm_sender_id": "103953800507",
   "display": "standalone",
@@ -37,13 +37,13 @@
     {
       "name": "Passenger Home",
       "short_name": "Passenger",
-      "url": "./index.html",
+      "url": "./index",
       "icons": [{ "src": "assets/icons/liphtup-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Driver Console",
       "short_name": "Driver",
-      "url": "./driver.html",
+      "url": "./driver",
       "icons": [{ "src": "assets/icons/liphtup-icon-192.png", "sizes": "192x192" }]
     }
   ]
