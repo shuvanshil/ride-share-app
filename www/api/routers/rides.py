@@ -291,6 +291,50 @@ def _coarse_location(location: Optional[dict[str, float]]) -> Optional[dict[str,
     }
 
 
+def _build_driver_availability_updates(
+    status: str,
+    profile: dict[str, Any],
+    location: Optional[dict[str, float]] = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    online = status != "offline"
+    now = datetime.now(timezone.utc)
+    user_update: dict[str, Any] = {
+        "driverAvailability": status,
+        "desiredAvailability": "online" if online else "offline",
+        "isConnected": online,
+        "notificationEligibleUntil": now + timedelta(minutes=30) if online else datetime.fromtimestamp(0, timezone.utc),
+        "driverAvailabilityUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+        "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    presence_update: dict[str, Any] = {
+        "uid": str(profile.get("uid") or "")[:160],
+        "name": str(profile.get("name") or "Driver")[:80],
+        "phone": str(profile.get("phone") or "")[:40],
+        "driverAvailability": status,
+        "desiredAvailability": "online" if online else "offline",
+        "verificationStatus": profile.get("verificationStatus") or "pending_review",
+        "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
+        "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
+        "vehicle_type": _driver_type(profile),
+        "isConnected": online,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    map_presence_update = {
+        key: presence_update[key]
+        for key in (
+            "uid", "name", "driverAvailability", "desiredAvailability",
+            "verificationStatus", "vehicle_model", "vehicle_type", "isConnected",
+            "updatedAt", "lastSeenAt",
+        )
+    }
+    if location is not None:
+        user_update["driverLocation"] = {"lat": location["lat"], "lng": location["lng"]}
+        presence_update["driverLocation"] = {"lat": location["lat"], "lng": location["lng"]}
+        map_presence_update["driverLocation"] = _coarse_location({"lat": location["lat"], "lng": location["lng"]})
+    return user_update, presence_update, map_presence_update
+
+
 def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc).timestamp()
     candidates: list[dict[str, Any]] = []
@@ -638,9 +682,13 @@ def transition_driver_ride(
 
         transition_transaction(transaction)
         if action in {"complete", "cancel"}:
-            availability_update = {"driverAvailability": "searching", "updatedAt": fb_firestore.SERVER_TIMESTAMP}
-            db.collection("driverPresence").document(uid).set(availability_update, merge=True)
-            db.collection("driverMapPresence").document(uid).set(availability_update, merge=True)
+            availability_status = "offline"
+            if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
+                availability_status = "searching"
+            user_update, presence_update, map_presence_update = _build_driver_availability_updates(availability_status, profile)
+            db.collection("users").document(uid).set(user_update, merge=True)
+            db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+            db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": result}
     except ApiError:
         raise
@@ -725,41 +773,11 @@ def update_driver_availability(
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update driver availability.")
-        online = status != "offline"
-        user_update: dict[str, Any] = {
-            "driverAvailability": status,
-            "desiredAvailability": "online" if online else "offline",
-            "isConnected": online,
-            "notificationEligibleUntil": datetime.now(timezone.utc) + timedelta(minutes=30) if online else datetime.fromtimestamp(0, timezone.utc),
-            "driverAvailabilityUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
-            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        presence_update: dict[str, Any] = {
-            "uid": uid,
-            "name": str(profile.get("name") or "Driver")[:80],
-            "phone": str(profile.get("phone") or "")[:40],
-            "driverAvailability": status,
-            "desiredAvailability": "online" if online else "offline",
-            "verificationStatus": profile.get("verificationStatus") or "pending_review",
-            "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
-            "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
-            "vehicle_type": _driver_type(profile),
-            "isConnected": online,
-            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        map_presence_update = {
-            key: presence_update[key]
-            for key in (
-                "uid", "name", "driverAvailability", "desiredAvailability",
-                "verificationStatus", "vehicle_model", "vehicle_type", "isConnected",
-                "updatedAt", "lastSeenAt",
-            )
-        }
-        if lat is not None:
-            user_update["driverLocation"] = {"lat": lat, "lng": lng}
-            presence_update["driverLocation"] = {"lat": lat, "lng": lng}
-            map_presence_update["driverLocation"] = _coarse_location({"lat": lat, "lng": lng})
+        user_update, presence_update, map_presence_update = _build_driver_availability_updates(
+            status,
+            {**profile, "uid": uid},
+            {"lat": lat, "lng": lng} if lat is not None else None,
+        )
         db.collection("users").document(uid).set(user_update, merge=True)
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
         db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)

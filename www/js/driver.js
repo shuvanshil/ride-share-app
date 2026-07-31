@@ -51,6 +51,7 @@ let lastPresenceHeading = null;
 let lastActiveHeadingPosition = null;
 let lastActiveHeading = null;
 let driverDutyOnline = true;
+let driverPostRideAvailability = "searching";
 // Smoothed (exponential moving average) coordinates + write-gate bookkeeping,
 // tracked separately for the "searching" presence watch and the "on trip" watch.
 let lastPresenceSmoothedPosition = null;
@@ -921,6 +922,7 @@ function startDriverGpsBroadcast(rideRef) {
 async function acceptRideJob(rideId) {
     try {
         stopRideRequestRing();
+        driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
         const result = await acceptRideThroughBackend(rideId);
         const acceptedRideData = result.ride || {};
         await setDriverAvailability("busy");
@@ -1038,6 +1040,7 @@ async function completeRideJob() {
         activeDriverRenderedStatus = null;
         currentlyAssignedRideId = null;
         setRideActive(false);
+        await setDriverAvailability(driverPostRideAvailability);
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
         await showAlert("Database connection dropped during checkout.");

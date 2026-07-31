@@ -82,6 +82,7 @@ let driverMarkerAnimationFrame = null;
 let lastDriverHeading = null;
 let incomingRideUnsubscribe = null;
 let acceptRideInProgress = false;
+let driverPostRideAvailability = "searching";
 
 function formatFareAmount(value) {
     const amount = Number(value);
@@ -548,6 +549,7 @@ async function acceptIncomingRide(rideId, button) {
             throw new Error(data.error || "Could not accept this ride.");
         }
         const acceptedRideData = data.ride || {};
+        driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
 
         await setServiceDriverAvailability("busy");
         renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });
@@ -1488,6 +1490,7 @@ async function completeRideJob() {
 
         paymentModal.classList.remove('d-none');
         renderFareAdjustmentNote('driver-service-fare-note', result.ride);
+        await setServiceDriverAvailability(driverPostRideAvailability);
         hideLifecyclePanel();
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
