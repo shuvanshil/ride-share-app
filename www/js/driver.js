@@ -52,6 +52,51 @@ let lastActiveHeadingPosition = null;
 let lastActiveHeading = null;
 let driverDutyOnline = true;
 let driverPostRideAvailability = "searching";
+let ignoredRideIds = [];
+const DRIVER_IGNORED_RIDES_PREFIX = "liphtup_driver_ignored_requests_";
+
+function getIgnoredRidesStorageKey() {
+    return `${DRIVER_IGNORED_RIDES_PREFIX}${currentUser?.uid || "unknown"}`;
+}
+
+function loadIgnoredRideIds() {
+    if (!currentUser?.uid) return ignoredRideIds;
+    try {
+        const raw = localStorage.getItem(getIgnoredRidesStorageKey()) || "[]";
+        const parsed = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+        ignoredRideIds = parsed;
+        return ignoredRideIds;
+    } catch {
+        return ignoredRideIds;
+    }
+}
+
+function saveIgnoredRideIds(rideIds) {
+    ignoredRideIds = Array.from(new Set(rideIds));
+    try {
+        localStorage.setItem(getIgnoredRidesStorageKey(), JSON.stringify(ignoredRideIds));
+    } catch {
+        // Ignore storage failures; this feature is optional.
+    }
+}
+
+function ignoreRideRequest(rideId) {
+    if (!rideId || !currentUser?.uid) return;
+    const ignored = new Set(loadIgnoredRideIds());
+    ignored.add(rideId);
+    saveIgnoredRideIds(Array.from(ignored));
+
+    const card = document.querySelector(`.card[data-ride-id="${rideId}"]`);
+    if (card) card.remove();
+
+    const ridesContainer = document.getElementById('available-rides-list');
+    if (!ridesContainer.querySelector('.card')) {
+        stopRideRequestRing();
+        const noRidesMsg = document.getElementById('no-rides-msg');
+        if (noRidesMsg) noRidesMsg.classList.remove('d-none');
+    }
+}
+
 // Smoothed (exponential moving average) coordinates + write-gate bookkeeping,
 // tracked separately for the "searching" presence watch and the "on trip" watch.
 let lastPresenceSmoothedPosition = null;
@@ -759,8 +804,10 @@ function initDriverJobsStream() {
         let renderedRideCount = 0;
         let firstPendingRide = null;
 
+        const ignored = loadIgnoredRideIds();
         querySnapshot.forEach((docSnapshot) => {
             const rideId = docSnapshot.id;
+            if (ignored.includes(rideId)) return;
             const ride = docSnapshot.data();
 
             if (ride.status !== "pending" || ride.driver_id) return;
@@ -775,6 +822,7 @@ function initDriverJobsStream() {
 
             const card = document.createElement('div');
             card.className = "card p-3 mb-3 border-start border-primary border-4 shadow-sm";
+            card.dataset.rideId = rideId;
             card.innerHTML = `
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -802,6 +850,9 @@ function initDriverJobsStream() {
                 <button class="btn btn-sm btn-success w-100 fw-bold mt-2 accept-job-btn" data-id="${rideId}">
                     Accept Ride Request
                 </button>
+                <button class="btn btn-sm btn-outline-secondary w-100 fw-bold mt-2 ignore-job-btn" data-id="${rideId}">
+                    Ignore
+                </button>
             `;
 
             ridesContainer.appendChild(card);
@@ -816,6 +867,9 @@ function initDriverJobsStream() {
 
         document.querySelectorAll('.accept-job-btn').forEach(btn => {
             btn.addEventListener('click', (event) => acceptRideJob(event.target.getAttribute('data-id')));
+        });
+        document.querySelectorAll('.ignore-job-btn').forEach(btn => {
+            btn.addEventListener('click', (event) => ignoreRideRequest(event.target.getAttribute('data-id')));
         });
     });
 }

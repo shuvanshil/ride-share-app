@@ -29,6 +29,7 @@ const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 const DRIVER_LOCATION_CACHE_KEY = "liphtup_last_driver_location";
 const DEFAULT_DRIVER_LOCATION = Object.freeze({ lat: 24.3124, lng: 92.0135 });
 const DRIVER_NAV_MODE_CACHE_KEY = "liphtup_driver_nav_mode";
+const DRIVER_IGNORED_RIDES_PREFIX = "liphtup_driver_ignored_requests_";
 const NAV_CAMERA_TILT = 55;
 const NAV_CAMERA_ZOOM = 18;
 const DRIVER_MARKER_ANIM_MIN_MS = 700;
@@ -46,6 +47,46 @@ const ROUTE_MATCH_SEARCH_WINDOW = 60;
 
 const mapHost = document.getElementById('driver-service-map');
 const statusText = document.getElementById('driver-service-status');
+
+function getIgnoredRidesStorageKey() {
+    return `${DRIVER_IGNORED_RIDES_PREFIX}${currentUser?.uid || "unknown"}`;
+}
+
+function loadIgnoredRideIds() {
+    if (!currentUser?.uid) return ignoredRideIds;
+    try {
+        const raw = localStorage.getItem(getIgnoredRidesStorageKey()) || "[]";
+        const parsed = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+        ignoredRideIds = parsed;
+        return ignoredRideIds;
+    } catch {
+        return ignoredRideIds;
+    }
+}
+
+function saveIgnoredRideIds(rideIds) {
+    ignoredRideIds = Array.from(new Set(rideIds));
+    try {
+        localStorage.setItem(getIgnoredRidesStorageKey(), JSON.stringify(ignoredRideIds));
+    } catch {
+        // Ignore storage failures; this feature is optional.
+    }
+}
+
+function ignoreRideRequest(rideId) {
+    if (!rideId || !currentUser?.uid) return;
+    const ignored = new Set(loadIgnoredRideIds());
+    ignored.add(rideId);
+    saveIgnoredRideIds(Array.from(ignored));
+
+    const card = ridesContainer.querySelector(`.driver-service-request-card[data-ride-id="${rideId}"]`);
+    if (card) card.remove();
+
+    if (!ridesContainer.querySelector('.driver-service-request-card')) {
+        stopRideRequestRing();
+        renderNoIncomingRequests();
+    }
+}
 const livePill = document.getElementById('driver-service-live-pill');
 const routePanel = document.getElementById('driver-route-panel');
 const routeLabel = document.getElementById('driver-route-label');
@@ -73,6 +114,7 @@ const noRidesMsg = document.getElementById('driver-service-no-rides-msg');
 let currentUser = null;
 let currentRide = null;
 let currentRideId = null;
+let ignoredRideIds = [];
 let currentTarget = null;
 let currentTargetKey = "";
 let currentRideStatus = "";
@@ -412,6 +454,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
 
     const card = document.createElement('div');
     card.className = "driver-service-request-card";
+    card.dataset.rideId = rideId;
     card.innerHTML = `
         <div class="driver-service-request-head">
             <div>
@@ -435,8 +478,11 @@ function renderIncomingRideCard(rideId, ride = {}) {
                 <strong>${formatRideDuration(ride.duration_minutes)}</strong>
             </div>
         </div>
-        <button class="gy-btn gy-btn-primary driver-service-accept-btn" type="button" data-ride-id="${escapeHtml(rideId)}">
+        <button class="gy-btn gy-btn-primary driver-service-accept-btn w-100" type="button" data-ride-id="${escapeHtml(rideId)}">
             Accept Ride Request
+        </button>
+        <button class="gy-btn gy-btn-outline driver-service-ignore-btn w-100 mt-2" type="button" data-ride-id="${escapeHtml(rideId)}">
+            Ignore
         </button>
     `;
 
@@ -469,7 +515,9 @@ function startIncomingRideListener() {
         let firstPendingRide = null;
         const driverVehicleType = getDriverRequestVehicleType(currentUser);
 
+        const ignored = loadIgnoredRideIds();
         snapshot.forEach((docSnapshot) => {
+            if (ignored.includes(docSnapshot.id)) return;
             const ride = docSnapshot.data();
             if (ride.status !== "pending" || ride.driver_id) return;
             if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) return;
@@ -1684,6 +1732,12 @@ openConsoleButton.addEventListener('click', () => {
 completeButton.addEventListener('click', completeRideJob);
 cancelButton.addEventListener('click', cancelRideByDriver);
 ridesContainer?.addEventListener('click', (event) => {
+    const ignoreButton = event.target.closest('.driver-service-ignore-btn');
+    if (ignoreButton) {
+        ignoreRideRequest(ignoreButton.dataset.rideId);
+        return;
+    }
+
     const acceptButton = event.target.closest('.driver-service-accept-btn');
     if (!acceptButton) return;
     acceptIncomingRide(acceptButton.dataset.rideId, acceptButton);
