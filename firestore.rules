@@ -1,0 +1,88 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function approvedDriver() {
+      return signedIn()
+        && userProfile().role == "driver"
+        && userProfile().verificationStatus == "approved";
+    }
+
+    function rideParticipant() {
+      return signedIn()
+        && (resource.data.passenger_id == request.auth.uid
+          || resource.data.driver_id == request.auth.uid);
+    }
+
+    function eligibleDriver() {
+      return approvedDriver()
+        && request.auth.uid in resource.data.eligible_driver_ids;
+    }
+
+    match /rides/{rideId} {
+      // Queries must include a matching passenger_id, driver_id, or
+      // eligible_driver_ids constraint for Firestore to authorize them.
+      allow read: if rideParticipant() || eligibleDriver();
+
+      // Ride creation and every ride mutation are server-owned by FastAPI.
+      allow create, update, delete: if false;
+    }
+
+    match /driverPresence/{driverId} {
+      // Private presence, GPS telemetry, and push tokens are server-only.
+      allow read: if false;
+
+      // Availability, GPS, and push-token writes go through FastAPI.
+      allow create, update, delete: if false;
+    }
+
+    match /driverMapPresence/{driverId} {
+      // Contains only coarse, non-contact map data for guest-mode availability.
+      // All writes remain server-only through FastAPI.
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /tripHistory/{rideId} {
+      allow read: if signedIn()
+        && (resource.data.passenger_id == request.auth.uid
+          || resource.data.driver_id == request.auth.uid);
+
+      // History is written by FastAPI after an authorized ride transition.
+      allow create, update, delete: if false;
+    }
+
+    match /phoneLoginIndex/{phoneNumber} {
+      // Needed before password login; the document contains only login lookup
+      // metadata and must not be listable.
+      allow get: if true;
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      // Profile, role, earnings, verification, and push fields are managed by
+      // FastAPI Admin SDK. Clients must not write arbitrary account fields.
+      allow create, update, delete: if false;
+    }
+
+    match /otpSecurity/{securityId} {
+      // OTP cooldowns and attempt counters are server-only.
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
