@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1A7A2E">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="LiphtUp">
+    <title>LiphtUp Driver Console</title>
+    <meta name="robots" content="noindex, nofollow">
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+    <link rel="apple-touch-icon" href="assets/icons/liphtup-icon-180.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260731-passenger-nav-cleanurls">
+</head>
+<body>
+    <div id="app-container" class="app-root driver-app-root">
+        <button id="logout-btn" class="logout-chip">Logout</button>
+
+        <div id="driver-review-view" class="review-screen d-none flex-column justify-content-center align-items-center p-4">
+            <div class="review-card">
+                <div class="shield-icon">ID</div>
+                <h4>Account Under Review</h4>
+                <p>Your driver profile has been submitted. You can start accepting rides after admin approval.</p>
+                <div class="review-data">
+                    <div><strong>Status</strong><span id="driver-review-status">pending_review</span></div>
+                    <div><strong>Vehicle</strong><span id="driver-review-vehicle">Not submitted</span></div>
+                    <div><strong>Licence</strong><span id="driver-review-license">Not submitted</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="driver-view" class="screen-shell driver-shell d-none flex-column">
+            <header class="app-bar">
+                <div>
+                    <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
+                    <small id="driver-welcome-name">Welcome, Driver</small>
+                </div>
+                <div class="app-bar-actions">
+                    <span id="driver-duty-pill" class="online-pill">Online</span>
+                    <button class="pwa-install-btn d-none" type="button" aria-label="Install LiphtUp">
+                        <span aria-hidden="true">↓</span> Install
+                    </button>
+                </div>
+            </header>
+
+            <main class="driver-main">
+                <section class="driver-status-card">
+                    <div>
+                        <h4>Driver Duty Console</h4>
+                        <p id="driver-duty-helper">Ride alerts can continue for 30 minutes after your last fresh location.</p>
+                    </div>
+                    <div class="driver-duty-control">
+                        <label class="driver-duty-switch" for="driver-duty-switch">
+                            <input id="driver-duty-switch" type="checkbox" checked>
+                            <span aria-hidden="true"></span>
+                        </label>
+                        <strong id="driver-duty-state">Online for rides</strong>
+                        <button id="driver-history-btn" class="mini-action" type="button">History</button>
+                    </div>
+                </section>
+
+                <h6 class="section-title">Incoming Local Ride Requests</h6>
+                <div id="available-rides-list" class="ride-list">
+                    <div id="no-rides-msg" class="empty-state">
+                        <span>Live</span>
+                        <strong>Searching nearby passengers</strong>
+                        <p>Keep location enabled to receive targeted requests.</p>
+                    </div>
+                </div>
+
+                <div id="active-trip-container" class="active-trip-card d-none">
+                    <h6>Active Trip Lifecycle</h6>
+                    <div id="active-trip-details" class="trip-details-text"></div>
+                    <button id="arrived-trip-btn" class="gy-btn gy-btn-outline w-100 mb-2">Mark Arrived at Pickup</button>
+                    <button id="start-trip-btn" class="gy-btn gy-btn-primary w-100 mb-2" disabled>Start Trip</button>
+                    <button id="complete-trip-btn" class="gy-btn gy-btn-dark w-100 mb-2" disabled>Drop off Passenger & Complete Trip</button>
+                    <button id="cancel-driver-trip-btn" class="gy-btn gy-btn-danger-outline w-100">Cancel Active Trip</button>
+                </div>
+            </main>
+
+            <nav class="bottom-nav">
+                <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
+                <button type="button" onclick="window.location.href='/driver-service'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
+                <button type="button" onclick="document.getElementById('driver-history-btn').click()"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
+                <button type="button" onclick="window.location.href='/profile'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+            </nav>
+        </div>
+    </div>
+
+    <div id="driver-payment-view" class="modal-layer d-none">
+        <div class="receipt-card">
+            <div class="success-mark">Rs</div>
+            <h4>Collect Your Fare</h4>
+            <p>Show this screen to the passenger for easy collection.</p>
+            <div class="price-total" id="driver-final-fare">Rs 0.00</div>
+            <p id="driver-fare-note" class="fare-adjustment-note d-none"></p>
+            <div class="qr-frame">
+                <img id="upi-qr-image" src="" alt="UPI QR Code">
+            </div>
+            <button id="close-driver-payment-btn" class="gy-btn gy-btn-dark w-100">Fare Received & Clear</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="js/firebase-init.js"></script>
+    <script type="module" src="js/driver.js?v=20260729-driver-accept-navigation"></script>
+    <script src="js/pwa.js" defer></script>
+</body>
+</html>
