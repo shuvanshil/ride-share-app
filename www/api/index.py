@@ -64,7 +64,11 @@ async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResp
     # shape it expects, instead of a raw 500 HTML page. Do not expose the
     # exception text: it may contain provider, credential, or infrastructure
     # details that belong only in server logs.
-    return JSONResponse(status_code=500, content={"error": "Internal server error"})
+    # TEMP DEBUG -- remove the "debug" field below once the 500s are fixed.
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "debug": f"{type(exc).__name__}: {exc}"},
+    )
 
 
 # All routers are mounted under /api to match the original Vercel function
