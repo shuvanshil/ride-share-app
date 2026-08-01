@@ -23,6 +23,8 @@ body {
 .admin-login-logo {
     width: 56px;
     height: 56px;
+    max-width: 100%;
+    height: auto;
     border-radius: 14px;
     object-fit: cover;
 }
