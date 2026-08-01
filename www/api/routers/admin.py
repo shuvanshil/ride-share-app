@@ -24,6 +24,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query
 from firebase_admin import auth as fb_auth
 from firebase_admin import firestore as fb_firestore
+from google.api_core import exceptions as gcloud_exceptions
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.admin import now_utc, require_admin, write_audit_log
@@ -37,6 +38,20 @@ DRIVER_STATUSES = {"pending_review", "approved", "rejected", "suspended", "block
 PASSENGER_STATUSES = {"active", "restricted", "blocked"}
 ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"]
 TERMINAL_RIDE_STATUSES = ["completed", "cancelled_by_passenger", "cancelled_by_driver"]
+# Grouped status values the console's drill-downs and filters accept, in
+# addition to one exact Firestore status string. "all" skips the status
+# filter entirely (date-only browsing of every ride, any status).
+RIDE_STATUS_GROUPS: dict[str, Optional[list[str]]] = {
+    "all": None,
+    "active": ACTIVE_RIDE_STATUSES,
+    "completed": ["completed"],
+    "cancelled": ["cancelled_by_passenger", "cancelled_by_driver"],
+}
+DRIVER_AVAILABILITY_GROUPS: dict[str, list[str]] = {
+    "online": ["online", "searching"],
+    "busy": ["busy"],
+    "offline": ["offline"],
+}
 MAX_PAGE_SIZE = 100
 DEFAULT_PAGE_SIZE = 25
 
@@ -65,6 +80,26 @@ def _count(query) -> int:
         return 0
 
 
+def _stream(query) -> list:
+    """Runs `.stream()` and turns a missing-composite-index failure into a
+    clear, actionable 503 instead of an opaque 500. `FailedPrecondition` is
+    exactly what Firestore raises when a query (usually a `.where(...)`
+    combined with `.order_by(...)`) needs a composite index that hasn't been
+    created yet -- see docs/firestore-indexes.md / firestore.indexes.json for
+    the exact indexes this console needs."""
+    try:
+        return list(query.stream())
+    except gcloud_exceptions.FailedPrecondition as exc:
+        raise ApiError(
+            "This view needs a Firestore index that hasn't been created yet. "
+            "Ask whoever manages the Firebase project to deploy the indexes "
+            "in firestore.indexes.json (or open the Firebase console link "
+            "from the server logs for this exact query).",
+            503,
+            {"firestoreIndexError": str(exc)[:300]},
+        ) from exc
+
+
 def _doc_dict(snapshot) -> dict[str, Any]:
     data = snapshot.to_dict() or {}
     data["id"] = snapshot.id
@@ -79,12 +114,56 @@ def _paginate(base_query, cursor: Optional[str], limit: int, id_field_collection
         cursor_snap = _db().collection(id_field_collection).document(cursor).get()
         if cursor_snap.exists:
             query = query.start_after(cursor_snap)
-    docs = list(query.stream())
+    docs = _stream(query)
     has_more = len(docs) > limit
     docs = docs[:limit]
     items = [_doc_dict(d) for d in docs]
     next_cursor = items[-1]["id"] if has_more and items else None
     return items, next_cursor
+
+
+def _backfill_driver_names(rides: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Some rides -- typically ones accepted before `driver_name` was
+    reliably written, or where the profile's `name` was blank at accept
+    time -- have a `driver_id` but no usable `driver_name`. Rather than show
+    a blank cell in the admin console, look the current name up from
+    `users/{driver_id}` once per distinct driver and patch it in for
+    display only (this never writes back to the ride document)."""
+    missing_ids = {
+        r.get("driver_id")
+        for r in rides
+        if r.get("driver_id") and not str(r.get("driver_name") or "").strip()
+    }
+    if not missing_ids:
+        return rides
+    db = _db()
+    names: dict[str, str] = {}
+    for uid in missing_ids:
+        snap = db.collection("users").document(uid).get()
+        if snap.exists:
+            data = snap.to_dict() or {}
+            if data.get("name"):
+                names[uid] = str(data["name"])[:80]
+    for r in rides:
+        driver_id = r.get("driver_id")
+        if driver_id and not str(r.get("driver_name") or "").strip():
+            r["driver_name"] = names.get(driver_id) or "Driver"
+    return rides
+
+
+def _parse_day(value: str, field_name: str) -> date:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        raise ApiError(f"{field_name} must be an ISO date (YYYY-MM-DD).", 400)
+
+
+def _day_range_utc(day_str: str, field_name: str) -> datetime:
+    """UTC-midnight boundary for a YYYY-MM-DD string. Buckets are UTC days,
+    not Asia/Kolkata days -- close enough for admin filtering/reporting, and
+    documented here so it isn't mistaken for IST-exact."""
+    d = _parse_day(day_str, field_name)
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
 
 def _apply_search(items: list[dict[str, Any]], q: str, fields: list[str]) -> list[dict[str, Any]]:
@@ -193,7 +272,11 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
 
     rides = db.collection("rides")
     today_rides_query = rides.where("createdAt", ">=", today_start)
-    active_rides_count = _count(rides.where("status", "in", ACTIVE_RIDE_STATUSES))
+    active_ride_docs = _stream(rides.where("status", "in", ACTIVE_RIDE_STATUSES).limit(500))
+    active_rides_count = len(active_ride_docs)
+    active_ride_passenger_ids = sorted(
+        {d.to_dict().get("passenger_id") for d in active_ride_docs if d.to_dict().get("passenger_id")}
+    )
 
     today_docs = list(today_rides_query.stream())
     today_total = len(today_docs)
@@ -212,13 +295,37 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     new_users_today = _count(users.where("createdAt", ">=", today_start))
     new_drivers_today = _count(drivers.where("createdAt", ">=", today_start))
 
+    # A lightweight, best-effort health signal for the dashboard's "system
+    # health" card -- not a real uptime monitor, just enough for an admin to
+    # notice "nothing has happened in a while" at a glance. Never raises:
+    # a failure here degrades to "unknown" rather than breaking the whole
+    # overview response.
+    system_health: dict[str, Any] = {"status": "ok", "notes": []}
+    try:
+        last_audit = list(
+            db.collection("auditLogs").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(1).stream()
+        )
+        system_health["lastAdminActionAt"] = _doc_dict(last_audit[0]).get("createdAt") if last_audit else None
+    except Exception:  # noqa: BLE001
+        system_health["status"] = "unknown"
+        system_health["notes"].append("Could not read the audit log.")
+    if active_rides_count > 0 and online_count == 0:
+        system_health["status"] = "attention"
+        system_health["notes"].append("There are active rides but no drivers currently online.")
+    if driver_counts.get("pending_review", 0) > 0:
+        system_health["notes"].append(
+            f"{driver_counts.get('pending_review', 0)} driver(s) waiting for approval."
+        )
+
     return {
         "ok": True,
+        "systemHealth": system_health,
         "today": {
             "totalRides": today_total,
             "completedRides": today_completed,
             "cancelledRides": today_cancelled,
             "activeRides": active_rides_count,
+            "activeRidePassengerIds": active_ride_passenger_ids,
             "totalDistanceKm": round(today_distance, 1),
             "totalFareCollected": round(today_fare_collected, 2),
             "averageRideDistanceKm": round(today_distance / today_total, 2) if today_total else 0,
@@ -254,19 +361,28 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
 def list_drivers(
     admin_user: dict[str, Any] = Depends(require_admin),
     status: Optional[str] = Query(default=None),
+    availability: Optional[str] = Query(default=None),
     q: str = Query(default=""),
     cursor: Optional[str] = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
-    """List drivers. `status` filters by verificationStatus. `q` searches
-    name/phone/vehicle number *within the fetched page* -- combine with
-    `status` to narrow the page for a useful search on larger driver lists."""
+    """List drivers. `status` filters by verificationStatus (use
+    `pending_review` for the "waiting for approval" quick filter).
+    `availability` filters by current online/busy/offline state (`online`
+    also matches `searching`). `q` searches name/phone/vehicle number
+    *within the fetched page* -- combine with the other filters to narrow
+    the page for a useful search on larger driver lists."""
     limit = _clamp_limit(limit)
     base = _db().collection("users").where("role", "==", "driver")
     if status:
         if status not in DRIVER_STATUSES:
             raise ApiError("Unknown driver status filter.", 400)
         base = base.where("verificationStatus", "==", status)
+    if availability:
+        values = DRIVER_AVAILABILITY_GROUPS.get(availability)
+        if not values:
+            raise ApiError("Unknown driver availability filter.", 400)
+        base = base.where("driverAvailability", "in", values)
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
 
     items, next_cursor = _paginate(base, cursor, limit, "users")
@@ -304,17 +420,16 @@ def get_driver(uid: str, admin_user: dict[str, Any] = Depends(require_admin)) ->
     if profile.get("role") != "driver":
         raise ApiError("This account is not a driver.", 400)
 
-    recent_rides = (
+    recent_query = (
         db.collection("rides")
         .where("driver_id", "==", uid)
         .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
         .limit(20)
-        .stream()
     )
     return {
         "ok": True,
         "driver": _sanitize_driver(profile),
-        "recentRides": [_doc_dict(d) for d in recent_rides],
+        "recentRides": [_doc_dict(d) for d in _stream(recent_query)],
     }
 
 
@@ -497,14 +612,15 @@ def update_passenger(
 @router.get("/rides/live")
 def list_live_rides(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     db = _db()
-    docs = (
+    query = (
         db.collection("rides")
         .where("status", "in", ACTIVE_RIDE_STATUSES)
         .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
         .limit(200)
-        .stream()
     )
-    return {"ok": True, "rides": [_doc_dict(d) for d in docs]}
+    items = [_doc_dict(d) for d in _stream(query)]
+    items = _backfill_driver_names(items)
+    return {"ok": True, "rides": items}
 
 
 class RideActionBody(BaseModel):
@@ -589,19 +705,37 @@ def list_ride_history(
     vehicleType: Optional[str] = Query(default=None),
     driverId: Optional[str] = Query(default=None),
     passengerId: Optional[str] = Query(default=None),
+    dateFrom: Optional[str] = Query(default=None, description="Inclusive, YYYY-MM-DD (UTC day)."),
+    dateTo: Optional[str] = Query(default=None, description="Exclusive, YYYY-MM-DD (UTC day)."),
     cursor: Optional[str] = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
-    """Reads finished rides straight from `rides` (not `tripHistory`, which
-    uses a different field schema -- pickup_location/fare_amount/trip_status
-    -- built for passenger/driver receipts). Keeping the admin console on
-    one schema means a fare correction here is immediately reflected with
-    no risk of the two collections drifting out of sync."""
+    """Reads rides straight from `rides` (not `tripHistory`, which uses a
+    different field schema -- pickup_location/fare_amount/trip_status --
+    built for passenger/driver receipts). Keeping the admin console on one
+    schema means a fare correction here is immediately reflected with no
+    risk of the two collections drifting out of sync.
+
+    `status` accepts either one exact Firestore status (e.g.
+    `cancelled_by_driver`, for the Ride History page's dropdown) or one of
+    the grouped values in RIDE_STATUS_GROUPS (`all`, `active`, `completed`,
+    `cancelled` -- used by the dashboard's clickable KPI cards). Leaving it
+    out entirely keeps the original default: completed/cancelled rides
+    only. `dateFrom`/`dateTo` narrow to a day or a month (pass the first day
+    of this month and the first day of next month) using UTC day
+    boundaries."""
     limit = _clamp_limit(limit)
     base = _db().collection("rides")
     if status:
-        base = base.where("status", "==", status)
-    else:
+        if status in RIDE_STATUS_GROUPS:
+            values = RIDE_STATUS_GROUPS[status]
+            if values is not None:
+                base = base.where("status", "in", values)
+        elif status in ACTIVE_RIDE_STATUSES or status in TERMINAL_RIDE_STATUSES:
+            base = base.where("status", "==", status)
+        else:
+            raise ApiError("Unknown ride status filter.", 400)
+    elif not dateFrom and not dateTo:
         base = base.where("status", "in", TERMINAL_RIDE_STATUSES)
     if vehicleType:
         base = base.where("vehicle_type", "==", vehicleType)
@@ -609,9 +743,14 @@ def list_ride_history(
         base = base.where("driver_id", "==", driverId)
     if passengerId:
         base = base.where("passenger_id", "==", passengerId)
+    if dateFrom:
+        base = base.where("createdAt", ">=", _day_range_utc(dateFrom, "dateFrom"))
+    if dateTo:
+        base = base.where("createdAt", "<", _day_range_utc(dateTo, "dateTo"))
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
 
     items, next_cursor = _paginate(base, cursor, limit, "rides")
+    items = _backfill_driver_names(items)
     return {"ok": True, "rides": items, "nextCursor": next_cursor}
 
 

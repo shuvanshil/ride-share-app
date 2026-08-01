@@ -22,11 +22,24 @@ export async function logoutAdmin() {
     return signOut(auth);
 }
 
-async function authHeader() {
+async function authHeader(forceRefresh = false) {
     const user = auth.currentUser;
     if (!user) throw new Error("Not signed in.");
-    const token = await user.getIdToken();
+    const token = await user.getIdToken(forceRefresh);
     return { Authorization: `Bearer ${token}` };
+}
+
+// Firebase caches the ID token for up to an hour. If the `admin` custom
+// claim was granted after this browser session started (e.g. via
+// /api/admin/bootstrap right before signing in), the cached token -- and
+// therefore every Firestore realtime listener using the same session --
+// can still be missing the claim until it's force-refreshed. Call this once
+// right after a successful /verify so the realtime listeners in
+// admin-live.js open with a token that actually has the claim.
+export async function refreshAdminToken() {
+    const user = auth.currentUser;
+    if (!user) return;
+    await user.getIdToken(true);
 }
 
 async function handleResponse(response) {
@@ -63,6 +76,11 @@ export async function adminGet(path, params = {}, { cacheable = false } = {}) {
         // One retry on a transient network hiccup before surfacing the error.
         response = await fetch(url, { headers: await authHeader() });
     }
+    if (response.status === 401 || response.status === 403) {
+        // Could be a stale cached token missing a just-granted admin claim --
+        // force a refresh and try exactly once more before giving up.
+        response = await fetch(url, { headers: await authHeader(true) });
+    }
     const data = await handleResponse(response);
     if (cacheable) cache.set(url, { data, at: Date.now() });
     return data;
@@ -73,11 +91,18 @@ export function clearAdminCache() {
 }
 
 export async function adminPatch(path, body) {
-    const response = await fetch(`/api/admin${path}`, {
+    let response = await fetch(`/api/admin${path}`, {
         method: "PATCH",
         headers: { ...(await authHeader()), "Content-Type": "application/json" },
         body: JSON.stringify(body),
     });
+    if (response.status === 401 || response.status === 403) {
+        response = await fetch(`/api/admin${path}`, {
+            method: "PATCH",
+            headers: { ...(await authHeader(true)), "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+    }
     const data = await handleResponse(response);
     clearAdminCache(); // any write can affect dashboard/list caches
     return data;

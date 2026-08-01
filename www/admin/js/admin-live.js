@@ -13,17 +13,52 @@ const knownDriverAvailability = new Map(); // uid -> last driverAvailability see
 const knownRideStatus = new Map(); // rideId -> last status seen
 const knownUserIds = new Set(); // uids already seen at least once (skip synthetic "new" events on first snapshot)
 let feedSink = null;
+let errorSink = null;
 let firstUsersSnapshot = true;
 let firstDriverSnapshot = true;
 let firstRidesSnapshot = true;
+let deniedRetried = false;
 
 function emit(event) {
     if (feedSink) feedSink({ ...event, at: Date.now() });
 }
 
-/** Starts all realtime listeners once. Safe to call exactly once per page load. */
-export function startLiveFeed(onEvent) {
+/**
+ * A `permission-denied` here almost always means one of two things: the
+ * signed-in admin's ID token was cached before the `admin` custom claim was
+ * granted (fixed by a forced token refresh -- retried once, automatically),
+ * or the firestore.rules containing the `isAdmin()` read grant were edited
+ * locally but never deployed to the live Firebase project (that one needs a
+ * human to run `firebase deploy --only firestore:rules`). Surface it once
+ * instead of letting three near-identical console errors speak for us.
+ */
+async function handleListenerError(label, error) {
+    console.error(`[admin-live] ${label} listener error:`, error);
+    if (error?.code !== "permission-denied" || !errorSink) return;
+    if (!deniedRetried) {
+        deniedRetried = true;
+        try {
+            const { auth } = await import("../../js/firebase-init.js");
+            if (auth.currentUser) await auth.currentUser.getIdToken(true);
+        } catch {
+            /* fall through to the user-facing message below */
+        }
+    }
+    errorSink(
+        "Live updates lost permission to read from Firestore. If this admin " +
+            "account was just granted access, sign out and back in. If it keeps " +
+            "happening, firestore.rules may not be deployed to the live project."
+    );
+}
+
+/**
+ * Starts all realtime listeners once. Safe to call exactly once per page
+ * load. `onError(message)` is optional and is called (at most once per
+ * kind of failure) with a human-readable string suitable for a toast.
+ */
+export function startLiveFeed(onEvent, onError) {
     feedSink = onEvent;
+    errorSink = onError || null;
 
     // Driver online/offline, straight from the public driverMapPresence
     // collection -- no rules change was needed for this one.
@@ -42,7 +77,7 @@ export function startLiveFeed(onEvent) {
             }
         });
         firstDriverSnapshot = false;
-    });
+    }, (error) => handleListenerError("driverMapPresence", error));
 
     // Ride lifecycle: accepted / cancelled / completed / payment, from the
     // admin-only read grant added to firestore.rules.
@@ -69,7 +104,7 @@ export function startLiveFeed(onEvent) {
             }
         });
         firstRidesSnapshot = false;
-    });
+    }, (error) => handleListenerError("rides", error));
 
     // New passenger registrations + driver status changes (approved/
     // suspended/blocked), from the admin-only read grant on `users`.
@@ -93,7 +128,7 @@ export function startLiveFeed(onEvent) {
             }
         });
         firstUsersSnapshot = false;
-    });
+    }, (error) => handleListenerError("users", error));
 }
 
 // ---------------------------------------------------------------------

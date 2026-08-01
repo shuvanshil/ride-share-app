@@ -61,6 +61,14 @@ export class DataTable {
     _buildShell() {
         this.container.innerHTML = "";
         this.container.classList.add("dt-root");
+        this.container.classList.toggle("dt-has-row-click", !!this.onRowClick);
+
+        if (this.onRowClick) {
+            const hint = document.createElement("div");
+            hint.className = "dt-row-click-hint";
+            hint.textContent = "Click a row to view full details";
+            this.container.appendChild(hint);
+        }
 
         const toolbar = document.createElement("div");
         toolbar.className = "dt-toolbar";

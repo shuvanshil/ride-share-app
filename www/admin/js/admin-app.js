@@ -1,4 +1,4 @@
-import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch } from "./admin-api.js";
+import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, refreshAdminToken } from "./admin-api.js";
 import { showAlert, showConfirm } from "../../js/dialog.js";
 import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
@@ -19,6 +19,7 @@ let historyTable = null;
 let auditTable = null;
 let feedUnreadCount = 0;
 let feedStarted = false;
+let liveErrorShown = false;
 
 // A basic global error boundary: unexpected JS errors surface as a toast
 // instead of silently breaking the page.
@@ -35,6 +36,14 @@ function showOnly(el) {
     });
 }
 
+/** Always land on the Dashboard section after a fresh sign-in or reload,
+ * regardless of whatever section a previous session left the static HTML
+ * in. Re-asserted explicitly here rather than assumed from markup. */
+function resetToDashboard() {
+    document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === "dashboard"));
+    document.querySelectorAll(".admin-section").forEach((s) => s.classList.toggle("d-none", s.id !== "section-dashboard"));
+}
+
 watchAdminAuth(async (user) => {
     if (!user) {
         showOnly(loginScreen);
@@ -44,10 +53,19 @@ watchAdminAuth(async (user) => {
         const result = await adminGet("/verify");
         $("admin-user-label").textContent = result.name || result.email || "";
         showOnly(shell);
+        resetToDashboard();
         loadSection("dashboard");
         if (!feedStarted) {
             feedStarted = true;
-            startLiveFeed(onFeedEvent);
+            // Make sure the token used by Firestore's realtime listeners has
+            // any admin claim granted just before this sign-in -- see the
+            // comment on refreshAdminToken() for why this matters.
+            await refreshAdminToken();
+            startLiveFeed(onFeedEvent, (message) => {
+                if (liveErrorShown) return;
+                liveErrorShown = true;
+                toast(message, "error");
+            });
         }
     } catch (error) {
         await logoutAdmin();
@@ -154,66 +172,258 @@ function loadSection(name) {
     if (name === "audit-log") loadAuditLog(true);
 }
 
+/** Switches to another section programmatically (from a dashboard card or
+ * drawer link) the same way clicking its nav button would, optionally
+ * applying a filter before loading it. */
+function goToSection(name, filters = {}) {
+    Object.entries(filters).forEach(([id, value]) => {
+        const el = $(id);
+        if (el) el.value = value;
+    });
+    document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === name));
+    document.querySelectorAll(".admin-section").forEach((s) => s.classList.toggle("d-none", s.id !== `section-${name}`));
+    loadedSections.delete(name); // force a reload so the new filter takes effect
+    loadSection(name);
+    closeDrawer(true);
+}
+
 $("driver-status-filter").addEventListener("change", () => loadDrivers(true));
-["history-status-filter", "history-vehicle-filter"].forEach((id) =>
+["history-status-filter", "history-vehicle-filter", "history-month-filter"].forEach((id) =>
     $(id).addEventListener("change", () => loadHistory(true))
 );
+$("history-day-filter").addEventListener("change", () => loadHistory(true));
+$("history-clear-date").addEventListener("click", () => {
+    $("history-month-filter").value = "";
+    $("history-day-filter").value = "";
+    loadHistory(true);
+});
+$("drivers-pending-chip").addEventListener("click", () => {
+    $("driver-status-filter").value = "pending_review";
+    loadDrivers(true);
+});
 
 // ---------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------
 
+function todayIsoRange() {
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const iso = (d) => d.toISOString().slice(0, 10);
+    return { dateFrom: iso(start), dateTo: iso(end) };
+}
+
+function renderGreeting() {
+    const el = $("dashboard-greeting");
+    if (!el) return;
+    const hour = new Date().getHours();
+    const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+    const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    el.innerHTML = `
+        <div class="admin-greeting-text">Good ${timeOfDay}! How's your day going so far?</div>
+        <div class="admin-greeting-date">${dateStr}</div>
+    `;
+}
+
+function skeletonCards(count, cls = "admin-kpi-card") {
+    return Array.from({ length: count }, () => `<div class="${cls} admin-skeleton"></div>`).join("");
+}
+
 async function loadDashboard() {
+    renderGreeting();
     const kpiWrap = $("dashboard-kpis");
     const grid = $("dashboard-cards");
-    kpiWrap.innerHTML = "";
-    grid.innerHTML = `<p class="admin-empty-row">Loading...</p>`;
+    kpiWrap.innerHTML = skeletonCards(7);
+    grid.innerHTML = skeletonCards(10, "admin-stat-card");
     try {
         const data = await adminGet("/overview", {}, { cacheable: true });
-        kpiWrap.innerHTML = [
-            ["Total rides today", data.today.totalRides],
-            ["Active rides", data.today.activeRides],
-            ["Online drivers", data.drivers.activeOnline],
-            ["Offline drivers", data.drivers.offline],
-        ]
+        const { dateFrom, dateTo } = todayIsoRange();
+
+        const healthStatus = data.systemHealth?.status || "ok";
+        const healthLabel = { ok: "All normal", attention: "Needs attention", unknown: "Unknown" }[healthStatus] || "Unknown";
+
+        const kpis = [
+            {
+                label: "Total rides today",
+                value: data.today.totalRides,
+                onClick: () => openRidesDrillDown("Rides today", { status: "all", dateFrom, dateTo }),
+            },
+            {
+                label: "Active rides",
+                value: data.today.activeRides,
+                onClick: () => openLiveDrillDown("Active rides right now"),
+            },
+            {
+                label: "Online drivers",
+                value: data.drivers.activeOnline,
+                onClick: () => openDriversDrillDown("Online drivers", { availability: "online" }),
+            },
+            {
+                label: "Active riders",
+                value: new Set((data.today.activeRidePassengerIds || [])).size || data.today.activeRides,
+                onClick: () => openLiveDrillDown("Passengers currently on a ride", { passengersOnly: true }),
+            },
+            {
+                label: "Completed today",
+                value: data.today.completedRides,
+                onClick: () => openRidesDrillDown("Completed today", { status: "completed", dateFrom, dateTo }),
+            },
+            {
+                label: "Cancelled today",
+                value: data.today.cancelledRides,
+                onClick: () => openRidesDrillDown("Cancelled today", { status: "cancelled", dateFrom, dateTo }),
+            },
+        ];
+        kpiWrap.innerHTML = kpis
             .map(
-                ([label, value]) => `<div class="admin-kpi-card">
-                    <div class="admin-kpi-value">${value}</div>
-                    <div class="admin-kpi-label">${label}</div>
-                </div>`
+                (k, i) => `<button type="button" class="admin-kpi-card admin-kpi-clickable" data-kpi="${i}">
+                    <div class="admin-kpi-value">${k.value}</div>
+                    <div class="admin-kpi-label">${k.label}</div>
+                </button>`
             )
-            .join("");
+            .join("") + `<button type="button" class="admin-kpi-card admin-kpi-clickable admin-kpi-health admin-health-${healthStatus}" data-kpi="health">
+                <div class="admin-kpi-value">${healthLabel}</div>
+                <div class="admin-kpi-label">System health</div>
+            </button>`;
+        kpiWrap.querySelectorAll("[data-kpi]").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                if (btn.dataset.kpi === "health") return openHealthDrawer(data.systemHealth);
+                kpis[Number(btn.dataset.kpi)].onClick();
+            });
+        });
 
         const cards = [
             ["group", "Today"],
-            ["Completed", data.today.completedRides],
-            ["Cancelled", data.today.cancelledRides],
             ["Distance (km)", data.today.totalDistanceKm],
             ["Fare collected (Rs)", data.today.totalFareCollected],
             ["Avg ride distance (km)", data.today.averageRideDistanceKm],
             ["New users today", data.today.newUsersToday],
             ["New drivers today", data.today.newDriversToday],
             ["group", "Drivers"],
-            ["Total drivers", data.drivers.total],
-            ["Busy", data.drivers.busy],
-            ["Pending approval", data.drivers.pendingApproval],
-            ["Suspended", data.drivers.suspended],
-            ["Blocked", data.drivers.blocked],
+            ["Total drivers", data.drivers.total, () => goToSection("drivers", { "driver-status-filter": "" })],
+            ["Busy", data.drivers.busy, () => openDriversDrillDown("Busy drivers", { availability: "busy" })],
+            ["Pending approval", data.drivers.pendingApproval, () => goToSection("drivers", { "driver-status-filter": "pending_review" })],
+            ["Suspended", data.drivers.suspended, () => goToSection("drivers", { "driver-status-filter": "suspended" })],
+            ["Blocked", data.drivers.blocked, () => goToSection("drivers", { "driver-status-filter": "blocked" })],
             ["group", "Passengers & Platform"],
-            ["Total passengers", data.passengers.total],
+            ["Total passengers", data.passengers.total, () => goToSection("passengers")],
             ["New registrations today", data.passengers.newRegistrationsToday],
             ["Total registered users", data.platform.totalRegisteredUsers],
-            ["Total completed rides", data.platform.totalCompletedRides],
+            ["Total completed rides", data.platform.totalCompletedRides, () => goToSection("ride-history", { "history-status-filter": "completed" })],
         ];
         grid.innerHTML = cards
-            .map(([label, value]) =>
+            .map(([label, value, onClick]) =>
                 label === "group"
-                    ? `<div class="admin-card-group-title">${value}</div>`
-                    : `<div class="admin-stat-card"><div class="admin-stat-card-value">${value}</div><div class="admin-stat-card-label">${label}</div></div>`
+                    ? `<div class="admin-card-group-title">${label === "group" ? value : ""}</div>`
+                    : `<${onClick ? "button type=\"button\"" : "div"} class="admin-stat-card${onClick ? " admin-kpi-clickable" : ""}" data-stat="${label}"><div class="admin-stat-card-value">${value}</div><div class="admin-stat-card-label">${label}</div></${onClick ? "button" : "div"}>`
             )
             .join("");
+        cards.forEach(([label, , onClick]) => {
+            if (!onClick) return;
+            const el = Array.from(grid.querySelectorAll("[data-stat]")).find((n) => n.dataset.stat === label);
+            if (el) el.addEventListener("click", onClick);
+        });
     } catch (error) {
+        kpiWrap.innerHTML = "";
         grid.innerHTML = `<p class="admin-empty-row">${error.message}</p>`;
+    }
+}
+
+function openHealthDrawer(health) {
+    const notes = health?.notes || [];
+    showReadOnlyDrawer(
+        "System health",
+        `${detailRow("Status", health?.status || "unknown")}
+         ${detailRow("Last admin action", formatTimestamp(health?.lastAdminActionAt))}
+         <h4 class="admin-drawer-subsection">Notes</h4>
+         ${notes.length ? notes.map((n) => `<p class="admin-detail-row"><span>${escapeHtml(n)}</span></p>`).join("") : `<p class="admin-empty-row">Nothing needs attention.</p>`}`
+    );
+}
+
+/** Small non-interactive summary table used inside drill-down drawers, with
+ * a "View all" link that jumps to the full section/filter for anything
+ * beyond the first page. */
+function summaryTable(rows, columns, emptyText) {
+    if (!rows.length) return `<p class="admin-empty-row">${emptyText}</p>`;
+    return `<table class="admin-table"><thead><tr>${columns.map((c) => `<th>${c.label}</th>`).join("")}</tr></thead>
+        <tbody>${rows.map((r) => `<tr class="dt-clickable-row" data-row-open>${columns.map((c) => `<td>${c.render(r)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+async function openRidesDrillDown(title, { status, dateFrom, dateTo }) {
+    showReadOnlyDrawer(title, `<p class="admin-empty-row">Loading...</p>`);
+    try {
+        const data = await adminGet("/rides/history", { status, dateFrom, dateTo, limit: 50 });
+        const html = summaryTable(
+            data.rides,
+            [
+                { label: "Route", render: (r) => `${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}` },
+                { label: "Driver", render: (r) => escapeHtml(r.driver_name || "Unassigned") },
+                { label: "Status", render: (r) => statusChip(r.status) },
+                { label: "Fare", render: (r) => `Rs ${r.fare || 0}` },
+            ],
+            "No rides match this yet."
+        );
+        const { bodyEl } = showReadOnlyDrawer(title, `${html}
+            <button type="button" class="admin-btn-outline mt-3" id="drill-view-all">View all in Ride History</button>`);
+        bodyEl.querySelectorAll("[data-row-open]").forEach((tr, i) => tr.addEventListener("click", () => openRideDrawer(data.rides[i])));
+        document.getElementById("drill-view-all").addEventListener("click", () =>
+            goToSection("ride-history", { "history-status-filter": status === "all" || status === "cancelled" || status === "active" ? "" : status })
+        );
+    } catch (error) {
+        showReadOnlyDrawer(title, `<p class="admin-empty-row">${error.message}</p>`);
+    }
+}
+
+async function openDriversDrillDown(title, { availability, status } = {}) {
+    showReadOnlyDrawer(title, `<p class="admin-empty-row">Loading...</p>`);
+    try {
+        const data = await adminGet("/drivers", { availability, status, limit: 50 });
+        const html = summaryTable(
+            data.drivers,
+            [
+                { label: "Name", render: (r) => escapeHtml(r.name || "Unnamed") },
+                { label: "Phone", render: (r) => escapeHtml(r.phone || "") },
+                { label: "Status", render: (r) => statusChip(r.verificationStatus) },
+                { label: "Availability", render: (r) => escapeHtml(r.driverAvailability || "") },
+            ],
+            "No drivers match this yet."
+        );
+        const { bodyEl } = showReadOnlyDrawer(title, html);
+        bodyEl.querySelectorAll("[data-row-open]").forEach((tr, i) => tr.addEventListener("click", () => openDriverDrawer(data.drivers[i].uid)));
+    } catch (error) {
+        showReadOnlyDrawer(title, `<p class="admin-empty-row">${error.message}</p>`);
+    }
+}
+
+async function openLiveDrillDown(title, { passengersOnly = false } = {}) {
+    showReadOnlyDrawer(title, `<p class="admin-empty-row">Loading...</p>`);
+    try {
+        const data = await adminGet("/rides/live");
+        let rows = data.rides;
+        if (passengersOnly) {
+            const seen = new Set();
+            rows = rows.filter((r) => {
+                if (!r.passenger_id || seen.has(r.passenger_id)) return false;
+                seen.add(r.passenger_id);
+                return true;
+            });
+        }
+        const html = summaryTable(
+            rows,
+            [
+                { label: "Route", render: (r) => `${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}` },
+                { label: "Driver", render: (r) => escapeHtml(r.driver_name || "Unassigned") },
+                { label: "Status", render: (r) => statusChip(r.status) },
+            ],
+            "Nothing active right now."
+        );
+        const { bodyEl } = showReadOnlyDrawer(title, `${html}
+            <button type="button" class="admin-btn-outline mt-3" id="drill-view-live">View all in Live Rides</button>`);
+        bodyEl.querySelectorAll("[data-row-open]").forEach((tr, i) => tr.addEventListener("click", () => openRideDrawer(rows[i])));
+        document.getElementById("drill-view-live").addEventListener("click", () => goToSection("live-rides"));
+    } catch (error) {
+        showReadOnlyDrawer(title, `<p class="admin-empty-row">${error.message}</p>`);
     }
 }
 
@@ -237,7 +447,7 @@ function ensureDriversTable() {
             { key: "name", label: "Name", sortable: true },
             { key: "phone", label: "Phone", sortable: true },
             { key: "vehicleNumber", label: "Vehicle", sortable: true, render: (r) => `${(r.vehicleType || "").toUpperCase()} ${r.vehicleNumber || ""}` },
-            { key: "verificationStatus", label: "Status", sortable: true, render: (r) => `<span class="status-pill">${escapeHtml(r.verificationStatus || "")}</span>` },
+            { key: "verificationStatus", label: "Status", sortable: true, render: (r) => statusChip(r.verificationStatus) },
             { key: "driverAvailability", label: "Availability", sortable: true },
             { key: "totalCompletedTrips", label: "Trips", sortable: true },
         ],
@@ -377,7 +587,7 @@ async function loadLiveRides() {
         list.innerHTML = data.rides
             .map(
                 (r) => `<div class="admin-ride-card">
-                    <span class="status-pill">${escapeHtml(r.status || "")}</span>
+                    ${statusChip(r.status)}
                     <span><strong>${escapeHtml(r.pickup_name || "Pickup")}</strong> &rarr; <strong>${escapeHtml(r.drop_name || "Drop")}</strong></span>
                     <span>${escapeHtml(r.driver_name || "Unassigned")}</span>
                     <span>Rs ${r.fare || 0}</span>
@@ -437,23 +647,61 @@ function ensureHistoryTable() {
         onRowClick: (r) => openRideDrawer(r),
         onLoadMore: () => loadHistory(false),
         columns: [
-            { key: "driver_name", label: "Driver", sortable: true },
+            { key: "driver_name", label: "Driver", sortable: true, render: (r) => escapeHtml(r.driver_name || "Unassigned") },
             { key: "passenger_id", label: "Passenger", sortable: false, render: (r) => (r.passenger_id || "").slice(0, 8) },
             { key: "route", label: "Route", render: (r) => `${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}` },
             { key: "fare", label: "Fare", sortable: true, render: (r) => `Rs ${r.fare || 0}` },
-            { key: "status", label: "Status", sortable: true, render: (r) => `<span class="status-pill">${escapeHtml(r.status || "")}</span>` },
+            { key: "status", label: "Status", sortable: true, render: (r) => statusChip(r.status) },
         ],
     });
     return historyTable;
 }
 
+/** Builds the "Any month" dropdown with the current month plus the past 11
+ * months, each stored as its UTC first-of-month day so it can be turned
+ * straight into a dateFrom/dateTo pair. */
+function populateHistoryMonthFilter() {
+    const select = $("history-month-filter");
+    if (select.dataset.populated) return;
+    select.dataset.populated = "1";
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+        const value = d.toISOString().slice(0, 10);
+        const label = d.toLocaleDateString(undefined, { month: "long", year: "numeric", timeZone: "UTC" });
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        select.appendChild(opt);
+    }
+}
+
 async function loadHistory(reset) {
+    populateHistoryMonthFilter();
     if (reset) cursors.history = null;
     const status = $("history-status-filter").value;
     const vehicleType = $("history-vehicle-filter").value;
+    const day = $("history-day-filter").value;
+    const month = $("history-month-filter").value;
+    let dateFrom, dateTo;
+    if (day) {
+        dateFrom = day;
+        dateTo = new Date(new Date(`${day}T00:00:00Z`).getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    } else if (month) {
+        const start = new Date(`${month}T00:00:00Z`);
+        const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+        dateFrom = month;
+        dateTo = end.toISOString().slice(0, 10);
+    }
     const table = ensureHistoryTable();
     try {
-        const data = await adminGet("/rides/history", { status, vehicleType, cursor: reset ? null : cursors.history });
+        const data = await adminGet("/rides/history", {
+            status: status || (dateFrom ? "all" : undefined),
+            vehicleType,
+            dateFrom,
+            dateTo,
+            cursor: reset ? null : cursors.history,
+        });
         cursors.history = data.nextCursor;
         table.setRows(data.rides, { append: !reset, hasMore: !!data.nextCursor });
     } catch (error) {
@@ -551,7 +799,7 @@ function ensurePassengersTable() {
             { key: "name", label: "Name", sortable: true },
             { key: "phone", label: "Phone", sortable: true },
             { key: "email", label: "Email", sortable: true },
-            { key: "accountStatus", label: "Status", sortable: true, render: (r) => `<span class="status-pill">${escapeHtml(r.accountStatus || "active")}</span>` },
+            { key: "accountStatus", label: "Status", sortable: true, render: (r) => statusChip(r.accountStatus || "active") },
             {
                 key: "actions",
                 label: "Action",
@@ -692,6 +940,26 @@ async function loadAuditLog(reset) {
 
 function detailRow(label, value) {
     return `<div class="admin-detail-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value ?? "")}</span></div>`;
+}
+
+// Buckets every status string this console displays (ride lifecycle,
+// driver verification, passenger account state) into a handful of visual
+// tones, so an admin can tell "this needs action" from "this is fine" at a
+// glance without reading every cell.
+const STATUS_TONES = {
+    // rides
+    pending: "amber", accepted: "blue", arrived: "blue", started: "blue", en_route: "blue",
+    completed: "green", cancelled_by_passenger: "red", cancelled_by_driver: "red",
+    // drivers
+    pending_review: "amber", approved: "green", rejected: "red", suspended: "red", blocked: "red",
+    // passengers
+    active: "green", restricted: "amber",
+};
+function statusChip(status) {
+    const value = String(status || "").trim();
+    const tone = STATUS_TONES[value] || "grey";
+    const label = value ? value.replace(/_/g, " ") : "unknown";
+    return `<span class="status-pill status-pill-${tone}">${escapeHtml(label)}</span>`;
 }
 
 function actionBtn(action, label) {

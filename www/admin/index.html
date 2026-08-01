@@ -80,6 +80,7 @@
                 <!-- Dashboard -->
                 <section id="section-dashboard" class="admin-section">
                     <h2 class="admin-section-title">Dashboard</h2>
+                    <div id="dashboard-greeting" class="admin-greeting"></div>
                     <div id="dashboard-kpis" class="admin-kpi-strip"></div>
                     <div id="dashboard-cards" class="admin-card-grid"></div>
                 </section>
@@ -89,6 +90,9 @@
                     <div class="admin-section-header">
                         <h2 class="admin-section-title">Drivers</h2>
                         <div class="admin-filters">
+                            <button type="button" id="drivers-pending-chip" class="admin-quick-chip" title="Show only drivers waiting for approval">
+                                &#128276; New registrations waiting for approval
+                            </button>
                             <select id="driver-status-filter" class="form-select gy-input admin-filter-select">
                                 <option value="">All statuses</option>
                                 <option value="pending_review">Pending approval</option>
@@ -127,6 +131,11 @@
                                 <option value="bike">Bike / Scooty</option>
                                 <option value="auto">Auto</option>
                             </select>
+                            <select id="history-month-filter" class="form-select gy-input admin-filter-select" title="Filter to a specific month">
+                                <option value="">Any month</option>
+                            </select>
+                            <input type="date" id="history-day-filter" class="form-control gy-input admin-filter-select" title="Filter to a specific day">
+                            <button type="button" id="history-clear-date" class="admin-btn-outline">Clear date</button>
                         </div>
                     </div>
                     <div id="history-table-wrap"></div>

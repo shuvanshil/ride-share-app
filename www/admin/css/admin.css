@@ -245,11 +245,6 @@ body {
 
 .admin-ride-card .status-pill {
     font-size: 0.75rem;
-    font-weight: 700;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: var(--gy-green-soft);
-    color: var(--gy-green);
 }
 
 .admin-ride-card-actions {
@@ -763,4 +758,182 @@ body {
     .admin-feed-panel {
         width: 100%;
     }
+}
+
+/* ============================================================
+   Greeting banner (Dashboard)
+   ============================================================ */
+.admin-greeting {
+    background: var(--gy-bg);
+    border: 1px solid var(--gy-border);
+    border-radius: 16px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 16px;
+}
+
+.admin-greeting-text {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--gy-text);
+}
+
+.admin-greeting-date {
+    color: var(--gy-muted);
+    font-size: 0.88rem;
+}
+
+/* ============================================================
+   Status chips -- color-coded by state, used in every table/card
+   that shows a ride, driver, or passenger status.
+   ============================================================ */
+.status-pill {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+.status-pill-green { background: var(--gy-green-soft); color: var(--gy-green); }
+.status-pill-amber { background: #FFF3CD; color: #8A6100; }
+.status-pill-blue { background: #DCEBFF; color: #0B4C9E; }
+.status-pill-red { background: #FBE0E0; color: #B3261E; }
+.status-pill-grey { background: #E9E9EC; color: #52525B; }
+
+/* ============================================================
+   Clickable KPI / stat cards on the Dashboard
+   ============================================================ */
+button.admin-kpi-card,
+button.admin-stat-card {
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    border: none;
+    width: 100%;
+}
+
+.admin-kpi-clickable {
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    position: relative;
+}
+
+.admin-kpi-clickable:hover,
+.admin-kpi-clickable:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: var(--gy-shadow);
+}
+
+button.admin-kpi-card.admin-kpi-clickable::after {
+    content: "View details \2192";
+    display: block;
+    font-size: 0.7rem;
+    opacity: 0.85;
+    margin-top: 8px;
+}
+
+button.admin-stat-card.admin-kpi-clickable {
+    cursor: pointer;
+}
+
+button.admin-stat-card.admin-kpi-clickable:hover {
+    border-color: var(--gy-green);
+}
+
+.admin-kpi-health {
+    background: linear-gradient(135deg, #3a3a3a 0%, #1f1f1f 100%);
+}
+.admin-kpi-health.admin-health-ok {
+    background: linear-gradient(135deg, var(--gy-green) 0%, #145c23 100%);
+}
+.admin-kpi-health.admin-health-attention {
+    background: linear-gradient(135deg, #C0392B 0%, #7B241C 100%);
+}
+.admin-kpi-health.admin-health-unknown {
+    background: linear-gradient(135deg, #7f8c8d 0%, #4a5658 100%);
+}
+
+/* ============================================================
+   Quick-filter chip (Drivers -> pending approval)
+   ============================================================ */
+.admin-quick-chip {
+    background: #FFF3CD;
+    color: #8A6100;
+    border: 1px solid #F1D68A;
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.admin-quick-chip:hover {
+    background: #FCE8A8;
+}
+
+/* ============================================================
+   Clickable table rows -- visible affordance instead of a silent
+   click handler. Applies to both the DataTable component and the
+   plain summary tables used inside drill-down drawers.
+   ============================================================ */
+.dt-row-click-hint {
+    font-size: 0.78rem;
+    color: var(--gy-muted);
+    margin-bottom: 6px;
+}
+
+.dt-has-row-click tbody tr,
+.admin-table tr.dt-clickable-row {
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.dt-has-row-click tbody tr:hover,
+.admin-table tr.dt-clickable-row:hover {
+    background: var(--gy-green-soft);
+}
+
+/* First column of a clickable row gets a subtle chevron so the row reads
+   as a link even before the user hovers. */
+.dt-has-row-click tbody tr td:first-child::after,
+.admin-table tr.dt-clickable-row td:first-child::after {
+    content: "\203A";
+    float: right;
+    color: var(--gy-muted);
+    font-weight: 700;
+}
+
+/* ============================================================
+   Loading skeletons
+   ============================================================ */
+.admin-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: #E9E9EC;
+    color: transparent !important;
+    pointer-events: none;
+}
+
+.admin-skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    animation: admin-skeleton-shimmer 1.2s infinite;
+}
+
+@keyframes admin-skeleton-shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.mt-3 {
+    margin-top: 12px;
 }
