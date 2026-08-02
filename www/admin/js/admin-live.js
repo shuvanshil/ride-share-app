@@ -1,4 +1,4 @@
-import { db } from "../../../js/firebase-init.js";
+import { db } from "../../js/firebase-init.js";
 import {
     collection,
     doc,
@@ -38,7 +38,7 @@ async function handleListenerError(label, error) {
     if (!deniedRetried) {
         deniedRetried = true;
         try {
-            const { auth } = await import("../../../js/firebase-init.js");
+            const { auth } = await import("../../js/firebase-init.js");
             if (auth.currentUser) await auth.currentUser.getIdToken(true);
         } catch {
             /* fall through to the user-facing message below */

@@ -2,8 +2,8 @@
 // the same Firebase Authentication used everywhere else in LiphtUp. What
 // makes a signed-in user an *admin* is the `admin` custom claim on their
 // Firebase ID token (see scripts/set_admin_claim.py and
-// admin_console/api/core/admin.py), not anything checked in this file.
-import { auth } from "../../../js/firebase-init.js";
+// api/core/admin.py), not anything checked in this file.
+import { auth } from "../../js/firebase-init.js";
 import {
     onAuthStateChanged,
     signInWithEmailAndPassword,

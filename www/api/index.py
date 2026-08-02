@@ -25,14 +25,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .core.errors import ApiError
-from .routers import account, auth, google, notify, otp, rides
-
-try:
-    from .routers import admin
-    from admin_console.api import static as admin_static
-except ImportError:
-    admin = None
-    admin_static = None
+from .routers import account, admin, auth, google, notify, otp, rides
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -85,10 +78,7 @@ app.include_router(account.router, prefix="/api")
 app.include_router(notify.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(rides.router, prefix="/api")
-if admin is not None:
-    app.include_router(admin.router, prefix="/api")
-if admin_static is not None:
-    app.include_router(admin_static.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/api/health")
