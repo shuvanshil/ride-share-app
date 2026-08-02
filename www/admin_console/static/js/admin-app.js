@@ -1,5 +1,5 @@
 import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, refreshAdminToken } from "./admin-api.js";
-import { showAlert, showConfirm } from "../../js/dialog.js";
+import { showAlert, showConfirm } from "../../../js/dialog.js";
 import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
 import { startLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
