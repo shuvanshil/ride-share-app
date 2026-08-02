@@ -63,7 +63,7 @@
                             <span id="services-gps-pill" class="services-gps-pill">GPS</span>
                         </div>
                         <div id="map-container" class="services-map-frame">
-                            <div class="services-map-loading">Opening map...</div>
+                            <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Opening map...</span></div>
                         </div>
                         <div id="fare-quote-box" class="fare-pill services-fare-pill d-none justify-content-between align-items-center">
                             <span>Route calculated</span>
@@ -161,6 +161,7 @@
     </div>
 
     <script type="module" src="js/firebase-init.js"></script>
+    <script type="module" src="js/loading.js"></script>
     <script src="js/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
     <script type="module" src="js/app.js?v=20260731-trip-progress-pin"></script>

@@ -12,6 +12,7 @@ import {
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 import { showAlert, showConfirm } from './dialog.js';
+import { showPageLoader, hidePageLoader, setButtonBusy } from './loading.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -973,7 +974,29 @@ function startDriverGpsBroadcast(rideRef) {
     );
 }
 
+function setRideListBusy(busy) {
+    document.querySelectorAll('.accept-job-btn, .ignore-job-btn').forEach((btn) => {
+        if (busy) {
+            btn.dataset.luWasDisabled = btn.disabled ? "1" : "0";
+            btn.disabled = true;
+        } else if (btn.dataset.luWasDisabled !== undefined) {
+            btn.disabled = btn.dataset.luWasDisabled === "1";
+            delete btn.dataset.luWasDisabled;
+        }
+    });
+}
+
 async function acceptRideJob(rideId) {
+    // Lock every ride card immediately: this both gives instant feedback and
+    // stops a driver from firing a second accept (on this or another card)
+    // while the first request is still in flight. The backend's Firestore
+    // transaction is still the real guard against two drivers winning the
+    // same ride -- this is purely to keep the UI from looking accept-able
+    // twice on one device.
+    setRideListBusy(true);
+    const clickedBtn = document.querySelector(`.accept-job-btn[data-id="${CSS.escape(rideId)}"]`);
+    const restoreBtn = setButtonBusy(clickedBtn, "Accepting…");
+
     try {
         stopRideRequestRing();
         driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
@@ -988,6 +1011,10 @@ async function acceptRideJob(rideId) {
         attachDriverTripListener(doc(db, "rides", rideId));
         startDriverGpsBroadcast(doc(db, "rides", rideId));
 
+        // Show the full-screen loader right away so the brief page swap to
+        // driver-service (a fresh document load) never looks like a freeze.
+        showPageLoader("Ride accepted — opening trip console…");
+
         // The navigation console owns the live pickup map. Pass the accepted
         // ride ID so it can select this ride when its realtime listener starts.
         const serviceUrl = new URL("/driver-service", window.location.href);
@@ -995,7 +1022,15 @@ async function acceptRideJob(rideId) {
         window.location.href = serviceUrl.href;
     } catch (error) {
         console.error("Failed to commit transactional state adjustment:", error);
-        await showAlert(error.message || "Could not accept this ride.");
+        restoreBtn();
+        setRideListBusy(false);
+
+        const alreadyTaken = /already accepted|no longer available|no longer exists/i.test(error.message || "");
+        if (alreadyTaken) {
+            await showAlert("Another driver already accepted this ride. Refreshing the list…");
+        } else {
+            await showAlert(error.message || "Could not accept this ride.");
+        }
     }
 }
 

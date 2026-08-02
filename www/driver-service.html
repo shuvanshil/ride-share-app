@@ -37,7 +37,7 @@
 
             <section class="driver-map-stage" aria-label="Live driver navigation">
                 <div id="driver-service-map" class="driver-service-map">
-                    <div class="driver-map-loading">Opening map...</div>
+                    <div class="driver-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Opening map...</span></div>
                 </div>
 
                 <section id="driver-route-panel" class="driver-route-panel d-none" aria-live="polite">
@@ -110,6 +110,7 @@
     </div>
 
     <script type="module" src="js/firebase-init.js"></script>
+    <script type="module" src="js/loading.js"></script>
     <script type="module" src="js/driver-service.js?v=20260731-nav-icons"></script>
     <script src="js/pwa.js" defer></script>
 </body>

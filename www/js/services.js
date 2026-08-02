@@ -4,6 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/fi
 import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260731-passenger-nav-camera';
 import { getRideService } from './fare-policy.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
+import { setInlineLoading } from './loading.js';
 
 const dashboardView = document.getElementById('dashboard-view');
 const pickupInput = document.getElementById('pickup-input');
@@ -62,7 +63,9 @@ function resetFareOptions() {
     if (serviceSelectionLocked) return;
     window.selectedRideService = null;
     serviceOptions.classList.add('d-none');
-    findRideBtn.innerText = dropInput.value.trim() ? "Calculating route..." : "Please enter destination";
+    findRideBtn.innerHTML = dropInput.value.trim()
+        ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Calculating route...</span>'
+        : "Please enter destination";
     findRideBtn.disabled = true;
 }
 
@@ -110,6 +113,7 @@ function setStatus(message, state = "loading") {
 
     gpsPill.dataset.state = state;
     gpsPill.innerText = state === "ready" ? "Live" : state === "error" ? "Check" : "GPS";
+    setInlineLoading(gpsPill, state === "loading");
 }
 
 function showPassengerServices() {

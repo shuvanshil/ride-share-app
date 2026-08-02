@@ -76,8 +76,11 @@ body {
 .driver-map-loading {
     position: absolute;
     inset: 0;
-    display: grid;
-    place-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     color: var(--driver-muted);
     font-size: 0.9rem;
     font-weight: 700;

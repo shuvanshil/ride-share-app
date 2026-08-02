@@ -2,6 +2,7 @@ import { auth, db } from './firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 import { showAlert, showConfirm } from './dialog.js';
+import { showPageLoader, hidePageLoader } from './loading.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -1758,6 +1759,12 @@ closePaymentButton.addEventListener('click', async () => {
     window.location.reload();
 });
 
+// Cover the brief gap between this page loading and the driver's session
+// being confirmed, so the swap from the driver list page never shows a
+// blank/half-built screen.
+showPageLoader("Opening trip console…");
+window.setTimeout(() => hidePageLoader({ force: true }), 12000);
+
 onAuthStateChanged(auth, async (firebaseUser) => {
     if (!firebaseUser) {
         window.location.replace('/login');
@@ -1790,8 +1797,10 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         startActiveRideListener();
         startIncomingRideListener();
         startLocationTracking();
+        hidePageLoader({ force: true });
     } catch (error) {
         console.error("Driver service authentication failed:", error);
+        hidePageLoader({ force: true });
         showMessage("Could not load driver account", "Check your connection and retry the page.", "map");
     }
 });

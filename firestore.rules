@@ -88,6 +88,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Saved locations (Home/Work/custom favourites) for the passenger home
+    // dashboard. One document per user, keyed by uid, owner read/write only.
+    // Kept separate from /users so the FastAPI-managed profile document
+    // never needs a client-writable path.
+    match /savedPlaces/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['home', 'work', 'favorites', 'updatedAt'])
+        && (!('favorites' in request.resource.data) || request.resource.data.favorites.size() <= 10);
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
     match /otpSecurity/{securityId} {
       // OTP cooldowns and attempt counters are server-only.
       allow read, write: if false;
