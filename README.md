@@ -7,4 +7,4 @@ Project readiness documentation:
 
 Admin console source:
 
-- [Isolated admin console](admin_console/static/README.md)
+- [Isolated admin console](www/admin_console/static/README.md)

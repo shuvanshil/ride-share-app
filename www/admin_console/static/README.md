@@ -1,24 +1,30 @@
 # LiphtUp Admin Console
 
-Everything admin-specific lives under the top-level `admin_console/`
-directory:
+Everything admin-specific lives in its own self-contained directory,
+`www/admin_console/`:
 
-- `admin_console/static/`: frontend HTML/CSS/JS.
-- `admin_console/api/admin.py`: admin API router.
-- `admin_console/api/core/admin.py`: admin auth/audit helpers.
-- `admin_console/api/static.py`: serves the isolated static files through
-  `/api/admin-console-static/*`.
+- `www/admin_console/static/`: frontend HTML/CSS/JS.
+- `www/admin_console/api/admin.py`: admin API router.
+- `www/admin_console/api/core/admin.py`: admin auth/audit helpers.
+- `www/admin_console/api/static.py`: serves the isolated static files
+  through `/api/admin-console-static/*`.
 
-The only files left under `www/` are compatibility shims: `/admin`
-loads the isolated static page, and `www/api/routers/admin.py` plus
-`www/api/core/admin.py` import the isolated backend. Deleting
-`admin_console/` removes the admin console while leaving the passenger,
-driver, and core API routes importable.
+It lives *inside* `www/`, not at the repo root, because `www/` is the
+Vercel project's Root Directory -- anything outside it never gets
+deployed. It's still fully isolated from the rest of the app: a sibling
+of `api/`, `js/`, and `css/`, importable but not intermixed with any of
+them. Deleting `www/admin_console/` removes the admin console while
+leaving the passenger, driver, and core API routes untouched.
+
+The only files outside `www/admin_console/` that reference it are thin
+compatibility shims: `/admin` loads the isolated static page, and
+`www/api/routers/admin.py` plus `www/api/core/admin.py` just re-export
+from the isolated backend package.
 
 ## URL
 
 `https://liphtup.in/admin` -- served by a tiny bridge at
-`www/admin/index.html`, which loads `admin_console/static/index.html`
+`www/admin/index.html`, which loads `www/admin_console/static/index.html`
 through `/api/admin-console-static/index.html`. It is not linked from any
 public page and carries `<meta name="robots" content="noindex,nofollow">`.
 
