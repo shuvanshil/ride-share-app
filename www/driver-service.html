@@ -21,8 +21,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260721-dialog-seo">
-    <link rel="stylesheet" href="css/driver-service.css?v=20260621-liphtup-name-only">
+    <link rel="stylesheet" href="css/style.css?v=20260731-passenger-nav-cleanurls">
+    <link rel="stylesheet" href="css/driver-service.css?v=20260731-map-height-icons">
 </head>
 <body>
     <div id="app-container" class="app-root driver-service-app-root">
@@ -37,7 +37,7 @@
 
             <section class="driver-map-stage" aria-label="Live driver navigation">
                 <div id="driver-service-map" class="driver-service-map">
-                    <div class="driver-map-loading">Opening map...</div>
+                    <div class="driver-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Opening map...</span></div>
                 </div>
 
                 <section id="driver-route-panel" class="driver-route-panel d-none" aria-live="polite">
@@ -87,10 +87,10 @@
             </section>
 
             <nav class="bottom-nav driver-service-nav">
-                <button type="button" onclick="window.location.href='driver.html'"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
+                <button type="button" onclick="window.location.href='/driver'"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
                 <button class="active" type="button"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
-                <button type="button" onclick="window.location.href='history.html'"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-                <button type="button" onclick="window.location.href='profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+                <button type="button" onclick="window.location.href='/history'"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
+                <button type="button" onclick="window.location.href='/profile'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
             </nav>
         </div>
     </div>
@@ -101,6 +101,7 @@
             <h4>Collect Your Fare</h4>
             <p>Show this screen to the passenger for easy collection.</p>
             <div class="price-total" id="driver-service-final-fare">Rs 0.00</div>
+            <p id="driver-service-fare-note" class="fare-adjustment-note d-none"></p>
             <div class="qr-frame">
                 <img id="driver-service-upi-qr-image" src="" alt="UPI QR Code">
             </div>
@@ -109,7 +110,8 @@
     </div>
 
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/driver-service.js?v=20260713-driver-duty-push-fix"></script>
+    <script type="module" src="js/loading.js"></script>
+    <script type="module" src="js/driver-service.js?v=20260731-nav-icons"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

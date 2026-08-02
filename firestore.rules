@@ -5,6 +5,15 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+    // Admins are identified by a Firebase Auth custom claim (set via
+    // scripts/set_admin_claim.py or /api/admin/bootstrap), never by a
+    // client-writable Firestore field. This ONLY grants extra *read*
+    // access for the realtime admin dashboard (live feed, live ride
+    // tracking); every admin write still goes through the FastAPI Admin
+    // SDK in www/api/routers/admin.py, which this rule has no bearing on.
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
 
     function userProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -30,7 +39,9 @@ service cloud.firestore {
     match /rides/{rideId} {
       // Queries must include a matching passenger_id, driver_id, or
       // eligible_driver_ids constraint for Firestore to authorize them.
-      allow read: if rideParticipant() || eligibleDriver();
+      // isAdmin() additionally lets the admin console's realtime listeners
+      // (live feed, live ride map) read across all rides.
+      allow read: if rideParticipant() || eligibleDriver() || isAdmin();
 
       // Ride creation and every ride mutation are server-owned by FastAPI.
       allow create, update, delete: if false;
@@ -54,7 +65,8 @@ service cloud.firestore {
     match /tripHistory/{rideId} {
       allow read: if signedIn()
         && (resource.data.passenger_id == request.auth.uid
-          || resource.data.driver_id == request.auth.uid);
+          || resource.data.driver_id == request.auth.uid
+          || isAdmin());
 
       // History is written by FastAPI after an authorized ride transition.
       allow create, update, delete: if false;
@@ -69,11 +81,23 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if signedIn() && request.auth.uid == userId;
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
 
       // Profile, role, earnings, verification, and push fields are managed by
       // FastAPI Admin SDK. Clients must not write arbitrary account fields.
       allow create, update, delete: if false;
+    }
+
+    // Saved locations (Home/Work/custom favourites) for the passenger home
+    // dashboard. One document per user, keyed by uid, owner read/write only.
+    // Kept separate from /users so the FastAPI-managed profile document
+    // never needs a client-writable path.
+    match /savedPlaces/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['home', 'work', 'favorites', 'updatedAt'])
+        && (!('favorites' in request.resource.data) || request.resource.data.favorites.size() <= 10);
+      allow delete: if signedIn() && request.auth.uid == uid;
     }
 
     match /otpSecurity/{securityId} {

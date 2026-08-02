@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .core.errors import ApiError
-from .routers import account, auth, google, notify, otp, rides
+from .routers import account, admin, auth, google, notify, otp, rides
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -64,7 +64,10 @@ async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResp
     # shape it expects, instead of a raw 500 HTML page. Do not expose the
     # exception text: it may contain provider, credential, or infrastructure
     # details that belong only in server logs.
-    return JSONResponse(status_code=500, content={"error": "Internal server error"})
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+    )
 
 
 # All routers are mounted under /api to match the original Vercel function
@@ -75,6 +78,7 @@ app.include_router(account.router, prefix="/api")
 app.include_router(notify.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(rides.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 
 @app.get("/api/health")

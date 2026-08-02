@@ -258,6 +258,49 @@ select {
     box-shadow: 0 0 0 4px rgba(26, 122, 46, 0.08);
 }
 
+.password-field {
+    position: relative;
+}
+
+.password-field > input {
+    padding-right: 48px;
+}
+
+.password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: #687281;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+    color: var(--gy-primary);
+    background: rgba(26, 122, 46, 0.08);
+    outline: none;
+}
+
+.password-toggle svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
 .gy-input-group {
     background: var(--gy-muted-bg);
     border-radius: 8px;
@@ -1325,7 +1368,37 @@ select {
 }
 
 .receipt-card {
+    position: relative;
     text-align: center;
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(26, 122, 46, 0.18);
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--gy-muted);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.modal-close-btn:hover,
+.modal-close-btn:focus {
+    background: #fff;
+    transform: scale(1.05);
+    outline: none;
+}
+
+.modal-close-btn:focus-visible {
+    box-shadow: 0 0 0 4px rgba(26, 122, 46, 0.18);
 }
 
 .receipt-table {
@@ -1360,6 +1433,14 @@ select {
     font-size: 38px;
     line-height: 1;
     font-weight: 800;
+}
+
+.fare-adjustment-note {
+    margin: 0 auto 12px;
+    max-width: 280px;
+    color: var(--gy-muted);
+    font-size: 13px;
+    line-height: 1.4;
 }
 
 .qr-frame {
@@ -2908,15 +2989,206 @@ body.profile-editor-open {
 .services-map-loading {
     position: absolute;
     inset: 0;
-    display: grid;
-    place-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     color: var(--gy-muted);
     font-size: 13px;
     font-weight: 700;
 }
 
+.passenger-nav-toggle-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 1px solid var(--gy-border);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--gy-muted);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+    transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.passenger-nav-toggle-btn:active {
+    transform: scale(0.92);
+}
+
+.passenger-nav-toggle-btn.is-active {
+    background: var(--gy-green);
+    color: #fff;
+    border-color: var(--gy-green);
+}
+
+.passenger-nav-toggle-icon {
+    display: block;
+    width: 20px;
+    height: 20px;
+    background-color: currentColor;
+    -webkit-mask-image: url("../assets/icons/mapmode/map-mode.png");
+    mask-image: url("../assets/icons/mapmode/map-mode.png");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+
+.passenger-nav-toggle-btn.is-active .passenger-nav-toggle-icon {
+    -webkit-mask-image: url("../assets/icons/mapmode/navigation-mode.png");
+    mask-image: url("../assets/icons/mapmode/navigation-mode.png");
+}
+
 .services-fare-pill {
     margin: 0;
+}
+
+/* Trip-in-progress layout: once the pickup PIN has been verified and the
+   trip is underway, the map grows to ~80% of the screen and a collapsible
+   drawer (driver, fare, PIN) overlays its bottom edge instead of the normal
+   "choose your ride" flow. */
+.services-page.trip-live .services-title-block,
+.services-page.trip-live .services-location-card,
+.services-page.trip-live #ride-service-options,
+.services-page.trip-live .services-fare-pill,
+.services-page.trip-live #services-map-card .services-map-head {
+    display: none;
+}
+
+.services-page.trip-live #services-map-card {
+    margin-top: 10px;
+}
+
+.services-page.trip-live #services-map-card .services-map-frame {
+    aspect-ratio: unset;
+    height: 80vh;
+}
+
+#services-map-card {
+    position: relative;
+}
+
+.trip-progress-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    border-radius: 16px 16px 0 0;
+    background: #fff;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+.trip-progress-handle {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    width: 100%;
+    padding: 10px 16px 12px;
+    border: 0;
+    background: transparent;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.trip-progress-handle-bar {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--gy-border);
+    margin-bottom: 6px;
+}
+
+.trip-progress-handle-label {
+    color: var(--gy-text);
+    font-size: 13px;
+    font-weight: 800;
+    text-align: left;
+}
+
+.trip-progress-handle-icon {
+    width: 9px;
+    height: 9px;
+    border-right: 2px solid var(--gy-muted);
+    border-bottom: 2px solid var(--gy-muted);
+    transform: rotate(-45deg);
+    transition: transform 200ms ease;
+}
+
+.trip-progress-panel.is-expanded .trip-progress-handle-icon {
+    transform: rotate(135deg);
+}
+
+.trip-progress-details {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0 16px;
+    transition: max-height 280ms ease, padding 280ms ease;
+}
+
+.trip-progress-panel.is-expanded .trip-progress-details {
+    max-height: 280px;
+    padding: 0 16px 16px;
+}
+
+.trip-progress-driver {
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--gy-border);
+}
+
+.trip-progress-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.trip-progress-fare,
+.trip-progress-pin {
+    padding: 10px;
+    border: 1px solid var(--gy-border);
+    border-radius: 10px;
+    text-align: center;
+}
+
+.trip-progress-fare span,
+.trip-progress-pin span {
+    display: block;
+    color: var(--gy-muted);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.trip-progress-fare strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--gy-text);
+    font-size: 20px;
+}
+
+.trip-progress-pin {
+    background: #FFF6D8;
+    border-color: #f0d98a;
+}
+
+.trip-progress-pin strong {
+    display: block;
+    margin-top: 4px;
+    color: #6B5E00;
+    font-size: 20px;
+    letter-spacing: 3px;
 }
 
 .ride-service-options {
@@ -3411,5 +3683,357 @@ body.profile-editor-open {
     .lu-dialog-box {
         width: 100%;
         padding: 22px 18px 16px;
+    }
+}
+
+/* ==========================================
+   Shared loading UI (loading.js)
+   Full-screen overlay, inline spinners, button-busy state, skeletons.
+   Reuses the app's existing --gy-* design tokens for visual consistency.
+   ========================================== */
+
+@keyframes lu-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes lu-skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.lu-spinner {
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    border: 3px solid rgba(26, 122, 46, 0.18);
+    border-top-color: var(--gy-green);
+    border-radius: 50%;
+    animation: lu-spin 700ms linear infinite;
+    flex-shrink: 0;
+}
+
+.lu-spinner-sm {
+    width: 15px;
+    height: 15px;
+    border-width: 2px;
+    margin-right: 8px;
+    vertical-align: -2px;
+}
+
+.lu-loading-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.86);
+    backdrop-filter: blur(2px);
+    z-index: 3900;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease;
+}
+
+.lu-loading-overlay.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.lu-loading-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 22px 28px;
+    background: var(--gy-bg);
+    border-radius: 16px;
+    box-shadow: var(--gy-shadow);
+}
+
+.lu-loading-card .lu-spinner {
+    width: 30px;
+    height: 30px;
+}
+
+.lu-loading-text {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--gy-text);
+}
+
+/* Inline loading: toggled on any small status element (map badge, GPS
+   pill, etc.) to show a spinner in place of / alongside its text. */
+.lu-inline-loading {
+    position: relative;
+    color: var(--gy-muted) !important;
+}
+
+.lu-inline-loading::before {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 6px;
+    border: 2px solid rgba(107, 114, 128, 0.25);
+    border-top-color: var(--gy-muted);
+    border-radius: 50%;
+    animation: lu-spin 700ms linear infinite;
+    vertical-align: -1px;
+}
+
+/* Skeleton placeholders */
+.lu-skeleton {
+    display: block;
+    border-radius: 10px;
+    background: linear-gradient(90deg, var(--gy-muted-bg) 25%, #ececec 37%, var(--gy-muted-bg) 63%);
+    background-size: 400% 100%;
+    animation: lu-skeleton-shimmer 1.4s ease infinite;
+}
+
+.lu-skeleton-card {
+    height: 84px;
+    margin-bottom: 10px;
+}
+
+.lu-skeleton-line {
+    height: 14px;
+    margin-bottom: 8px;
+}
+
+.lu-skeleton-line.lu-skeleton-flex {
+    flex: 1;
+    height: 12px;
+    margin-bottom: 0;
+}
+
+.lu-skeleton-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.lu-skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+@media (max-width: 380px) {
+    .lu-loading-card {
+        padding: 18px 22px;
+    }
+}
+
+/* ==========================================
+   Home dashboard: prominent search, saved places, recent rides
+   ========================================== */
+
+.location-field-prominent {
+    box-shadow: var(--gy-shadow);
+    border-radius: 14px;
+}
+
+.location-field-prominent .gy-input {
+    font-weight: 700;
+}
+
+.dashboard-saved-places {
+    display: flex;
+    gap: 10px;
+    margin: 14px 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.dashboard-saved-places::-webkit-scrollbar {
+    display: none;
+}
+
+.dashboard-saved-chip {
+    flex: 1 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 150px;
+    padding: 10px 14px;
+    border: 1px solid var(--gy-border);
+    border-radius: 12px;
+    background: var(--gy-bg);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, transform 120ms ease;
+}
+
+.dashboard-saved-chip:active {
+    transform: scale(0.98);
+}
+
+.dashboard-saved-chip .webicon {
+    color: var(--gy-green);
+    width: 18px;
+    height: 18px;
+}
+
+.dashboard-saved-chip-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.dashboard-saved-chip-text strong {
+    font-size: 13px;
+    color: var(--gy-text);
+}
+
+.dashboard-saved-chip-text small {
+    font-size: 11.5px;
+    color: var(--gy-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+.dashboard-saved-chip.is-set {
+    border-color: rgba(26, 122, 46, 0.35);
+    background: var(--gy-green-soft);
+}
+
+.dashboard-recent-section {
+    margin: 6px 0 18px;
+}
+
+.dashboard-recent-section h2 {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--gy-text);
+    margin: 0 0 10px;
+}
+
+.dashboard-recent-rides {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dashboard-recent-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--gy-border);
+    border-radius: 12px;
+    background: var(--gy-bg);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 160ms ease, transform 120ms ease;
+}
+
+.dashboard-recent-item:active {
+    transform: scale(0.98);
+}
+
+.dashboard-recent-item .webicon {
+    color: var(--gy-muted);
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.dashboard-recent-item-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.dashboard-recent-item-text strong {
+    font-size: 13.5px;
+    color: var(--gy-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dashboard-recent-item-text small {
+    font-size: 11.5px;
+    color: var(--gy-muted);
+}
+
+.dashboard-recent-item.is-cancelled .dashboard-recent-item-text small {
+    color: var(--gy-danger);
+}
+
+.dashboard-recent-item-arrow {
+    color: var(--gy-muted);
+    font-size: 14px;
+}
+
+/* Saved-place picker modal */
+.saved-place-card {
+    width: min(100%, 420px);
+    background: #fff;
+    border: 1px solid var(--gy-border);
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: var(--gy-shadow);
+    position: relative;
+}
+
+.saved-place-card h4 {
+    margin: 0 0 16px;
+    font-weight: 800;
+    padding-right: 30px;
+}
+
+.saved-place-label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--gy-muted);
+    margin-bottom: 6px;
+}
+
+.saved-place-suggestions {
+    display: flex;
+    flex-direction: column;
+    margin-top: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.saved-place-suggestion {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    padding: 10px 8px;
+    border: 0;
+    border-bottom: 1px solid var(--gy-border);
+    background: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+.saved-place-suggestion:last-child {
+    border-bottom: 0;
+}
+
+.saved-place-suggestion strong {
+    font-size: 13.5px;
+    color: var(--gy-text);
+}
+
+.saved-place-suggestion small {
+    font-size: 11.5px;
+    color: var(--gy-muted);
+}
+
+@media (max-width: 380px) {
+    .dashboard-saved-chip {
+        min-width: 130px;
     }
 }

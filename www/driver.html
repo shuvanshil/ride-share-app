@@ -21,7 +21,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260721-dialog-seo">
+    <link rel="stylesheet" href="css/style.css?v=20260731-passenger-nav-cleanurls">
 </head>
 <body>
     <div id="app-container" class="app-root driver-app-root">
@@ -58,7 +58,7 @@
                 <section class="driver-status-card">
                     <div>
                         <h4>Driver Duty Console</h4>
-                        <p id="driver-duty-helper">Ride alerts can continue for 30 minutes after your last fresh location.</p>
+                        <p id="driver-duty-helper">Ride alerts can continue while you stay online, even if the app is minimized.</p>
                     </div>
                     <div class="driver-duty-control">
                         <label class="driver-duty-switch" for="driver-duty-switch">
@@ -91,9 +91,9 @@
 
             <nav class="bottom-nav">
                 <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
-                <button type="button" onclick="window.location.href='driver-service.html'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
+                <button type="button" onclick="window.location.href='/driver-service'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
                 <button type="button" onclick="document.getElementById('driver-history-btn').click()"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-                <button type="button" onclick="window.location.href='profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+                <button type="button" onclick="window.location.href='/profile'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
             </nav>
         </div>
     </div>
@@ -104,6 +104,7 @@
             <h4>Collect Your Fare</h4>
             <p>Show this screen to the passenger for easy collection.</p>
             <div class="price-total" id="driver-final-fare">Rs 0.00</div>
+            <p id="driver-fare-note" class="fare-adjustment-note d-none"></p>
             <div class="qr-frame">
                 <img id="upi-qr-image" src="" alt="UPI QR Code">
             </div>
@@ -113,7 +114,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/driver.js?v=20260713-driver-duty-push-fix"></script>
+    <script type="module" src="js/loading.js"></script>
+    <script type="module" src="js/driver.js?v=20260729-driver-accept-navigation"></script>
     <script src="js/pwa.js" defer></script>
 </body>
 </html>

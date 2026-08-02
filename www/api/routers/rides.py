@@ -21,6 +21,7 @@ from ..core.fare_policy import (
     RIDE_SERVICES,
     ZERO_TRAVEL_THRESHOLD_KM,
     calculate_fare,
+    get_service_fare_policy,
 )
 from ..core.firebase import get_admin_app
 from ..core.geo import decode_polyline, haversine_km, road_distance_along_route_km
@@ -30,7 +31,8 @@ router = APIRouter(prefix="/rides", tags=["rides"])
 ACTIVE_PASSENGER_STATUSES = {"pending", "accepted", "arrived", "started", "en_route"}
 DISPATCH_BATCH_SIZE = 10
 DISPATCH_TIMEOUT_MS = 45000
-DRIVER_LOCATION_VISIBLE_SECONDS = 15 * 60
+DRIVER_NOTIFICATION_ELIGIBLE_HOURS = 12
+DRIVER_LOCATION_VISIBLE_SECONDS = DRIVER_NOTIFICATION_ELIGIBLE_HOURS * 60 * 60
 
 
 class RideCreateBody(BaseModel):
@@ -97,6 +99,16 @@ def _calculate_fare(service: dict[str, Any], distance_km: float) -> int:
 
 
 def _ride_service(ride: dict[str, Any]) -> dict[str, Any]:
+    fare_per_km = ride.get("fare_per_km")
+    fare_base = ride.get("fare_base")
+    if fare_per_km is not None and fare_base is not None:
+        return {
+            "name": ride.get("service_name") or "Ride",
+            "capacity": int(ride.get("passenger_capacity") or 1),
+            "base": float(fare_base or 0),
+            "per_km": float(fare_per_km or 0),
+            "min_fare": float(ride.get("fare_min") or fare_base or 0),
+        }
     service = RIDE_SERVICES.get(str(ride.get("vehicle_type") or "").lower())
     if service:
         return service
@@ -280,6 +292,56 @@ def _coarse_location(location: Optional[dict[str, float]]) -> Optional[dict[str,
     }
 
 
+def _build_driver_availability_updates(
+    status: str,
+    profile: dict[str, Any],
+    location: Optional[dict[str, float]] = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    online = status != "offline"
+    now = datetime.now(timezone.utc)
+    notification_eligible_until = (
+        now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS)
+        if online
+        else datetime.fromtimestamp(0, timezone.utc)
+    )
+    user_update: dict[str, Any] = {
+        "driverAvailability": status,
+        "desiredAvailability": "online" if online else "offline",
+        "isConnected": online,
+        "notificationEligibleUntil": notification_eligible_until,
+        "driverAvailabilityUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+        "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    presence_update: dict[str, Any] = {
+        "uid": str(profile.get("uid") or "")[:160],
+        "name": str(profile.get("name") or "Driver")[:80],
+        "phone": str(profile.get("phone") or "")[:40],
+        "driverAvailability": status,
+        "desiredAvailability": "online" if online else "offline",
+        "verificationStatus": profile.get("verificationStatus") or "pending_review",
+        "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
+        "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
+        "vehicle_type": _driver_type(profile),
+        "isConnected": online,
+        "notificationEligibleUntil": notification_eligible_until,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    map_presence_update = {
+        key: presence_update[key]
+        for key in (
+            "uid", "name", "driverAvailability", "desiredAvailability",
+            "verificationStatus", "vehicle_model", "vehicle_type", "isConnected",
+            "updatedAt", "lastSeenAt",
+        )
+    }
+    if location is not None:
+        user_update["driverLocation"] = {"lat": location["lat"], "lng": location["lng"]}
+        presence_update["driverLocation"] = {"lat": location["lat"], "lng": location["lng"]}
+        map_presence_update["driverLocation"] = _coarse_location({"lat": location["lat"], "lng": location["lng"]})
+    return user_update, presence_update, map_presence_update
+
+
 def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc).timestamp()
     candidates: list[dict[str, Any]] = []
@@ -303,6 +365,26 @@ def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: s
         })
     candidates.sort(key=lambda item: item["distance"])
     return candidates
+
+
+def _availability_for_location_update(profile: dict[str, Any], ride_id: str) -> tuple[str, str]:
+    """Derive availability and persisted desiredAvailability for a location update.
+
+    Rules:
+    - If the driver is intentionally offline (desiredAvailability == 'offline'), preserve offline.
+    - If there's an active ride_id, availability is 'busy'.
+    - Otherwise availability is 'searching'.
+    Returns (availability, desiredAvailability)
+    """
+    desired = str(profile.get("desiredAvailability") or "").strip().lower()
+    if desired == "offline":
+        return "offline", "offline"
+    if ride_id:
+        # When a ride is active the driver is busy but their desiredAvailability
+        # remains whatever they had persisted (default to 'online').
+        return "busy", ("online" if desired != "offline" else "offline")
+    # Not offline and no active ride => searching
+    return "searching", ("online" if desired != "offline" else "offline")
 
 
 async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, drop_lng: float) -> tuple[float, int, str]:
@@ -433,7 +515,8 @@ async def create_passenger_ride(
     if not uid:
         raise ApiError("Authenticated user identity is missing.", 401)
 
-    service = RIDE_SERVICES.get(body.vehicleType.strip().lower())
+    ride_requested_at = datetime.now(timezone.utc)
+    service = get_service_fare_policy(body.vehicleType.strip().lower(), ride_requested_at)
     if not service:
         raise ApiError("Choose a supported ride service.", 400)
     pickup_lat = _coordinate(body.pickupLat, -90, 90)
@@ -493,6 +576,9 @@ async def create_passenger_ride(
             "fare_original": fare,
             "fare_base": service["base"],
             "fare_per_km": service["per_km"],
+            "fare_min": service["min_fare"],
+            "fare_is_night": service["is_night_fare"],
+            "fare_requested_at": ride_requested_at.isoformat(),
             "fare_currency": "INR",
             "vehicle_type": body.vehicleType.strip().lower(),
             "service_name": service["name"],
@@ -506,7 +592,11 @@ async def create_passenger_ride(
             "driverAvailabilitySnapshot": None,
             "payment_methods": ["cash", "upi"],
             "payment_status": "pending",
-            "verification_pin": f"{secrets.randbelow(10000):04d}",
+            # No PIN is assigned at request time. It is only generated once a
+            # driver accepts the ride (see accept_driver_ride below), so the
+            # passenger never sees a pickup PIN before there is an assigned
+            # driver to share it with.
+            "verification_pin": None,
             "eligible_driver_ids": driver_ids,
             "notified_driver_ids": driver_ids,
             "rejected_driver_ids": [],
@@ -521,7 +611,6 @@ async def create_passenger_ride(
         return {
             "ok": True,
             "rideId": ride_ref.id,
-            "verificationPin": ride_data["verification_pin"],
             "notifiedDriverIds": driver_ids,
             "ride": {key: value for key, value in ride_data.items() if key != "createdAt"},
         }
@@ -620,9 +709,13 @@ def transition_driver_ride(
 
         transition_transaction(transaction)
         if action in {"complete", "cancel"}:
-            availability_update = {"driverAvailability": "searching", "updatedAt": fb_firestore.SERVER_TIMESTAMP}
-            db.collection("driverPresence").document(uid).set(availability_update, merge=True)
-            db.collection("driverMapPresence").document(uid).set(availability_update, merge=True)
+            availability_status = "offline"
+            if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
+                availability_status = "searching"
+            user_update, presence_update, map_presence_update = _build_driver_availability_updates(availability_status, profile)
+            db.collection("users").document(uid).set(user_update, merge=True)
+            db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+            db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": result}
     except ApiError:
         raise
@@ -707,41 +800,11 @@ def update_driver_availability(
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update driver availability.")
-        online = status != "offline"
-        user_update: dict[str, Any] = {
-            "driverAvailability": status,
-            "desiredAvailability": "online" if online else "offline",
-            "isConnected": online,
-            "notificationEligibleUntil": datetime.now(timezone.utc) + timedelta(minutes=30) if online else datetime.fromtimestamp(0, timezone.utc),
-            "driverAvailabilityUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
-            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        presence_update: dict[str, Any] = {
-            "uid": uid,
-            "name": str(profile.get("name") or "Driver")[:80],
-            "phone": str(profile.get("phone") or "")[:40],
-            "driverAvailability": status,
-            "desiredAvailability": "online" if online else "offline",
-            "verificationStatus": profile.get("verificationStatus") or "pending_review",
-            "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
-            "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
-            "vehicle_type": _driver_type(profile),
-            "isConnected": online,
-            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        map_presence_update = {
-            key: presence_update[key]
-            for key in (
-                "uid", "name", "driverAvailability", "desiredAvailability",
-                "verificationStatus", "vehicle_model", "vehicle_type", "isConnected",
-                "updatedAt", "lastSeenAt",
-            )
-        }
-        if lat is not None:
-            user_update["driverLocation"] = {"lat": lat, "lng": lng}
-            presence_update["driverLocation"] = {"lat": lat, "lng": lng}
-            map_presence_update["driverLocation"] = _coarse_location({"lat": lat, "lng": lng})
+        user_update, presence_update, map_presence_update = _build_driver_availability_updates(
+            status,
+            {**profile, "uid": uid},
+            {"lat": lat, "lng": lng} if lat is not None else None,
+        )
         db.collection("users").document(uid).set(user_update, merge=True)
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
         db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
@@ -776,8 +839,12 @@ def update_driver_location(
         profile = profile_ref.get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update GPS location.")
         ride_id = str(body.rideId or "").strip()[:160]
-        availability = str(profile.get("driverAvailability") or "searching")
+        # Derive availability using the driver's persisted desiredAvailability
+        # so intentionally-offline drivers remain offline and active rides
+        # correctly mark the driver as busy.
+        availability, persisted_desired = _availability_for_location_update(profile, ride_id)
         if ride_id:
+            # Validate ride ownership and status when a ride_id is supplied.
             ride_ref = db.collection("rides").document(ride_id)
             ride = ride_ref.get().to_dict()
             if not ride:
@@ -786,7 +853,6 @@ def update_driver_location(
                 raise ApiError("Only the assigned driver can update this ride location.", 403)
             if ride.get("status") not in ACTIVE_PASSENGER_STATUSES:
                 raise ApiError("This ride is no longer active.", 409)
-            availability = "busy"
 
         location = {"lat": lat, "lng": lng}
         telemetry = {key: value for key, value in {
@@ -799,20 +865,27 @@ def update_driver_location(
             "driverLocation": location,
             **telemetry,
             "driverAvailability": availability,
-            "desiredAvailability": "online",
+            "desiredAvailability": persisted_desired,
             "isConnected": True,
+            "notificationEligibleUntil": now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS),
             "lastSeenAt": now,
             "lastAppSeenAt": now,
             "lastLocationAt": now,
             "updatedAt": now,
         }
-        profile_ref.set({"driverLocation": location, **telemetry, "lastSeenAt": now, "lastLocationAt": now}, merge=True)
+        profile_ref.set({
+            "driverLocation": location,
+            **telemetry,
+            "notificationEligibleUntil": now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS),
+            "lastSeenAt": now,
+            "lastLocationAt": now,
+        }, merge=True)
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
         db.collection("driverMapPresence").document(uid).set({
             "uid": uid,
             "name": str(profile.get("name") or "Driver")[:80],
             "driverAvailability": availability,
-            "desiredAvailability": "online",
+            "desiredAvailability": persisted_desired,
             "verificationStatus": profile.get("verificationStatus"),
             "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
             "vehicle_type": _driver_type(profile),
@@ -851,10 +924,17 @@ def save_driver_push_token(
             "userAgent": body.userAgent,
             "updatedAt": datetime.now(timezone.utc),
         }
+        notification_eligible_until = (
+            datetime.now(timezone.utc) + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS)
+            if str(profile.get("desiredAvailability") or profile.get("driverAvailability") or "").strip().lower() != "offline"
+            else datetime.fromtimestamp(0, timezone.utc)
+        )
         update = {
             "pushTokens": fb_firestore.ArrayUnion([body.token]),
             "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
             "notificationPermission": "granted",
+            "notificationEligibleUntil": notification_eligible_until,
+            "lastAppSeenAt": fb_firestore.SERVER_TIMESTAMP,
             "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
         db.collection("users").document(uid).set(update, merge=True)
@@ -968,6 +1048,10 @@ def accept_driver_ride(
             if uid not in (ride.get("eligible_driver_ids") or []):
                 raise ApiError("This ride request is no longer available for you.", 403)
 
+            # The pickup verification PIN is assigned only now, at the moment
+            # a driver actually accepts -- never at ride-request time.
+            verification_pin = str(ride.get("verification_pin") or "").strip() or f"{secrets.randbelow(10000):04d}"
+
             accepted_ride.update(ride)
             accepted_ride.update({
                 "status": "accepted",
@@ -977,6 +1061,7 @@ def accept_driver_ride(
                 "vehicle_model": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Vehicle")[:100],
                 "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
                 "vehicle_type": driver_type,
+                "verification_pin": verification_pin,
             })
             tx.update(ride_ref, {
                 "status": "accepted",
@@ -986,6 +1071,7 @@ def accept_driver_ride(
                 "vehicle_model": accepted_ride["vehicle_model"],
                 "vehicle_number": accepted_ride["vehicle_number"],
                 "vehicle_type": driver_type,
+                "verification_pin": verification_pin,
                 "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             })

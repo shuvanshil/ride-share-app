@@ -2,6 +2,7 @@ import { auth, db } from './firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js';
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 import { showAlert, showConfirm } from './dialog.js';
+import { showPageLoader, hidePageLoader } from './loading.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -29,6 +30,7 @@ const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 const DRIVER_LOCATION_CACHE_KEY = "liphtup_last_driver_location";
 const DEFAULT_DRIVER_LOCATION = Object.freeze({ lat: 24.3124, lng: 92.0135 });
 const DRIVER_NAV_MODE_CACHE_KEY = "liphtup_driver_nav_mode";
+const DRIVER_IGNORED_RIDES_PREFIX = "liphtup_driver_ignored_requests_";
 const NAV_CAMERA_TILT = 55;
 const NAV_CAMERA_ZOOM = 18;
 const DRIVER_MARKER_ANIM_MIN_MS = 700;
@@ -46,6 +48,46 @@ const ROUTE_MATCH_SEARCH_WINDOW = 60;
 
 const mapHost = document.getElementById('driver-service-map');
 const statusText = document.getElementById('driver-service-status');
+
+function getIgnoredRidesStorageKey() {
+    return `${DRIVER_IGNORED_RIDES_PREFIX}${currentUser?.uid || "unknown"}`;
+}
+
+function loadIgnoredRideIds() {
+    if (!currentUser?.uid) return ignoredRideIds;
+    try {
+        const raw = localStorage.getItem(getIgnoredRidesStorageKey()) || "[]";
+        const parsed = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+        ignoredRideIds = parsed;
+        return ignoredRideIds;
+    } catch {
+        return ignoredRideIds;
+    }
+}
+
+function saveIgnoredRideIds(rideIds) {
+    ignoredRideIds = Array.from(new Set(rideIds));
+    try {
+        localStorage.setItem(getIgnoredRidesStorageKey(), JSON.stringify(ignoredRideIds));
+    } catch {
+        // Ignore storage failures; this feature is optional.
+    }
+}
+
+function ignoreRideRequest(rideId) {
+    if (!rideId || !currentUser?.uid) return;
+    const ignored = new Set(loadIgnoredRideIds());
+    ignored.add(rideId);
+    saveIgnoredRideIds(Array.from(ignored));
+
+    const card = ridesContainer.querySelector(`.driver-service-request-card[data-ride-id="${rideId}"]`);
+    if (card) card.remove();
+
+    if (!ridesContainer.querySelector('.driver-service-request-card')) {
+        stopRideRequestRing();
+        renderNoIncomingRequests();
+    }
+}
 const livePill = document.getElementById('driver-service-live-pill');
 const routePanel = document.getElementById('driver-route-panel');
 const routeLabel = document.getElementById('driver-route-label');
@@ -73,6 +115,7 @@ const noRidesMsg = document.getElementById('driver-service-no-rides-msg');
 let currentUser = null;
 let currentRide = null;
 let currentRideId = null;
+let ignoredRideIds = [];
 let currentTarget = null;
 let currentTargetKey = "";
 let currentRideStatus = "";
@@ -82,6 +125,7 @@ let driverMarkerAnimationFrame = null;
 let lastDriverHeading = null;
 let incomingRideUnsubscribe = null;
 let acceptRideInProgress = false;
+let driverPostRideAvailability = "searching";
 
 function formatFareAmount(value) {
     const amount = Number(value);
@@ -93,6 +137,40 @@ function fareAdjustmentMessage(ride, fallback = "") {
     if (adjustment?.message) return adjustment.message;
     if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
     return fallback;
+}
+
+function formatDistancePastDestination(km) {
+    const meters = Math.round(Number(km) * 1000);
+    if (!Number.isFinite(meters) || meters <= 0) return "";
+    if (meters < 1000) return `${meters} meters`;
+    return `${(meters / 1000).toFixed(meters % 1000 === 0 ? 0 : 1)} km`;
+}
+
+function renderFareAdjustmentNote(elementId, ride) {
+    const noteEl = document.getElementById(elementId);
+    if (!noteEl) return;
+
+    const adjustment = ride?.fare_adjustment;
+    const finalFare = formatFareAmount(adjustment?.final_fare ?? ride?.fare);
+    const originalFare = Number(adjustment?.original_fare);
+    const adjustedFare = Number(adjustment?.final_fare ?? ride?.fare);
+    const addedFare = adjustedFare - originalFare;
+    let message = "";
+
+    if (adjustment?.reason === "extra_after_drop") {
+        const distanceText = formatDistancePastDestination(adjustment.extra_dropoff_distance_km);
+        const addedText = Number.isFinite(addedFare) && addedFare > 0
+            ? `, an additional ${formatFareAmount(addedFare)} was added`
+            : "";
+        message = distanceText
+            ? `Since the final drop-off was ${distanceText} past the original location${addedText}. Final fare: ${finalFare}.`
+            : fareAdjustmentMessage(ride, `Final fare: ${finalFare}.`);
+    } else if (adjustment?.reason && adjustment.final_fare !== adjustment.original_fare) {
+        message = fareAdjustmentMessage(ride, `Final fare: ${finalFare}.`);
+    }
+
+    noteEl.innerText = message;
+    noteEl.classList.toggle('d-none', !message);
 }
 
 warmGoogleMaps();
@@ -377,6 +455,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
 
     const card = document.createElement('div');
     card.className = "driver-service-request-card";
+    card.dataset.rideId = rideId;
     card.innerHTML = `
         <div class="driver-service-request-head">
             <div>
@@ -400,8 +479,11 @@ function renderIncomingRideCard(rideId, ride = {}) {
                 <strong>${formatRideDuration(ride.duration_minutes)}</strong>
             </div>
         </div>
-        <button class="gy-btn gy-btn-primary driver-service-accept-btn" type="button" data-ride-id="${escapeHtml(rideId)}">
+        <button class="gy-btn gy-btn-primary driver-service-accept-btn w-100" type="button" data-ride-id="${escapeHtml(rideId)}">
             Accept Ride Request
+        </button>
+        <button class="gy-btn gy-btn-outline driver-service-ignore-btn w-100 mt-2" type="button" data-ride-id="${escapeHtml(rideId)}">
+            Ignore
         </button>
     `;
 
@@ -434,7 +516,9 @@ function startIncomingRideListener() {
         let firstPendingRide = null;
         const driverVehicleType = getDriverRequestVehicleType(currentUser);
 
+        const ignored = loadIgnoredRideIds();
         snapshot.forEach((docSnapshot) => {
+            if (ignored.includes(docSnapshot.id)) return;
             const ride = docSnapshot.data();
             if (ride.status !== "pending" || ride.driver_id) return;
             if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) return;
@@ -514,6 +598,7 @@ async function acceptIncomingRide(rideId, button) {
             throw new Error(data.error || "Could not accept this ride.");
         }
         const acceptedRideData = data.ride || {};
+        driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
 
         await setServiceDriverAvailability("busy");
         renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });
@@ -966,7 +1051,7 @@ function ensureNavToggleButton() {
     navToggleButton.type = "button";
     navToggleButton.className = "driver-nav-toggle-btn";
     navToggleButton.setAttribute("aria-label", "Toggle navigation camera");
-    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true">&#8963;</span>';
+    navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true"></span>';
     navToggleButton.addEventListener("click", () => setNavigationMode(!navigationModeEnabled));
     mapHost.parentElement.appendChild(navToggleButton);
     setNavigationMode(navigationModeEnabled);
@@ -1453,7 +1538,8 @@ async function completeRideJob() {
         }
 
         paymentModal.classList.remove('d-none');
-        await showAlert(fareAdjustmentMessage(result.ride, `Final fare: ${formatFareAmount(finalFare)}.`));
+        renderFareAdjustmentNote('driver-service-fare-note', result.ride);
+        await setServiceDriverAvailability(driverPostRideAvailability);
         hideLifecyclePanel();
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
@@ -1570,6 +1656,8 @@ function startActiveRideListener() {
     if (!currentUser?.uid) return;
     if (activeRideUnsubscribe) activeRideUnsubscribe();
 
+    const requestedRideId = new URLSearchParams(window.location.search).get("rideId");
+
     const activeRideQuery = query(
         collection(db, "rides"),
         where("driver_id", "==", currentUser.uid),
@@ -1593,10 +1681,13 @@ function startActiveRideListener() {
             return;
         }
 
+        const requestedRide = requestedRideId
+            ? snapshot.docs.find((rideDoc) => rideDoc.id === requestedRideId)
+            : null;
         const existingRide = currentRideId
             ? snapshot.docs.find((rideDoc) => rideDoc.id === currentRideId)
             : null;
-        const activeRideDoc = existingRide || snapshot.docs[0];
+        const activeRideDoc = requestedRide || existingRide || snapshot.docs[0];
         renderActiveRideState(activeRideDoc.id, activeRideDoc.data());
     }, (error) => {
         console.error("Driver active ride listener failed:", error);
@@ -1636,12 +1727,18 @@ retryButton.addEventListener('click', () => {
 });
 
 openConsoleButton.addEventListener('click', () => {
-    window.location.href = 'driver.html';
+    window.location.href = '/driver';
 });
 
 completeButton.addEventListener('click', completeRideJob);
 cancelButton.addEventListener('click', cancelRideByDriver);
 ridesContainer?.addEventListener('click', (event) => {
+    const ignoreButton = event.target.closest('.driver-service-ignore-btn');
+    if (ignoreButton) {
+        ignoreRideRequest(ignoreButton.dataset.rideId);
+        return;
+    }
+
     const acceptButton = event.target.closest('.driver-service-accept-btn');
     if (!acceptButton) return;
     acceptIncomingRide(acceptButton.dataset.rideId, acceptButton);
@@ -1662,27 +1759,33 @@ closePaymentButton.addEventListener('click', async () => {
     window.location.reload();
 });
 
+// Cover the brief gap between this page loading and the driver's session
+// being confirmed, so the swap from the driver list page never shows a
+// blank/half-built screen.
+showPageLoader("Opening trip console…");
+window.setTimeout(() => hidePageLoader({ force: true }), 12000);
+
 onAuthStateChanged(auth, async (firebaseUser) => {
     if (!firebaseUser) {
-        window.location.replace('login.html');
+        window.location.replace('/login');
         return;
     }
 
     try {
         const profileSnap = await getDoc(doc(db, "users", firebaseUser.uid));
         if (!profileSnap.exists()) {
-            window.location.replace('login.html');
+            window.location.replace('/login');
             return;
         }
 
         const profile = profileSnap.data();
         if (profile.role !== "driver") {
-            window.location.replace('index.html');
+            window.location.replace('/index');
             return;
         }
 
         if (profile.verificationStatus !== "approved") {
-            window.location.replace('driver.html');
+            window.location.replace('/driver');
             return;
         }
 
@@ -1694,8 +1797,10 @@ onAuthStateChanged(auth, async (firebaseUser) => {
         startActiveRideListener();
         startIncomingRideListener();
         startLocationTracking();
+        hidePageLoader({ force: true });
     } catch (error) {
         console.error("Driver service authentication failed:", error);
+        hidePageLoader({ force: true });
         showMessage("Could not load driver account", "Check your connection and retry the page.", "map");
     }
 });

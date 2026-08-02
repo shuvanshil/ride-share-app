@@ -12,6 +12,7 @@ import {
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { setRideActive } from './wake-lock.js?v=20260712-wake-lock';
 import { showAlert, showConfirm } from './dialog.js';
+import { showPageLoader, hidePageLoader, setButtonBusy } from './loading.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -21,7 +22,7 @@ import {
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
-const DRIVER_NOTIFICATION_ELIGIBLE_MS = 30 * 60 * 1000;
+const DRIVER_NOTIFICATION_ELIGIBLE_MS = 12 * 60 * 60 * 1000;
 // Raw GPS fixes jitter by a few metres even while a vehicle is parked. Writing
 // every single watchPosition callback straight to Firestore is what made the
 // auto icon "glitch"/shift on both the driver's and the rider's map -- each
@@ -51,6 +52,52 @@ let lastPresenceHeading = null;
 let lastActiveHeadingPosition = null;
 let lastActiveHeading = null;
 let driverDutyOnline = true;
+let driverPostRideAvailability = "searching";
+let ignoredRideIds = [];
+const DRIVER_IGNORED_RIDES_PREFIX = "liphtup_driver_ignored_requests_";
+
+function getIgnoredRidesStorageKey() {
+    return `${DRIVER_IGNORED_RIDES_PREFIX}${currentUser?.uid || "unknown"}`;
+}
+
+function loadIgnoredRideIds() {
+    if (!currentUser?.uid) return ignoredRideIds;
+    try {
+        const raw = localStorage.getItem(getIgnoredRidesStorageKey()) || "[]";
+        const parsed = Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
+        ignoredRideIds = parsed;
+        return ignoredRideIds;
+    } catch {
+        return ignoredRideIds;
+    }
+}
+
+function saveIgnoredRideIds(rideIds) {
+    ignoredRideIds = Array.from(new Set(rideIds));
+    try {
+        localStorage.setItem(getIgnoredRidesStorageKey(), JSON.stringify(ignoredRideIds));
+    } catch {
+        // Ignore storage failures; this feature is optional.
+    }
+}
+
+function ignoreRideRequest(rideId) {
+    if (!rideId || !currentUser?.uid) return;
+    const ignored = new Set(loadIgnoredRideIds());
+    ignored.add(rideId);
+    saveIgnoredRideIds(Array.from(ignored));
+
+    const card = document.querySelector(`.card[data-ride-id="${rideId}"]`);
+    if (card) card.remove();
+
+    const ridesContainer = document.getElementById('available-rides-list');
+    if (!ridesContainer.querySelector('.card')) {
+        stopRideRequestRing();
+        const noRidesMsg = document.getElementById('no-rides-msg');
+        if (noRidesMsg) noRidesMsg.classList.remove('d-none');
+    }
+}
+
 // Smoothed (exponential moving average) coordinates + write-gate bookkeeping,
 // tracked separately for the "searching" presence watch and the "on trip" watch.
 let lastPresenceSmoothedPosition = null;
@@ -70,6 +117,40 @@ function fareAdjustmentMessage(ride, fallback = "") {
     if (adjustment?.message) return adjustment.message;
     if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
     return fallback;
+}
+
+function formatDistancePastDestination(km) {
+    const meters = Math.round(Number(km) * 1000);
+    if (!Number.isFinite(meters) || meters <= 0) return "";
+    if (meters < 1000) return `${meters} meters`;
+    return `${(meters / 1000).toFixed(meters % 1000 === 0 ? 0 : 1)} km`;
+}
+
+function renderFareAdjustmentNote(elementId, ride) {
+    const noteEl = document.getElementById(elementId);
+    if (!noteEl) return;
+
+    const adjustment = ride?.fare_adjustment;
+    const finalFare = formatFareAmount(adjustment?.final_fare ?? ride?.fare);
+    const originalFare = Number(adjustment?.original_fare);
+    const adjustedFare = Number(adjustment?.final_fare ?? ride?.fare);
+    const addedFare = adjustedFare - originalFare;
+    let message = "";
+
+    if (adjustment?.reason === "extra_after_drop") {
+        const distanceText = formatDistancePastDestination(adjustment.extra_dropoff_distance_km);
+        const addedText = Number.isFinite(addedFare) && addedFare > 0
+            ? `, an additional ${formatFareAmount(addedFare)} was added`
+            : "";
+        message = distanceText
+            ? `Since the final drop-off was ${distanceText} past the original location${addedText}. Final fare: ${finalFare}.`
+            : fareAdjustmentMessage(ride, `Final fare: ${finalFare}.`);
+    } else if (adjustment?.reason && adjustment.final_fare !== adjustment.original_fare) {
+        message = fareAdjustmentMessage(ride, `Final fare: ${finalFare}.`);
+    }
+
+    noteEl.innerText = message;
+    noteEl.classList.toggle('d-none', !message);
 }
 
 function addOptionalClickListener(elementId, handler) {
@@ -273,7 +354,7 @@ function updateDutySwitchUi() {
     if (label) label.textContent = isDriverDutyOnline() ? "Online for rides" : "Offline";
     if (helper) {
         helper.textContent = isDriverDutyOnline()
-            ? "Ride alerts can continue for 30 minutes after your last fresh location."
+            ? "Ride alerts can continue while you stay online, even if the app is minimized."
             : "Passengers cannot see you and ride alerts are paused.";
     }
     if (noRidesMsg) {
@@ -724,8 +805,10 @@ function initDriverJobsStream() {
         let renderedRideCount = 0;
         let firstPendingRide = null;
 
+        const ignored = loadIgnoredRideIds();
         querySnapshot.forEach((docSnapshot) => {
             const rideId = docSnapshot.id;
+            if (ignored.includes(rideId)) return;
             const ride = docSnapshot.data();
 
             if (ride.status !== "pending" || ride.driver_id) return;
@@ -740,6 +823,7 @@ function initDriverJobsStream() {
 
             const card = document.createElement('div');
             card.className = "card p-3 mb-3 border-start border-primary border-4 shadow-sm";
+            card.dataset.rideId = rideId;
             card.innerHTML = `
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -767,6 +851,9 @@ function initDriverJobsStream() {
                 <button class="btn btn-sm btn-success w-100 fw-bold mt-2 accept-job-btn" data-id="${rideId}">
                     Accept Ride Request
                 </button>
+                <button class="btn btn-sm btn-outline-secondary w-100 fw-bold mt-2 ignore-job-btn" data-id="${rideId}">
+                    Ignore
+                </button>
             `;
 
             ridesContainer.appendChild(card);
@@ -781,6 +868,9 @@ function initDriverJobsStream() {
 
         document.querySelectorAll('.accept-job-btn').forEach(btn => {
             btn.addEventListener('click', (event) => acceptRideJob(event.target.getAttribute('data-id')));
+        });
+        document.querySelectorAll('.ignore-job-btn').forEach(btn => {
+            btn.addEventListener('click', (event) => ignoreRideRequest(event.target.getAttribute('data-id')));
         });
     });
 }
@@ -830,10 +920,37 @@ function startDriverGpsBroadcast(rideRef) {
         activeDriverLocationWatchId = null;
     }
 
+    lastActiveSmoothedPosition = null;
+    lastActiveWrittenPosition = null;
+    lastActiveWriteAt = 0;
+    lastActiveHeadingPosition = null;
+    lastActiveHeading = null;
+
     activeDriverLocationWatchId = navigator.geolocation.watchPosition(
         async (position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
+            const rawCoords = { lat: position.coords.latitude, lng: position.coords.longitude };
+            const smoothed = smoothGpsCoordinate(
+                lastActiveSmoothedPosition,
+                rawCoords,
+                position.coords.accuracy
+            );
+            lastActiveSmoothedPosition = smoothed;
+
+            if (!shouldWriteDriverLocation(
+                lastActiveWrittenPosition,
+                lastActiveWriteAt,
+                smoothed,
+                DRIVER_ACTIVE_LOCATION_WRITE_DISTANCE_METERS,
+                DRIVER_ACTIVE_LOCATION_WRITE_MIN_INTERVAL_MS
+            )) {
+                return;
+            }
+
+            lastActiveWrittenPosition = smoothed;
+            lastActiveWriteAt = Date.now();
+
+            const lat = smoothed.lat;
+            const lng = smoothed.lng;
             const coords = { lat, lng };
             const telemetryResult = buildDriverTelemetry(
                 coords,
@@ -857,9 +974,32 @@ function startDriverGpsBroadcast(rideRef) {
     );
 }
 
+function setRideListBusy(busy) {
+    document.querySelectorAll('.accept-job-btn, .ignore-job-btn').forEach((btn) => {
+        if (busy) {
+            btn.dataset.luWasDisabled = btn.disabled ? "1" : "0";
+            btn.disabled = true;
+        } else if (btn.dataset.luWasDisabled !== undefined) {
+            btn.disabled = btn.dataset.luWasDisabled === "1";
+            delete btn.dataset.luWasDisabled;
+        }
+    });
+}
+
 async function acceptRideJob(rideId) {
+    // Lock every ride card immediately: this both gives instant feedback and
+    // stops a driver from firing a second accept (on this or another card)
+    // while the first request is still in flight. The backend's Firestore
+    // transaction is still the real guard against two drivers winning the
+    // same ride -- this is purely to keep the UI from looking accept-able
+    // twice on one device.
+    setRideListBusy(true);
+    const clickedBtn = document.querySelector(`.accept-job-btn[data-id="${CSS.escape(rideId)}"]`);
+    const restoreBtn = setButtonBusy(clickedBtn, "Accepting…");
+
     try {
         stopRideRequestRing();
+        driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
         const result = await acceptRideThroughBackend(rideId);
         const acceptedRideData = result.ride || {};
         await setDriverAvailability("busy");
@@ -870,9 +1010,27 @@ async function acceptRideJob(rideId) {
         renderActiveTripStatus("accepted", activeDriverRideData);
         attachDriverTripListener(doc(db, "rides", rideId));
         startDriverGpsBroadcast(doc(db, "rides", rideId));
+
+        // Show the full-screen loader right away so the brief page swap to
+        // driver-service (a fresh document load) never looks like a freeze.
+        showPageLoader("Ride accepted — opening trip console…");
+
+        // The navigation console owns the live pickup map. Pass the accepted
+        // ride ID so it can select this ride when its realtime listener starts.
+        const serviceUrl = new URL("/driver-service", window.location.href);
+        serviceUrl.searchParams.set("rideId", rideId);
+        window.location.href = serviceUrl.href;
     } catch (error) {
         console.error("Failed to commit transactional state adjustment:", error);
-        await showAlert(error.message || "Could not accept this ride.");
+        restoreBtn();
+        setRideListBusy(false);
+
+        const alreadyTaken = /already accepted|no longer available|no longer exists/i.test(error.message || "");
+        if (alreadyTaken) {
+            await showAlert("Another driver already accepted this ride. Refreshing the list…");
+        } else {
+            await showAlert(error.message || "Could not accept this ride.");
+        }
     }
 }
 
@@ -965,12 +1123,13 @@ async function completeRideJob() {
         }
 
         document.getElementById('driver-payment-view').classList.remove('d-none');
-        await showAlert(fareAdjustmentMessage(result.ride, `Final fare: ${formatFareAmount(finalFare)}.`));
+        renderFareAdjustmentNote('driver-fare-note', result.ride);
         if (activeDriverTripListener) activeDriverTripListener();
         activeDriverRideData = null;
         activeDriverRenderedStatus = null;
         currentlyAssignedRideId = null;
         setRideActive(false);
+        await setDriverAvailability(driverPostRideAvailability);
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
         await showAlert("Database connection dropped during checkout.");
@@ -1034,7 +1193,7 @@ function startDriverConsole(profile) {
 
 function routeDriverProfile(profile) {
     if (profile.role !== "driver") {
-        window.location.replace("index.html");
+        window.location.replace("/index");
         return;
     }
 
@@ -1058,7 +1217,7 @@ addOptionalClickListener('start-trip-btn', () => updateActiveRideStatus("started
 addOptionalClickListener('complete-trip-btn', completeRideJob);
 addOptionalClickListener('cancel-driver-trip-btn', () => cancelRideByDriver());
 addOptionalClickListener('driver-history-btn', () => {
-    window.location.href = 'history.html';
+    window.location.href = '/history';
 });
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const checked = event.target.checked;
@@ -1105,7 +1264,7 @@ addOptionalClickListener('logout-btn', async () => {
         clearCachedProfile();
         await setDriverAvailability("offline");
         await signOut(auth);
-        window.location.href = "login.html";
+        window.location.href = "/login";
     } catch (error) {
         console.error("Logout failed:", error);
         await showAlert("Could not logout. Please try again.");
@@ -1123,7 +1282,7 @@ if ("serviceWorker" in navigator) {
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         clearCachedProfile();
-        window.location.replace("login.html");
+        window.location.replace("/login");
         return;
     }
 
@@ -1131,7 +1290,7 @@ onAuthStateChanged(auth, async (user) => {
         const userDocSnap = await getDoc(doc(db, "users", user.uid));
         if (!userDocSnap.exists()) {
             clearCachedProfile();
-            window.location.replace("login.html");
+            window.location.replace("/login");
             return;
         }
 
