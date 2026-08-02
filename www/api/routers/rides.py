@@ -31,7 +31,8 @@ router = APIRouter(prefix="/rides", tags=["rides"])
 ACTIVE_PASSENGER_STATUSES = {"pending", "accepted", "arrived", "started", "en_route"}
 DISPATCH_BATCH_SIZE = 10
 DISPATCH_TIMEOUT_MS = 45000
-DRIVER_LOCATION_VISIBLE_SECONDS = 15 * 60
+DRIVER_NOTIFICATION_ELIGIBLE_HOURS = 12
+DRIVER_LOCATION_VISIBLE_SECONDS = DRIVER_NOTIFICATION_ELIGIBLE_HOURS * 60 * 60
 
 
 class RideCreateBody(BaseModel):
@@ -298,11 +299,16 @@ def _build_driver_availability_updates(
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     online = status != "offline"
     now = datetime.now(timezone.utc)
+    notification_eligible_until = (
+        now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS)
+        if online
+        else datetime.fromtimestamp(0, timezone.utc)
+    )
     user_update: dict[str, Any] = {
         "driverAvailability": status,
         "desiredAvailability": "online" if online else "offline",
         "isConnected": online,
-        "notificationEligibleUntil": now + timedelta(minutes=30) if online else datetime.fromtimestamp(0, timezone.utc),
+        "notificationEligibleUntil": notification_eligible_until,
         "driverAvailabilityUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
         "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
     }
@@ -317,6 +323,7 @@ def _build_driver_availability_updates(
         "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
         "vehicle_type": _driver_type(profile),
         "isConnected": online,
+        "notificationEligibleUntil": notification_eligible_until,
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         "lastSeenAt": fb_firestore.SERVER_TIMESTAMP,
     }
@@ -860,12 +867,19 @@ def update_driver_location(
             "driverAvailability": availability,
             "desiredAvailability": persisted_desired,
             "isConnected": True,
+            "notificationEligibleUntil": now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS),
             "lastSeenAt": now,
             "lastAppSeenAt": now,
             "lastLocationAt": now,
             "updatedAt": now,
         }
-        profile_ref.set({"driverLocation": location, **telemetry, "lastSeenAt": now, "lastLocationAt": now}, merge=True)
+        profile_ref.set({
+            "driverLocation": location,
+            **telemetry,
+            "notificationEligibleUntil": now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS),
+            "lastSeenAt": now,
+            "lastLocationAt": now,
+        }, merge=True)
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
         db.collection("driverMapPresence").document(uid).set({
             "uid": uid,
@@ -910,10 +924,17 @@ def save_driver_push_token(
             "userAgent": body.userAgent,
             "updatedAt": datetime.now(timezone.utc),
         }
+        notification_eligible_until = (
+            datetime.now(timezone.utc) + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS)
+            if str(profile.get("desiredAvailability") or profile.get("driverAvailability") or "").strip().lower() != "offline"
+            else datetime.fromtimestamp(0, timezone.utc)
+        )
         update = {
             "pushTokens": fb_firestore.ArrayUnion([body.token]),
             "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
             "notificationPermission": "granted",
+            "notificationEligibleUntil": notification_eligible_until,
+            "lastAppSeenAt": fb_firestore.SERVER_TIMESTAMP,
             "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
         db.collection("users").document(uid).set(update, merge=True)

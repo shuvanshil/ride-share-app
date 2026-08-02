@@ -21,7 +21,7 @@ import {
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
-const DRIVER_NOTIFICATION_ELIGIBLE_MS = 30 * 60 * 1000;
+const DRIVER_NOTIFICATION_ELIGIBLE_MS = 12 * 60 * 60 * 1000;
 // Raw GPS fixes jitter by a few metres even while a vehicle is parked. Writing
 // every single watchPosition callback straight to Firestore is what made the
 // auto icon "glitch"/shift on both the driver's and the rider's map -- each
@@ -353,7 +353,7 @@ function updateDutySwitchUi() {
     if (label) label.textContent = isDriverDutyOnline() ? "Online for rides" : "Offline";
     if (helper) {
         helper.textContent = isDriverDutyOnline()
-            ? "Ride alerts can continue for 30 minutes after your last fresh location."
+            ? "Ride alerts can continue while you stay online, even if the app is minimized."
             : "Passengers cannot see you and ride alerts are paused.";
     }
     if (noRidesMsg) {

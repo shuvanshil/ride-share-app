@@ -20,7 +20,7 @@ from ..core.firebase import get_admin_app
 
 router = APIRouter()
 
-DRIVER_NOTIFICATION_ELIGIBLE_MS = 30 * 60 * 1000
+DRIVER_NOTIFICATION_ELIGIBLE_MS = 12 * 60 * 60 * 1000
 APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https://liphtup.in").rstrip("/")
 
 
@@ -125,7 +125,7 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
         fare = float(ride.get("fare") or 0)
         body_text = f"{pickup} to {drop}" + (f" - Rs {fare:g}" if fare > 0 else "")
 
-        notification_url = f"{APP_BASE_URL}/driver.html?rideId={ride_id}&from=push"
+        notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=push"
 
         message = fb_messaging.MulticastMessage(
             tokens=unique_tokens,
@@ -137,7 +137,7 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
                 "url": notification_url,
             },
             webpush=fb_messaging.WebpushConfig(
-                headers={"Urgency": "high", "TTL": "90"},
+                headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),
                 notification=fb_messaging.WebpushNotification(
                     title="New LiphtUp ride request",

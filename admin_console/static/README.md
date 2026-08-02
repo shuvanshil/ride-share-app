@@ -1,16 +1,26 @@
 # LiphtUp Admin Console
 
-Everything admin-specific lives under `www/admin/` (frontend) and
-`www/api/routers/admin.py` + `www/api/core/admin.py` (backend). Nothing
-else in the repo changed except two lines in `www/api/index.py` that
-mount the new router, exactly like every other router already is.
+Everything admin-specific lives under the top-level `admin_console/`
+directory:
+
+- `admin_console/static/`: frontend HTML/CSS/JS.
+- `admin_console/api/admin.py`: admin API router.
+- `admin_console/api/core/admin.py`: admin auth/audit helpers.
+- `admin_console/api/static.py`: serves the isolated static files through
+  `/api/admin-console-static/*`.
+
+The only files left under `www/` are compatibility shims: `/admin`
+loads the isolated static page, and `www/api/routers/admin.py` plus
+`www/api/core/admin.py` import the isolated backend. Deleting
+`admin_console/` removes the admin console while leaving the passenger,
+driver, and core API routes importable.
 
 ## URL
 
-`https://liphtup.in/admin` -- served automatically by Vercel's static
-directory-index convention (`www/admin/index.html`), the same way every
-other page in `www/` is served. It is not linked from any public page and
-carries `<meta name="robots" content="noindex,nofollow">`.
+`https://liphtup.in/admin` -- served by a tiny bridge at
+`www/admin/index.html`, which loads `admin_console/static/index.html`
+through `/api/admin-console-static/index.html`. It is not linked from any
+public page and carries `<meta name="robots" content="noindex,nofollow">`.
 
 ## How admin access works
 
@@ -18,7 +28,7 @@ carries `<meta name="robots" content="noindex,nofollow">`.
   user uses (email + password). There is no separate admin auth system.
 - What makes an authenticated user an *admin* is a Firebase Auth **custom
   claim**, `admin: true`, checked by `require_admin` in
-  `www/api/core/admin.py`. The claim lives in the signed ID token, so
+  `admin_console/api/core/admin.py`. The claim lives in the signed ID token, so
   `verify_firebase_token` (already used everywhere else) picks it up for
   free -- no extra Firestore read, no extra round trip.
 - The admin frontend never talks to Firestore directly. Every read and
@@ -127,7 +137,7 @@ small, additive change to `firestore.rules`: a `isAdmin()` function
 (checks the same `admin` custom claim as the backend) or'd into the
 existing read conditions for `rides`, `tripHistory`, and `users`. Nothing
 about who can *write* changed -- every write, admin included, still goes
-through the FastAPI Admin SDK in `www/api/routers/admin.py`, and the
+through the FastAPI Admin SDK in `admin_console/api/admin.py`, and the
 `isAdmin()` check can't be satisfied by anything a client can set on its
 own (it's a server-set Auth custom claim). Reads for non-admin rules are
 untouched.

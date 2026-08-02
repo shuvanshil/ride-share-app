@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v29-clean-urls";
+const CACHE_VERSION = "liphtup-shell-v30-driver-notifications-admin-bridge";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline", BASE_URL).href;
 const APP_SHELL = [
