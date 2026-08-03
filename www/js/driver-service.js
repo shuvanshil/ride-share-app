@@ -1565,6 +1565,58 @@ async function cancelRideByDriver() {
     }
 }
 
+// ==========================================
+// PASSENGER SAFETY: EMERGENCY SOS (Feature 3)
+// ==========================================
+function getQuickPosition(timeoutMs = 4000) {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve(null);
+        const timer = setTimeout(() => resolve(null), timeoutMs);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                clearTimeout(timer);
+                resolve({ lat: position.coords.latitude, lng: position.coords.longitude });
+            },
+            () => {
+                clearTimeout(timer);
+                resolve(null);
+            },
+            { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 15000 }
+        );
+    });
+}
+
+async function sendDriverSos() {
+    if (!currentRideId) {
+        await showAlert("Start or accept a trip first, then use SOS during that trip.");
+        return;
+    }
+    const confirmed = await showConfirm(
+        "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first.",
+        { okText: "Send SOS", cancelText: "Cancel" }
+    );
+    if (!confirmed) return;
+
+    try {
+        const position = await getQuickPosition();
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(currentRideId)}/sos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify(position ? { lat: position.lat, lng: position.lng } : {})
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not send the SOS alert.");
+        await showAlert("SOS sent. LiphtUp's safety team has been alerted with your trip and location.");
+    } catch (error) {
+        console.error("SOS failed:", error);
+        await showAlert(error.message || "Could not send the SOS alert. Please call local emergency services directly.");
+    }
+}
+
+document.getElementById('driver-service-sos-btn')?.addEventListener('click', () => sendDriverSos());
+
 function buildTripHistoryRecord(rideId, rideData) {
     const status = rideData.status || "verified";
     const isCancelled = status === "cancelled_by_passenger" || status === "cancelled_by_driver";

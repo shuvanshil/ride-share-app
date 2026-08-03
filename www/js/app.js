@@ -246,6 +246,111 @@ async function inviteFriends() {
     setInviteFriendsStatus(copied ? "Invite link copied. Share it with friends." : "Unable to share right now. Please try again.");
 }
 
+// ==========================================
+// PASSENGER SAFETY: SOS + LIVE TRIP SHARING (Feature 3)
+// ==========================================
+let tripShareEnabled = false;
+
+function setShareTripButtonState(enabled) {
+    tripShareEnabled = enabled;
+    const btn = document.getElementById('passenger-share-trip-btn');
+    if (!btn) return;
+    btn.innerText = enabled ? "Sharing On · Tap to Stop" : "Share Trip";
+    btn.classList.toggle('gy-btn-outline', !enabled);
+    btn.classList.toggle('gy-btn-dark', enabled);
+}
+
+function getQuickPosition(timeoutMs = 4000) {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve(null);
+        const timer = setTimeout(() => resolve(null), timeoutMs);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                clearTimeout(timer);
+                resolve({ lat: position.coords.latitude, lng: position.coords.longitude });
+            },
+            () => {
+                clearTimeout(timer);
+                resolve(null);
+            },
+            { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 15000 }
+        );
+    });
+}
+
+async function sendPassengerSos() {
+    if (!currentPassengerRideId) {
+        await showAlert("SOS is available once a driver is on the way.");
+        return;
+    }
+    const confirmed = await showConfirm(
+        "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first.",
+        { okText: "Send SOS", cancelText: "Cancel" }
+    );
+    if (!confirmed) return;
+
+    try {
+        const position = await getQuickPosition();
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(currentPassengerRideId)}/sos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify(position ? { lat: position.lat, lng: position.lng } : {})
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not send the SOS alert.");
+        await showAlert("SOS sent. LiphtUp's safety team has been alerted with your trip and location.");
+    } catch (error) {
+        console.error("SOS failed:", error);
+        await showAlert(error.message || "Could not send the SOS alert. Please call local emergency services directly.");
+    }
+}
+
+async function togglePassengerShareTrip() {
+    if (!currentPassengerRideId) {
+        await showAlert("Trip sharing is available once your ride is active.");
+        return;
+    }
+    const enable = !tripShareEnabled;
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(currentPassengerRideId)}/share`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ enable })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not update trip sharing.");
+        setShareTripButtonState(enable);
+
+        if (enable) {
+            const trackUrl = `https://liphtup.in/track?ride=${encodeURIComponent(currentPassengerRideId)}`;
+            const shareData = {
+                title: "Track my LiphtUp trip",
+                text: "I'm on a LiphtUp trip — follow my live location here:",
+                url: trackUrl
+            };
+            if (typeof navigator.share === 'function') {
+                try {
+                    await navigator.share(shareData);
+                    return;
+                } catch (error) {
+                    if (error?.name === 'AbortError') return;
+                }
+            }
+            const copied = await copyTextToClipboard(`${shareData.text} ${trackUrl}`);
+            await showAlert(copied ? "Tracking link copied. Send it to a trusted contact." : trackUrl);
+        } else {
+            await showAlert("Live trip sharing turned off.");
+        }
+    } catch (error) {
+        console.error("Trip sharing toggle failed:", error);
+        await showAlert(error.message || "Could not update trip sharing.");
+    }
+}
+
 function generateVerificationPin() {
     return String(Math.floor(1000 + Math.random() * 9000));
 }
@@ -322,6 +427,7 @@ function renderPassengerDriverCard(ride) {
             <div>
                 <div class="fw-bold text-dark">${driverName}</div>
                 <div class="small text-muted">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
+                <span class="driver-verified-badge">✓ Verified Driver</span>
             </div>
             ${driverPhone ? `
                 <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
@@ -385,6 +491,7 @@ function showTripProgressPanel(ride) {
                 <div>
                     <div class="fw-bold text-dark">${driverName}</div>
                     <div class="small text-muted">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
+                    <span class="driver-verified-badge">✓ Verified Driver</span>
                 </div>
                 ${driverPhone ? `
                     <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
@@ -448,6 +555,7 @@ function showPassengerCancelButton(rideId) {
     currentPassengerRideId = rideId;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.remove('d-none');
+    document.getElementById('passenger-safety-actions')?.classList.remove('d-none');
 }
 
 function hidePassengerCancelButton() {
@@ -455,6 +563,8 @@ function hidePassengerCancelButton() {
     currentPassengerRideData = null;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.add('d-none');
+    document.getElementById('passenger-safety-actions')?.classList.add('d-none');
+    setShareTripButtonState(false);
 }
 
 function resetPassengerBookingUi() {
@@ -1059,3 +1169,6 @@ addOptionalClickListener('invite-friends-btn', () => {
     setInviteFriendsStatus("");
     inviteFriends();
 });
+
+addOptionalClickListener('passenger-sos-btn', () => sendPassengerSos());
+addOptionalClickListener('passenger-share-trip-btn', () => togglePassengerShareTrip());

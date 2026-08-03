@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v30-driver-notifications-admin-bridge";
+const CACHE_VERSION = "liphtup-shell-v31-driver-dashboard-safety";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline", BASE_URL).href;
 const APP_SHELL = [
@@ -19,6 +19,7 @@ const APP_SHELL = [
     "/index",
     "/driver",
     "/driver-service",
+    "/driver-dashboard",
     "/services",
     "/profile",
     "/history",
@@ -28,11 +29,13 @@ const APP_SHELL = [
     "favicon.ico",
     "css/style.css",
     "css/driver-service.css",
+    "css/driver-dashboard.css",
     "js/firebase-init.js",
     "js/auth.js",
     "js/app.js",
     "js/driver.js",
     "js/driver-service.js",
+    "js/driver-dashboard.js",
     "js/services.js",
     "js/profile.js",
     "js/history.js",

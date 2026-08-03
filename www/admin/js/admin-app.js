@@ -4,6 +4,7 @@ import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
 import { startLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
 import { toast } from "./admin-toast.js";
+import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -55,6 +56,8 @@ watchAdminAuth(async (user) => {
         showOnly(shell);
         resetToDashboard();
         loadSection("dashboard");
+        refreshSafetyBadge();
+        startSosRealtimeAlerts();
         if (!feedStarted) {
             feedStarted = true;
             // Make sure the token used by Firestore's realtime listeners has
@@ -166,6 +169,7 @@ function loadSection(name) {
     loadedSections.add(name);
     if (name === "dashboard") loadDashboard();
     if (name === "drivers") loadDrivers(true);
+    if (name === "safety") loadSafety();
     if (name === "ride-history") loadHistory(true);
     if (name === "passengers") loadPassengers(true);
     if (name === "analytics") loadAnalytics();

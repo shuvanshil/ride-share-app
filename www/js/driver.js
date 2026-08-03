@@ -96,6 +96,78 @@ function ignoreRideRequest(rideId) {
         const noRidesMsg = document.getElementById('no-rides-msg');
         if (noRidesMsg) noRidesMsg.classList.remove('d-none');
     }
+
+    // Also tell the server this driver declined the request, so it's
+    // recorded in rejected_driver_ids (kept out of this driver's queue even
+    // after a page reload) and counted in the driver dashboard's
+    // acceptance-rate stat. Best-effort: the instant local hide above is
+    // the important UX, this just keeps state in sync server-side.
+    rejectRideThroughBackend(rideId).catch((error) => {
+        console.warn("Could not record ride decline server-side:", error);
+    });
+}
+
+// ==========================================
+// PASSENGER SAFETY: EMERGENCY SOS (Feature 3)
+// ==========================================
+function getQuickPosition(timeoutMs = 4000) {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve(null);
+        const timer = setTimeout(() => resolve(null), timeoutMs);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                clearTimeout(timer);
+                resolve({ lat: position.coords.latitude, lng: position.coords.longitude });
+            },
+            () => {
+                clearTimeout(timer);
+                resolve(null);
+            },
+            { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 15000 }
+        );
+    });
+}
+
+async function sendDriverSos() {
+    if (!currentlyAssignedRideId) {
+        await showAlert("Start or accept a trip first, then use SOS during that trip.");
+        return;
+    }
+    const confirmed = await showConfirm(
+        "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first.",
+        { okText: "Send SOS", cancelText: "Cancel" }
+    );
+    if (!confirmed) return;
+
+    try {
+        const position = await getQuickPosition();
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(currentlyAssignedRideId)}/sos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify(position ? { lat: position.lat, lng: position.lng } : {})
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not send the SOS alert.");
+        await showAlert("SOS sent. LiphtUp's safety team has been alerted with your trip and location.");
+    } catch (error) {
+        console.error("SOS failed:", error);
+        await showAlert(error.message || "Could not send the SOS alert. Please call local emergency services directly.");
+    }
+}
+
+async function rejectRideThroughBackend(rideId) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) return;
+    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/reject`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Could not decline this ride.");
+    }
 }
 
 // Smoothed (exponential moving average) coordinates + write-gate bookkeeping,
@@ -812,6 +884,7 @@ function initDriverJobsStream() {
             const ride = docSnapshot.data();
 
             if (ride.status !== "pending" || ride.driver_id) return;
+            if ((ride.rejected_driver_ids || []).includes(currentUser.uid)) return;
             if (ride.vehicle_type && ride.vehicle_type !== inferVehicleTypeFromProfile(currentUser)) return;
             renderedRideCount += 1;
             if (!firstPendingRide) {
@@ -1216,6 +1289,7 @@ addOptionalClickListener('arrived-trip-btn', () => updateActiveRideStatus("arriv
 addOptionalClickListener('start-trip-btn', () => updateActiveRideStatus("started"));
 addOptionalClickListener('complete-trip-btn', completeRideJob);
 addOptionalClickListener('cancel-driver-trip-btn', () => cancelRideByDriver());
+addOptionalClickListener('driver-sos-btn', () => sendDriverSos());
 addOptionalClickListener('driver-history-btn', () => {
     window.location.href = '/history';
 });

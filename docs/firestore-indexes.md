@@ -34,6 +34,12 @@ exactly the index that query needs.)
 | `rides` | `driver_id`, `createdAt` | A driver's own recent rides (driver profile drawer) |
 | `rides` | `vehicle_type`, `createdAt` | Ride History filtered by vehicle type with "All statuses" + a date range |
 | `rides` | `passenger_id`, `createdAt` | Ride History filtered by a specific passenger with "All statuses" + a date range |
+| `sosAlerts` | `status`, `createdAt` | Admin Safety section: SOS Alerts list filtered to open/resolved, newest first |
+| `safetyReports` | `status`, `createdAt` | Admin Safety section: Reports list filtered to open/resolved, newest first |
+
+`driverDailyStats` (Feature 1, driver dashboard) is read by direct document
+ID (`{driverId}_{YYYY-MM-DD}`), never queried with a `.where(...)`, so it
+needs no composite index at all.
 
 A few queries deliberately need **no** composite index and aren't listed
 here: plain equality-only filters (e.g. `role == driver` combined with

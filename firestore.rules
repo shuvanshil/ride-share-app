@@ -105,6 +105,63 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Feature 1 (Driver Dashboard): one small counters doc per driver per
+    // Asia/Kolkata day, written only by FastAPI (see _bump_daily_stats in
+    // api/routers/rides.py). The driver dashboard is currently read through
+    // GET /api/rides/driver-dashboard, not a direct client listener, but the
+    // owner-read grant here is left in place for a future realtime widget
+    // and costs nothing extra to allow.
+    match /driverDailyStats/{statId} {
+      allow read: if signedIn()
+        && (resource.data.driver_id == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // Feature 3 (live trip sharing): a sanitized, contact-free mirror of one
+    // active ride, written only by FastAPI while the passenger has sharing
+    // turned on (see set_trip_share() in api/routers/rides.py). Deliberately
+    // public-read with no auth check -- the point is that a trusted contact
+    // with just the link (containing the unguessable ride ID) can open
+    // /track without ever needing a LiphtUp account. It never contains phone
+    // numbers, the PIN, or any field beyond what set_trip_share() writes,
+    // and is deleted the moment the trip ends or sharing is turned off.
+    match /tripShareView/{rideId} {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    // Feature 3 (emergency SOS): alerts raised from an active ride via
+    // POST /api/rides/{id}/sos. Only admins can read these -- they are
+    // never shown back to the passenger/driver who triggered them beyond
+    // the immediate in-app confirmation, and never listable/writable by
+    // any client.
+    match /sosAlerts/{alertId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Feature 3 (suspicious activity reporting): reports submitted via
+    // POST /api/rides/safety-report. Same admin-only visibility as SOS
+    // alerts, and for the same reason -- a report must not be readable or
+    // editable by the account it concerns.
+    match /safetyReports/{reportId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Feature 3 (emergency contact management): up to 3 trusted contacts
+    // per user, edited directly from the Profile > Safety sheet. Low-risk
+    // personal data (name + phone only) following the same owner-only,
+    // schema-validated pattern as /savedPlaces above -- no FastAPI route
+    // needed for this one.
+    match /emergencyContacts/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['contacts', 'updatedAt'])
+        && request.resource.data.contacts.size() <= 3;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

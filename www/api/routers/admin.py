@@ -317,6 +317,12 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             f"{driver_counts.get('pending_review', 0)} driver(s) waiting for approval."
         )
 
+    open_sos_count = _count(db.collection("sosAlerts").where("status", "==", "open"))
+    open_reports_count = _count(db.collection("safetyReports").where("status", "==", "open"))
+    if open_sos_count > 0:
+        system_health["status"] = "attention"
+        system_health["notes"].append(f"{open_sos_count} open SOS alert(s) need attention.")
+
     return {
         "ok": True,
         "systemHealth": system_health,
@@ -349,6 +355,10 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
         "platform": {
             "totalRegisteredUsers": _count(users),
             "totalCompletedRides": _count(rides.where("status", "==", "completed")),
+        },
+        "safety": {
+            "openSosAlerts": open_sos_count,
+            "openSafetyReports": open_reports_count,
         },
     }
 
@@ -811,3 +821,121 @@ def list_audit_logs(
     base = _db().collection("auditLogs").order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
     items, next_cursor = _paginate(base, cursor, limit, "auditLogs")
     return {"ok": True, "logs": items, "nextCursor": next_cursor}
+
+
+# ---------------------------------------------------------------------------
+# Safety (Feature 3): SOS alerts + suspicious-activity reports
+# ---------------------------------------------------------------------------
+
+SAFETY_STATUS_GROUPS: dict[str, Optional[list[str]]] = {
+    "all": None,
+    "open": ["open"],
+    "resolved": ["resolved", "dismissed"],
+}
+
+
+@router.get("/safety/sos-alerts")
+def list_sos_alerts(
+    admin_user: dict[str, Any] = Depends(require_admin),
+    status: Optional[str] = Query(default="open"),
+    cursor: Optional[str] = Query(default=None),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE),
+) -> dict[str, Any]:
+    """`status` defaults to `open` (the actionable queue). Pass `all` or
+    `resolved` to browse history."""
+    limit = _clamp_limit(limit)
+    base = _db().collection("sosAlerts")
+    values = SAFETY_STATUS_GROUPS.get(status, ["open"]) if status else None
+    if values:
+        base = base.where("status", "in", values)
+    base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+    items, next_cursor = _paginate(base, cursor, limit, "sosAlerts")
+    return {"ok": True, "alerts": items, "nextCursor": next_cursor}
+
+
+class SafetyActionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = Field(min_length=1, max_length=30)
+    notes: str = Field(default="", max_length=500)
+
+
+@router.patch("/safety/sos-alerts/{alert_id}")
+def update_sos_alert(
+    alert_id: str,
+    body: SafetyActionBody,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    if body.action not in {"resolve", "reopen"}:
+        raise ApiError("Unknown SOS alert action.", 400)
+    db = _db()
+    ref = db.collection("sosAlerts").document(alert_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("SOS alert not found.", 404)
+    before = _doc_dict(snap)
+
+    new_status = "resolved" if body.action == "resolve" else "open"
+    updates = {
+        "status": new_status,
+        "resolvedBy": admin_user.get("email") if body.action == "resolve" else None,
+        "resolvedAt": fb_firestore.SERVER_TIMESTAMP if body.action == "resolve" else None,
+        "adminNotes": body.notes[:500] if body.notes else before.get("adminNotes"),
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    ref.set(updates, merge=True)
+    if body.action == "resolve":
+        ride_id = before.get("ride_id")
+        if ride_id:
+            db.collection("rides").document(ride_id).set(
+                {"sos_active": False, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True
+            )
+
+    write_audit_log(admin_user, f"sos_alert.{body.action}", "sos_alert", alert_id, before, updates, body.notes)
+    return {"ok": True, "alert": _doc_dict(ref.get())}
+
+
+@router.get("/safety/reports")
+def list_safety_reports(
+    admin_user: dict[str, Any] = Depends(require_admin),
+    status: Optional[str] = Query(default="open"),
+    cursor: Optional[str] = Query(default=None),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE),
+) -> dict[str, Any]:
+    limit = _clamp_limit(limit)
+    base = _db().collection("safetyReports")
+    values = SAFETY_STATUS_GROUPS.get(status, ["open"]) if status else None
+    if values:
+        base = base.where("status", "in", values)
+    base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+    items, next_cursor = _paginate(base, cursor, limit, "safetyReports")
+    return {"ok": True, "reports": items, "nextCursor": next_cursor}
+
+
+@router.patch("/safety/reports/{report_id}")
+def update_safety_report(
+    report_id: str,
+    body: SafetyActionBody,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    if body.action not in {"resolve", "dismiss", "reopen"}:
+        raise ApiError("Unknown safety report action.", 400)
+    db = _db()
+    ref = db.collection("safetyReports").document(report_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Safety report not found.", 404)
+    before = _doc_dict(snap)
+
+    new_status = {"resolve": "resolved", "dismiss": "dismissed", "reopen": "open"}[body.action]
+    updates = {
+        "status": new_status,
+        "reviewedBy": admin_user.get("email") if body.action != "reopen" else None,
+        "reviewedAt": fb_firestore.SERVER_TIMESTAMP if body.action != "reopen" else None,
+        "adminNotes": body.notes[:500] if body.notes else before.get("adminNotes"),
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    ref.set(updates, merge=True)
+
+    write_audit_log(admin_user, f"safety_report.{body.action}", "safety_report", report_id, before, updates, body.notes)
+    return {"ok": True, "report": _doc_dict(ref.get())}

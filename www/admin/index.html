@@ -69,6 +69,7 @@
                 <button class="admin-nav-item active" data-section="dashboard" type="button">Dashboard</button>
                 <button class="admin-nav-item" data-section="drivers" type="button">Drivers</button>
                 <button class="admin-nav-item" data-section="live-rides" type="button">Live Rides</button>
+                <button class="admin-nav-item" data-section="safety" type="button">Safety <span id="admin-safety-nav-badge" class="admin-nav-badge d-none">0</span></button>
                 <button class="admin-nav-item" data-section="ride-history" type="button">Ride History</button>
                 <button class="admin-nav-item" data-section="passengers" type="button">Passengers</button>
                 <button class="admin-nav-item" data-section="analytics" type="button">Analytics</button>
@@ -113,6 +114,37 @@
                         <span class="admin-live-dot" title="Auto-refreshes every 8s">&#9679; Live</span>
                     </div>
                     <div id="live-rides-list" class="admin-card-list"></div>
+                </section>
+
+                <!-- Safety -->
+                <section id="section-safety" class="admin-section d-none">
+                    <div class="admin-section-header">
+                        <h2 class="admin-section-title">Safety</h2>
+                        <span class="admin-live-dot" title="Auto-refreshes">&#9679; Live</span>
+                    </div>
+
+                    <div class="admin-safety-subnav">
+                        <button class="admin-safety-tab active" data-safety-tab="sos" type="button">SOS Alerts</button>
+                        <button class="admin-safety-tab" data-safety-tab="reports" type="button">Safety Reports</button>
+                    </div>
+
+                    <div id="safety-sos-panel" class="admin-filters mb-2">
+                        <select id="safety-sos-status-filter" class="form-select gy-input admin-filter-select">
+                            <option value="open" selected>Open</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <div id="safety-sos-list" class="admin-card-list"></div>
+
+                    <div id="safety-reports-panel" class="admin-filters mb-2 d-none">
+                        <select id="safety-reports-status-filter" class="form-select gy-input admin-filter-select">
+                            <option value="open" selected>Open</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <div id="safety-reports-list" class="admin-card-list d-none"></div>
                 </section>
 
                 <!-- Ride history -->

@@ -1,7 +1,8 @@
-import { auth } from './firebase-init.js';
-import { serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { auth, db } from './firebase-init.js';
+import { serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { markCurrentDriverOffline } from './driver-availability.js';
+import { showAlert, showConfirm } from './dialog.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const APP_SHARE_URL = "https://liphtup.in/";
@@ -226,12 +227,158 @@ function openSafetySheet() {
     safetyLayer.classList.remove('d-none');
     document.body.classList.add('profile-editor-open');
     window.setTimeout(() => document.getElementById('profile-safety-close-btn').focus(), 80);
+    loadEmergencyContacts();
 }
 
 function closeSafetySheet() {
     safetyLayer.classList.add('d-none');
     unlockBodyIfNoSheetOpen();
 }
+
+// ==========================================
+// FEATURE 3: EMERGENCY CONTACT MANAGEMENT
+// ==========================================
+let emergencyContactsCache = [];
+
+function renderEmergencyContacts() {
+    const list = document.getElementById('emergency-contacts-list');
+    const addBtn = document.getElementById('emergency-contact-add-btn');
+    if (!list) return;
+
+    if (!emergencyContactsCache.length) {
+        list.innerHTML = `<p class="profile-safety-tools-hint mb-0">No emergency contacts saved yet.</p>`;
+    } else {
+        list.innerHTML = emergencyContactsCache.map((contact, index) => `
+            <div class="emergency-contact-item">
+                <div>
+                    <strong>${escapeHtmlText(contact.name)}</strong>
+                    <span>${escapeHtmlText(contact.phone)}</span>
+                </div>
+                <button type="button" class="emergency-contact-remove-btn" data-index="${index}">Remove</button>
+            </div>
+        `).join("");
+        list.querySelectorAll('.emergency-contact-remove-btn').forEach((btn) => {
+            btn.addEventListener('click', () => removeEmergencyContact(Number(btn.dataset.index)));
+        });
+    }
+    if (addBtn) addBtn.classList.toggle('d-none', emergencyContactsCache.length >= 3);
+}
+
+function escapeHtmlText(text) {
+    return String(text ?? "").replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+}
+
+async function loadEmergencyContacts() {
+    if (!currentAuthUser?.uid) return;
+    try {
+        const snap = await getDoc(doc(db, "emergencyContacts", currentAuthUser.uid));
+        emergencyContactsCache = snap.exists() ? (snap.data().contacts || []) : [];
+    } catch (error) {
+        console.warn("Could not load emergency contacts:", error);
+        emergencyContactsCache = [];
+    }
+    renderEmergencyContacts();
+}
+
+async function saveEmergencyContacts() {
+    if (!currentAuthUser?.uid) return;
+    await setDoc(doc(db, "emergencyContacts", currentAuthUser.uid), {
+        contacts: emergencyContactsCache,
+        updatedAt: serverTimestamp()
+    }, { merge: true });
+}
+
+async function removeEmergencyContact(index) {
+    if (!(await showConfirm("Remove this emergency contact?"))) return;
+    emergencyContactsCache = emergencyContactsCache.filter((_, i) => i !== index);
+    renderEmergencyContacts();
+    try {
+        await saveEmergencyContacts();
+    } catch (error) {
+        console.error("Could not remove emergency contact:", error);
+        await showAlert("Could not remove this contact. Please try again.");
+        loadEmergencyContacts();
+    }
+}
+
+document.getElementById('emergency-contact-add-btn')?.addEventListener('click', () => {
+    document.getElementById('emergency-contact-form')?.classList.remove('d-none');
+    document.getElementById('emergency-contact-add-btn')?.classList.add('d-none');
+});
+
+document.getElementById('emergency-contact-cancel-btn')?.addEventListener('click', () => {
+    document.getElementById('emergency-contact-form')?.classList.add('d-none');
+    document.getElementById('emergency-contact-form')?.reset();
+    renderEmergencyContacts();
+});
+
+document.getElementById('emergency-contact-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = document.getElementById('emergency-contact-name')?.value.trim();
+    const phone = document.getElementById('emergency-contact-phone')?.value.trim();
+    if (!name || !phone) return;
+    if (emergencyContactsCache.length >= 3) {
+        await showAlert("You can save up to 3 emergency contacts.");
+        return;
+    }
+
+    emergencyContactsCache = [...emergencyContactsCache, { name, phone }];
+    try {
+        await saveEmergencyContacts();
+        document.getElementById('emergency-contact-form')?.classList.add('d-none');
+        document.getElementById('emergency-contact-form')?.reset();
+        renderEmergencyContacts();
+    } catch (error) {
+        console.error("Could not save emergency contact:", error);
+        await showAlert("Could not save this contact. Please try again.");
+    }
+});
+
+// ==========================================
+// FEATURE 3: REPORT A SAFETY CONCERN
+// ==========================================
+document.getElementById('safety-report-open-btn')?.addEventListener('click', () => {
+    document.getElementById('safety-report-form')?.classList.remove('d-none');
+    document.getElementById('safety-report-open-btn')?.classList.add('d-none');
+});
+
+document.getElementById('safety-report-cancel-btn')?.addEventListener('click', () => {
+    document.getElementById('safety-report-form')?.classList.add('d-none');
+    document.getElementById('safety-report-open-btn')?.classList.remove('d-none');
+    document.getElementById('safety-report-form')?.reset();
+});
+
+document.getElementById('safety-report-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const category = document.getElementById('safety-report-category')?.value;
+    const description = document.getElementById('safety-report-description')?.value.trim();
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Please log in to submit a report.");
+        const response = await fetch("/api/rides/safety-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ category, description })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not submit this report.");
+
+        document.getElementById('safety-report-form')?.classList.add('d-none');
+        document.getElementById('safety-report-open-btn')?.classList.remove('d-none');
+        document.getElementById('safety-report-form')?.reset();
+        await showAlert("Thank you. Your report has been submitted to LiphtUp's safety team.");
+    } catch (error) {
+        console.error("Safety report submit failed:", error);
+        await showAlert(error.message || "Could not submit this report. Please try again.");
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+});
 
 function openTermsSheet() {
     termsLayer.classList.remove('d-none');
