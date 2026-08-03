@@ -352,6 +352,104 @@ select {
     border: 1px solid rgba(211, 47, 47, 0.35);
 }
 
+.gy-btn-sos {
+    color: #fff;
+    background: var(--gy-danger);
+    box-shadow: 0 10px 22px rgba(211, 47, 47, 0.28);
+}
+
+.passenger-safety-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.passenger-safety-actions .gy-btn {
+    min-height: 44px;
+}
+
+.profile-safety-tools {
+    background: #fff;
+    border: 1px solid var(--gy-border);
+    border-radius: 12px;
+    padding: 14px;
+    margin: 0 0 16px;
+}
+
+.profile-safety-tools h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.profile-safety-tools-hint {
+    color: var(--gy-muted);
+    font-size: 12.5px;
+    margin-bottom: 10px;
+}
+
+.emergency-contacts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.emergency-contact-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--gy-muted-bg);
+    border-radius: 10px;
+    padding: 8px 12px;
+}
+
+.emergency-contact-item strong {
+    display: block;
+    font-size: 13.5px;
+}
+
+.emergency-contact-item span {
+    color: var(--gy-muted);
+    font-size: 12.5px;
+}
+
+.emergency-contact-remove-btn {
+    border: none;
+    background: none;
+    color: var(--gy-danger);
+    font-weight: 700;
+    font-size: 12.5px;
+}
+
+.emergency-contact-form,
+.safety-report-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.emergency-contact-form-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.driver-verified-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gy-green);
+    background: var(--gy-green-soft);
+    border: 1px solid rgba(26, 122, 46, 0.25);
+    border-radius: 999px;
+    padding: 2px 9px;
+    margin-top: 4px;
+}
+
 .logout-chip {
     display: none !important;
 }

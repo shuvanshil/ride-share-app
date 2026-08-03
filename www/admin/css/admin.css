@@ -105,6 +105,67 @@ body {
     background: var(--gy-muted-bg);
 }
 
+.admin-btn-primary {
+    background: var(--gy-green);
+    border: 1px solid var(--gy-green);
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+}
+
+.admin-btn-primary:hover {
+    filter: brightness(0.95);
+}
+
+.admin-nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: var(--gy-danger);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+}
+
+.admin-safety-subnav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.admin-safety-tab {
+    background: var(--gy-bg);
+    border: 1px solid var(--gy-border);
+    color: var(--gy-text);
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.admin-safety-tab.active {
+    background: var(--gy-green);
+    border-color: var(--gy-green);
+    color: #fff;
+}
+
+.admin-safety-card.is-urgent {
+    border-color: var(--gy-danger);
+    box-shadow: 0 0 0 1px rgba(211, 47, 47, 0.25);
+}
+
+.admin-muted-line {
+    color: var(--gy-muted, #6B7280);
+    font-size: 0.8rem;
+}
+
 .admin-body {
     display: flex;
     flex: 1;

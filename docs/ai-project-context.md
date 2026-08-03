@@ -171,3 +171,41 @@ The existing readiness checklist says the backend/security suite passes, but pro
 
 The most important product/security follow-ups are: remove the fallback Firebase Web API key, move phone-index lookup behind FastAPI and rate-limit it, verify Maps key restrictions, confirm account deletion/legal requirements, and decide whether “payment confirmed” should be replaced or supplemented by a real gateway.
 
+## 13. August 2026 additions: Driver Dashboard, ride decline, and passenger safety
+
+Three feature sets were added on top of the architecture above; all follow
+the same conventions described in section 11 (Pydantic-validated bodies,
+`ApiError` failures, server-authoritative writes, tests colocated in
+`www/api/tests`).
+
+- **Driver Dashboard** (`GET /api/rides/driver-dashboard`, page at
+  `/driver-dashboard`): today's earnings/completed rides/online hours plus
+  lifetime performance, backed by a new `driverDailyStats/{uid}_{date}`
+  collection (Asia/Kolkata day buckets) that FastAPI increments from
+  existing driver-availability, GPS-heartbeat, and ride-completion writes.
+  No new composite index needed -- it's read by direct document ID.
+- **Driver ride decline** (`POST /api/rides/{id}/reject`): records a
+  driver's decline in `rejected_driver_ids` so it stops reappearing in
+  their queue (and feeds the dashboard's acceptance-rate stat). Full
+  advance ride *scheduling* (a passenger booking a future pickup time) was
+  deliberately left out of this pass -- it needs a dispatch-timing
+  mechanism (Vercel Cron or an external scheduler) that didn't exist
+  before and was judged too large a change to bolt on safely pre-launch.
+- **Passenger safety**: emergency SOS (`POST /api/rides/{id}/sos` →
+  admin-only `sosAlerts`), live trip sharing (`POST /api/rides/{id}/share`
+  → public sanitized `tripShareView/{rideId}`, viewed at the new public
+  `/track?ride=<id>` page with no login required), a "Verified Driver"
+  badge on the assigned-driver card, emergency contact management
+  (`emergencyContacts/{uid}`, owner-write direct from the client like
+  `savedPlaces`), and suspicious-activity reporting
+  (`POST /api/rides/safety-report` → admin-only `safetyReports`). The
+  admin console gained a **Safety** section (SOS alerts + reports, with a
+  real-time Firestore listener for instant new-SOS notification) alongside
+  overview counts.
+- **Firestore changes required for all of the above**: see
+  `firestore.rules` (new `driverDailyStats`, `tripShareView`, `sosAlerts`,
+  `safetyReports`, `emergencyContacts` match blocks) and
+  `firestore.indexes.json` / `docs/firestore-indexes.md` (two new composite
+  indexes: `sosAlerts` and `safetyReports`, both `status` + `createdAt`).
+  Both need `firebase deploy --only firestore:rules,firestore:indexes`
+  before these features work against the live project.

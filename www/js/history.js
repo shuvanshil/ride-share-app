@@ -9,6 +9,7 @@ import {
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { showAlert, showConfirm } from './dialog.js';
 
 const FILTER_LABELS = {
     day: "today",
@@ -391,8 +392,31 @@ function openTripDetail(trip) {
         <div class="history-detail-row"><span>Distance</span><strong>${formatDistance(trip.distance_km)}</strong></div>
         <div class="history-detail-row"><span>Duration</span><strong>${formatDuration(trip.duration_minutes)}</strong></div>
         <div class="history-detail-row total"><span>Fare</span><strong>${formatMoney(trip.fare_amount)}</strong></div>
+        <button id="history-report-issue-btn" class="gy-btn gy-btn-danger-outline w-100 mt-3" type="button">Report an Issue with This Ride</button>
     `;
+    document.getElementById('history-report-issue-btn')?.addEventListener('click', () => reportRideIssue(trip.ride_id || trip.id));
     detailModal.classList.remove('d-none');
+}
+
+async function reportRideIssue(rideId) {
+    if (!rideId) return;
+    if (!(await showConfirm("Report a safety or behavior concern about this ride to LiphtUp's safety team?"))) return;
+
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Please log in to submit a report.");
+        const response = await fetch("/api/rides/safety-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ rideId, category: "other", description: "Reported from ride history." })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Could not submit this report.");
+        await showAlert("Thank you. Your report has been submitted to LiphtUp's safety team.");
+    } catch (error) {
+        console.error("Ride issue report failed:", error);
+        await showAlert(error.message || "Could not submit this report. Please try again.");
+    }
 }
 
 function setLoadingState() {
