@@ -417,11 +417,11 @@ function renderPassengerDriverCard(ride) {
         insertPassengerLifecycleCard(driverCard, document.getElementById('passenger-verification-pin-box') || document.getElementById('request-ride-btn'));
     }
 
-    const driverName = ride.driver_name || "Assigned Driver";
-    const vehicleModel = ride.vehicle_model || "Vehicle";
-    const vehicleNumber = ride.vehicle_number || "Number pending";
-    const driverPhone = ride.driver_phone || "";
-    const serviceLabel = ride.service_name || (ride.vehicle_type === "auto" ? "Auto" : "Bike / Scooty");
+    const driverName = escapeHtml(ride.driver_name || "Assigned Driver");
+    const vehicleModel = escapeHtml(ride.vehicle_model || "Vehicle");
+    const vehicleNumber = escapeHtml(ride.vehicle_number || "Number pending");
+    const driverPhone = escapeHtml(ride.driver_phone || "");
+    const serviceLabel = escapeHtml(ride.service_name || (ride.vehicle_type === "auto" ? "Auto" : "Bike / Scooty"));
 
     driverCard.innerHTML = `
         <div class="d-flex justify-content-between align-items-start gap-3">
@@ -479,11 +479,11 @@ function showTripProgressPanel(ride) {
     dashboardView.classList.add('trip-live');
     panel.classList.remove('d-none');
 
-    const driverName = ride.driver_name || "Assigned Driver";
-    const vehicleModel = ride.vehicle_model || "Vehicle";
-    const vehicleNumber = ride.vehicle_number || "Number pending";
-    const driverPhone = ride.driver_phone || "";
-    const serviceLabel = ride.service_name || (ride.vehicle_type === "auto" ? "Auto" : "Bike / Scooty");
+    const driverName = escapeHtml(ride.driver_name || "Assigned Driver");
+    const vehicleModel = escapeHtml(ride.vehicle_model || "Vehicle");
+    const vehicleNumber = escapeHtml(ride.vehicle_number || "Number pending");
+    const driverPhone = escapeHtml(ride.driver_phone || "");
+    const serviceLabel = escapeHtml(ride.service_name || (ride.vehicle_type === "auto" ? "Auto" : "Bike / Scooty"));
 
     const driverBox = document.getElementById('trip-progress-driver');
     if (driverBox) {
