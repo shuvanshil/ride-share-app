@@ -122,3 +122,28 @@
     color: var(--gy-muted);
     margin-bottom: 14px;
 }
+
+.back-to-console-btn {
+    display: inline-flex;
+    align-items: center;
+    border: 0;
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 8px;
+    background: var(--gy-green);
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    box-shadow: 0 6px 16px rgba(26, 122, 46, 0.28);
+}
+
+.back-to-console-btn .webicon {
+    color: #fff;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+}
+
+.back-to-console-btn:active {
+    transform: scale(0.97);
+}

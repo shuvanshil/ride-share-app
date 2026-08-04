@@ -1,6 +1,7 @@
 import { auth, db } from './firebase-init.js';
 import {
     collection,
+    deleteField,
     doc,
     getDoc,
     getDocs,
@@ -8,12 +9,13 @@ import {
     setDoc,
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { showAlert } from './dialog.js';
+import { showAlert, showConfirm } from './dialog.js';
 import { showSkeleton, setButtonBusy } from './loading.js';
 
 const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 const RECENT_RIDES_LIMIT = 3;
 const SAVED_PLACE_SLOTS = ["home", "work"];
+const TRIPURA_CENTER = { lat: 23.8315, lng: 91.2868 };
 
 const recentRidesList = document.getElementById('dashboard-recent-rides');
 const recentRidesSection = document.getElementById('dashboard-recent-section');
@@ -27,12 +29,26 @@ const savedPlaceAddressInput = document.getElementById('saved-place-address-inpu
 const savedPlaceSuggestions = document.getElementById('saved-place-suggestions');
 const savedPlaceUseGpsBtn = document.getElementById('saved-place-use-gps-btn');
 const savedPlaceCancelBtn = document.getElementById('saved-place-cancel-btn');
+const savedPlaceRemoveBtn = document.getElementById('saved-place-remove-btn');
 
 let currentUid = null;
 let savedPlacesCache = null;
 let activeSavedSlot = null;
 let pickedPlace = null;
 let suggestionAbortController = null;
+let roughUserPosition = null;
+
+// Best-effort, non-blocking location bias for saved-place search -- mirrors
+// the precision the main booking search gets, without gating the UI on it.
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            roughUserPosition = { lat: position.coords.latitude, lng: position.coords.longitude };
+        },
+        () => {},
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 300000 }
+    );
+}
 
 function cleanText(value) {
     return String(value || "").trim();
@@ -161,16 +177,23 @@ async function loadSavedPlaces(uid) {
 
 function savedPlaceChipMarkup(slot, place) {
     const labels = { home: "Home", work: "Work" };
-    const icon = slot === "home" ? "webicon-home" : "webicon-destination";
+    const icon = slot === "home" ? "webicon-favorite" : "webicon-work";
     const set = Boolean(place?.address);
     return `
-        <button type="button" class="dashboard-saved-chip${set ? ' is-set' : ''}" data-slot="${slot}">
-            <span class="webicon ${icon}" aria-hidden="true"></span>
-            <span class="dashboard-saved-chip-text">
-                <strong>${labels[slot]}</strong>
-                <small>${set ? escapeHtml(place.address) : 'Tap to add'}</small>
-            </span>
-        </button>
+        <div class="dashboard-saved-chip-wrap">
+            <button type="button" class="dashboard-saved-chip${set ? ' is-set' : ''}" data-slot="${slot}">
+                <span class="webicon ${icon}" aria-hidden="true"></span>
+                <span class="dashboard-saved-chip-text">
+                    <strong>${labels[slot]}</strong>
+                    <small>${set ? escapeHtml(place.address) : 'Tap to add'}</small>
+                </span>
+            </button>
+            ${set ? `
+                <button type="button" class="dashboard-saved-chip-edit" data-slot="${slot}" aria-label="Edit ${labels[slot]} address">
+                    <span class="webicon webicon-edit" aria-hidden="true"></span>
+                </button>
+            ` : ''}
+        </div>
     `;
 }
 
@@ -192,6 +215,13 @@ function renderSavedPlaces() {
             }
         });
     });
+
+    savedPlacesRow.querySelectorAll('.dashboard-saved-chip-edit').forEach((editBtn) => {
+        editBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            openSavedPlaceModal(editBtn.dataset.slot);
+        });
+    });
 }
 
 async function initSavedPlaces(uid) {
@@ -205,10 +235,12 @@ async function initSavedPlaces(uid) {
 function openSavedPlaceModal(slot) {
     if (!savedPlaceModal) return;
     activeSavedSlot = slot;
-    pickedPlace = null;
+    const existing = savedPlacesCache?.[slot];
+    pickedPlace = existing?.address ? { ...existing } : null;
     if (savedPlaceTitle) savedPlaceTitle.textContent = slot === "home" ? "Save your Home address" : "Save your Work address";
-    if (savedPlaceAddressInput) savedPlaceAddressInput.value = savedPlacesCache?.[slot]?.address || "";
+    if (savedPlaceAddressInput) savedPlaceAddressInput.value = existing?.address || "";
     if (savedPlaceSuggestions) savedPlaceSuggestions.innerHTML = "";
+    savedPlaceRemoveBtn?.classList.toggle('d-none', !existing?.address);
     savedPlaceModal.classList.remove('d-none');
     window.requestAnimationFrame(() => savedPlaceAddressInput?.focus());
 }
@@ -224,7 +256,12 @@ async function searchAddressSuggestions(text) {
     const controller = new AbortController();
     suggestionAbortController = controller;
     try {
-        const params = new URLSearchParams({ q: text });
+        const bias = roughUserPosition || TRIPURA_CENTER;
+        const params = new URLSearchParams({
+            q: text,
+            lat: String(bias.lat),
+            lng: String(bias.lng)
+        });
         const response = await fetch(`/api/google-autocomplete?${params.toString()}`, {
             signal: controller.signal,
             headers: { Accept: "application/json" }
@@ -235,6 +272,40 @@ async function searchAddressSuggestions(text) {
     } catch (error) {
         if (error.name !== "AbortError") console.warn("Address suggestion search failed:", error);
         return [];
+    }
+}
+
+// Plain autocomplete predictions don't carry coordinates -- resolve them via
+// Place Details (same call the main booking search makes) so a saved Home/Work
+// address is always backed by real map coordinates, not just a text label.
+async function resolvePlaceCoordinates(place) {
+    if (Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng))) {
+        return {
+            address: place.fullAddress || place.name || "",
+            lat: Number(place.lat),
+            lng: Number(place.lng),
+            placeId: place.placeId || ""
+        };
+    }
+    if (!place.placeId) {
+        return { address: place.fullAddress || place.name || "", lat: null, lng: null, placeId: "" };
+    }
+    try {
+        const params = new URLSearchParams({ placeId: place.placeId });
+        const response = await fetch(`/api/google-place-detail?${params.toString()}`, {
+            headers: { Accept: "application/json" }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.result) throw new Error("no detail");
+        return {
+            address: data.result.fullAddress || place.fullAddress || place.name || "",
+            lat: Number.isFinite(Number(data.result.lat)) ? Number(data.result.lat) : null,
+            lng: Number.isFinite(Number(data.result.lng)) ? Number(data.result.lng) : null,
+            placeId: data.result.placeId || place.placeId
+        };
+    } catch (error) {
+        console.warn("Could not resolve place coordinates:", error);
+        return { address: place.fullAddress || place.name || "", lat: null, lng: null, placeId: place.placeId || "" };
     }
 }
 
@@ -252,17 +323,15 @@ function renderSuggestions(results) {
     `).join('');
 
     savedPlaceSuggestions.querySelectorAll('.saved-place-suggestion').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const place = results[Number(btn.dataset.index)];
             if (!place) return;
-            pickedPlace = {
-                address: place.fullAddress || place.name || "",
-                lat: Number.isFinite(Number(place.lat)) ? Number(place.lat) : null,
-                lng: Number.isFinite(Number(place.lng)) ? Number(place.lng) : null,
-                placeId: place.placeId || ""
-            };
-            savedPlaceAddressInput.value = pickedPlace.address;
             savedPlaceSuggestions.innerHTML = "";
+            savedPlaceAddressInput.value = place.fullAddress || place.name || "";
+            savedPlaceAddressInput.disabled = true;
+            pickedPlace = await resolvePlaceCoordinates(place);
+            savedPlaceAddressInput.disabled = false;
+            if (savedPlaceAddressInput) savedPlaceAddressInput.value = pickedPlace.address;
         });
     });
 }
@@ -272,7 +341,7 @@ savedPlaceAddressInput?.addEventListener('input', () => {
     pickedPlace = null;
     const text = savedPlaceAddressInput.value.trim();
     if (suggestionDebounceTimer) window.clearTimeout(suggestionDebounceTimer);
-    if (text.length < 3) {
+    if (text.length < 2) {
         if (savedPlaceSuggestions) savedPlaceSuggestions.innerHTML = "";
         return;
     }
@@ -317,6 +386,34 @@ savedPlaceUseGpsBtn?.addEventListener('click', async () => {
 savedPlaceCancelBtn?.addEventListener('click', closeSavedPlaceModal);
 savedPlaceModal?.addEventListener('mousedown', (event) => {
     if (event.target === savedPlaceModal) closeSavedPlaceModal();
+});
+
+savedPlaceRemoveBtn?.addEventListener('click', async () => {
+    if (!currentUid || !activeSavedSlot) return;
+    const label = activeSavedSlot === "home" ? "Home" : "Work";
+    const confirmed = await showConfirm(`Remove your saved ${label} address?`, {
+        okText: "Remove",
+        cancelText: "Keep it"
+    });
+    if (!confirmed) return;
+
+    const restore = setButtonBusy(savedPlaceRemoveBtn, "Removing…");
+    try {
+        await setDoc(doc(db, "savedPlaces", currentUid), {
+            [activeSavedSlot]: deleteField(),
+            updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        savedPlacesCache = { ...(savedPlacesCache || {}) };
+        delete savedPlacesCache[activeSavedSlot];
+        renderSavedPlaces();
+        closeSavedPlaceModal();
+    } catch (error) {
+        console.error("Could not remove saved place:", error);
+        await showAlert("Could not remove this address. Please try again.");
+    } finally {
+        restore();
+    }
 });
 
 savedPlaceForm?.addEventListener('submit', async (event) => {

@@ -255,7 +255,8 @@ function setShareTripButtonState(enabled) {
     tripShareEnabled = enabled;
     const btn = document.getElementById('passenger-share-trip-btn');
     if (!btn) return;
-    btn.innerText = enabled ? "Sharing On · Tap to Stop" : "Share Trip";
+    const label = document.getElementById('passenger-share-trip-label');
+    if (label) label.innerText = enabled ? "Sharing On · Tap to Stop" : "Share Trip";
     btn.classList.toggle('gy-btn-outline', !enabled);
     btn.classList.toggle('gy-btn-dark', enabled);
 }

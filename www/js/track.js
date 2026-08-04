@@ -19,6 +19,15 @@ const STATUS_COPY = {
     cancelled_by_passenger: "This trip was cancelled."
 };
 
+const ENDED_STATUSES = new Set(["completed", "cancelled_by_driver", "cancelled_by_passenger"]);
+
+function setStatusCardState(state) {
+    const statusCard = document.getElementById('track-status-card');
+    if (!statusCard) return;
+    statusCard.classList.remove('is-live', 'is-ended', 'is-cancelled');
+    statusCard.classList.add(state);
+}
+
 function getRideIdFromUrl() {
     const params = new URLSearchParams(window.location.search);
     return (params.get('ride') || '').trim();
@@ -86,6 +95,14 @@ function renderSnapshot(data) {
     statusTitle.innerText = STATUS_COPY[status] ? "Trip in progress" : "Trip status";
     statusCopy.innerText = STATUS_COPY[status] || "Waiting for the latest trip update...";
 
+    if (status === "cancelled_by_driver" || status === "cancelled_by_passenger") {
+        setStatusCardState('is-cancelled');
+    } else if (ENDED_STATUSES.has(status)) {
+        setStatusCardState('is-ended');
+    } else {
+        setStatusCardState('is-live');
+    }
+
     document.getElementById('track-driver-name').innerText = data.driver_name || "Assigned driver";
     document.getElementById('track-vehicle').innerText = [data.vehicle_model, data.vehicle_number].filter(Boolean).join(" · ") || "—";
     document.getElementById('track-pickup').innerText = data.pickup_name || "—";
@@ -108,6 +125,7 @@ function renderSnapshot(data) {
 }
 
 function showNotFound() {
+    setStatusCardState('is-ended');
     document.getElementById('track-status-title').innerText = "Trip not found";
     document.getElementById('track-status-copy').innerText = "This trip has ended, or the passenger has turned off live sharing.";
     document.getElementById('track-map').classList.add('d-none');
