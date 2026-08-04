@@ -15,8 +15,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260803-safety-dashboard">
-    <link rel="stylesheet" href="css/track.css?v=20260803-safety-dashboard">
+    <link rel="stylesheet" href="css/style.css?v=20260804-ux-polish">
+    <link rel="stylesheet" href="css/track.css?v=20260804-ux-polish">
 </head>
 <body>
     <div id="app-container" class="app-root track-app-root">
@@ -29,26 +29,10 @@
 
         <main class="track-main">
             <section id="track-status-card" class="track-status-card">
-                <strong id="track-status-title">Loading trip...</strong>
-                <p id="track-status-copy">Connecting to this shared trip.</p>
-            </section>
-
-            <section id="track-details-card" class="track-details-card d-none">
-                <div class="track-detail-row">
-                    <span>Driver</span>
-                    <strong id="track-driver-name">—</strong>
-                </div>
-                <div class="track-detail-row">
-                    <span>Vehicle</span>
-                    <strong id="track-vehicle">—</strong>
-                </div>
-                <div class="track-detail-row">
-                    <span>From</span>
-                    <strong id="track-pickup">—</strong>
-                </div>
-                <div class="track-detail-row">
-                    <span>To</span>
-                    <strong id="track-drop">—</strong>
+                <span id="track-status-dot" class="track-status-dot" aria-hidden="true"></span>
+                <div class="track-status-copy-col">
+                    <strong id="track-status-title">Loading trip...</strong>
+                    <p id="track-status-copy">Connecting to this shared trip.</p>
                 </div>
             </section>
 
@@ -56,11 +40,34 @@
                 <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Opening map...</span></div>
             </div>
 
-            <p class="track-disclaimer">This link was shared by a LiphtUp passenger and shows only their trip's live location and status while the trip is active. It stops working automatically once the trip ends.</p>
+            <section id="track-details-card" class="track-details-card d-none">
+                <h2 class="track-details-heading">Trip details</h2>
+                <div class="track-detail-row">
+                    <span class="track-detail-label"><span class="webicon webicon-profile" aria-hidden="true"></span>Driver</span>
+                    <strong id="track-driver-name">—</strong>
+                </div>
+                <div class="track-detail-row">
+                    <span class="track-detail-label"><span class="webicon webicon-services" aria-hidden="true"></span>Vehicle</span>
+                    <strong id="track-vehicle">—</strong>
+                </div>
+                <div class="track-detail-row">
+                    <span class="track-detail-label"><span class="webicon webicon-current-location" aria-hidden="true"></span>From</span>
+                    <strong id="track-pickup">—</strong>
+                </div>
+                <div class="track-detail-row">
+                    <span class="track-detail-label"><span class="webicon webicon-destination" aria-hidden="true"></span>To</span>
+                    <strong id="track-drop">—</strong>
+                </div>
+            </section>
+
+            <p class="track-disclaimer">
+                <span class="webicon webicon-sos" aria-hidden="true"></span>
+                This link was shared by a LiphtUp passenger and shows only their trip's live location and status while the trip is active. It stops working automatically once the trip ends.
+            </p>
         </main>
     </div>
 
     <script type="module" src="js/firebase-init.js"></script>
-    <script type="module" src="js/track.js?v=20260803-safety-dashboard"></script>
+    <script type="module" src="js/track.js?v=20260804-ux-polish"></script>
 </body>
 </html>

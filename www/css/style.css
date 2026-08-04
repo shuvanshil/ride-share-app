@@ -39,6 +39,11 @@
 .webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
 .webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 .webicon-use-current-location { -webkit-mask-image: url("../assets/icons/webicons/use-current-location.svg"); mask-image: url("../assets/icons/webicons/use-current-location.svg"); }
+.webicon-sos { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
+.webicon-share { -webkit-mask-image: url("../assets/icons/webicons/share.svg"); mask-image: url("../assets/icons/webicons/share.svg"); }
+.webicon-favorite { -webkit-mask-image: url("../assets/icons/webicons/favorite.svg"); mask-image: url("../assets/icons/webicons/favorite.svg"); }
+.webicon-work { -webkit-mask-image: url("../assets/icons/webicons/work.svg"); mask-image: url("../assets/icons/webicons/work.svg"); }
+.webicon-edit { -webkit-mask-image: url("../assets/icons/webicons/edit.svg"); mask-image: url("../assets/icons/webicons/edit.svg"); }
 
 html,
 body {
@@ -340,6 +345,23 @@ select {
     background: #111;
 }
 
+.gy-btn-dashboard {
+    color: #fff !important;
+    background: linear-gradient(135deg, var(--gy-green), #14602a);
+    box-shadow: 0 10px 22px rgba(26, 122, 46, 0.3);
+    margin: 4px 0 16px;
+    font-size: 15px;
+}
+
+.gy-btn-dashboard .webicon {
+    color: #fff;
+    margin-right: 8px;
+}
+
+.gy-btn-dashboard:active {
+    transform: scale(0.98);
+}
+
 .gy-btn-outline {
     color: var(--gy-green);
     background: #fff;
@@ -353,19 +375,57 @@ select {
 }
 
 .gy-btn-sos {
-    color: #fff;
-    background: var(--gy-danger);
-    box-shadow: 0 10px 22px rgba(211, 47, 47, 0.28);
+    color: var(--gy-danger);
+    background: #fff;
+    border: 1.5px solid rgba(211, 47, 47, 0.35);
+    box-shadow: none;
+    font-size: 13px;
+    letter-spacing: 0.2px;
+}
+
+.gy-btn-sos:active {
+    background: rgba(211, 47, 47, 0.08);
+}
+
+.gy-btn-sos .webicon-sos {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
 }
 
 .passenger-safety-actions {
     display: flex;
+    align-items: stretch;
     gap: 10px;
     margin-top: 10px;
 }
 
 .passenger-safety-actions .gy-btn {
     min-height: 44px;
+}
+
+.passenger-safety-actions #passenger-share-trip-btn {
+    flex: 1 1 auto;
+}
+
+.passenger-safety-actions #passenger-sos-btn {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0 16px;
+}
+
+/* De-emphasised SOS placement on the driver lifecycle card: right-aligned,
+   compact, and visually secondary to Complete/Cancel Trip. */
+.driver-sos-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
+}
+
+.driver-sos-row .gy-btn-sos {
+    width: auto;
+    min-height: 40px;
+    padding: 0 18px;
 }
 
 .profile-safety-tools {
@@ -3099,7 +3159,9 @@ body.profile-editor-open {
 
 .passenger-nav-toggle-btn {
     position: absolute;
-    top: 12px;
+    /* Sits below Google Maps' native expand/fullscreen control (top-right)
+       so the two buttons never overlap. */
+    top: 64px;
     right: 12px;
     z-index: 5;
     display: grid;
@@ -3949,8 +4011,15 @@ body.profile-editor-open {
     display: none;
 }
 
-.dashboard-saved-chip {
+.dashboard-saved-chip-wrap {
+    position: relative;
     flex: 1 0 auto;
+    min-width: 150px;
+    display: flex;
+}
+
+.dashboard-saved-chip {
+    flex: 1 1 auto;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -3962,6 +4031,33 @@ body.profile-editor-open {
     text-align: left;
     cursor: pointer;
     transition: border-color 160ms ease, background 160ms ease, transform 120ms ease;
+}
+
+.dashboard-saved-chip.is-set {
+    padding-right: 40px;
+}
+
+.dashboard-saved-chip-edit {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(26, 122, 46, 0.1);
+    color: var(--gy-green);
+}
+
+.dashboard-saved-chip-edit .webicon {
+    width: 13px;
+    height: 13px;
+}
+
+.dashboard-saved-chip-edit:active {
+    transform: scale(0.92);
 }
 
 .dashboard-saved-chip:active {

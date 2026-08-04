@@ -180,7 +180,9 @@ body {
 
 .driver-nav-toggle-btn {
     position: absolute;
-    top: 14px;
+    /* Sits below Google Maps' native expand/fullscreen control (top-right)
+       so the two buttons never overlap. */
+    top: 66px;
     right: 14px;
     z-index: 5;
     display: grid;
@@ -228,7 +230,7 @@ body {
 }
 
 .driver-route-panel:not(.d-none) ~ .driver-nav-toggle-btn {
-    top: 78px;
+    top: 130px;
 }
 
 .driver-route-warning {

@@ -21,8 +21,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260803-safety-dashboard">
-    <link rel="stylesheet" href="css/driver-dashboard.css?v=20260803-safety-dashboard">
+    <link rel="stylesheet" href="css/style.css?v=20260804-ux-polish">
+    <link rel="stylesheet" href="css/driver-dashboard.css?v=20260804-ux-polish">
 </head>
 <body>
     <div id="app-container" class="app-root driver-dashboard-root">
@@ -33,7 +33,10 @@
                     <small id="dashboard-welcome-name">Your Dashboard</small>
                 </div>
                 <div class="app-bar-actions">
-                    <button class="mini-action" type="button" onclick="window.location.href='/driver'">Duty Console</button>
+                    <button class="back-to-console-btn" type="button" onclick="window.location.href='/driver'">
+                        <span class="webicon webicon-services" aria-hidden="true"></span>
+                        Duty Console
+                    </button>
                 </div>
             </header>
 

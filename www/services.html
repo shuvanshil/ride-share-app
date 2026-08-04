@@ -24,7 +24,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260731-passenger-nav-cleanurls">
+    <link rel="stylesheet" href="css/style.css?v=20260804-ux-polish">
 </head>
 <body>
     <div id="app-container" class="app-root services-app-root">
@@ -123,8 +123,13 @@
                     <section class="services-ride-actions">
                         <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Select a destination</button>
                         <div id="passenger-safety-actions" class="passenger-safety-actions d-none">
-                            <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline w-100" type="button">Share Trip</button>
-                            <button id="passenger-sos-btn" class="gy-btn gy-btn-sos w-100" type="button">🆘 SOS</button>
+                            <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline" type="button">
+                                <span class="webicon webicon-share" aria-hidden="true"></span>
+                                <span id="passenger-share-trip-label">Share Trip</span>
+                            </button>
+                            <button id="passenger-sos-btn" class="gy-btn gy-btn-sos" type="button">
+                                <span class="webicon webicon-sos" aria-hidden="true"></span> SOS
+                            </button>
                         </div>
                         <button id="passenger-cancel-ride-btn" class="gy-btn gy-btn-danger-outline w-100 d-none" type="button">Cancel Ride</button>
                         <p id="services-action-hint">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
@@ -168,7 +173,7 @@
     <script type="module" src="js/loading.js"></script>
     <script src="js/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
-    <script type="module" src="js/app.js?v=20260731-trip-progress-pin"></script>
+    <script type="module" src="js/app.js?v=20260804-ux-polish"></script>
     <script type="module" src="js/services.js?v=20260731-trip-progress-pin"></script>
     <script src="js/pwa.js" defer></script>
 </body>
