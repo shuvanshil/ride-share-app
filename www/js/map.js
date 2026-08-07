@@ -25,36 +25,6 @@ const DRIVER_MARKER_NOISE_FLOOR_METERS = 4;
 const DRIVER_MARKER_COAST_MIN_DISTANCE_METERS = 6;
 const ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS = 25;
 const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
-// If a driver's raw GPS position drifts this far from the last known route
-// (wrong turn, live reroute, road closure detour, etc), treat it as a real
-// deviation and request a fresh route immediately instead of waiting out the
-// normal recalculation throttle above.
-const ACTIVE_DRIVER_ROUTE_DEVIATION_METERS = 70;
-// How long the "route is being drawn" reveal animation takes the first time
-// a route (or a full reroute) appears on the passenger's map.
-const ROUTE_REVEAL_ANIM_MS = 900;
-const ROUTE_PROGRESS_COMPLETED_COLOR = "#0b5d2a";
-const ROUTE_PROGRESS_REMAINING_COLOR = "#16723a";
-// Only show public "available nearby" vehicle markers within this radius of
-// the passenger's own location, so the map stays readable and fast instead
-// of rendering every online driver across the whole service area.
-const NEARBY_DRIVER_RADIUS_METERS = 4000;
-const NEARBY_DRIVER_RECONCILE_INTERVAL_MS = 12000;
-// A driver marker "arrives" (gentle bounce) once it's this close to its
-// current target (pickup or destination).
-const DRIVER_ARRIVAL_THRESHOLD_METERS = 35;
-// Ceiling on plausible real-world speed for an auto/bike in city/town
-// traffic. A single GPS fix that implies faster movement than this almost
-// never means the vehicle actually teleported - it means the fix itself is
-// bad (common on phones indoors, or falling back to coarse Wi-Fi/network
-// location instead of a real satellite lock). This is what was behind the
-// "marker jumping between random spots" glitch: every noisy fix was being
-// drawn at full trust, so the marker snapped back and forth between its
-// real position and each bad ping.
-const DRIVER_MAX_PLAUSIBLE_SPEED_MPS = 28; // ~100 km/h, generous for city traffic
-// A rejected/noisy fix only gets accepted once a second fix lands within
-// this radius of it too - i.e. it's corroborated, not a one-off spike.
-const DRIVER_OUTLIER_CONFIRM_RADIUS_METERS = 60;
 // Passenger-side heading-up navigation camera (mirrors the driver console's
 // applyNavigationCamera in driver-service.js) - rotates + tilts the map so
 // the assigned driver's direction of travel always points "up" on screen.
@@ -114,14 +84,9 @@ let googleMapsLoadPromise = null;
 let activeDriverMarker = null;
 let pendingAssignedDriverDetail = null;
 let assignedDriverTrackingDriverId = "";
-let assignedDriverRouteCompletedPolyline = null;
-let assignedDriverRouteRemainingPolyline = null;
-let assignedRouteRevealFrame = null;
-let destinationPulseOverlay = null;
+let assignedDriverRoutePolyline = null;
 let assignedDriverTrackingElement = null;
 let assignedDriverLastDistanceKm = null;
-const globalDriverDataCache = new Map();
-let nearbyDriverReconcileInterval = null;
 let activeDriverRouteState = {
     driverId: "",
     targetKey: "",
@@ -389,7 +354,7 @@ async function loadGoogleMaps() {
             script.id = GOOGLE_MAP_SCRIPT_ID;
             script.async = true;
             script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&loading=async`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}`;
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
@@ -759,57 +724,6 @@ function addGoogleMapStyles() {
             70% { transform: scale(1.6); opacity: 0; }
             100% { transform: scale(1.6); opacity: 0; }
         }
-
-        .rotating-vehicle-marker-inner {
-            width: 100%;
-            height: 100%;
-        }
-
-        .rotating-vehicle-marker-inner.is-arriving {
-            animation: vehicle-marker-arrive-bounce 900ms ease-in-out infinite;
-        }
-
-        .rotating-vehicle-marker-inner.is-selected {
-            animation: vehicle-marker-select-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-
-        @keyframes vehicle-marker-arrive-bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-8px); }
-        }
-
-        @keyframes vehicle-marker-select-pop {
-            0% { transform: scale(1); }
-            45% { transform: scale(1.3); }
-            100% { transform: scale(1); }
-        }
-
-        .destination-pulse-ring {
-            position: absolute;
-            width: 46px;
-            height: 46px;
-            pointer-events: none;
-            will-change: transform;
-        }
-
-        .destination-pulse-ring::before,
-        .destination-pulse-ring::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(211, 47, 47, 0.42) 0%, rgba(211, 47, 47, 0) 70%);
-            animation: destination-marker-pulse 2s ease-out infinite;
-        }
-
-        .destination-pulse-ring::after {
-            animation-delay: 1s;
-        }
-
-        @keyframes destination-marker-pulse {
-            0% { transform: scale(0.45); opacity: 0.75; }
-            100% { transform: scale(1.9); opacity: 0; }
-        }
     `;
     document.head.appendChild(style);
 }
@@ -831,17 +745,10 @@ class RotatingVehicleMarker {
         this.element.classList.toggle("is-live-tracked", Boolean(live));
         this.element.style.zIndex = String(zIndex);
         this.element.title = title;
-        // A separate inner wrapper holds the arrive-bounce/select-pop CSS
-        // animations, and the <img> alone holds the heading rotation - each
-        // is a distinct element so their `transform` styles never fight the
-        // one this.element uses (via inline style) to track lat/lng.
-        this.innerWrap = document.createElement("div");
-        this.innerWrap.className = "rotating-vehicle-marker-inner";
         this.image = document.createElement("img");
         this.image.alt = "";
         this.image.draggable = false;
-        this.innerWrap.appendChild(this.image);
-        this.element.appendChild(this.innerWrap);
+        this.element.appendChild(this.image);
         this.setVehicleType(vehicleType);
         this.setHeading(this.heading);
 
@@ -905,25 +812,6 @@ class RotatingVehicleMarker {
     setLiveTracked(live) {
         this.element.classList.toggle("is-live-tracked", Boolean(live));
     }
-
-    setArriving(arriving) {
-        this.innerWrap?.classList.toggle("is-arriving", Boolean(arriving));
-    }
-
-    // Brief scale-pop, used when this marker becomes "selected" (a driver
-    // gets assigned to the passenger). Re-triggerable: forces a reflow so
-    // calling it again restarts the animation instead of no-op'ing because
-    // the class never left the element.
-    pulseSelect() {
-        if (!this.innerWrap) return;
-        this.innerWrap.classList.remove("is-selected");
-        void this.innerWrap.offsetWidth;
-        this.innerWrap.classList.add("is-selected");
-        window.clearTimeout(this.selectPulseTimer);
-        this.selectPulseTimer = window.setTimeout(() => {
-            this.innerWrap?.classList.remove("is-selected");
-        }, 450);
-    }
 }
 
 function makeMarker(options) {
@@ -937,51 +825,9 @@ function removeMarker(marker) {
     }
 }
 
-// A lightweight pulsing halo drawn under the destination pin, so the drop
-// point keeps gently drawing the eye instead of sitting static on the map.
-class PulseRingOverlay {
-    constructor({ map, position }) {
-        const maps = getGoogleMaps();
-        this.position = googleLatLngLiteral(position);
-        this.overlay = new maps.OverlayView();
-        this.element = document.createElement("div");
-        this.element.className = "destination-pulse-ring";
-        this.overlay.onAdd = () => {
-            this.overlay.getPanes()?.overlayShadow.appendChild(this.element);
-        };
-        this.overlay.draw = () => this.draw();
-        this.overlay.onRemove = () => {
-            this.element.remove();
-        };
-        this.overlay.setMap(map);
-    }
-
-    draw() {
-        const projection = this.overlay.getProjection();
-        if (!projection || !this.position) return;
-        const maps = getGoogleMaps();
-        const point = projection.fromLatLngToDivPixel(new maps.LatLng(this.position.lat, this.position.lng));
-        if (!point) return;
-        this.element.style.transform = `translate(${point.x - 23}px, ${point.y - 23}px)`;
-    }
-
-    setPosition(position) {
-        this.position = googleLatLngLiteral(position);
-        this.draw();
-    }
-
-    setMap(map) {
-        this.overlay.setMap(map);
-    }
-}
-
 function clearRouteAndDestination() {
     removeMarker(destinationMarker);
     destinationMarker = null;
-    if (destinationPulseOverlay) {
-        destinationPulseOverlay.setMap(null);
-        destinationPulseOverlay = null;
-    }
 
     if (routePolyline?.setMap) {
         routePolyline.setMap(null);
@@ -1011,17 +857,11 @@ function upsertRideDestinationMarker(detail = {}) {
     if (!destination) return null;
 
     if (!destinationMarker) {
-        const maps = getGoogleMaps();
         destinationMarker = makeMarker({
             map: window.mapInstance,
             position: googleLatLngLiteral(destination.position),
             title: destination.title,
-            animation: maps.Animation.DROP,
             zIndex: 920
-        });
-        destinationPulseOverlay = new PulseRingOverlay({
-            map: window.mapInstance,
-            position: destination.position
         });
         return destination.position;
     }
@@ -1029,15 +869,6 @@ function upsertRideDestinationMarker(detail = {}) {
     destinationMarker.setMap(window.mapInstance);
     destinationMarker.setPosition(googleLatLngLiteral(destination.position));
     destinationMarker.setTitle(destination.title);
-    if (destinationPulseOverlay) {
-        destinationPulseOverlay.setMap(window.mapInstance);
-        destinationPulseOverlay.setPosition(destination.position);
-    } else {
-        destinationPulseOverlay = new PulseRingOverlay({
-            map: window.mapInstance,
-            position: destination.position
-        });
-    }
     return destination.position;
 }
 
@@ -1112,23 +943,11 @@ function renderAssignedDriverTracking(routeDetails, straightLineDistanceKm = nul
     }
 }
 
-function stopAssignedRouteReveal() {
-    if (assignedRouteRevealFrame) {
-        cancelAnimationFrame(assignedRouteRevealFrame);
-        assignedRouteRevealFrame = null;
-    }
-}
-
 function clearAssignedDriverRoute() {
-    stopAssignedRouteReveal();
-    if (assignedDriverRouteCompletedPolyline?.setMap) {
-        assignedDriverRouteCompletedPolyline.setMap(null);
+    if (assignedDriverRoutePolyline?.setMap) {
+        assignedDriverRoutePolyline.setMap(null);
     }
-    assignedDriverRouteCompletedPolyline = null;
-    if (assignedDriverRouteRemainingPolyline?.setMap) {
-        assignedDriverRouteRemainingPolyline.setMap(null);
-    }
-    assignedDriverRouteRemainingPolyline = null;
+    assignedDriverRoutePolyline = null;
     if (assignedDriverTrackingElement) {
         assignedDriverTrackingElement.remove();
         assignedDriverTrackingElement = null;
@@ -1136,103 +955,32 @@ function clearAssignedDriverRoute() {
     assignedDriverLastDistanceKm = null;
 }
 
-// Animates the route being "drawn" onto the map point by point (instead of
-// appearing all at once) the first time it's calculated, or after a full
-// reroute. Subsequent per-tick progress updates (see
-// updateAssignedRouteProgress) take over once this finishes.
-function revealAssignedRoute(path) {
-    stopAssignedRouteReveal();
-    if (!assignedDriverRouteRemainingPolyline || !Array.isArray(path) || path.length < 2) return;
-
-    const startedAt = performance.now();
-    const step = (now) => {
-        const progress = Math.min(1, (now - startedAt) / ROUTE_REVEAL_ANIM_MS);
-        const pointCount = Math.max(2, Math.round(path.length * progress));
-        assignedDriverRouteRemainingPolyline.setPath(path.slice(0, pointCount));
-        if (progress < 1) {
-            assignedRouteRevealFrame = requestAnimationFrame(step);
-        } else {
-            assignedDriverRouteRemainingPolyline.setPath(path);
-            assignedRouteRevealFrame = null;
-        }
-    };
-    assignedRouteRevealFrame = requestAnimationFrame(step);
-}
-
-// Splits a route path into the portion already travelled (up to the
-// driver's current matched point) and what's left, so the two can be drawn
-// as separate polylines - a solid/highlighted "completed" segment and a
-// faded "remaining" one.
-function splitRoutePathAtMatch(routePath, matchIndex, matchPoint) {
-    if (!Array.isArray(routePath) || routePath.length < 2) {
-        return { completed: [], remaining: routePath || [] };
-    }
-    const index = Number.isInteger(matchIndex) && matchIndex >= 0
-        ? Math.max(0, Math.min(routePath.length - 2, matchIndex))
-        : 0;
-    const anchor = matchPoint || routePath[index];
-    const completed = routePath.slice(0, index + 1).concat([anchor]);
-    const remaining = [anchor].concat(routePath.slice(index + 1));
-    return { completed, remaining };
-}
-
-function updateAssignedRouteProgress(matchIndex, matchPoint) {
-    if (!assignedDriverRouteRemainingPolyline || !assignedDriverRouteCompletedPolyline) return;
-    if (assignedRouteRevealFrame) return; // don't fight the initial draw-in animation
-    const routePath = activeDriverRouteState.routePath;
-    if (!Array.isArray(routePath) || routePath.length < 2) return;
-
-    const { completed, remaining } = splitRoutePathAtMatch(routePath, matchIndex, matchPoint);
-    assignedDriverRouteCompletedPolyline.setPath(completed);
-    assignedDriverRouteRemainingPolyline.setPath(remaining);
-}
-
 function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinationPosition = null) {
     if (!window.mapInstance || !window.google?.maps) return;
 
-    stopAssignedRouteReveal();
-    if (assignedDriverRouteCompletedPolyline?.setMap) {
-        assignedDriverRouteCompletedPolyline.setMap(null);
+    if (assignedDriverRoutePolyline?.setMap) {
+        assignedDriverRoutePolyline.setMap(null);
     }
-    assignedDriverRouteCompletedPolyline = null;
-    if (assignedDriverRouteRemainingPolyline?.setMap) {
-        assignedDriverRouteRemainingPolyline.setMap(null);
-    }
-    assignedDriverRouteRemainingPolyline = null;
 
     const routePath = Array.isArray(path) && path.length >= 2
         ? path
         : [driverPosition, targetPosition].filter(Boolean);
     if (routePath.length < 2) return;
 
-    // Completed leg (behind the driver): solid but muted, so it visually
-    // reads as "already covered" ground.
-    assignedDriverRouteCompletedPolyline = new window.google.maps.Polyline({
+    assignedDriverRoutePolyline = new window.google.maps.Polyline({
         map: window.mapInstance,
-        path: [],
-        strokeColor: ROUTE_PROGRESS_COMPLETED_COLOR,
-        strokeOpacity: 0.5,
-        strokeWeight: 6,
-        zIndex: 639
-    });
-    // Remaining leg (ahead of the driver): the highlighted, fully-opaque
-    // path - drawn in with revealAssignedRoute below.
-    assignedDriverRouteRemainingPolyline = new window.google.maps.Polyline({
-        map: window.mapInstance,
-        path: [],
-        strokeColor: ROUTE_PROGRESS_REMAINING_COLOR,
+        path: routePath,
+        strokeColor: "#16723a",
         strokeOpacity: 0.96,
         strokeWeight: 6,
         zIndex: 640
     });
-    revealAssignedRoute(routePath);
 
     const bounds = new window.google.maps.LatLngBounds();
     routePath.forEach((point) => bounds.extend(point));
     bounds.extend(driverPosition);
     bounds.extend(targetPosition);
     if (destinationPosition) bounds.extend(destinationPosition);
-    if (userMarker?.getPosition) bounds.extend(userMarker.getPosition());
 
     if (!passengerFirstRouteFitComplete || !passengerNavigationModeEnabled) {
         window.mapInstance.fitBounds(bounds, { top: 58, right: 42, bottom: 96, left: 42 });
@@ -1500,7 +1248,6 @@ function addPickupMarker(coords) {
             strokeColor: "#ffffff",
             strokeWeight: 3
         },
-        animation: maps.Animation.DROP,
         zIndex: 1000
     });
 }
@@ -1546,53 +1293,6 @@ function getDriverDocumentHeading(driver) {
 // `existing.routeMatchIndex` so noisy pings can't flip the icon to face
 // backward. Falls back to the driver's own reported GPS heading, then to the
 // raw bearing between successive pings, when no usable route is available.
-// Rejects single-fix GPS/network-location noise before it ever reaches the
-// route-matching / animation code below. Compares the incoming ping against
-// the marker's last known good position: if it implies an impossible speed,
-// the marker holds its current spot instead of jumping to the bad fix. If
-// the *next* fix lands near that same "bad" spot too, it's treated as real
-// movement (or a permanent drift) and accepted, so a genuinely fast-moving
-// or newly-relocated driver never gets permanently stuck.
-function filterDriverPositionOutlier(existing, rawPosition, now) {
-    if (!existing) return rawPosition;
-
-    const currentLatLng = existing.marker?.getPosition?.();
-    const lastKnown = currentLatLng
-        ? { lat: currentLatLng.lat(), lng: currentLatLng.lng() }
-        : existing.lastAcceptedPosition;
-    if (!lastKnown) return rawPosition;
-
-    // Deliberately a dedicated timestamp rather than existing.lastFixAt
-    // (which the animation code above bumps on every call, accepted or
-    // not) - so a run of rejected noisy pings doesn't make the *next*
-    // legitimate fix look artificially fast and get rejected too. Default
-    // to a 5s assumption (the normal write cadence) rather than "just now",
-    // so the very first check isn't unfairly strict.
-    const elapsedSeconds = existing.lastAcceptedFixAt
-        ? Math.max(1, (now - existing.lastAcceptedFixAt) / 1000)
-        : 5;
-    const jumpDistanceMeters = calculateDistanceMeters(lastKnown, rawPosition);
-    const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
-
-    if (impliedSpeedMps <= DRIVER_MAX_PLAUSIBLE_SPEED_MPS) {
-        existing.pendingOutlier = null;
-        existing.lastAcceptedPosition = rawPosition;
-        existing.lastAcceptedFixAt = now;
-        return rawPosition;
-    }
-
-    if (existing.pendingOutlier
-        && calculateDistanceMeters(existing.pendingOutlier, rawPosition) <= DRIVER_OUTLIER_CONFIRM_RADIUS_METERS) {
-        existing.pendingOutlier = null;
-        existing.lastAcceptedPosition = rawPosition;
-        existing.lastAcceptedFixAt = now;
-        return rawPosition;
-    }
-
-    existing.pendingOutlier = rawPosition;
-    return lastKnown;
-}
-
 function resolveDriverRenderState(existing, rawPosition, driver, routePath = []) {
     if (existing && existing.lastRoutePathRef !== routePath) {
         existing.routeMatchIndex = -1;
@@ -1791,18 +1491,6 @@ function getTimestampMs(value) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function isWithinNearbyDriverRadius(location) {
-    const lat = Number(location?.lat);
-    const lng = Number(location?.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-
-    const distanceMeters = calculateDistanceMeters(
-        { lat: userLatitude, lng: userLongitude },
-        { lat, lng }
-    );
-    return distanceMeters <= NEARBY_DRIVER_RADIUS_METERS;
-}
-
 function isLiveDriverVisible(driver) {
     const location = driver.driverLocation || {};
     const lastLocationAt = getTimestampMs(driver.lastLocationAt || driver.lastSeenAt || driver.updatedAt);
@@ -1814,11 +1502,7 @@ function isLiveDriverVisible(driver) {
         && driver.driverAvailability !== "offline"
         && hasFreshLocation
         && Number.isFinite(Number(location.lat))
-        && Number.isFinite(Number(location.lng))
-        // Only surface vehicles "near the passenger" (within a reasonable
-        // radius) instead of every online driver across the whole service
-        // area - keeps the map readable and fast.
-        && isWithinNearbyDriverRadius(location);
+        && Number.isFinite(Number(location.lng));
 }
 
 function upsertGlobalDriverMarker(driverId, driver) {
@@ -1831,8 +1515,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
     };
     const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
-    const filteredPosition = filterDriverPositionOutlier(existing, rawPosition, performance.now());
-    const { position, heading } = resolveDriverRenderState(existing, filteredPosition, driver, driver.activeRoutePath || []);
+    const { position, heading } = resolveDriverRenderState(existing, rawPosition, driver, driver.activeRoutePath || []);
 
     if (!existing) {
         const marker = new RotatingVehicleMarker({
@@ -1941,26 +1624,13 @@ async function refreshActiveDriverRoute(detail, position, target) {
         activeDriverRouteState.lastRouteAt = 0;
     }
 
-    // Explicit deviation detection: if the driver's raw GPS position has
-    // drifted well off the currently known route (wrong turn, live reroute
-    // by their own navigation app, road closure, etc), skip the normal
-    // distance/interval throttle below and request a fresh route right away.
-    const deviatedFromRoute = !targetChanged
-        && activeDriverRouteState.routePath.length > 1
-        && (() => {
-            const match = matchPositionToRoute(position, activeDriverRouteState.routePath, -1);
-            return !match || match.distanceMeters > ACTIVE_DRIVER_ROUTE_DEVIATION_METERS;
-        })();
-
     if (!targetChanged
-        && !deviatedFromRoute
         && activeDriverRouteState.routePath.length
         && moved < ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS) {
         return;
     }
 
     if (!targetChanged
-        && !deviatedFromRoute
         && activeDriverRouteState.routePath.length
         && elapsed < ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS) {
         return;
@@ -2024,7 +1694,6 @@ async function handleAssignedDriverLocation(event) {
     const vehicleType = inferDriverVehicleType(detail);
     const target = getActiveRideTarget(detail);
     const driverId = detail.driver_id || detail.driverId || "assigned";
-    const isNewAssignment = assignedDriverTrackingDriverId !== driverId;
     assignedDriverTrackingDriverId = driverId;
     syncGlobalDriverMarkerVisibility();
     clearRouteAndDestination();
@@ -2046,12 +1715,8 @@ async function handleAssignedDriverLocation(event) {
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
     const existing = activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
-    const filteredRawPosition = filterDriverPositionOutlier(existing, rawPosition, performance.now());
-    const { position, heading } = resolveDriverRenderState(existing, filteredRawPosition, detail, routePath);
+    const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath);
     applyPassengerNavigationCamera(position, heading);
-
-    const arrivalDistanceMeters = target ? calculateDistanceMeters(rawPosition, target) : Infinity;
-    const isArriving = Number.isFinite(arrivalDistanceMeters) && arrivalDistanceMeters <= DRIVER_ARRIVAL_THRESHOLD_METERS;
 
     if (existingGlobal) {
         setGlobalDriverMarkerVisibility(driverId, existingGlobal);
@@ -2077,37 +1742,15 @@ async function handleAssignedDriverLocation(event) {
             lastFixAt: performance.now(),
             speedMetersPerSecond: 0
         };
-        activeDriverMarker.marker.pulseSelect?.();
-        activeDriverMarker.marker.setArriving?.(isArriving);
         return;
     }
 
-    if (isNewAssignment) activeDriverMarker.marker.pulseSelect?.();
-    activeDriverMarker.marker.setArriving?.(isArriving);
     animateGlobalDriverMarker(activeDriverMarker, position, heading);
-    updateAssignedRouteProgress(activeDriverMarker.routeMatchIndex, position);
     activeDriverMarker.marker.setTitle(detail.driver_name || "Assigned Driver");
     if (activeDriverMarker.vehicleType !== vehicleType) {
         activeDriverMarker.marker.setVehicleType(vehicleType);
         activeDriverMarker.vehicleType = vehicleType;
     }
-}
-
-// Re-checks every cached online driver against the passenger's *current*
-// location and re-runs visibility (which includes the nearby-radius check).
-// Firestore only pushes updates when a driver document changes, so without
-// this, a driver could stay shown (or hidden) based on a stale radius check
-// from whenever the passenger was previously located - this keeps the
-// "nearby vehicles" set honest as the passenger's own position moves.
-function reconcileNearbyDriverVisibility() {
-    if (!window.mapInstance) return;
-    globalDriverDataCache.forEach((driver, driverId) => {
-        if (isLiveDriverVisible(driver)) {
-            upsertGlobalDriverMarker(driverId, driver);
-        } else {
-            removeGlobalDriverMarker(driverId);
-        }
-    });
 }
 
 function startGlobalDriverPresenceListener() {
@@ -2117,27 +1760,15 @@ function startGlobalDriverPresenceListener() {
         globalDriversUnsubscribe();
         globalDriversUnsubscribe = null;
     }
-    if (nearbyDriverReconcileInterval) {
-        clearInterval(nearbyDriverReconcileInterval);
-        nearbyDriverReconcileInterval = null;
-    }
 
     clearGlobalDriverMarkers();
-    globalDriverDataCache.clear();
     updateVehicleMarkerLegend();
     globalDriversUnsubscribe = onSnapshot(collection(db, "driverMapPresence"), (snapshot) => {
         snapshot.docChanges().forEach((change) => {
             const driverId = change.doc.id;
             const driver = { id: driverId, ...change.doc.data() };
 
-            if (change.type === "removed") {
-                globalDriverDataCache.delete(driverId);
-                removeGlobalDriverMarker(driverId);
-                return;
-            }
-
-            globalDriverDataCache.set(driverId, driver);
-            if (!isLiveDriverVisible(driver)) {
+            if (change.type === "removed" || !isLiveDriverVisible(driver)) {
                 removeGlobalDriverMarker(driverId);
                 return;
             }
@@ -2147,11 +1778,6 @@ function startGlobalDriverPresenceListener() {
     }, (error) => {
         console.warn("Global live driver listener failed:", error);
     });
-
-    nearbyDriverReconcileInterval = setInterval(
-        reconcileNearbyDriverVisibility,
-        NEARBY_DRIVER_RECONCILE_INTERVAL_MS
-    );
 }
 
 async function refreshLivePickupAfterMapReady(initialCoords) {
@@ -2209,12 +1835,7 @@ export async function initializeMapEngine() {
         globalDriversUnsubscribe();
         globalDriversUnsubscribe = null;
     }
-    if (nearbyDriverReconcileInterval) {
-        clearInterval(nearbyDriverReconcileInterval);
-        nearbyDriverReconcileInterval = null;
-    }
     clearGlobalDriverMarkers();
-    globalDriverDataCache.clear();
     clearActiveDriverMarker();
     clearRouteAndDestination();
     clearPickupMarker();
