@@ -43,6 +43,18 @@ const NEARBY_DRIVER_RECONCILE_INTERVAL_MS = 12000;
 // A driver marker "arrives" (gentle bounce) once it's this close to its
 // current target (pickup or destination).
 const DRIVER_ARRIVAL_THRESHOLD_METERS = 35;
+// Ceiling on plausible real-world speed for an auto/bike in city/town
+// traffic. A single GPS fix that implies faster movement than this almost
+// never means the vehicle actually teleported - it means the fix itself is
+// bad (common on phones indoors, or falling back to coarse Wi-Fi/network
+// location instead of a real satellite lock). This is what was behind the
+// "marker jumping between random spots" glitch: every noisy fix was being
+// drawn at full trust, so the marker snapped back and forth between its
+// real position and each bad ping.
+const DRIVER_MAX_PLAUSIBLE_SPEED_MPS = 28; // ~100 km/h, generous for city traffic
+// A rejected/noisy fix only gets accepted once a second fix lands within
+// this radius of it too - i.e. it's corroborated, not a one-off spike.
+const DRIVER_OUTLIER_CONFIRM_RADIUS_METERS = 60;
 // Passenger-side heading-up navigation camera (mirrors the driver console's
 // applyNavigationCamera in driver-service.js) - rotates + tilts the map so
 // the assigned driver's direction of travel always points "up" on screen.
@@ -377,7 +389,7 @@ async function loadGoogleMaps() {
             script.id = GOOGLE_MAP_SCRIPT_ID;
             script.async = true;
             script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&loading=async`;
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
@@ -1534,6 +1546,53 @@ function getDriverDocumentHeading(driver) {
 // `existing.routeMatchIndex` so noisy pings can't flip the icon to face
 // backward. Falls back to the driver's own reported GPS heading, then to the
 // raw bearing between successive pings, when no usable route is available.
+// Rejects single-fix GPS/network-location noise before it ever reaches the
+// route-matching / animation code below. Compares the incoming ping against
+// the marker's last known good position: if it implies an impossible speed,
+// the marker holds its current spot instead of jumping to the bad fix. If
+// the *next* fix lands near that same "bad" spot too, it's treated as real
+// movement (or a permanent drift) and accepted, so a genuinely fast-moving
+// or newly-relocated driver never gets permanently stuck.
+function filterDriverPositionOutlier(existing, rawPosition, now) {
+    if (!existing) return rawPosition;
+
+    const currentLatLng = existing.marker?.getPosition?.();
+    const lastKnown = currentLatLng
+        ? { lat: currentLatLng.lat(), lng: currentLatLng.lng() }
+        : existing.lastAcceptedPosition;
+    if (!lastKnown) return rawPosition;
+
+    // Deliberately a dedicated timestamp rather than existing.lastFixAt
+    // (which the animation code above bumps on every call, accepted or
+    // not) - so a run of rejected noisy pings doesn't make the *next*
+    // legitimate fix look artificially fast and get rejected too. Default
+    // to a 5s assumption (the normal write cadence) rather than "just now",
+    // so the very first check isn't unfairly strict.
+    const elapsedSeconds = existing.lastAcceptedFixAt
+        ? Math.max(1, (now - existing.lastAcceptedFixAt) / 1000)
+        : 5;
+    const jumpDistanceMeters = calculateDistanceMeters(lastKnown, rawPosition);
+    const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
+
+    if (impliedSpeedMps <= DRIVER_MAX_PLAUSIBLE_SPEED_MPS) {
+        existing.pendingOutlier = null;
+        existing.lastAcceptedPosition = rawPosition;
+        existing.lastAcceptedFixAt = now;
+        return rawPosition;
+    }
+
+    if (existing.pendingOutlier
+        && calculateDistanceMeters(existing.pendingOutlier, rawPosition) <= DRIVER_OUTLIER_CONFIRM_RADIUS_METERS) {
+        existing.pendingOutlier = null;
+        existing.lastAcceptedPosition = rawPosition;
+        existing.lastAcceptedFixAt = now;
+        return rawPosition;
+    }
+
+    existing.pendingOutlier = rawPosition;
+    return lastKnown;
+}
+
 function resolveDriverRenderState(existing, rawPosition, driver, routePath = []) {
     if (existing && existing.lastRoutePathRef !== routePath) {
         existing.routeMatchIndex = -1;
@@ -1772,7 +1831,8 @@ function upsertGlobalDriverMarker(driverId, driver) {
     };
     const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
-    const { position, heading } = resolveDriverRenderState(existing, rawPosition, driver, driver.activeRoutePath || []);
+    const filteredPosition = filterDriverPositionOutlier(existing, rawPosition, performance.now());
+    const { position, heading } = resolveDriverRenderState(existing, filteredPosition, driver, driver.activeRoutePath || []);
 
     if (!existing) {
         const marker = new RotatingVehicleMarker({
@@ -1986,7 +2046,8 @@ async function handleAssignedDriverLocation(event) {
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
     const existing = activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
-    const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath);
+    const filteredRawPosition = filterDriverPositionOutlier(existing, rawPosition, performance.now());
+    const { position, heading } = resolveDriverRenderState(existing, filteredRawPosition, detail, routePath);
     applyPassengerNavigationCamera(position, heading);
 
     const arrivalDistanceMeters = target ? calculateDistanceMeters(rawPosition, target) : Infinity;

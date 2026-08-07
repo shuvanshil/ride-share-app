@@ -28,6 +28,11 @@ const ROUTE_REVEAL_ANIM_MS = 900;
 const ROUTE_PROGRESS_COMPLETED_COLOR = "#0b5d2a";
 const ROUTE_PROGRESS_REMAINING_COLOR = "#16723a";
 const DRIVER_ARRIVAL_THRESHOLD_METERS = 35;
+// Mirrors the same outlier-rejection guard used for the passenger's map
+// (see map.js) - a single fix that implies faster-than-plausible movement
+// is noise (indoor/network-based location drift), not a real teleport.
+const DRIVER_MAX_PLAUSIBLE_SPEED_MPS = 28;
+const DRIVER_OUTLIER_CONFIRM_RADIUS_METERS = 60;
 const LOCATION_WRITE_DISTANCE_METERS = 10;
 const LOCATION_WRITE_MIN_INTERVAL_MS = 5000;
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
@@ -833,6 +838,40 @@ function hideLifecyclePanel() {
 }
 
 let lastDriverMarkerFixAt = null;
+let driverPendingOutlierPosition = null;
+let driverLastAcceptedFixAt = null;
+
+// Rejects a single noisy GPS/network-location fix on the driver's own
+// marker instead of snapping to it: if the implied speed since the last
+// accepted fix is implausible, hold position. A second fix landing near
+// that same "bad" spot is treated as real and accepted.
+function filterOwnPositionOutlier(rawPosition, now) {
+    const current = driverMarker?.getPosition?.();
+    if (!current) return rawPosition;
+
+    const lastKnown = { lat: current.lat(), lng: current.lng() };
+    const elapsedSeconds = driverLastAcceptedFixAt
+        ? Math.max(1, (now - driverLastAcceptedFixAt) / 1000)
+        : 5;
+    const jumpDistanceMeters = distanceMeters(lastKnown, rawPosition);
+    const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
+
+    if (impliedSpeedMps <= DRIVER_MAX_PLAUSIBLE_SPEED_MPS) {
+        driverPendingOutlierPosition = null;
+        driverLastAcceptedFixAt = now;
+        return rawPosition;
+    }
+
+    if (driverPendingOutlierPosition
+        && distanceMeters(driverPendingOutlierPosition, rawPosition) <= DRIVER_OUTLIER_CONFIRM_RADIUS_METERS) {
+        driverPendingOutlierPosition = null;
+        driverLastAcceptedFixAt = now;
+        return rawPosition;
+    }
+
+    driverPendingOutlierPosition = rawPosition;
+    return lastKnown;
+}
 
 function animateDriverMarkerTo(position, heading = null) {
     if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
@@ -1424,7 +1463,10 @@ async function handleLocation(position) {
         return;
     }
 
-    upsertDriverMarker(telemetryResult.renderPosition || coords, telemetryResult.heading);
+    upsertDriverMarker(
+        filterOwnPositionOutlier(telemetryResult.renderPosition || coords, performance.now()),
+        telemetryResult.heading
+    );
 
     if (currentTarget) {
         upsertTargetMarker();
