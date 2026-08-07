@@ -53,7 +53,7 @@ function loadGoogleMaps() {
             script.id = GOOGLE_MAP_SCRIPT_ID;
             script.async = true;
             script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}`;
             script.onload = () => resolve(window.google.maps);
             script.onerror = reject;
             document.head.appendChild(script);
