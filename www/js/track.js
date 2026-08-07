@@ -1,7 +1,7 @@
 import { db } from './firebase-init.js';
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-const GOOGLE_MAP_SCRIPT_ID = "lu-track-google-maps";
+const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
 let googleBrowserKey = null;
 let map = null;
 let driverMarker = null;
@@ -42,6 +42,32 @@ async function getGoogleBrowserKey() {
     return googleBrowserKey;
 }
 
+// Same officially recommended loading=async bootstrap loader used on the
+// main app (see map.js) - a plain <script> tag's `load` event isn't a
+// reliable "the SDK is actually ready" signal in loading=async mode.
+function installGoogleMapsBootstrapLoader(apiKey) {
+    if (window.google?.maps?.importLibrary) return;
+    (g => {
+        var h, a, k, p = "The Google Maps JavaScript API",
+            c = "google", l = "importLibrary", q = "__ib__",
+            m = document, b = window;
+        b = b[c] || (b[c] = {});
+        var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams,
+            u = () => h || (h = new Promise(async (f, n) => {
+                await (a = m.createElement("script"));
+                e.set("libraries", [...r] + "");
+                for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]);
+                e.set("callback", c + ".maps." + q);
+                a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+                d[q] = f;
+                a.onerror = () => h = n(Error(p + " could not load."));
+                a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+                m.head.append(a);
+            }));
+        d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n));
+    })({ key: apiKey, v: GOOGLE_MAP_SCRIPT_VERSION, loading: "async" });
+}
+
 function loadGoogleMaps() {
     return new Promise((resolve, reject) => {
         if (window.google?.maps?.Map) {
@@ -49,14 +75,10 @@ function loadGoogleMaps() {
             return;
         }
         getGoogleBrowserKey().then((key) => {
-            const script = document.createElement("script");
-            script.id = GOOGLE_MAP_SCRIPT_ID;
-            script.async = true;
-            script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async`;
-            script.onload = () => resolve(window.google.maps);
-            script.onerror = reject;
-            document.head.appendChild(script);
+            installGoogleMapsBootstrapLoader(key);
+            window.google.maps.importLibrary("maps")
+                .then(() => resolve(window.google.maps))
+                .catch(reject);
         }).catch(reject);
     });
 }

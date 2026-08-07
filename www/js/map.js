@@ -13,7 +13,6 @@ const DESTINATION_SEARCH_DEBOUNCE_MS = 90;
 const AUTOCOMPLETE_CACHE_TTL_MS = 2 * 60 * 1000;
 const AUTOCOMPLETE_CACHE_MAX_ENTRIES = 40;
 const MAX_VISIBLE_SUGGESTIONS = 5;
-const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
 const DRIVER_MARKER_ANIMATION_MS = 850;
 const DRIVER_MARKER_ANIMATION_MIN_MS = 900;
@@ -362,6 +361,35 @@ async function getGoogleBrowserKey() {
     return googleBrowserKey;
 }
 
+// Google's officially published loading=async bootstrap loader, verbatim
+// (see https://goo.gle/js-api-loading), just parameterized with our key -
+// deliberately not hand-rewritten, since this is exactly the snippet
+// Google tests and ships. Defines google.maps.importLibrary, which each
+// library (core "maps", "places", ...) resolves through independently and
+// reliably - unlike a plain <script> tag's `load` event.
+function installGoogleMapsBootstrapLoader(apiKey) {
+    if (window.google?.maps?.importLibrary) return;
+    (g => {
+        var h, a, k, p = "The Google Maps JavaScript API",
+            c = "google", l = "importLibrary", q = "__ib__",
+            m = document, b = window;
+        b = b[c] || (b[c] = {});
+        var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams,
+            u = () => h || (h = new Promise(async (f, n) => {
+                await (a = m.createElement("script"));
+                e.set("libraries", [...r] + "");
+                for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]);
+                e.set("callback", c + ".maps." + q);
+                a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+                d[q] = f;
+                a.onerror = () => h = n(Error(p + " could not load."));
+                a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+                m.head.append(a);
+            }));
+        d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n));
+    })({ key: apiKey, v: GOOGLE_MAP_SCRIPT_VERSION, loading: "async" });
+}
+
 async function loadGoogleMaps() {
     if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
         return getGoogleMaps();
@@ -370,30 +398,21 @@ async function loadGoogleMaps() {
     if (googleMapsLoadPromise) return googleMapsLoadPromise;
 
     googleMapsLoadPromise = (async () => {
-        const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
-        if (existingScript) {
-            await new Promise((resolve, reject) => {
-                if (getGoogleMaps()?.Map) {
-                    resolve();
-                    return;
-                }
-                existingScript.addEventListener("load", resolve, { once: true });
-                existingScript.addEventListener("error", reject, { once: true });
-            });
-            return getGoogleMaps();
-        }
-
         const browserKey = await getGoogleBrowserKey();
-        await new Promise((resolve, reject) => {
-            const script = document.createElement("script");
-            script.id = GOOGLE_MAP_SCRIPT_ID;
-            script.async = true;
-            script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&loading=async`;
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
+        installGoogleMapsBootstrapLoader(browserKey);
+
+        // importLibrary() resolves only once that specific library's
+        // classes are genuinely ready. A plain <script> tag's `load` event
+        // is NOT a reliable signal of that when the URL uses
+        // loading=async (the recommended, warning-free loading mode) -
+        // the script can finish its own bootstrapping and fire `load`
+        // slightly before google.maps.Map etc. actually exist, which is
+        // what caused the intermittent "Google Maps SDK did not load" /
+        // stuck "Opening map..." regression.
+        await Promise.all([
+            window.google.maps.importLibrary("maps"),
+            window.google.maps.importLibrary("places")
+        ]);
 
         if (!getGoogleMaps()?.Map) {
             throw new Error("Google Maps SDK did not load.");

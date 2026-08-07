@@ -324,9 +324,20 @@ def _require_approved_driver(profile: dict[str, Any], message: str) -> None:
 def _coarse_location(location: Optional[dict[str, float]]) -> Optional[dict[str, float]]:
     if not location:
         return None
+    # NOTE: this used to round to 2 decimal places (~1.1km grid cells).
+    # That's coarser than the 2-5km "nearby driver" radius the passenger
+    # map filters to, so a driver sitting near a grid-cell boundary would
+    # flip between two ~1.1km-apart points on every tiny few-metre GPS
+    # wobble - that discrete snapping is what showed up as the vehicle
+    # icon "randomly jumping between places" on the passenger's map only
+    # (the driver's own marker, and the assigned-driver tracking used
+    # after booking, both read the *uncoarsened* location and never had
+    # this problem). 4 decimal places (~11m) still blurs the driver's
+    # exact address for a browsing passenger, while staying well within
+    # normal consumer GPS accuracy - so it no longer visibly snaps.
     return {
-        "lat": round(float(location["lat"]), 2),
-        "lng": round(float(location["lng"]), 2),
+        "lat": round(float(location["lat"]), 4),
+        "lng": round(float(location["lng"]), 4),
     }
 
 
