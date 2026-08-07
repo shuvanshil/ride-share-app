@@ -48,42 +48,42 @@
             <button class="profile-menu-row" type="button" data-action="rides">
                 <span class="profile-menu-icon">◷</span>
                 <span>My Rides</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="safety">
-                <span class="profile-menu-icon">盾</span>
+                <span class="profile-menu-icon"><span class="webicon webicon-safety" aria-hidden="true"></span></span>
                 <span>Safety</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="refer">
-                <span class="profile-menu-icon">↗</span>
+                <span class="profile-menu-icon"><span class="webicon webicon-share" aria-hidden="true"></span></span>
                 <span>Share</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="contact">
-                <span class="profile-menu-icon">☎</span>
+                <span class="profile-menu-icon"><span class="webicon webicon-contact-us" aria-hidden="true"></span></span>
                 <span>Contact Us</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="about">
-                <span class="profile-menu-icon">ⓘ</span>
+                <span class="profile-menu-icon"><span class="webicon webicon-about-us" aria-hidden="true"></span></span>
                 <span>About Us</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="terms">
                 <span class="profile-menu-icon">T</span>
                 <span>Terms &amp; Conditions</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="privacy">
                 <span class="profile-menu-icon">P</span>
                 <span>Privacy Policy</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="help">
                 <span class="profile-menu-icon">?</span>
                 <span>Help</span>
-                <strong>›</strong>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
         </section>
 
@@ -287,44 +287,44 @@
                 <button id="profile-safety-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
             </header>
 
-            <section class="profile-safety-tools">
-                <h3>Emergency Contacts</h3>
-                <p class="profile-safety-tools-hint">Add up to 3 trusted contacts. You can send them a live trip-tracking link any time from an active ride via "Share Trip".</p>
-                <div id="emergency-contacts-list" class="emergency-contacts-list"></div>
-                <form id="emergency-contact-form" class="emergency-contact-form d-none">
-                    <input type="text" id="emergency-contact-name" class="form-control gy-input" placeholder="Contact name" maxlength="80" required>
-                    <input type="tel" id="emergency-contact-phone" class="form-control gy-input" placeholder="Phone number" maxlength="20" required>
-                    <div class="emergency-contact-form-actions">
-                        <button type="submit" class="gy-btn gy-btn-primary flex-fill">Save Contact</button>
-                        <button type="button" id="emergency-contact-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
-                    </div>
-                </form>
-                <button id="emergency-contact-add-btn" class="gy-btn gy-btn-outline w-100 mt-2" type="button">+ Add Emergency Contact</button>
-            </section>
-
-            <section class="profile-safety-tools">
-                <h3>Report a Safety Concern</h3>
-                <p class="profile-safety-tools-hint">Report unsafe driving, harassment, or any other concern to LiphtUp's safety team.</p>
-                <button id="safety-report-open-btn" class="gy-btn gy-btn-danger-outline w-100" type="button">Report a Concern</button>
-                <form id="safety-report-form" class="safety-report-form d-none">
-                    <select id="safety-report-category" class="form-select gy-input">
-                        <option value="unsafe_driving">Unsafe driving</option>
-                        <option value="harassment">Harassment</option>
-                        <option value="route_deviation">Route deviation</option>
-                        <option value="vehicle_condition">Vehicle condition</option>
-                        <option value="payment_dispute">Payment dispute</option>
-                        <option value="rude_behavior">Rude behavior</option>
-                        <option value="other">Other</option>
-                    </select>
-                    <textarea id="safety-report-description" class="form-control gy-input" rows="3" maxlength="1000" placeholder="Describe what happened (optional)"></textarea>
-                    <div class="emergency-contact-form-actions">
-                        <button type="submit" class="gy-btn gy-btn-primary flex-fill">Submit Report</button>
-                        <button type="button" id="safety-report-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
-                    </div>
-                </form>
-            </section>
-
             <article class="profile-terms-content">
+                <section class="profile-safety-tools">
+                    <h3>Emergency Contacts</h3>
+                    <p class="profile-safety-tools-hint">Add up to 3 trusted contacts. You can send them a live trip-tracking link any time from an active ride via "Share Trip".</p>
+                    <div id="emergency-contacts-list" class="emergency-contacts-list"></div>
+                    <form id="emergency-contact-form" class="emergency-contact-form d-none">
+                        <input type="text" id="emergency-contact-name" class="form-control gy-input" placeholder="Contact name" maxlength="80" required>
+                        <input type="tel" id="emergency-contact-phone" class="form-control gy-input" placeholder="Phone number" maxlength="20" required>
+                        <div class="emergency-contact-form-actions">
+                            <button type="submit" class="gy-btn gy-btn-primary flex-fill">Save Contact</button>
+                            <button type="button" id="emergency-contact-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
+                        </div>
+                    </form>
+                    <button id="emergency-contact-add-btn" class="gy-btn gy-btn-outline w-100 mt-2" type="button">+ Add Emergency Contact</button>
+                </section>
+
+                <section class="profile-safety-tools">
+                    <h3>Report a Safety Concern</h3>
+                    <p class="profile-safety-tools-hint">Report unsafe driving, harassment, or any other concern to LiphtUp's safety team.</p>
+                    <button id="safety-report-open-btn" class="gy-btn gy-btn-danger-outline w-100" type="button">Report a Concern</button>
+                    <form id="safety-report-form" class="safety-report-form d-none">
+                        <select id="safety-report-category" class="form-select gy-input">
+                            <option value="unsafe_driving">Unsafe driving</option>
+                            <option value="harassment">Harassment</option>
+                            <option value="route_deviation">Route deviation</option>
+                            <option value="vehicle_condition">Vehicle condition</option>
+                            <option value="payment_dispute">Payment dispute</option>
+                            <option value="rude_behavior">Rude behavior</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <textarea id="safety-report-description" class="form-control gy-input" rows="3" maxlength="1000" placeholder="Describe what happened (optional)"></textarea>
+                        <div class="emergency-contact-form-actions">
+                            <button type="submit" class="gy-btn gy-btn-primary flex-fill">Submit Report</button>
+                            <button type="button" id="safety-report-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+
                 <section>
                     <h3>Safety</h3>
                     <p>At <strong>LiphtUp</strong>, your safety is our top priority. We are committed to providing a secure, reliable, and respectful ride experience for every passenger and driver.</p>

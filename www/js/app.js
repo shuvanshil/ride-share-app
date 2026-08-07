@@ -466,7 +466,7 @@ function bindTripProgressPanel() {
         const expanded = panel.classList.toggle('is-expanded');
         handle.setAttribute('aria-expanded', String(expanded));
         const label = document.getElementById('trip-progress-handle-label');
-        if (label) label.innerText = expanded ? "Trip in progress · Tap to hide details" : "Trip in progress · Tap for details";
+        if (label) label.innerText = expanded ? "Trip and Driver Details (tap to close)" : "Trip and Driver Details (tap to open)";
     });
 }
 
@@ -474,6 +474,13 @@ function showTripProgressPanel(ride) {
     const dashboardView = document.getElementById('dashboard-view');
     const panel = document.getElementById('trip-progress-panel');
     if (!dashboardView || !panel) return;
+
+    // The old pre-trip driver card / PIN box (rendered into the booking
+    // surface for "accepted"/"arrived") must never be visible at the same
+    // time as this panel - everything driver/PIN-related lives in here
+    // once the trip is actually underway, not in both places at once.
+    hidePassengerDriverCard();
+    hidePassengerVerificationPin();
 
     bindTripProgressPanel();
     dashboardView.classList.add('trip-live');
@@ -495,7 +502,7 @@ function showTripProgressPanel(ride) {
                     <span class="driver-verified-badge">✓ Verified Driver</span>
                 </div>
                 ${driverPhone ? `
-                    <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
+                    <a href="tel:${driverPhone}" class="gy-btn gy-btn-outline trip-progress-call-btn">
                         Call Driver
                     </a>
                 ` : ""}
@@ -872,10 +879,11 @@ async function restorePassengerActiveRide() {
         showPassengerCancelButton(activeRideDoc.id);
         setPassengerDestinationLocked(true, activeRide.drop_name || "", activeRide.pickup_name || "");
         setPassengerServiceLocked(true, activeRide);
-        renderPassengerDriverCard(activeRide);
-        renderPassengerVerificationPin(activeRide.verification_pin);
         if (["started", "en_route"].includes(activeRide.status)) {
             showTripProgressPanel(activeRide);
+        } else {
+            renderPassengerDriverCard(activeRide);
+            renderPassengerVerificationPin(activeRide.verification_pin);
         }
         if (activeRide.fare) {
             document.getElementById('fare-amount').innerText = `₹${activeRide.fare}`;
@@ -1069,14 +1077,12 @@ function listenToRideStatusUpdates(rideId) {
 
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "started") {
-            renderPassengerDriverCard(ride);
             showTripProgressPanel(ride);
             requestBtn.innerHTML = 'Trip started. Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "en_route") {
-            renderPassengerDriverCard(ride);
             showTripProgressPanel(ride);
             requestBtn.innerHTML = '🚗 Trip in Progress! Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";

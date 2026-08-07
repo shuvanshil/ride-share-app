@@ -73,7 +73,7 @@
                         <section id="trip-progress-panel" class="trip-progress-panel d-none" aria-live="polite">
                             <button id="trip-progress-handle" class="trip-progress-handle" type="button" aria-expanded="false" aria-controls="trip-progress-details">
                                 <span class="trip-progress-handle-bar" aria-hidden="true"></span>
-                                <span class="trip-progress-handle-label" id="trip-progress-handle-label">Trip in progress · Tap for details</span>
+                                <span class="trip-progress-handle-label" id="trip-progress-handle-label">Trip and Driver Details (tap to open)</span>
                                 <span class="trip-progress-handle-icon" aria-hidden="true"></span>
                             </button>
                             <div id="trip-progress-details" class="trip-progress-details">
@@ -122,6 +122,7 @@
 
                     <section class="services-ride-actions">
                         <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Select a destination</button>
+                        <p id="trip-live-heading" class="trip-live-heading">Trip in Progress. Enjoy your Ride</p>
                         <div id="passenger-safety-actions" class="passenger-safety-actions d-none">
                             <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline" type="button">
                                 <span class="webicon webicon-share" aria-hidden="true"></span>
@@ -131,7 +132,7 @@
                                 <span class="webicon webicon-sos" aria-hidden="true"></span> SOS
                             </button>
                         </div>
-                        <button id="passenger-cancel-ride-btn" class="gy-btn gy-btn-danger-outline w-100 d-none" type="button">Cancel Ride</button>
+                        <button id="passenger-cancel-ride-btn" class="gy-btn gy-btn-danger-outline passenger-cancel-btn d-none" type="button">Cancel Ride</button>
                         <p id="services-action-hint">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>
                 </div>

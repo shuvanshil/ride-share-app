@@ -39,11 +39,15 @@
 .webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
 .webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 .webicon-use-current-location { -webkit-mask-image: url("../assets/icons/webicons/use-current-location.svg"); mask-image: url("../assets/icons/webicons/use-current-location.svg"); }
-.webicon-sos { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
-.webicon-share { -webkit-mask-image: url("../assets/icons/webicons/share.svg"); mask-image: url("../assets/icons/webicons/share.svg"); }
+.webicon-sos { -webkit-mask-image: url("../assets/icons/webicons/sos.png"); mask-image: url("../assets/icons/webicons/sos.png"); }
+.webicon-share { -webkit-mask-image: url("../assets/icons/webicons/share.png"); mask-image: url("../assets/icons/webicons/share.png"); }
 .webicon-favorite { -webkit-mask-image: url("../assets/icons/webicons/favorite.svg"); mask-image: url("../assets/icons/webicons/favorite.svg"); }
 .webicon-work { -webkit-mask-image: url("../assets/icons/webicons/work.svg"); mask-image: url("../assets/icons/webicons/work.svg"); }
 .webicon-edit { -webkit-mask-image: url("../assets/icons/webicons/edit.svg"); mask-image: url("../assets/icons/webicons/edit.svg"); }
+.webicon-safety { -webkit-mask-image: url("../assets/icons/webicons/safety.png"); mask-image: url("../assets/icons/webicons/safety.png"); }
+.webicon-contact-us { -webkit-mask-image: url("../assets/icons/webicons/contact-us.png"); mask-image: url("../assets/icons/webicons/contact-us.png"); }
+.webicon-about-us { -webkit-mask-image: url("../assets/icons/webicons/about-us.png"); mask-image: url("../assets/icons/webicons/about-us.png"); }
+.webicon-view-more { -webkit-mask-image: url("../assets/icons/webicons/view-more.png"); mask-image: url("../assets/icons/webicons/view-more.png"); }
 
 html,
 body {
@@ -321,11 +325,17 @@ select {
     align-items: center;
     justify-content: center;
     padding: 0 18px;
+    text-decoration: none;
     transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .gy-btn:active {
     transform: scale(0.99);
+}
+
+.gy-btn:focus-visible {
+    outline: 2px solid var(--gy-green);
+    outline-offset: 2px;
 }
 
 .gy-btn-primary,
@@ -405,13 +415,21 @@ select {
 }
 
 .passenger-safety-actions #passenger-share-trip-btn {
-    flex: 1 1 auto;
+    flex: 3 1 0%;
 }
 
 .passenger-safety-actions #passenger-sos-btn {
-    flex: 0 0 auto;
+    flex: 1 1 0%;
     width: auto;
-    padding: 0 16px;
+    padding: 0 12px;
+}
+
+.passenger-cancel-btn {
+    display: block;
+    width: 50%;
+    min-width: 160px;
+    max-width: 260px;
+    margin: 10px auto 0;
 }
 
 /* De-emphasised SOS placement on the driver lifecycle card: right-aligned,
@@ -2545,6 +2563,11 @@ body.profile-editor-open {
     justify-self: end;
 }
 
+.profile-menu-row .profile-menu-more {
+    justify-self: end;
+    color: #B9C0C8;
+}
+
 .profile-menu-row:active {
     background: #F9FBF9;
 }
@@ -3219,8 +3242,23 @@ body.profile-editor-open {
 .services-page.trip-live .services-location-card,
 .services-page.trip-live #ride-service-options,
 .services-page.trip-live .services-fare-pill,
+.services-page.trip-live #request-ride-btn,
 .services-page.trip-live #services-map-card .services-map-head {
     display: none;
+}
+
+.trip-live-heading {
+    display: none;
+}
+
+.services-page.trip-live .trip-live-heading {
+    display: block;
+    margin: 2px 0 0;
+    text-align: center;
+    width: 100%;
+    font-size: 16px !important;
+    font-weight: 800;
+    color: var(--gy-text) !important;
 }
 
 .services-page.trip-live #services-map-card {
@@ -3229,7 +3267,11 @@ body.profile-editor-open {
 
 .services-page.trip-live #services-map-card .services-map-frame {
     aspect-ratio: unset;
-    height: 80vh;
+    /* Was 80vh when the panel floated over the map; now that the panel sits
+       in normal flow below it (so expanding it pushes content down instead
+       of overlapping), a shorter map leaves the collapsed handle visible
+       above the fixed bottom nav without needing to scroll first. */
+    height: 58vh;
 }
 
 #services-map-card {
@@ -3237,14 +3279,16 @@ body.profile-editor-open {
 }
 
 .trip-progress-panel {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 6;
-    border-radius: 16px 16px 0 0;
+    /* In normal flow (not absolutely positioned over the map) so that
+       expanding it pushes the buttons/heading below it down the page
+       instead of overlapping the map or anything else. */
+    position: relative;
+    flex: 0 0 auto;
+    border-radius: 16px;
+    margin-top: 10px;
     background: #fff;
-    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--gy-border);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1);
     overflow: hidden;
 }
 
@@ -3306,6 +3350,14 @@ body.profile-editor-open {
     padding-bottom: 12px;
     margin-bottom: 12px;
     border-bottom: 1px solid var(--gy-border);
+}
+
+.trip-progress-call-btn {
+    min-height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
+    white-space: nowrap;
+    flex: 0 0 auto;
 }
 
 .trip-progress-row {

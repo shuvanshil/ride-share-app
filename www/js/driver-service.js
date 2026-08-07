@@ -24,6 +24,15 @@ const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const ACTIVE_RIDE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 const ROUTE_RECALC_DISTANCE_METERS = 25;
 const ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
+const ROUTE_REVEAL_ANIM_MS = 900;
+const ROUTE_PROGRESS_COMPLETED_COLOR = "#0b5d2a";
+const ROUTE_PROGRESS_REMAINING_COLOR = "#16723a";
+const DRIVER_ARRIVAL_THRESHOLD_METERS = 35;
+// Mirrors the same outlier-rejection guard used for the passenger's map
+// (see map.js) - a single fix that implies faster-than-plausible movement
+// is noise (indoor/network-based location drift), not a real teleport.
+const DRIVER_MAX_PLAUSIBLE_SPEED_MPS = 28;
+const DRIVER_OUTLIER_CONFIRM_RADIUS_METERS = 60;
 const LOCATION_WRITE_DISTANCE_METERS = 10;
 const LOCATION_WRITE_MIN_INTERVAL_MS = 5000;
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
@@ -326,11 +335,17 @@ class RotatingVehicleMarker {
         this.element.style.cssText = "position:absolute;width:48px;height:48px;pointer-events:auto;will-change:transform;animation:vehicle-marker-pop 260ms cubic-bezier(0.34,1.56,0.64,1);";
         this.element.style.zIndex = String(zIndex);
         this.element.title = title;
+        // Separate inner wrapper for arrive-bounce/select-pop CSS animations,
+        // keeping them off both this.element (JS-driven position translate)
+        // and the <img> (JS-driven heading rotation) so transforms never fight.
+        this.innerWrap = document.createElement("div");
+        this.innerWrap.className = "rotating-vehicle-marker-inner";
         this.image = document.createElement("img");
         this.image.alt = "";
         this.image.draggable = false;
         this.image.style.cssText = "width:48px;height:48px;object-fit:contain;transform-origin:50% 50%;filter:drop-shadow(0 3px 6px rgba(15,23,42,0.35));user-select:none;";
-        this.element.appendChild(this.image);
+        this.innerWrap.appendChild(this.image);
+        this.element.appendChild(this.innerWrap);
         this.setVehicleType(vehicleType);
         this.setHeading(this.heading);
 
@@ -378,6 +393,21 @@ class RotatingVehicleMarker {
 
     setLiveTracked(live) {
         this.element.classList.toggle("is-live-tracked", Boolean(live));
+    }
+
+    setArriving(arriving) {
+        this.innerWrap?.classList.toggle("is-arriving", Boolean(arriving));
+    }
+
+    pulseSelect() {
+        if (!this.innerWrap) return;
+        this.innerWrap.classList.remove("is-selected");
+        void this.innerWrap.offsetWidth;
+        this.innerWrap.classList.add("is-selected");
+        window.clearTimeout(this.selectPulseTimer);
+        this.selectPulseTimer = window.setTimeout(() => {
+            this.innerWrap?.classList.remove("is-selected");
+        }, 450);
     }
 }
 
@@ -808,6 +838,40 @@ function hideLifecyclePanel() {
 }
 
 let lastDriverMarkerFixAt = null;
+let driverPendingOutlierPosition = null;
+let driverLastAcceptedFixAt = null;
+
+// Rejects a single noisy GPS/network-location fix on the driver's own
+// marker instead of snapping to it: if the implied speed since the last
+// accepted fix is implausible, hold position. A second fix landing near
+// that same "bad" spot is treated as real and accepted.
+function filterOwnPositionOutlier(rawPosition, now) {
+    const current = driverMarker?.getPosition?.();
+    if (!current) return rawPosition;
+
+    const lastKnown = { lat: current.lat(), lng: current.lng() };
+    const elapsedSeconds = driverLastAcceptedFixAt
+        ? Math.max(1, (now - driverLastAcceptedFixAt) / 1000)
+        : 5;
+    const jumpDistanceMeters = distanceMeters(lastKnown, rawPosition);
+    const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
+
+    if (impliedSpeedMps <= DRIVER_MAX_PLAUSIBLE_SPEED_MPS) {
+        driverPendingOutlierPosition = null;
+        driverLastAcceptedFixAt = now;
+        return rawPosition;
+    }
+
+    if (driverPendingOutlierPosition
+        && distanceMeters(driverPendingOutlierPosition, rawPosition) <= DRIVER_OUTLIER_CONFIRM_RADIUS_METERS) {
+        driverPendingOutlierPosition = null;
+        driverLastAcceptedFixAt = now;
+        return rawPosition;
+    }
+
+    driverPendingOutlierPosition = rawPosition;
+    return lastKnown;
+}
 
 function animateDriverMarkerTo(position, heading = null) {
     if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
@@ -887,7 +951,11 @@ let firstRouteFitComplete = false;
 let routeRetryTimer = null;
 let activeRoutePath = [];
 let driverRouteMatchIndex = -1;
+let driverRouteMatchPoint = null;
 let driverLastRoutePathRef = null;
+let routeCompletedPolyline = null;
+let routeRemainingPolyline = null;
+let routeRevealFrame = null;
 let navToggleButton = null;
 let cameraAnimationFrame = null;
 let lastCameraHeading = 0;
@@ -910,9 +978,21 @@ function rememberNavigationModePreference(enabled) {
     }
 }
 
+function stopRouteReveal() {
+    if (routeRevealFrame) {
+        cancelAnimationFrame(routeRevealFrame);
+        routeRevealFrame = null;
+    }
+}
+
 function clearRoute() {
+    stopRouteReveal();
     if (routePolyline?.setMap) routePolyline.setMap(null);
     routePolyline = null;
+    if (routeCompletedPolyline?.setMap) routeCompletedPolyline.setMap(null);
+    routeCompletedPolyline = null;
+    if (routeRemainingPolyline?.setMap) routeRemainingPolyline.setMap(null);
+    routeRemainingPolyline = null;
     activeRoutePath = [];
 }
 
@@ -1092,6 +1172,7 @@ function upsertTargetMarker() {
                 color: "#ffffff",
                 fontWeight: "800"
             },
+            animation: window.google.maps.Animation.DROP,
             zIndex: 900
         });
         return;
@@ -1121,19 +1202,80 @@ function fitActiveRoute(path) {
     }
 }
 
+// Animates the route being "drawn" onto the map point by point instead of
+// appearing all at once, the first time it's calculated (or after a full
+// reroute). Per-tick progress splitting (updateDriverRouteProgress) takes
+// over once this finishes.
+function revealRoute(path) {
+    stopRouteReveal();
+    if (!routeRemainingPolyline || !Array.isArray(path) || path.length < 2) return;
+
+    const startedAt = performance.now();
+    const step = (now) => {
+        const progress = Math.min(1, (now - startedAt) / ROUTE_REVEAL_ANIM_MS);
+        const pointCount = Math.max(2, Math.round(path.length * progress));
+        routeRemainingPolyline.setPath(path.slice(0, pointCount));
+        if (progress < 1) {
+            routeRevealFrame = requestAnimationFrame(step);
+        } else {
+            routeRemainingPolyline.setPath(path);
+            routeRevealFrame = null;
+        }
+    };
+    routeRevealFrame = requestAnimationFrame(step);
+}
+
+function splitDriverRoutePathAtMatch(path, matchIndex, matchPoint) {
+    if (!Array.isArray(path) || path.length < 2) {
+        return { completed: [], remaining: path || [] };
+    }
+    const index = Number.isInteger(matchIndex) && matchIndex >= 0
+        ? Math.max(0, Math.min(path.length - 2, matchIndex))
+        : 0;
+    const anchor = matchPoint || path[index];
+    const completed = path.slice(0, index + 1).concat([anchor]);
+    const remaining = [anchor].concat(path.slice(index + 1));
+    return { completed, remaining };
+}
+
+// Splits the driver's own route into a muted "completed" segment behind
+// them and a highlighted "remaining" segment ahead, updated on every GPS
+// tick from the route-match index already computed for marker snapping.
+function updateDriverRouteProgress() {
+    if (!routeCompletedPolyline || !routeRemainingPolyline || routeRevealFrame) return;
+    if (driverRouteMatchIndex < 0 || !activeRoutePath.length) return;
+
+    const { completed, remaining } = splitDriverRoutePathAtMatch(
+        activeRoutePath,
+        driverRouteMatchIndex,
+        driverRouteMatchPoint
+    );
+    routeCompletedPolyline.setPath(completed);
+    routeRemainingPolyline.setPath(remaining);
+}
+
 function drawRoute(path) {
     if (!map || !Array.isArray(path) || path.length < 2 || !window.google?.maps) return;
 
     clearRoute();
     activeRoutePath = path;
-    routePolyline = new window.google.maps.Polyline({
+    routeCompletedPolyline = new window.google.maps.Polyline({
         map,
-        path,
-        strokeColor: "#16723a",
+        path: [],
+        strokeColor: ROUTE_PROGRESS_COMPLETED_COLOR,
+        strokeOpacity: 0.5,
+        strokeWeight: 6,
+        zIndex: 499
+    });
+    routeRemainingPolyline = new window.google.maps.Polyline({
+        map,
+        path: [],
+        strokeColor: ROUTE_PROGRESS_REMAINING_COLOR,
         strokeOpacity: 0.96,
         strokeWeight: 6,
         zIndex: 500
     });
+    revealRoute(path);
     fitActiveRoute(path);
 }
 
@@ -1150,9 +1292,11 @@ function resolveRouteMatch(position) {
     const match = matchPositionToRoute(position, activeRoutePath, driverRouteMatchIndex);
     if (!match || match.distanceMeters > ROUTE_SNAP_MAX_METERS) {
         driverRouteMatchIndex = -1;
+        driverRouteMatchPoint = null;
         return null;
     }
     driverRouteMatchIndex = match.index;
+    driverRouteMatchPoint = match.point;
     return match;
 }
 
@@ -1319,12 +1463,24 @@ async function handleLocation(position) {
         return;
     }
 
-    upsertDriverMarker(telemetryResult.renderPosition || coords, telemetryResult.heading);
+    upsertDriverMarker(
+        filterOwnPositionOutlier(telemetryResult.renderPosition || coords, performance.now()),
+        telemetryResult.heading
+    );
 
     if (currentTarget) {
         upsertTargetMarker();
-        refreshRoute(coords);
+        const arrivalDistance = distanceMeters(coords, currentTarget.position);
+        driverMarker?.setArriving?.(Number.isFinite(arrivalDistance) && arrivalDistance <= DRIVER_ARRIVAL_THRESHOLD_METERS);
+        updateDriverRouteProgress();
+        // If the route-match snap just failed (driverRouteMatchIndex === -1)
+        // while we already had a route, the driver has genuinely drifted off
+        // it - request a fresh route immediately instead of waiting for the
+        // normal recalculation throttle.
+        const deviated = activeRoutePath.length > 1 && driverRouteMatchIndex === -1;
+        refreshRoute(coords, deviated);
     } else {
+        driverMarker?.setArriving?.(false);
         map.panTo(coords);
         hideRouteWarning();
     }
@@ -1458,6 +1614,7 @@ function renderActiveRideState(rideId, ride) {
     }
 
     currentTarget = target;
+    if (targetChanged) driverMarker?.pulseSelect?.();
     routeLabel.innerText = target.kind === "pickup" ? "Navigate to pickup" : "Navigate to destination";
     routePlace.innerText = target.place;
     routePanel.classList.remove('d-none');
