@@ -2386,6 +2386,22 @@ function searchClientGoogleAutocomplete(query) {
             .catch(() => null);
     }
 
+    // On standard web environment, prefer the Legacy SDK AutocompleteService.
+    // The "New" Places API (fetch based) often returns 403 Forbidden if not
+    // explicitly enabled in the Google Cloud Console for the same API key.
+    if (!window.LIPHTUP_IS_NATIVE) {
+        return searchLegacyGoogleAutocomplete(query, maps, places)
+            .then((results) => {
+                if (Array.isArray(results) && results.length) return results;
+                // Fallback to "New" logic only if Legacy returns nothing.
+                return tryModernGoogleAutocomplete(query, maps, places);
+            });
+    }
+
+    return tryModernGoogleAutocomplete(query, maps, places);
+}
+
+function tryModernGoogleAutocomplete(query, maps, places) {
     if (places.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
         const center = {
             lat: Number(userLatitude || TRIPURA_CENTER.lat),
