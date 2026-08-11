@@ -186,18 +186,22 @@
         }
 
         // --- UI & Status Bar -------------------------------------------------------
-        if (Plugins.StatusBar) {
-            // Enable edge-to-edge display (drawing behind the status bar)
-            if (Plugins.StatusBar.setOverlaysWebView) {
-                Plugins.StatusBar.setOverlaysWebView({ overlay: true }).catch(function () {});
+        // Delayed significantly (500ms) to ensure the WebView has finished its
+        // initial layout before we touch window flags, reducing SurfaceFlinger
+        // InputPolicyFlags contention errors on some Android versions.
+        setTimeout(function() {
+            if (Plugins.StatusBar) {
+                if (Plugins.StatusBar.setOverlaysWebView) {
+                    Plugins.StatusBar.setOverlaysWebView({ overlay: true }).catch(function () {});
+                }
+                Plugins.StatusBar.setBackgroundColor({ color: '#1A7A2E' }).catch(function () {});
+                Plugins.StatusBar.setStyle({ style: 'DARK' }).catch(function () {});
             }
-            Plugins.StatusBar.setBackgroundColor({ color: '#1A7A2E' }).catch(function () {});
-            Plugins.StatusBar.setStyle({ style: 'DARK' }).catch(function () {});
-        }
 
-        if (Plugins.SplashScreen && Plugins.SplashScreen.hide) {
-            Plugins.SplashScreen.hide().catch(function () {});
-        }
+            if (Plugins.SplashScreen && Plugins.SplashScreen.hide) {
+                Plugins.SplashScreen.hide().catch(function () {});
+            }
+        }, 500);
 
         // --- Push Notification Channel ---------------------------------------------
         if (Plugins.PushNotifications && Plugins.PushNotifications.createChannel) {
