@@ -1,0 +1,17 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+.env.*
+android/app/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+.gradle/
+android/local.properties
+.idea/
+.vscode/
+dist/
+build/
+www/dist/
+www/build/
+*.log

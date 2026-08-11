@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="js/platform/native-bridge.js"></script>
+    <script src="js/platform/routes.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1A7A2E">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="LiphtUp">
+
+    <title>LiphtUp - Bike &amp; Auto Ride Booking in Kailashahar, Kumarghat &amp; Unakoti, Tripura</title>
+    <meta name="description" content="LiphtUp is a local bike and auto ride booking service for Tripura, covering Kailashahar, Kumarghat, Unakoti, Dharmanagar, Boulapassa and Kacharghat. Safe, quick booking, available 24/7.">
+    <meta name="keywords" content="LiphtUp, ride booking Tripura, bike taxi Kailashahar, auto booking Kumarghat, Unakoti Tripura, Dharmanagar ride, Boulapassa, Kacharghat, local ride sharing Tripura">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://liphtup.in/">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="LiphtUp">
+    <meta property="og:title" content="LiphtUp - Your Everyday Ride, Anytime, Anywhere in Tripura">
+    <meta property="og:description" content="Book a bike or auto ride across Kailashahar, Kumarghat, Unakoti, Dharmanagar, Boulapassa and Kacharghat with LiphtUp.">
+    <meta property="og:url" content="https://liphtup.in/">
+    <meta property="og:image" content="https://liphtup.in/assets/icons/liphtup-icon-512.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="LiphtUp - Ride Booking in Tripura">
+    <meta name="twitter:description" content="Book a bike or auto ride across Kailashahar, Kumarghat, Unakoti, Dharmanagar, Boulapassa and Kacharghat.">
+    <meta name="twitter:image" content="https://liphtup.in/assets/icons/liphtup-icon-512.png">
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+    <link rel="apple-touch-icon" href="assets/icons/liphtup-icon-180.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260809-merge-fix">
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TaxiService",
+        "name": "LiphtUp",
+        "url": "https://liphtup.in/",
+        "image": "https://liphtup.in/assets/icons/liphtup-icon-512.png",
+        "description": "Local bike and auto ride booking service for Tripura, covering Kailashahar, Kumarghat, Unakoti, Dharmanagar, Boulapassa and Kacharghat.",
+        "areaServed": ["Kailashahar", "Unakoti", "Kumarghat", "Dharmanagar", "Boulapassa", "Kacharghat"],
+        "address": {
+            "@type": "PostalAddress",
+            "addressRegion": "Tripura",
+            "addressCountry": "IN"
+        }
+    }
+    </script>
+</head>
+<body>
+    <!-- Initial Loading Spinner: Visible immediately, hidden by js/loading.js once app is ready -->
+    <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
+        <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #1A7A2E;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
+        <style>@keyframes lu-spin { to { transform: rotate(360deg); } }</style>
+        <div style="margin-top:16px;font-family:sans-serif;font-weight:700;color:#1A7A2E;font-size:14px;letter-spacing:0.5px;">LiphtUp</div>
+    </div>
+
+    <div id="app-container" class="app-root">
+        <button id="logout-btn" class="logout-chip d-none">Logout</button>
+
+        <div id="dashboard-view" class="screen-shell flex-column d-none">
+            <header class="app-bar">
+                <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
+                <div class="app-bar-actions">
+                    <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
+                </div>
+            </header>
+
+            <main class="passenger-home">
+                <section class="hero-card">
+                    <div>
+                        <h1>
+                            <span class="headline-line">Your Everyday</span>
+                            <span class="headline-line">Ride, <span class="headline-accent">Anytime</span></span>
+                            <span class="headline-line">Anywhere</span>
+                        </h1>
+                        <p>Quick rides, great price, always on time.</p>
+                    </div>
+                </section>
+
+                <section id="bottom-sheet" class="booking-panel">
+                    <div class="container p-0">
+                        <div class="location-stack">
+                            <div class="location-field location-field-prominent">
+                                <span class="drop-pin webicon webicon-destination" aria-hidden="true"></span>
+                                <a href="/services.html">
+                                    <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where are you going?" readonly>
+                                </a>
+                            </div>
+                        </div>
+
+                        <div id="dashboard-saved-places" class="dashboard-saved-places" aria-label="Saved places"></div>
+
+                        <section id="dashboard-recent-section" class="dashboard-recent-section d-none" aria-labelledby="dashboard-recent-heading">
+                            <h2 id="dashboard-recent-heading">Recent rides</h2>
+                            <div id="dashboard-recent-rides" class="dashboard-recent-rides"></div>
+                        </section>
+
+                        <div class="feature-row">
+                            <div><img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Google_Verified_Badge.svg" alt="Safe and Secure" loading="lazy" width="28" height="28"><small>Safe & Secure</small></div>
+                            <a href="/services.html"><div><img src="https://upload.wikimedia.org/wikipedia/commons/b/b6/Paomedia_small-n-flat_lightning.svg" alt="Quick Booking" loading="lazy" width="28" height="28"><small>Quick Booking</small></div></a>
+                            <div><img src="https://upload.wikimedia.org/wikipedia/commons/c/c5/Modern_clock_chris_kemps_01.svg" alt="24/7 Service" loading="lazy" width="28" height="28"><small>24/7 Service</small></div>
+                        </div>
+
+                        <a class="heritage-card unakoti" href="/services.html?destination=Unakoti%20Rock%20Carvings%2C%20Tripura" aria-label="Book a ride to Unakoti">
+                            <div><strong>Unakoti</strong><span>The Abode of Gods</span></div>
+                        </a>
+                        <a class="heritage-card railway" href="/services.html?destination=Kumarghat%20Railway%20Station%2C%20Tripura" aria-label="Book a ride to Railway Station">
+                            <div><strong>Railway Station</strong><span>Go anywhere with LiphtUp</span></div>
+                        </a>
+                        <section class="share-card" aria-labelledby="share-card-heading">
+                            <div class="share-card-copy">
+                                <h2 id="share-card-heading">Ride Together,<br>Save Together.</h2>
+                                <p class="share-card-description">Invite friends &amp; get exciting<br>discounts on first five ride.</p>
+                                <button id="invite-friends-btn" class="share-card-action" type="button" aria-describedby="invite-friends-status">
+                                    <span>Invite Friends</span>
+                                    <span class="share-card-action-arrow" aria-hidden="true">&rarr;</span>
+                                </button>
+                                <p id="invite-friends-status" class="share-card-status" aria-live="polite"></p>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+            </main>
+
+            <nav class="bottom-nav">
+                <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
+                <button type="button" onclick="window.location.href='/services.html'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
+                <button id="passenger-history-btn" type="button"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
+                <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+            </nav>
+        </div>
+    </div>
+
+    <div id="passenger-payment-view" class="modal-layer d-none">
+        <div class="receipt-card">
+            <button id="passenger-payment-close-btn" class="modal-close-btn" type="button" aria-label="Close ride completed popup">×</button>
+            <div class="success-mark">OK</div>
+            <h4>Ride Completed</h4>
+            <p>Your LiphtUp trip has ended safely.</p>
+            <div class="receipt-table">
+                <div><span>From</span><strong>Pickup location</strong></div>
+                <div><span>To</span><strong>Drop location</strong></div>
+                <div><span>Distance</span><strong>8.2 km</strong></div>
+                <div><span>Duration</span><strong>18 mins</strong></div>
+            </div>
+            <div class="price-total" id="passenger-final-fare">Rs 0.00</div>
+            <p id="passenger-fare-note" class="fare-adjustment-note d-none"></p>
+            <div class="paid-badge">Paid via UPI</div>
+            <button id="close-passenger-payment-btn" class="gy-btn gy-btn-primary w-100">Book Again</button>
+        </div>
+    </div>
+
+    <div id="saved-place-modal" class="modal-layer d-none">
+        <div class="saved-place-card">
+            <button id="saved-place-cancel-btn" type="button" class="modal-close-btn" aria-label="Close">×</button>
+            <h4 id="saved-place-modal-title">Save a place</h4>
+            <form id="saved-place-form">
+                <label for="saved-place-address-input" class="saved-place-label">Address</label>
+                <input type="text" id="saved-place-address-input" class="form-control gy-input" placeholder="Search for an address" autocomplete="off">
+                <div id="saved-place-suggestions" class="saved-place-suggestions"></div>
+                <button id="saved-place-use-gps-btn" type="button" class="gy-btn gy-btn-outline w-100 mt-2">
+                    <span class="webicon webicon-current-location" aria-hidden="true"></span> Use current location
+                </button>
+                <button type="submit" class="gy-btn gy-btn-primary w-100 mt-2">Save place</button>
+                <button id="saved-place-remove-btn" type="button" class="gy-btn gy-btn-danger-outline w-100 mt-2 d-none">Remove this address</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="js/platform/firebase-init.js"></script>
+    <script type="module" src="js/core/loading.js"></script>
+    <script type="module" src="js/core/map.js?v=20260731-passenger-nav-camera"></script>
+    <script type="module" src="js/app.js?v=20260804-ux-polish"></script>
+    <script type="module" src="js/core/dashboard.js?v=20260804-ux-polish"></script>
+    <script type="module" src="js/core/auth.js?v=20260621-guest-browsing"></script>
+    <script src="js/core/pwa.js" defer></script>
+</body>
+</html>

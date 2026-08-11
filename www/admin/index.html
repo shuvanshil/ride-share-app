@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1A7A2E">
+    <title>LiphtUp Admin</title>
+
+    <!-- This page must never be indexed or linked from the public site. -->
+    <meta name="robots" content="noindex,nofollow">
+
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Shared brand tokens (--gy-green, --gy-border, etc.) and .gy-input come
+         from the existing stylesheet -- admin.css only adds console-specific
+         layout on top of it. -->
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/admin/css/admin.css">
+</head>
+<body>
+
+    <!-- ============ LOGIN SCREEN ============ -->
+    <main id="admin-login-screen" class="admin-login-screen d-flex flex-column align-items-center justify-content-center p-4">
+        <section class="admin-login-card w-100">
+            <div class="text-center mb-4">
+                <img src="/assets/liphtup-logo.jpeg" alt="LiphtUp" class="admin-login-logo">
+                <h1 class="admin-login-title mt-3">Admin Console</h1>
+                <p class="admin-login-subtitle">Authorized personnel only</p>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Admin email</label>
+                <input type="email" id="admin-email" class="form-control gy-input" autocomplete="username">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Password</label>
+                <input type="password" id="admin-password" class="form-control gy-input" autocomplete="current-password">
+            </div>
+            <button id="admin-login-btn" class="gy-btn gy-btn-primary w-100" type="button">Sign in</button>
+            <p id="admin-login-error" class="admin-error-text mt-3 d-none"></p>
+        </section>
+    </main>
+
+    <!-- ============ ACCESS DENIED ============ -->
+    <main id="admin-denied-screen" class="admin-login-screen d-none flex-column align-items-center justify-content-center p-4">
+        <section class="admin-login-card w-100 text-center">
+            <h1 class="admin-login-title">Access Denied</h1>
+            <p class="admin-login-subtitle">This account does not have admin access to LiphtUp.</p>
+            <button id="admin-denied-back-btn" class="gy-btn gy-btn-primary w-100 mt-3" type="button">Back to sign in</button>
+        </section>
+    </main>
+
+    <!-- ============ DASHBOARD SHELL ============ -->
+    <div id="admin-shell" class="admin-shell d-none">
+        <header class="admin-topbar">
+            <button id="admin-sidebar-toggle" class="admin-icon-btn d-lg-none" type="button" aria-label="Toggle menu">&#9776;</button>
+            <span class="admin-topbar-title">LiphtUp Admin</span>
+            <div class="admin-topbar-right">
+                <button id="admin-feed-toggle" class="admin-btn-outline" type="button">Live Feed <span id="admin-feed-badge" class="admin-feed-badge d-none">0</span></button>
+                <span id="admin-user-label" class="admin-user-label"></span>
+                <button id="admin-logout-btn" class="gy-btn admin-btn-outline" type="button">Logout</button>
+            </div>
+        </header>
+
+        <div class="admin-body">
+            <nav id="admin-sidebar" class="admin-sidebar">
+                <button class="admin-nav-item active" data-section="dashboard" type="button">Dashboard</button>
+                <button class="admin-nav-item" data-section="drivers" type="button">Drivers</button>
+                <button class="admin-nav-item" data-section="live-rides" type="button">Live Rides</button>
+                <button class="admin-nav-item" data-section="safety" type="button">Safety <span id="admin-safety-nav-badge" class="admin-nav-badge d-none">0</span></button>
+                <button class="admin-nav-item" data-section="ride-history" type="button">Ride History</button>
+                <button class="admin-nav-item" data-section="passengers" type="button">Passengers</button>
+                <button class="admin-nav-item" data-section="analytics" type="button">Analytics</button>
+                <button class="admin-nav-item" data-section="audit-log" type="button">Audit Log</button>
+            </nav>
+
+            <main class="admin-content">
+
+                <!-- Dashboard -->
+                <section id="section-dashboard" class="admin-section">
+                    <h2 class="admin-section-title">Dashboard</h2>
+                    <div id="dashboard-greeting" class="admin-greeting"></div>
+                    <div id="dashboard-kpis" class="admin-kpi-strip"></div>
+                    <div id="dashboard-cards" class="admin-card-grid"></div>
+                </section>
+
+                <!-- Drivers -->
+                <section id="section-drivers" class="admin-section d-none">
+                    <div class="admin-section-header">
+                        <h2 class="admin-section-title">Drivers</h2>
+                        <div class="admin-filters">
+                            <button type="button" id="drivers-pending-chip" class="admin-quick-chip" title="Show only drivers waiting for approval">
+                                &#128276; New registrations waiting for approval
+                            </button>
+                            <select id="driver-status-filter" class="form-select gy-input admin-filter-select">
+                                <option value="">All statuses</option>
+                                <option value="pending_review">Pending approval</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
+                                <option value="suspended">Suspended</option>
+                                <option value="blocked">Blocked</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="drivers-table-wrap"></div>
+                </section>
+
+                <!-- Live rides -->
+                <section id="section-live-rides" class="admin-section d-none">
+                    <div class="admin-section-header">
+                        <h2 class="admin-section-title">Live Rides</h2>
+                        <span class="admin-live-dot" title="Auto-refreshes every 8s">&#9679; Live</span>
+                    </div>
+                    <div id="live-rides-list" class="admin-card-list"></div>
+                </section>
+
+                <!-- Safety -->
+                <section id="section-safety" class="admin-section d-none">
+                    <div class="admin-section-header">
+                        <h2 class="admin-section-title">Safety</h2>
+                        <span class="admin-live-dot" title="Auto-refreshes">&#9679; Live</span>
+                    </div>
+
+                    <div class="admin-safety-subnav">
+                        <button class="admin-safety-tab active" data-safety-tab="sos" type="button">SOS Alerts</button>
+                        <button class="admin-safety-tab" data-safety-tab="reports" type="button">Safety Reports</button>
+                    </div>
+
+                    <div id="safety-sos-panel" class="admin-filters mb-2">
+                        <select id="safety-sos-status-filter" class="form-select gy-input admin-filter-select">
+                            <option value="open" selected>Open</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <div id="safety-sos-list" class="admin-card-list"></div>
+
+                    <div id="safety-reports-panel" class="admin-filters mb-2 d-none">
+                        <select id="safety-reports-status-filter" class="form-select gy-input admin-filter-select">
+                            <option value="open" selected>Open</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <div id="safety-reports-list" class="admin-card-list d-none"></div>
+                </section>
+
+                <!-- Ride history -->
+                <section id="section-ride-history" class="admin-section d-none">
+                    <div class="admin-section-header">
+                        <h2 class="admin-section-title">Ride History</h2>
+                        <div class="admin-filters">
+                            <select id="history-status-filter" class="form-select gy-input admin-filter-select">
+                                <option value="">All statuses</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled_by_passenger">Cancelled by passenger</option>
+                                <option value="cancelled_by_driver">Cancelled by driver</option>
+                            </select>
+                            <select id="history-vehicle-filter" class="form-select gy-input admin-filter-select">
+                                <option value="">All vehicles</option>
+                                <option value="bike">Bike / Scooty</option>
+                                <option value="auto">Auto</option>
+                            </select>
+                            <select id="history-month-filter" class="form-select gy-input admin-filter-select" title="Filter to a specific month">
+                                <option value="">Any month</option>
+                            </select>
+                            <input type="date" id="history-day-filter" class="form-control gy-input admin-filter-select" title="Filter to a specific day">
+                            <button type="button" id="history-clear-date" class="admin-btn-outline">Clear date</button>
+                        </div>
+                    </div>
+                    <div id="history-table-wrap"></div>
+                </section>
+
+                <!-- Passengers -->
+                <section id="section-passengers" class="admin-section d-none">
+                    <div class="admin-section-header">
+                        <h2 class="admin-section-title">Passengers</h2>
+                    </div>
+                    <div id="passengers-table-wrap"></div>
+                </section>
+
+                <!-- Analytics -->
+                <section id="section-analytics" class="admin-section d-none">
+                    <h2 class="admin-section-title">Analytics</h2>
+                    <div class="admin-chart-card">
+                        <h3 class="admin-chart-title">Rides &amp; revenue, last 14 days</h3>
+                        <canvas id="rides-daily-chart" height="90"></canvas>
+                    </div>
+                </section>
+
+                <!-- Audit log -->
+                <section id="section-audit-log" class="admin-section d-none">
+                    <h2 class="admin-section-title">Audit Log</h2>
+                    <div id="audit-log-table-wrap"></div>
+                </section>
+
+            </main>
+
+            <!-- Live feed side panel -->
+            <aside id="admin-feed-panel" class="admin-feed-panel">
+                <div class="admin-feed-header">
+                    <span>Live Activity</span>
+                    <button id="admin-feed-close" class="admin-icon-btn" type="button" aria-label="Close">&times;</button>
+                </div>
+                <div id="admin-feed-list" class="admin-feed-list">
+                    <p class="admin-empty-row">Watching for activity...</p>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Reusable detail/edit drawer -->
+    <div id="admin-drawer-root" class="admin-drawer-root d-none">
+        <div id="admin-drawer-backdrop" class="admin-drawer-backdrop"></div>
+        <div id="admin-drawer-panel" class="admin-drawer-panel">
+            <div class="admin-drawer-header">
+                <span id="admin-drawer-title"></span>
+                <button id="admin-drawer-close" class="admin-icon-btn" type="button" aria-label="Close">&times;</button>
+            </div>
+            <div id="admin-drawer-body" class="admin-drawer-body"></div>
+            <div id="admin-drawer-footer" class="admin-drawer-footer"></div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="admin-toast-container" class="admin-toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script type="module" src="/admin/js/admin-app.js"></script>
+</body>
+</html>

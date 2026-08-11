@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /driver
+Disallow: /driver-service
+Disallow: /profile
+Disallow: /history
+
+Sitemap: https://liphtup.in/sitemap.xml

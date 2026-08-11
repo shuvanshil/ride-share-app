@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="js/platform/native-bridge.js"></script>
+    <script src="js/platform/routes.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1A7A2E">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="LiphtUp">
+    <title>LiphtUp Login | Passenger &amp; Driver Sign In</title>
+    <meta name="robots" content="index, follow">
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+    <link rel="apple-touch-icon" href="assets/icons/liphtup-icon-180.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260810-login-fix">
+</head>
+<body class="login-page">
+    <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
+        <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #1A7A2E;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
+        <style>@keyframes lu-spin { to { transform: rotate(360deg); } }</style>
+        <div style="margin-top:16px;font-family:sans-serif;font-weight:700;color:#1A7A2E;font-size:14px;letter-spacing:0.5px;">LiphtUp</div>
+    </div>
+
+    <main class="auth-container">
+        <section class="auth-card">
+            <header class="auth-header">
+                <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
+                <span class="auth-subtitle">Fast local rides across Tripura</span>
+            </header>
+
+            <img src="assets/auth-illustration.png" alt="Ride illustration" class="auth-illustration">
+
+            <div class="auth-mode-switch" role="tablist">
+                <button id="login-mode-btn" class="auth-mode-btn active" type="button" role="tab" aria-selected="true">Login</button>
+                <button id="register-mode-btn" class="auth-mode-btn" type="button" role="tab" aria-selected="false">Register</button>
+            </div>
+
+            <div class="auth-entry-heading">
+                <h1 id="auth-entry-title">Welcome back</h1>
+                <p id="auth-entry-copy">Login with your phone or email and password.</p>
+            </div>
+
+            <div id="password-login-container">
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-profile"></span></span>
+                    <input type="text" id="login-identifier" class="form-control" placeholder="Phone or Email">
+                </div>
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-lock"></span></span>
+                    <input type="password" id="login-password" class="form-control" placeholder="Password">
+                </div>
+                <button id="password-login-btn" class="gy-btn-auth" type="button">Login <span>&rarr;</span></button>
+                <button id="forgot-password-btn" class="auth-footer-link" type="button">Forgot password?</button>
+            </div>
+
+            <div id="phone-input-container" class="d-none">
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-use-current-location"></span></span>
+                    <input type="tel" id="phone-number" class="form-control" placeholder="Phone Number" maxlength="10">
+                </div>
+                <button id="send-otp-btn" class="gy-btn-auth" type="button">Next <span>&rarr;</span></button>
+                <p class="auth-footer-text">Already have an account? <a href="#" onclick="document.getElementById('login-mode-btn').click(); return false;">Login</a></p>
+            </div>
+
+            <div id="otp-input-container" class="d-none">
+                <p id="otp-destination" class="text-center small text-muted mb-3"></p>
+                <div class="auth-input-group">
+                    <input type="text" id="otp-code" class="form-control text-center fs-4 fw-bold" placeholder="******" maxlength="6">
+                </div>
+                <button id="verify-otp-btn" class="gy-btn-auth" type="button">Verify OTP <span>&rarr;</span></button>
+                <div class="d-flex justify-content-between mt-3">
+                    <button id="resend-otp-btn" class="btn btn-link text-success fw-bold p-0 text-decoration-none small" type="button" disabled>Resend OTP</button>
+                    <button id="change-phone-btn" class="btn btn-link text-muted p-0 text-decoration-none small" type="button">Change number</button>
+                </div>
+            </div>
+
+            <div id="registration-container" class="d-none">
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-profile"></span></span>
+                    <input type="text" id="user-name" class="form-control" placeholder="Full Name">
+                </div>
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-share"></span></span>
+                    <input type="email" id="user-email" class="form-control" placeholder="Email Address">
+                </div>
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-lock"></span></span>
+                    <input type="password" id="user-password" class="form-control" placeholder="Password">
+                    <input type="hidden" id="user-confirm-password">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-muted ms-1">Register As</label>
+                    <select id="user-role" class="form-select gy-input">
+                        <option value="passenger">Passenger</option>
+                        <option value="driver">Driver</option>
+                    </select>
+                </div>
+                <div id="driver-verification-fields" class="d-none">
+                    <div class="auth-input-group">
+                        <input type="text" id="driver-vehicle-number" class="form-control text-uppercase" placeholder="Vehicle Number">
+                    </div>
+                    <div class="mb-3">
+                        <select id="driver-vehicle-type" class="form-select gy-input">
+                            <option value="">Select vehicle type</option>
+                            <option value="bike">Bike / Scooty</option>
+                            <option value="auto">Auto</option>
+                        </select>
+                    </div>
+                    <div class="auth-input-group">
+                        <input type="text" id="driver-vehicle-model" class="form-control" placeholder="Vehicle Model">
+                    </div>
+                    <div class="auth-input-group">
+                        <input type="text" id="driver-license-number" class="form-control text-uppercase" placeholder="Licence Number">
+                    </div>
+                    <div class="auth-input-group">
+                        <input type="text" id="driver-upi-id" class="form-control" placeholder="UPI ID">
+                    </div>
+                    <label class="driver-agreement mb-3 d-flex gap-2 align-items-start" for="driver-agreement-checkbox">
+                        <input type="checkbox" id="driver-agreement-checkbox" class="mt-1">
+                        <span class="small text-muted">I agree to LiphtUp's Terms &amp; Privacy Policy.</span>
+                    </label>
+                </div>
+                <button id="register-btn" class="gy-btn-auth" type="button">Register <span>&rarr;</span></button>
+            </div>
+
+            <div id="reset-password-container" class="d-none">
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-lock"></span></span>
+                    <input type="password" id="reset-password" class="form-control" placeholder="New Password">
+                </div>
+                <div class="auth-input-group">
+                    <span class="auth-input-icon"><span class="webicon webicon-lock"></span></span>
+                    <input type="password" id="reset-confirm-password" class="form-control" placeholder="Confirm New Password">
+                </div>
+                <button id="reset-password-btn" class="gy-btn-auth" type="button">Update Password</button>
+                <button id="reset-back-btn" class="auth-footer-link" type="button">Back to login</button>
+            </div>
+
+            <div id="recaptcha-container" class="mt-3 d-flex justify-content-center"></div>
+            <div id="auth-status" class="auth-status d-none mt-3" role="status"></div>
+        </section>
+    </main>
+
+    <div class="auth-bg-bottom"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="js/platform/firebase-init.js"></script>
+    <script type="module" src="js/core/loading.js"></script>
+    <script type="module" src="js/core/login.js?v=20260810-login-fix"></script>
+    <script type="module" src="js/core/password-toggle.js"></script>
+    <script src="js/core/pwa.js" defer></script>
+    <script>
+        const up = document.getElementById('user-password');
+        const ucp = document.getElementById('user-confirm-password');
+        if(up && ucp) {
+            up.addEventListener('input', () => { ucp.value = up.value; });
+        }
+    </script>
+</body>
+</html>

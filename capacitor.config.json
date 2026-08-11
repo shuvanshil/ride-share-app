@@ -1,0 +1,16 @@
+{
+  "appId": "in.liphtup.app",
+  "appName": "LiphtUp",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "allowNavigation": [
+      "liphtup.in",
+      "*.liphtup.in",
+      "www.gstatic.com",
+      "*.googleapis.com",
+      "*.google.com"
+    ]
+  }
+}

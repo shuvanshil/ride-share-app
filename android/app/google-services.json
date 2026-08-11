@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "678756320479",
+    "project_id": "tripura-rideshare",
+    "storage_bucket": "tripura-rideshare.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:678756320479:android:ea89e30b32b892953fd56a",
+        "android_client_info": {
+          "package_name": "in.liphtup.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyzfuJy3DuhVQ5mL6OTXpkZLs7EgVklws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
