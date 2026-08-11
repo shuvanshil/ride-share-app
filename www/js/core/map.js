@@ -54,8 +54,8 @@ const ROUTE_SNAP_MAX_METERS = 30;
 const ROUTE_MATCH_BACKWARD_TOLERANCE = 2;
 const ROUTE_MATCH_SEARCH_WINDOW = 60;
 const VEHICLE_MARKER_ASSETS = Object.freeze({
-    bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
-    auto: new URL("../assets/vehicle-markers/auto-marker.png", import.meta.url).href
+    bike: new URL("../../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
+    auto: new URL("../../assets/vehicle-markers/auto-marker.png", import.meta.url).href
 });
 
 let userLatitude = DEFAULT_PICKUP.lat;
@@ -304,6 +304,14 @@ function getInitialPickupLocation() {
 
 async function getGoogleBrowserKey() {
     if (googleBrowserKey) return googleBrowserKey;
+
+    // Capacitor Native optimization: Skip backend fetch and use the authorized
+    // mobile fallback key immediately to prevent domain/CORS mismatch on localhost.
+    if (window.LIPHTUP_IS_NATIVE) {
+        googleBrowserKey = LIPHTUP_FALLBACK_GOOGLE_KEY;
+        return googleBrowserKey;
+    }
+
     try {
         console.log('[map] Fetching Google Maps config from production...');
         const response = await fetch("/api/google-config", {

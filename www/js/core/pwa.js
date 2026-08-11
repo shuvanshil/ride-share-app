@@ -1,6 +1,6 @@
 let deferredInstallPrompt = null;
-const PWA_SCRIPT_URL = document.currentScript?.src || new URL('js/pwa.js', window.location.href).href;
-const APP_BASE_URL = new URL('../', PWA_SCRIPT_URL);
+const PWA_SCRIPT_URL = document.currentScript?.src || new URL('js/core/pwa.js', window.location.origin).href;
+const APP_BASE_URL = new URL('../../', PWA_SCRIPT_URL);
 
 function isStandalone() {
     return window.matchMedia('(display-mode: standalone)').matches

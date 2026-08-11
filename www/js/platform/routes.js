@@ -49,7 +49,19 @@
                 });
             });
         });
-        observer.observe(document.body, { childList: true, subtree: true });
+
+        const startObserving = () => {
+            const targetNode = document.body || document.documentElement;
+            if (targetNode) {
+                observer.observe(targetNode, { childList: true, subtree: true });
+            } else {
+                window.addEventListener('DOMContentLoaded', () => {
+                    observer.observe(document.body, { childList: true, subtree: true });
+                }, { once: true });
+            }
+        };
+
+        startObserving();
     }
 
     /**

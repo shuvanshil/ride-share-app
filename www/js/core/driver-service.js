@@ -186,8 +186,8 @@ function renderFareAdjustmentNote(elementId, ride) {
 warmGoogleMaps();
 
 const VEHICLE_MARKER_ASSETS = Object.freeze({
-    bike: new URL("../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
-    auto: new URL("../assets/vehicle-markers/auto-marker.png", import.meta.url).href
+    bike: new URL("../../assets/vehicle-markers/bike-marker.png", import.meta.url).href,
+    auto: new URL("../../assets/vehicle-markers/auto-marker.png", import.meta.url).href
 });
 
 function cacheProfile(profile) {

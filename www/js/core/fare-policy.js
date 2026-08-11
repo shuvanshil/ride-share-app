@@ -15,7 +15,7 @@
 // simply aren't reachable until the (near-instant, same-origin) fetch below
 // resolves, which always happens well before any user interaction can call
 // them.
-const CONFIG_URL = new URL("../fare-policy.config.json", import.meta.url);
+const CONFIG_URL = new URL("../../fare-policy.config.json", import.meta.url);
 
 async function loadFarePolicyConfig() {
     const response = await fetch(CONFIG_URL);

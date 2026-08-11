@@ -5,7 +5,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {
     getFirestore,
-    enableIndexedDbPersistence
+    initializeFirestore,
+    persistentLocalCache,
+    persistentMultipleTabManager
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Your web app's Firebase configuration
@@ -24,15 +26,12 @@ const app = initializeApp(firebaseConfig);
 // Initialize services and export them for use in auth.js, map.js, and app.js
 export { app };
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 
-// Enable offline persistence for faster data loading
-enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-        console.warn("Multiple tabs open, persistence can only be enabled in one tab at a time.");
-    } else if (err.code === 'unimplemented') {
-        console.warn("The current browser does not support all of the features required to enable persistence.");
-    }
+// Modern Firestore initialization with persistent cache
+export const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+    })
 });
 
 console.log("Firebase services initialized successfully.");
