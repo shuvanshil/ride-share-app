@@ -96,31 +96,38 @@ function setAuthStatus(message = "", isError = false) {
 }
 
 function getAuthErrorMessage(error, fallbackMessage) {
-    const messages = {
-        "auth/email-already-in-use": "This email is already linked to another account.",
-        "auth/invalid-credential": "Phone/email or password is incorrect.",
-        "auth/invalid-email": "Enter a valid email address.",
-        "auth/invalid-phone-number": "Enter a valid 10-digit Indian mobile number.",
-        "auth/missing-password": "Enter your password.",
-        "auth/missing-phone-number": "Enter your mobile number first.",
-        "auth/provider-already-linked": "Password login is already enabled for this account.",
-        "auth/requires-recent-login": "Please verify OTP again before changing your password.",
-        "auth/user-not-found": "No LiphtUp account was found for this phone or email.",
-        "auth/wrong-password": "Phone/email or password is incorrect.",
-        "auth/weak-password": "Use a password with at least 6 characters.",
-        "auth/invalid-verification-code": "That OTP is incorrect. Check the SMS and try again.",
-        "auth/code-expired": "That OTP has expired. Request a new OTP.",
-        "auth/session-expired": "This verification session has expired. Request a new OTP.",
-        "auth/too-many-requests": "Too many attempts were made. Please wait before trying again.",
-        "auth/quota-exceeded": "The SMS sending limit has been reached. Please try again later.",
-        "auth/captcha-check-failed": "The security check failed. Refresh the page and try again.",
-        "auth/missing-app-credential": "The security check could not start. Refresh the page and try again.",
-        "auth/operation-not-allowed": "Email/password or phone login is not enabled for this Firebase project.",
-        "auth/unauthorized-domain": "This website domain is not authorized for phone login.",
-        "auth/network-request-failed": "Check your internet connection and try again."
-    };
+    if (error?.code && typeof error.code === 'string') {
+        const messages = {
+            "auth/email-already-in-use": "This email is already linked to another account.",
+            "auth/invalid-credential": "Phone/email or password is incorrect.",
+            "auth/invalid-email": "Enter a valid email address.",
+            "auth/invalid-phone-number": "Enter a valid 10-digit Indian mobile number.",
+            "auth/missing-password": "Enter your password.",
+            "auth/missing-phone-number": "Enter your mobile number first.",
+            "auth/provider-already-linked": "Password login is already enabled for this account.",
+            "auth/requires-recent-login": "Please verify OTP again before changing your password.",
+            "auth/user-not-found": "No LiphtUp account was found for this phone or email.",
+            "auth/wrong-password": "Phone/email or password is incorrect.",
+            "auth/weak-password": "Use a password with at least 6 characters.",
+            "auth/invalid-verification-code": "That OTP is incorrect. Check the SMS and try again.",
+            "auth/code-expired": "That OTP has expired. Request a new OTP.",
+            "auth/session-expired": "This verification session has expired. Request a new OTP.",
+            "auth/too-many-requests": "Too many attempts were made. Please wait before trying again.",
+            "auth/quota-exceeded": "The SMS sending limit has been reached. Please try again later.",
+            "auth/captcha-check-failed": "The security check failed. Refresh the page and try again.",
+            "auth/missing-app-credential": "The security check could not start. Refresh the page and try again.",
+            "auth/operation-not-allowed": "Email/password or phone login is not enabled for this Firebase project.",
+            "auth/unauthorized-domain": "This website domain is not authorized for phone login.",
+            "auth/network-request-failed": "Check your internet connection and try again."
+        };
+        if (messages[error.code]) return messages[error.code];
+    }
 
-    return messages[error?.code] || fallbackMessage;
+    if (typeof error === 'object' && error !== null) {
+        return error.message || error.error || fallbackMessage;
+    }
+
+    return fallbackMessage;
 }
 
 function maskPhoneNumber(phoneNumber) {

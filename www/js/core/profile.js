@@ -124,6 +124,9 @@ function getCachedProfile() {
 }
 
 function showError(message) {
+    if (typeof message === 'object' && message !== null) {
+        message = message.message || message.error || JSON.stringify(message);
+    }
     errorBox.innerText = message;
     errorBox.classList.remove('d-none');
 }
@@ -140,6 +143,9 @@ function showSaveNotice() {
 }
 
 function showDeleteError(message) {
+    if (typeof message === 'object' && message !== null) {
+        message = message.message || message.error || JSON.stringify(message);
+    }
     deleteErrorBox.innerText = message;
     deleteErrorBox.classList.remove('d-none');
 }
