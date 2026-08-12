@@ -93,6 +93,18 @@ function formatRelativeDay(millis) {
     return new Date(millis).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+function updateGreeting(name) {
+    const greetingEl = document.getElementById('greeting-text');
+    if (!greetingEl) return;
+
+    const hour = new Date().getHours();
+    let greeting = "Good morning";
+    if (hour >= 12 && hour < 17) greeting = "Good afternoon";
+    else if (hour >= 17 || hour < 4) greeting = "Good evening";
+
+    greetingEl.innerHTML = `${greeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
+}
+
 // ==========================================
 // Recent rides
 // ==========================================
@@ -471,6 +483,7 @@ window.addEventListener('user-session-ready', (event) => {
     const profile = event.detail || {};
     if (profile.role === "driver" || !profile.uid) return;
     currentUid = profile.uid;
+    updateGreeting(profile.name || profile.displayName);
     initRecentRides(profile.uid);
     initSavedPlaces(profile.uid);
 });
