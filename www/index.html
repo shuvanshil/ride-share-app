@@ -72,12 +72,37 @@
             <header class="app-bar redesign-app-bar">
                 <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
                 <div class="app-bar-actions">
-                    <a href="/profile.html" class="user-profile-avatar" aria-label="View profile">
+                    <button id="profile-menu-trigger" class="user-profile-avatar" aria-label="Open menu">
                         <img src="assets/user-avatar.png" alt="" id="user-profile-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
                         <span class="webicon webicon-profile" style="display:none;"></span>
-                    </a>
+                    </button>
                 </div>
             </header>
+
+            <!-- Side Floating Menu -->
+            <div id="side-drawer" class="side-drawer-overlay d-none">
+                <div class="side-drawer-content">
+                    <div class="drawer-header">
+                        <div class="drawer-user-info">
+                            <div class="drawer-avatar">
+                                <img src="assets/user-avatar.png" alt="" id="drawer-user-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+                                <span class="webicon webicon-profile" style="display:none;"></span>
+                            </div>
+                            <div class="drawer-text">
+                                <strong id="drawer-user-name">User</strong>
+                                <small id="drawer-user-phone"></small>
+                            </div>
+                        </div>
+                        <button id="close-drawer-btn" class="drawer-close-btn">&times;</button>
+                    </div>
+                    <nav class="drawer-nav">
+                        <a href="/profile.html" class="drawer-item">
+                            <span class="webicon webicon-profile"></span>
+                            My Profile
+                        </a>
+                    </nav>
+                </div>
+            </div>
 
             <main class="passenger-home redesign-home">
                 <section class="welcome-section">
@@ -120,23 +145,20 @@
                             <div id="dashboard-recent-rides" class="redesign-recent-rides"></div>
                         </section>
 
-                        <div class="feature-row">
+                        <div class="feature-row refined-features">
                             <div>
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Google_Verified_Badge.svg" alt="Safe and Secure" loading="lazy" width="28" height="28">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Google_Verified_Badge.svg" alt="Safe and Secure" loading="lazy" width="24" height="24">
                                 <strong>Safe & Secure</strong>
-                                <small>Your safety<br>our priority</small>
                             </div>
                             <a href="/services.html">
                                 <div>
-                                    <img src="https://upload.wikimedia.org/wikipedia/commons/b/b6/Paomedia_small-n-flat_lightning.svg" alt="Quick Booking" loading="lazy" width="28" height="28">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/b/b6/Paomedia_small-n-flat_lightning.svg" alt="Quick Booking" loading="lazy" width="24" height="24">
                                     <strong>Quick Booking</strong>
-                                    <small>Book in just<br>few taps</small>
                                 </div>
                             </a>
                             <div>
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c5/Modern_clock_chris_kemps_01.svg" alt="24/7 Service" loading="lazy" width="28" height="28">
-                                <strong>24/7</strong>
-                                <small>24/7 Service</small>
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c5/Modern_clock_chris_kemps_01.svg" alt="24/7 Service" loading="lazy" width="24" height="24">
+                                <strong>24/7 Service</strong>
                             </div>
                         </div>
 

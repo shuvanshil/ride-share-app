@@ -105,6 +105,51 @@ function updateGreeting(name) {
     greetingEl.innerHTML = `${greeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
 }
 
+function setupSideDrawer(profile) {
+    const trigger = document.getElementById('profile-menu-trigger');
+    const drawer = document.getElementById('side-drawer');
+    const closeBtn = document.getElementById('close-drawer-btn');
+    const headerImg = document.getElementById('user-profile-img');
+    const drawerImg = document.getElementById('drawer-user-img');
+    const drawerName = document.getElementById('drawer-user-name');
+    const drawerPhone = document.getElementById('drawer-user-phone');
+
+    if (!trigger || !drawer) return;
+
+    // Update profile images if available
+    const photoUrl = profile.photoURL || profile.avatarUrl || "";
+    if (photoUrl) {
+        if (headerImg) {
+            headerImg.src = photoUrl;
+            headerImg.style.display = 'block';
+            headerImg.nextElementSibling.style.display = 'none';
+        }
+        if (drawerImg) {
+            drawerImg.src = photoUrl;
+            drawerImg.style.display = 'block';
+            drawerImg.nextElementSibling.style.display = 'none';
+        }
+    }
+
+    if (drawerName) drawerName.textContent = profile.name || profile.displayName || "User";
+    if (drawerPhone) drawerPhone.textContent = profile.phone || "";
+
+    trigger.addEventListener('click', () => {
+        drawer.classList.remove('d-none');
+        document.body.style.overflow = 'hidden';
+    });
+
+    const closeDrawer = () => {
+        drawer.classList.add('d-none');
+        document.body.style.overflow = '';
+    };
+
+    closeBtn?.addEventListener('click', closeDrawer);
+    drawer.addEventListener('click', (e) => {
+        if (e.target === drawer) closeDrawer();
+    });
+}
+
 // ==========================================
 // Recent rides
 // ==========================================
@@ -484,6 +529,7 @@ window.addEventListener('user-session-ready', (event) => {
     if (profile.role === "driver" || !profile.uid) return;
     currentUid = profile.uid;
     updateGreeting(profile.name || profile.displayName);
+    setupSideDrawer(profile);
     initRecentRides(profile.uid);
     initSavedPlaces(profile.uid);
 });
