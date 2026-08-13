@@ -116,18 +116,29 @@ function setupSideDrawer(profile) {
 
     if (!trigger || !drawer) return;
 
-    // Update profile images if available
-    const photoUrl = profile.photoURL || profile.avatarUrl || "";
+    // Update profile images: prioritize the custom profilePhotoUrl from Firestore,
+    // then fall back to standard Firebase auth fields.
+    const photoUrl = profile.profilePhotoUrl || profile.photoURL || profile.avatarUrl || "";
     if (photoUrl) {
         if (headerImg) {
             headerImg.src = photoUrl;
             headerImg.style.display = 'block';
-            headerImg.nextElementSibling.style.display = 'none';
+            if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'none';
         }
         if (drawerImg) {
             drawerImg.src = photoUrl;
             drawerImg.style.display = 'block';
-            drawerImg.nextElementSibling.style.display = 'none';
+            if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'none';
+        }
+    } else {
+        // Reset to placeholder if no photo is available
+        if (headerImg) {
+            headerImg.style.display = 'none';
+            if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'inline-block';
+        }
+        if (drawerImg) {
+            drawerImg.style.display = 'none';
+            if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'inline-block';
         }
     }
 
