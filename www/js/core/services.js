@@ -19,9 +19,10 @@ const serviceOptions = document.getElementById('ride-service-options');
 const distanceLabel = document.getElementById('ride-distance-label');
 const bookingLoginGate = document.getElementById('booking-login-gate');
 const swapLocationsBtn = document.getElementById('swap-locations-btn');
+const selectOnMapBtn = document.getElementById('select-on-map-btn');
 
 let servicesSessionStarted = false;
-let selectedServiceType = "bike";
+let selectedServiceType = "auto";
 let serviceSelectionLocked = false;
 let isAuthenticatedPassenger = false;
 let currentPickup = null;
@@ -188,6 +189,12 @@ function swapLocations() {
 function bindServicesControls() {
     refreshLocationBtn.addEventListener('click', refreshServicesMap);
     if (swapLocationsBtn) swapLocationsBtn.addEventListener('click', swapLocations);
+    if (selectOnMapBtn) {
+        selectOnMapBtn.addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('request-destination-pick-on-map'));
+        });
+    }
+
 
     clearDropBtn.addEventListener('click', () => {
         if (dropInput.readOnly) return;

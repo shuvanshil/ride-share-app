@@ -2982,6 +2982,30 @@ window.addEventListener("passenger-destination-lock-changed", (event) => {
 window.addEventListener("driver-location-updated", handleAssignedDriverLocation);
 window.addEventListener("ride-completed-clear-map", clearActiveDriverMarker);
 
+window.addEventListener("request-destination-pick-on-map", () => {
+    if (passengerDestinationLocked) return;
+    const dropInput = document.getElementById("drop-input");
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+
+    clearRouteAndDestination();
+    fareAmountSpan.innerText = "Move map and confirm drop";
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
+
+    destinationMapPickMode = {
+        destination: { name: "Dropped Pin" },
+        dropInput,
+        fareQuoteBox,
+        fareAmountSpan
+    };
+
+    window.mapInstance.panTo({ lat: userLatitude, lng: userLongitude });
+    window.mapInstance.setZoom(16);
+    showCenterMapPicker("drop");
+});
+
 window.addEventListener("locations-swapped", async (event) => {
     const { pickup, destination } = event.detail;
     if (!pickup || !destination) return;

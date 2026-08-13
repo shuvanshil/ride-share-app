@@ -1119,9 +1119,13 @@ select {
 #reset-password-btn,
 #register-btn {
     color: #fff !important;
-    background: var(--gy-green) !important;
-    box-shadow: 0 10px 22px rgba(26, 122, 46, 0.22);
+    background: #1A7A2E !important;
+    box-shadow: 0 8px 20px rgba(26, 122, 46, 0.25);
+    border-radius: 14px;
+    font-weight: 700;
+    padding: 14px 20px;
 }
+
 
 .gy-btn-dark {
     color: #fff;
@@ -3796,13 +3800,24 @@ body.profile-editor-open {
 
 .services-app-head {
     min-height: 48px;
-    padding-top: calc(2px + env(safe-area-inset-top));
+    padding: 12px 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding-bottom: 2px;
+    justify-content: flex-start;
     background: #fff;
 }
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+}
+
+.brand-logo img {
+    height: 32px;
+    border-radius: 6px;
+}
+
+
 
 .services-title-block {
     padding: 6px 0 14px;
@@ -3824,22 +3839,109 @@ body.profile-editor-open {
 }
 
 .services-location-card {
-    display: grid;
-    gap: 10px;
-    padding: 12px;
-    border: 1px solid var(--gy-border);
-    border-radius: 8px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    border: 1px solid #f1f1f1;
+    border-radius: 12px;
     background: #fff;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.location-card-connector {
+    position: absolute;
+    left: 25.5px;
+    top: 32px;
+    bottom: 32px;
+    width: 1px;
+    background: #ddd;
+    z-index: 0;
+}
+
+.location-field-divider {
+    height: 1px;
+    background: #f1f1f1;
+    margin: 4px 0 4px 32px;
 }
 
 .services-location-field {
-    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
 }
 
-.services-location-field .gy-input {
-    padding: 10px 8px;
+.location-dot-wrap {
+    width: 20px;
+    display: flex;
+    justify-content: center;
 }
+
+.pickup-dot-new {
+    width: 10px;
+    height: 10px;
+    background: #1A7A2E;
+    border-radius: 50%;
+    box-shadow: 0 0 0 4px rgba(26, 122, 46, 0.1);
+}
+
+.drop-pin-new {
+    width: 0;
+    height: 0;
+    border-top: 6px solid #E53935;
+    border-right: 10px solid transparent;
+    position: relative;
+    margin-top: -4px;
+}
+
+.drop-pin-new::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1.5px;
+    height: 14px;
+    background: #E53935;
+}
+
+.location-input-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.location-input-wrap label {
+    font-size: 11px;
+    color: #999;
+    margin-bottom: -2px;
+}
+
+.location-input-wrap .gy-input {
+    border: 0 !important;
+    padding: 4px 0 !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    height: auto !important;
+    background: transparent !important;
+}
+
+.gy-btn-success-subtle {
+    background: #1A7A2E;
+    color: #fff;
+    font-weight: 700;
+    border: 0;
+    padding: 14px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.2);
+}
+
+
 
 .services-field-btn {
     width: 34px;
@@ -3876,17 +3978,32 @@ body.profile-editor-open {
 }
 
 .services-map-head h2 {
-    margin: 0 0 3px;
+    margin: 0 0 2px;
     font-size: 16px;
     font-weight: 800;
+}
+
+.location-status-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    background: #1A7A2E;
+    border-radius: 50%;
 }
 
 .services-map-head p {
     margin: 0;
     color: var(--gy-muted);
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
     overflow-wrap: anywhere;
 }
+
 
 .services-gps-pill {
     min-height: 30px;
@@ -4025,13 +4142,20 @@ body.profile-editor-open {
     margin-top: 10px;
 }
 
-.services-page.trip-live #services-map-card .services-map-frame {
-    aspect-ratio: unset;
-    /* Was 80vh when the panel floated over the map; now that the panel sits
-       in normal flow below it (so expanding it pushes content down instead
-       of overlapping), a shorter map leaves the collapsed handle visible
-       above the fixed bottom nav without needing to scroll first. */
-    height: 58vh;
+.services-booking-shell {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+.services-location-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    border: 1px solid #f1f1f1;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    margin-bottom: 16px;
 }
 
 #services-map-card {
@@ -4169,11 +4293,25 @@ body.profile-editor-open {
 
 .ride-service-heading {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
+
+.view-all-link {
+    color: #1A7A2E;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.ride-distance-badge {
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #333;
+}
+
 
 .ride-service-heading h2,
 .ride-service-heading p {
@@ -4203,26 +4341,119 @@ body.profile-editor-open {
 
 .ride-service-card {
     width: 100%;
-    min-height: 80px;
     display: grid;
-    grid-template-columns: 64px minmax(0, 1fr) auto;
+    grid-template-columns: 60px 1fr auto;
     align-items: center;
     gap: 16px;
-    padding: 12px 16px;
-    border: 1px solid var(--gy-border);
-    border-radius: 14px;
+    padding: 14px 16px;
+    border: 1.5px solid #f1f1f1;
+    border-radius: 16px;
     color: var(--gy-text);
     background: #fff;
     text-align: left;
-    transition: all 0.2s ease;
-    margin-bottom: 8px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
 }
 
 .ride-service-card.is-selected {
-    border: 2px solid var(--gy-green);
+    border-color: #1A7A2E;
     background: #f0fdf4;
-    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.08);
+    box-shadow: 0 4px 15px rgba(26, 122, 46, 0.08);
 }
+
+.ride-service-price-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ride-service-check {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ddd;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.ride-service-card.is-selected .ride-service-check {
+    border-color: #1A7A2E;
+    background: #1A7A2E;
+}
+
+.ride-service-card.is-selected .ride-service-check::after {
+    content: "";
+    width: 10px;
+    height: 6px;
+    border-left: 2.5px solid #fff;
+    border-bottom: 2.5px solid #fff;
+    transform: rotate(-45deg);
+    margin-top: -2px;
+}
+
+.payment-method-selector {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    background: #fcfdfe;
+    border: 1px solid #f1f1f1;
+    border-radius: 14px;
+}
+
+.payment-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    background: #f0f0f0;
+    border-radius: 8px;
+}
+
+.payment-copy {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.payment-copy small {
+    font-size: 11px;
+    color: #999;
+}
+
+.payment-copy strong {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.payment-chevron {
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #999;
+    border-bottom: 2px solid #999;
+    transform: rotate(45deg);
+}
+
+.safety-assurance-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 0;
+    color: #666;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.safety-assurance-tag .webicon {
+    width: 16px;
+    height: 16px;
+}
+
 
 .ride-service-card:disabled {
     cursor: not-allowed;
@@ -4239,13 +4470,11 @@ body.profile-editor-open {
 }
 
 .ride-service-img-wrap {
-    width: 64px;
-    height: 64px;
+    width: 60px;
+    height: 60px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f8f9fa;
-    border-radius: 12px;
     overflow: hidden;
 }
 
@@ -4276,28 +4505,10 @@ body.profile-editor-open {
     font-weight: 800;
 }
 
-.ride-service-card::after {
-    content: "";
-    width: 20px;
-    height: 20px;
-    border: 2px solid #ddd;
-    border-radius: 50%;
-    margin-left: 10px;
-    flex-shrink: 0;
-}
-
-.ride-service-card.is-selected::after {
-    border-color: var(--gy-green);
-    background: radial-gradient(circle, var(--gy-green) 50%, transparent 50%);
-}
-
-.ride-service-copy strong {
-    font-size: 15px;
-}
-
 .ride-service-copy small {
     color: var(--gy-muted);
     font-size: 11px;
+}
 }
 
 .ride-service-fare {
