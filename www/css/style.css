@@ -4213,9 +4213,12 @@ body.profile-editor-open {
 }
 
 .trip-progress-details {
-    max-height: none;
-    overflow: visible;
+    display: none;
     padding: 0 20px 30px;
+}
+
+.trip-progress-panel.is-expanded .trip-progress-details {
+    display: block;
 }
 
 /* Compact Driver Card */

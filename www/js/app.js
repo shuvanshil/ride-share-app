@@ -509,9 +509,6 @@ function showTripProgressPanel(ride) {
                 <span class="verified-badge">✓ Verified Driver</span>
                 <strong>${driverName}</strong>
                 <div class="driver-vehicle-info">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
-                <div class="driver-stats">
-                    <span class="star-icon">★</span> 4.8 | 100+ trips
-                </div>
             </div>
             <div class="driver-action-side">
                 <img src="assets/vehicle-markers/${vehicleType}-marker.png" class="driver-vehicle-image" alt="${vehicleType}">
