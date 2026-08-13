@@ -4133,7 +4133,7 @@ body.profile-editor-open {
 
 .services-page.trip-live .services-map-frame {
     aspect-ratio: auto;
-    height: 48vh;
+    height: 60vh;
     flex: 0 0 auto;
 }
 

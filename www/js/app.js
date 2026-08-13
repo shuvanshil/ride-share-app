@@ -486,8 +486,8 @@ function showTripProgressPanel(ride) {
     }
 
     if (statusText) statusText.innerText = mainStatus;
-    if (statusSubtext && !panel.classList.contains('is-expanded')) {
-        statusSubtext.innerText = subStatus;
+    if (statusSubtext) {
+        statusSubtext.innerText = panel.classList.contains('is-expanded') ? "Tap to hide details" : subStatus;
     }
 
     const driverName = ride.driver_name || "Assigned Driver";
@@ -500,9 +500,12 @@ function showTripProgressPanel(ride) {
 
     const driverBox = document.getElementById('trip-progress-driver');
     if (driverBox) {
+        // Use a generic SVG placeholder if no photo is available to avoid 404s
+        const avatarSrc = driverPhoto || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239CA3AF'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+
         driverBox.innerHTML = `
             <div class="driver-avatar-wrap">
-                <img src="${driverPhoto || 'assets/user-avatar.png'}" alt="${driverName}" onerror="this.src='assets/user-avatar.png'">
+                <img src="${avatarSrc}" alt="${driverName}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%239CA3AF%22%3E%3Cpath d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22/%3E%3C/svg%3E'">
                 <div class="driver-verified-check">✓</div>
             </div>
             <div class="driver-info-main">
