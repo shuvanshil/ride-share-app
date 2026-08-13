@@ -4223,9 +4223,9 @@ body.profile-editor-open {
 
 /* Compact Driver Card */
 .compact-driver-card {
-    display: flex;
-    align-items: center;
-    gap: 15px;
+    display: flex !important;
+    align-items: center !important;
+    gap: 15px !important;
     padding: 16px;
     border: 1px solid #F3F4F6;
     border-radius: 16px;
@@ -4380,9 +4380,9 @@ body.profile-editor-open {
 }
 
 .trip-location-item {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
+    display: flex !important;
+    gap: 12px !important;
+    align-items: flex-start !important;
 }
 
 .trip-location-item:first-child {
