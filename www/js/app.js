@@ -1008,7 +1008,6 @@ requestRideButton.addEventListener('click', async () => {
 
     const pickupText = document.getElementById('pickup-input').value;
     const dropText = document.getElementById('drop-input').value;
-    const requestBtn = document.getElementById('request-ride-btn');
     const fareQuote = window.latestFareQuote || {};
     const requestedVehicleType = window.selectedRideService?.id || "";
     const rideRequestedAt = new Date();
