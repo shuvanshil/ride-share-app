@@ -18,11 +18,13 @@ const gpsPill = document.getElementById('services-gps-pill');
 const serviceOptions = document.getElementById('ride-service-options');
 const distanceLabel = document.getElementById('ride-distance-label');
 const bookingLoginGate = document.getElementById('booking-login-gate');
+const swapLocationsBtn = document.getElementById('swap-locations-btn');
 
 let servicesSessionStarted = false;
 let selectedServiceType = "bike";
 let serviceSelectionLocked = false;
 let isAuthenticatedPassenger = false;
+let currentPickup = null;
 const requestedDestination = new URLSearchParams(window.location.search).get("destination")?.trim() || "";
 
 warmGoogleMaps();
@@ -167,8 +169,25 @@ async function refreshServicesMap() {
     }
 }
 
+function swapLocations() {
+    if (serviceSelectionLocked) return;
+    const pLoc = currentPickup;
+    const dLoc = window.selectedDestination;
+
+    if (!pLoc || !dLoc) return;
+
+    // Local swap of values for immediate feedback
+    pickupInput.value = dLoc.name || dLoc.mainName;
+    dropInput.value = pLoc.name || pLoc.mainName;
+
+    window.dispatchEvent(new CustomEvent('locations-swapped', {
+        detail: { pickup: dLoc, destination: pLoc }
+    }));
+}
+
 function bindServicesControls() {
     refreshLocationBtn.addEventListener('click', refreshServicesMap);
+    if (swapLocationsBtn) swapLocationsBtn.addEventListener('click', swapLocations);
 
     clearDropBtn.addEventListener('click', () => {
         if (dropInput.readOnly) return;
@@ -196,7 +215,8 @@ function bindServicesControls() {
     });
 
     window.addEventListener('pickup-location-updated', (event) => {
-        setStatus(event.detail?.name || "Manual pickup selected.", "ready");
+        currentPickup = event.detail;
+        setStatus(event.detail?.name || "Pickup location detected.", "ready");
     });
 
     findRideBtn.addEventListener('click', () => {

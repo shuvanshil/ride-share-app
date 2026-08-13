@@ -2981,3 +2981,26 @@ window.addEventListener("passenger-destination-lock-changed", (event) => {
 
 window.addEventListener("driver-location-updated", handleAssignedDriverLocation);
 window.addEventListener("ride-completed-clear-map", clearActiveDriverMarker);
+
+window.addEventListener("locations-swapped", async (event) => {
+    const { pickup, destination } = event.detail;
+    if (!pickup || !destination) return;
+
+    userLatitude = pickup.lat;
+    userLongitude = pickup.lng;
+    addPickupMarker(pickup);
+    rememberPickupLocation(pickup, pickup.name);
+
+    window.selectedDestination = buildSelectedDestination(destination);
+    upsertRideDestinationMarker({
+        drop_lat: destination.lat,
+        drop_lng: destination.lng,
+        drop_name: destination.name
+    });
+
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (fareQuoteBox && fareAmountSpan) {
+        await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
+    }
+});
