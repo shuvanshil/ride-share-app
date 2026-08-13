@@ -4126,100 +4126,295 @@ body.profile-editor-open {
 
 .services-page.trip-live #services-map-card {
     margin-top: 10px;
-}
-
-.services-booking-shell {
-    padding-bottom: env(safe-area-inset-bottom, 20px);
-}
-
-.services-location-card {
-    position: relative;
+    flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 16px;
-    border: 1px solid #f1f1f1;
-    border-radius: 16px;
-    background: #fff;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
-    margin-bottom: 16px;
 }
 
-#services-map-card {
-    position: relative;
+.services-page.trip-live .services-map-frame {
+    aspect-ratio: auto;
+    height: 60vh;
+    flex: 0 0 auto;
 }
 
 .trip-progress-panel {
-    /* In normal flow (not absolutely positioned over the map) so that
-       expanding it pushes the buttons/heading below it down the page
-       instead of overlapping the map or anything else. */
     position: relative;
-    flex: 0 0 auto;
-    border-radius: 16px;
-    margin-top: 10px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px 20px 0 0;
+    margin-top: -15px;
     background: #fff;
     border: 1px solid var(--gy-border);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
+    border-bottom: 0;
+    box-shadow: 0 -10px 26px rgba(0, 0, 0, 0.08);
+    overflow-y: auto;
+    z-index: 10;
 }
 
 .trip-progress-handle {
-    display: grid;
-    grid-template-columns: 1fr auto;
+    display: flex;
     align-items: center;
     width: 100%;
-    padding: 10px 16px 12px;
+    padding: 10px 20px 15px;
     border: 0;
     background: transparent;
-    gap: 8px;
+    gap: 12px;
     cursor: pointer;
+    flex-direction: column;
 }
 
 .trip-progress-handle-bar {
-    grid-column: 1 / -1;
-    justify-self: center;
-    width: 36px;
-    height: 4px;
+    width: 40px;
+    height: 5px;
     border-radius: 999px;
-    background: var(--gy-border);
-    margin-bottom: 6px;
+    background: #E5E7EB;
+    margin-bottom: 8px;
 }
 
-.trip-progress-handle-label {
+.trip-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.trip-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: #F3F4F6;
+}
+
+.trip-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gy-green);
+    box-shadow: 0 0 0 3px rgba(26, 122, 46, 0.1);
+}
+
+.trip-status-text {
+    font-size: 14px;
+    font-weight: 700;
     color: var(--gy-text);
-    font-size: 13px;
-    font-weight: 800;
-    text-align: left;
+}
+
+.trip-status-subtext {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--gy-muted);
 }
 
 .trip-progress-handle-icon {
-    width: 9px;
-    height: 9px;
-    border-right: 2px solid var(--gy-muted);
-    border-bottom: 2px solid var(--gy-muted);
-    transform: rotate(-45deg);
-    transition: transform 200ms ease;
-}
-
-.trip-progress-panel.is-expanded .trip-progress-handle-icon {
-    transform: rotate(135deg);
+    display: none; /* Using rotation or other indicators if needed */
 }
 
 .trip-progress-details {
-    max-height: 0;
-    overflow: hidden;
-    padding: 0 16px;
-    transition: max-height 280ms ease, padding 280ms ease;
+    display: none;
+    padding: 0 20px 30px;
 }
 
 .trip-progress-panel.is-expanded .trip-progress-details {
-    max-height: 280px;
-    padding: 0 16px 16px;
+    display: block;
 }
 
-.trip-progress-driver {
+/* Compact Driver Card */
+.compact-driver-card {
+    display: flex !important;
+    align-items: center !important;
+    gap: 15px !important;
+    padding: 16px;
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    background: #fff;
+    margin-bottom: 16px;
+}
+
+.driver-avatar-wrap {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+}
+
+.driver-avatar-wrap img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #f1f1f1;
+}
+
+.driver-verified-check {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    background: var(--gy-green);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 10px;
+}
+
+.driver-info-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.driver-info-main strong {
+    display: block;
+    font-size: 17px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.driver-info-main .verified-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: #EAF8ED;
+    color: var(--gy-green);
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+
+.driver-vehicle-info {
+    font-size: 13px;
+    color: #6B7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+
+.driver-stats {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gy-text);
+}
+
+.driver-stats .star-icon {
+    color: #FBBF24;
+    margin-right: 2px;
+}
+
+.driver-action-side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.driver-vehicle-image {
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
+}
+
+.call-driver-btn-compact {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1.5px solid var(--gy-green);
+    border-radius: 8px;
+    color: var(--gy-green);
+    font-size: 13px;
+    font-weight: 700;
+    background: #fff;
+    text-decoration: none;
+}
+
+/* Highlighted PIN Section */
+.highlighted-pin-section {
+    background: #FFFBEB;
+    border: 1px solid #FEF3C7;
+    border-radius: 16px;
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.pin-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #92400E;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.pin-value {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: 6px;
+    color: #111827;
+    margin-bottom: 8px;
+}
+
+.pin-hint {
+    font-size: 12px;
+    color: #92400E;
+    margin: 0;
+    opacity: 0.8;
+}
+
+/* Trip Locations */
+.trip-locations-list {
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.trip-location-item {
+    display: flex !important;
+    gap: 12px !important;
+    align-items: flex-start !important;
+}
+
+.trip-location-item:first-child {
     padding-bottom: 12px;
     margin-bottom: 12px;
-    border-bottom: 1px solid var(--gy-border);
+    border-bottom: 1px dashed #E5E7EB;
+}
+
+.location-marker-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+
+.location-marker-dot.pickup { background: var(--gy-green); }
+.location-marker-dot.drop { background: #EF4444; }
+
+.location-details small {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #9CA3AF;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.location-details strong {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gy-text);
 }
 
 .trip-progress-call-btn {
