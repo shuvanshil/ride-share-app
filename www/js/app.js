@@ -214,23 +214,11 @@ async function inviteFriends() {
         text: APP_SHARE_TEXT,
         url: APP_SHARE_URL
     };
-    const shareMessage = `${APP_SHARE_TEXT} ${APP_SHARE_URL}`;
 
     try {
-        const result = await share(shareData);
-        if (result.ok) {
-            setInviteFriendsStatus("Invite shared successfully.");
-            return;
-        }
-
-        if (result.reason !== 'aborted') {
-            const copied = await copyToClipboard(shareMessage);
-            setInviteFriendsStatus(copied ? "Invite link copied to clipboard!" : "Unable to share right now.");
-        }
+        await share(shareData);
     } catch (err) {
         console.error("Invite friends share error:", err);
-        const copied = await copyToClipboard(shareMessage);
-        setInviteFriendsStatus(copied ? "Invite link copied to clipboard!" : "Unable to share right now.");
     }
 }
 window.LiphtUpShareInvite = inviteFriends;

@@ -68,17 +68,18 @@
 
 /* Hero Banner - Classic Version Logic */
 .hero-card {
-    min-height: 220px;
+    min-height: 200px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 24px;
+    padding: 20px 24px;
     border-radius: 16px;
     background-image: url("../assets/hero banner.png");
     background-size: cover;
     background-position: center;
-    margin: 0 16px 20px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    margin: 0 12px 14px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.06);
     position: relative;
     overflow: hidden;
 }
@@ -226,19 +227,41 @@
     color: var(--gy-green);
 }
 
-/* Redesign Search */
+/* Redesign Search & Home Layout */
+.passenger-home.redesign-home {
+    padding: 0 12px;
+}
+
+.welcome-section {
+    padding: 12px 12px 14px;
+}
+
+.welcome-section h2 {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0 0 2px;
+}
+
+.welcome-section p {
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+    margin: 0;
+}
+
 .redesign-panel {
     margin-top: 0;
-    padding: 0 16px;
+    padding: 0 12px;
 }
 
 .redesign-input {
     background: #fff;
-    border: 1px solid #eee;
+    border: 1px solid rgba(0, 0, 0, 0.07);
     border-radius: 16px;
-    padding: 6px 12px;
-    min-height: 54px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+    padding: 6px 14px;
+    min-height: 52px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -271,7 +294,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
-    margin: 16px 0;
+    margin: 14px 0;
 }
 
 @media (max-width: 400px) {
@@ -282,13 +305,13 @@
 
 .dashboard-saved-chip-wrap {
     background: #fff;
-    border-radius: 12px;
-    padding: 8px 10px;
-    border: 1px solid #eee;
+    border-radius: 16px;
+    padding: 10px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.07);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
 }
 
 .dashboard-saved-chip {
@@ -348,20 +371,25 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .section-header h2 {
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 800;
+    color: #111827;
     margin: 0;
 }
 
 .see-all-link {
     font-size: 13px;
-    color: #1A7A2E;
+    color: var(--gy-green);
     font-weight: 700;
     text-decoration: none;
+}
+
+.redesign-recent-section {
+    margin-bottom: 14px;
 }
 
 .redesign-recent-rides {
@@ -371,9 +399,10 @@
 
 .dashboard-recent-item {
     background: #fff;
-    border-radius: 18px;
-    padding: 14px;
-    border: 1px solid #eee;
+    border-radius: 16px;
+    padding: 12px 14px;
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
     display: flex;
     align-items: center;
     gap: 12px;
@@ -420,22 +449,22 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
-    margin: 20px 0;
+    margin: 14px 0;
 }
 
 .refined-features > div, .refined-features a div {
-    min-height: 54px;
-    border-radius: 14px;
+    min-height: 52px;
+    border-radius: 16px;
     background: #fff;
-    border: 1px solid #f3f4f6;
+    border: 1px solid rgba(0, 0, 0, 0.07);
     color: var(--gy-green);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 10px 4px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+    gap: 4px;
+    padding: 8px 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
     text-decoration: none;
     transition: transform 0.2s, box-shadow 0.2s;
 }
@@ -446,15 +475,15 @@
 
 .refined-features strong {
     color: #374151;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 700;
     text-align: center;
     line-height: 1.1;
 }
 
 .refined-features img {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     object-fit: contain;
 }
 
@@ -462,27 +491,29 @@
 .heritage-banners {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-bottom: 24px;
+    gap: 10px;
+    margin-bottom: 14px;
 }
 
 .redesign-heritage {
-    border-radius: 18px !important;
-    min-height: 110px !important;
+    border-radius: 16px !important;
+    min-height: 105px !important;
+    border: 1px solid rgba(0,0,0,0.06) !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03) !important;
 }
 
 /* Share Card - Classic Version Logic */
 .share-card {
     aspect-ratio: 1646 / 680;
-    margin-bottom: 12px;
-    border-radius: 18px;
+    margin-bottom: 14px;
+    border-radius: 16px;
     padding: 12px 16px;
     background-image: url("../assets/share-background.png");
     background-position: center;
     background-repeat: no-repeat;
     background-size: 100% 100%;
-    border: 0;
-    box-shadow: none;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
     overflow: hidden;
     display: flex;
     align-items: center;
@@ -539,11 +570,7 @@
 }
 
 .share-card-status {
-    margin: 5px 0 0;
-    color: #1a7a2e;
-    font-size: 11px;
-    font-weight: 700;
-    max-width: 156px;
+    display: none !important;
 }
 
 /* Bottom Nav - Consistent Mobile Look */
