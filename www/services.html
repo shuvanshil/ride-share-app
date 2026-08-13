@@ -53,7 +53,7 @@
                         <div class="location-card-connector"></div>
                         <div class="location-field services-location-field">
                             <div class="location-dot-wrap">
-                                <span class="pickup-dot-new"></span>
+                                <span class="pickup-dot webicon webicon-current-location" aria-hidden="true" style="color: #1A7A2E;"></span>
                             </div>
                             <div class="location-input-wrap">
                                 <label for="pickup-input">Pickup location</label>
@@ -66,20 +66,20 @@
                         <div class="location-field-divider"></div>
                         <div class="location-field services-location-field">
                             <div class="location-dot-wrap">
-                                <span class="drop-pin-new"></span>
+                                <span class="drop-pin webicon webicon-destination" aria-hidden="true" style="color: #E53935;"></span>
                             </div>
                             <div class="location-input-wrap">
                                 <label for="drop-input">Where to?</label>
                                 <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination (village, street, town or landmark)" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
                             </div>
                             <button id="swap-locations-btn" class="field-action services-field-btn" type="button" aria-label="Swap pickup and destination" title="Swap locations">
-                                <img src="assets/icons/swap-icon.png" alt="Swap" style="width: 20px; height: 20px;">
+                                <span class="webicon webicon-swap"></span>
                             </button>
                         </div>
                     </div>
 
                     <button id="select-on-map-btn" class="gy-btn gy-btn-success-subtle w-100 mb-3" type="button">
-                        <span class="webicon webicon-destination-marker" aria-hidden="true"></span> Select drop on map
+                        <span class="webicon webicon-destination" aria-hidden="true"></span> Select drop on map
                     </button>
 
                     <section id="services-map-card" class="services-map-card" aria-label="Passenger live location map">

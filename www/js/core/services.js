@@ -196,12 +196,14 @@ function bindServicesControls() {
     }
 
 
-    clearDropBtn.addEventListener('click', () => {
-        if (dropInput.readOnly) return;
-        dropInput.value = "";
-        dropInput.dispatchEvent(new Event('input', { bubbles: true }));
-        dropInput.focus();
-    });
+    if (clearDropBtn) {
+        clearDropBtn.addEventListener('click', () => {
+            if (dropInput.readOnly) return;
+            dropInput.value = "";
+            dropInput.dispatchEvent(new Event('input', { bubbles: true }));
+            dropInput.focus();
+        });
+    }
 
     dropInput.addEventListener('input', () => {
         resetFareOptions();
@@ -226,18 +228,30 @@ function bindServicesControls() {
         setStatus(event.detail?.name || "Pickup location detected.", "ready");
     });
 
-    findRideBtn.addEventListener('click', () => {
-        if (!isAuthenticatedPassenger && window.selectedRideService) {
-            openBookingLoginGate();
-        }
-    });
-    document.getElementById('booking-login-btn').addEventListener('click', () => {
-        window.location.href = '/login.html';
-    });
-    document.getElementById('booking-login-close-btn').addEventListener('click', closeBookingLoginGate);
-    bookingLoginGate.addEventListener('click', (event) => {
-        if (event.target === bookingLoginGate) closeBookingLoginGate();
-    });
+    if (findRideBtn) {
+        findRideBtn.addEventListener('click', () => {
+            if (!isAuthenticatedPassenger && window.selectedRideService) {
+                openBookingLoginGate();
+            }
+        });
+    }
+
+    const loginBtn = document.getElementById('booking-login-btn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            window.location.href = '/login.html';
+        });
+    }
+
+    const loginCloseBtn = document.getElementById('booking-login-close-btn');
+    if (loginCloseBtn) loginCloseBtn.addEventListener('click', closeBookingLoginGate);
+
+    if (bookingLoginGate) {
+        bookingLoginGate.addEventListener('click', (event) => {
+            if (event.target === bookingLoginGate) closeBookingLoginGate();
+        });
+    }
+
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !bookingLoginGate.classList.contains('d-none')) {
             closeBookingLoginGate();
@@ -249,7 +263,15 @@ bindServicesControls();
 findRideBtn.disabled = true;
 
 async function bootstrapServices() {
+    // Start guest services immediately if auth takes too long,
+    // ensuring the map loads for everyone.
+    const mapTimeout = setTimeout(() => {
+        if (!servicesSessionStarted) startGuestServices();
+    }, 2500);
+
     const user = await waitForAuth();
+    clearTimeout(mapTimeout);
+
     if (!user) {
         startGuestServices();
         hideInitialLoader();
