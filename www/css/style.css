@@ -229,7 +229,7 @@
 
 /* Redesign Search & Home Layout */
 .passenger-home.redesign-home {
-    padding: 0 12px;
+    padding: 0 12px calc(104px + env(safe-area-inset-bottom));
 }
 
 .welcome-section {
@@ -252,7 +252,7 @@
 
 .redesign-panel {
     margin-top: 0;
-    padding: 0 12px;
+    padding: 0 12px calc(104px + env(safe-area-inset-bottom));
 }
 
 .redesign-input {
