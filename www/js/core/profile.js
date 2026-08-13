@@ -734,8 +734,7 @@ async function saveProfile(event) {
     const updates = {
         name,
         email,
-        profilePhotoUrl: pendingPhotoValue,
-        updatedAt: serverTimestamp()
+        profilePhotoUrl: pendingPhotoValue
     };
 
     if (currentProfile.role === "driver") {

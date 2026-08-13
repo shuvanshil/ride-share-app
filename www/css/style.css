@@ -74,7 +74,7 @@
     justify-content: center;
     padding: 24px;
     border-radius: 16px;
-    background-image: linear-gradient(to right, rgba(255,255,255,0.9), rgba(255,255,255,0.2)), url("../assets/hero banner.png");
+        background-image: linear-gradient(to right, rgba(255,255,255,0.75), rgba(255,255,255,0.15)), url("../assets/hero banner.png");
     background-size: cover;
     background-position: center;
     margin: 0 16px 20px;
@@ -305,12 +305,12 @@
 }
 
 .dashboard-saved-chip .webicon {
-    background: #EAF8ED;
-    color: #1A7A2E;
-    width: 32px;
-    height: 32px;
-    padding: 7px;
-    border-radius: 8px;
+    background-color: currentColor !important;
+    color: var(--gy-green);
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 0;
     flex-shrink: 0;
 }
 
@@ -382,12 +382,12 @@
 }
 
 .dashboard-recent-item .webicon {
-    background: #F3F4F6;
-    color: #6B7280;
-    width: 40px;
-    height: 40px;
-    padding: 10px;
-    border-radius: 50%;
+    background-color: currentColor !important;
+    color: var(--gy-text);
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 0;
     flex-shrink: 0;
 }
 
@@ -656,6 +656,13 @@
 .webicon-about-us { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
 .webicon-view-more { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 .webicon-help { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-swap { -webkit-mask-image: url("../assets/icons/webicons/swap.svg"); mask-image: url("../assets/icons/webicons/swap.svg"); }
+.webicon-destination-marker { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
+.webicon-safety-check { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
+.webicon-cash { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
+.webicon-notification { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
+.webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 
 html,
 body {
@@ -1119,9 +1126,13 @@ select {
 #reset-password-btn,
 #register-btn {
     color: #fff !important;
-    background: var(--gy-green) !important;
-    box-shadow: 0 10px 22px rgba(26, 122, 46, 0.22);
+    background: #1A7A2E !important;
+    box-shadow: 0 8px 20px rgba(26, 122, 46, 0.25);
+    border-radius: 14px;
+    font-weight: 700;
+    padding: 14px 20px;
 }
+
 
 .gy-btn-dark {
     color: #fff;
@@ -1527,7 +1538,7 @@ select {
     justify-content: center;
     padding: 24px;
     border-radius: 16px;
-    background-image: linear-gradient(to right, rgba(255,255,255,0.9), rgba(255,255,255,0.2)), url("../assets/hero banner.png");
+        background-image: linear-gradient(to right, rgba(255,255,255,0.75), rgba(255,255,255,0.15)), url("../assets/hero banner.png");
     background-size: cover;
     background-position: center;
     margin-bottom: 20px;
@@ -3795,14 +3806,29 @@ body.profile-editor-open {
 }
 
 .services-app-head {
-    min-height: 48px;
-    padding-top: calc(2px + env(safe-area-inset-top));
+    min-height: 56px;
+    padding: calc(16px + env(safe-area-inset-top)) 16px 12px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding-bottom: 2px;
+    justify-content: flex-start;
     background: #fff;
+    border-bottom: 1px solid #f8f8f8;
 }
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+}
+
+.brand-logo img {
+    height: 36px;
+    width: auto;
+    border-radius: 8px;
+    object-fit: contain;
+}
+
+
+
 
 .services-title-block {
     padding: 6px 0 14px;
@@ -3824,22 +3850,84 @@ body.profile-editor-open {
 }
 
 .services-location-card {
-    display: grid;
-    gap: 10px;
-    padding: 12px;
-    border: 1px solid var(--gy-border);
-    border-radius: 8px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    border: 1px solid #f1f1f1;
+    border-radius: 12px;
     background: #fff;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.location-card-connector {
+    position: absolute;
+    left: 27.5px;
+    top: 36px;
+    bottom: 36px;
+    width: 1.5px;
+    background: #eee;
+    z-index: 0;
+}
+
+.location-field-divider {
+    height: 1px;
+    background: #f1f1f1;
+    margin: 4px 0 4px 44px;
 }
 
 .services-location-field {
-    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
 }
 
-.services-location-field .gy-input {
-    padding: 10px 8px;
+.location-dot-wrap {
+    width: 24px;
+    display: flex;
+    justify-content: center;
 }
+
+
+
+.location-input-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.location-input-wrap label {
+    font-size: 11px;
+    color: #999;
+    margin-bottom: -2px;
+}
+
+.location-input-wrap .gy-input {
+    border: 0 !important;
+    padding: 4px 0 !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    height: auto !important;
+    background: transparent !important;
+}
+
+.gy-btn-success-subtle {
+    background: #1A7A2E;
+    color: #fff;
+    font-weight: 700;
+    border: 0;
+    padding: 14px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.2);
+}
+
+
 
 .services-field-btn {
     width: 34px;
@@ -3876,17 +3964,32 @@ body.profile-editor-open {
 }
 
 .services-map-head h2 {
-    margin: 0 0 3px;
+    margin: 0 0 2px;
     font-size: 16px;
     font-weight: 800;
+}
+
+.location-status-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    background: #1A7A2E;
+    border-radius: 50%;
 }
 
 .services-map-head p {
     margin: 0;
     color: var(--gy-muted);
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
     overflow-wrap: anywhere;
 }
+
 
 .services-gps-pill {
     min-height: 30px;
@@ -4025,13 +4128,20 @@ body.profile-editor-open {
     margin-top: 10px;
 }
 
-.services-page.trip-live #services-map-card .services-map-frame {
-    aspect-ratio: unset;
-    /* Was 80vh when the panel floated over the map; now that the panel sits
-       in normal flow below it (so expanding it pushes content down instead
-       of overlapping), a shorter map leaves the collapsed handle visible
-       above the fixed bottom nav without needing to scroll first. */
-    height: 58vh;
+.services-booking-shell {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+.services-location-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    border: 1px solid #f1f1f1;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    margin-bottom: 16px;
 }
 
 #services-map-card {
@@ -4169,11 +4279,25 @@ body.profile-editor-open {
 
 .ride-service-heading {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
+
+.view-all-link {
+    color: #1A7A2E;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.ride-distance-badge {
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #333;
+}
+
 
 .ride-service-heading h2,
 .ride-service-heading p {
@@ -4203,25 +4327,119 @@ body.profile-editor-open {
 
 .ride-service-card {
     width: 100%;
-    min-height: 76px;
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr) auto;
+    grid-template-columns: 60px 1fr auto;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
-    border: 1px solid var(--gy-border);
-    border-radius: 10px;
+    gap: 16px;
+    padding: 14px 16px;
+    border: 1.5px solid #f1f1f1;
+    border-radius: 16px;
     color: var(--gy-text);
     background: #fff;
     text-align: left;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
 }
 
 .ride-service-card.is-selected {
-    border: 2px solid var(--gy-green);
-    padding: 11px;
-    background: var(--gy-green-soft);
-    box-shadow: 0 6px 18px rgba(26, 122, 46, 0.12);
+    border-color: #1A7A2E;
+    background: #f0fdf4;
+    box-shadow: 0 4px 15px rgba(26, 122, 46, 0.08);
 }
+
+.ride-service-price-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ride-service-check {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ddd;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.ride-service-card.is-selected .ride-service-check {
+    border-color: #1A7A2E;
+    background: #1A7A2E;
+}
+
+.ride-service-card.is-selected .ride-service-check::after {
+    content: "";
+    width: 10px;
+    height: 6px;
+    border-left: 2.5px solid #fff;
+    border-bottom: 2.5px solid #fff;
+    transform: rotate(-45deg);
+    margin-top: -2px;
+}
+
+.payment-method-selector {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    background: #fcfdfe;
+    border: 1px solid #f1f1f1;
+    border-radius: 14px;
+}
+
+.payment-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    background: #f0f0f0;
+    border-radius: 8px;
+}
+
+.payment-copy {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.payment-copy small {
+    font-size: 11px;
+    color: #999;
+}
+
+.payment-copy strong {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.payment-chevron {
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #999;
+    border-bottom: 2px solid #999;
+    transform: rotate(45deg);
+}
+
+.safety-assurance-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 0;
+    color: #666;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.safety-assurance-tag .webicon {
+    width: 16px;
+    height: 16px;
+}
+
 
 .ride-service-card:disabled {
     cursor: not-allowed;
@@ -4237,31 +4455,46 @@ body.profile-editor-open {
     color: var(--gy-green);
 }
 
-.ride-service-icon {
-    width: 52px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    border-radius: 8px;
-    color: var(--gy-green);
-    background: #EAF8ED;
-    font-size: 10px;
-    font-weight: 800;
+.ride-service-img-wrap {
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.ride-service-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .ride-service-copy {
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 2px;
 }
 
 .ride-service-copy strong {
     font-size: 15px;
+    font-weight: 700;
+}
+
+.ride-service-copy small {
+    color: #666;
+    font-size: 12px;
+}
+
+.ride-service-fare {
+    font-size: 18px;
+    font-weight: 800;
 }
 
 .ride-service-copy small {
     color: var(--gy-muted);
     font-size: 11px;
+}
 }
 
 .ride-service-fare {
@@ -4813,30 +5046,30 @@ body.profile-editor-open {
 
 .dashboard-saved-places {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin: 16px 0;
+    width: 100%;
 }
 
 .dashboard-saved-chip-wrap {
-    position: relative;
     width: 100%;
-    display: flex;
+    min-width: 0;
+    position: relative;
 }
 
 .dashboard-saved-chip {
-    flex: 1 1 auto;
+    width: 100%;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
+    gap: 10px;
+    padding: 12px 10px;
     border: 1.5px solid var(--gy-border);
     border-radius: 14px;
-    background: var(--gy-bg);
+    background: #fff;
     text-align: left;
     cursor: pointer;
-    transition: all 160ms ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
 }
 
 .dashboard-saved-chip.is-set {

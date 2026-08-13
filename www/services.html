@@ -26,7 +26,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260809-merge-fix">
+    <link rel="stylesheet" href="css/style.css?v=20260813-ui-fix">
 </head>
 <body>
     <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
@@ -36,7 +36,9 @@
     <div id="app-container" class="app-root services-app-root">
         <main id="dashboard-view" class="services-page">
             <header class="services-app-head">
-                <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
+                <div class="brand-logo">
+                    <img src="assets/liphtup-logo.jpeg" alt="LiphtUp">
+                </div>
                 <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
             </header>
 
@@ -48,23 +50,43 @@
             <section id="bottom-sheet" class="services-booking-shell">
                 <div class="container p-0">
                     <div class="services-location-card" aria-label="Ride locations">
+                        <div class="location-card-connector"></div>
                         <div class="location-field services-location-field">
-                            <span class="pickup-dot webicon webicon-current-location" aria-hidden="true"></span>
-                            <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
-                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></button>
+                            <div class="location-dot-wrap">
+                                <span class="pickup-dot webicon webicon-current-location" aria-hidden="true" style="color: #1A7A2E;"></span>
+                            </div>
+                            <div class="location-input-wrap">
+                                <label for="pickup-input">Pickup location</label>
+                                <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
+                            </div>
+                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location">
+                                <span class="webicon webicon-use-current-location" aria-hidden="true"></span>
+                            </button>
                         </div>
+                        <div class="location-field-divider"></div>
                         <div class="location-field services-location-field">
-                            <span class="drop-pin webicon webicon-destination" aria-hidden="true"></span>
-                            <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where to? village, street, town, or landmark" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
-                            <button id="clear-drop-btn" class="field-action services-field-btn" type="button" aria-label="Clear destination">×</button>
+                            <div class="location-dot-wrap">
+                                <span class="drop-pin webicon webicon-destination" aria-hidden="true" style="color: #E53935;"></span>
+                            </div>
+                            <div class="location-input-wrap">
+                                <label for="drop-input">Where to?</label>
+                                <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination (village, street, town or landmark)" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
+                            </div>
+                            <button id="swap-locations-btn" class="field-action services-field-btn" type="button" aria-label="Swap pickup and destination" title="Swap locations">
+                                <span class="webicon webicon-swap"></span>
+                            </button>
                         </div>
                     </div>
 
+
                     <section id="services-map-card" class="services-map-card" aria-label="Passenger live location map">
                         <div class="services-map-head">
-                            <div>
+                            <div class="map-head-copy">
                                 <h2>Live pickup map</h2>
-                                <p id="services-location-status">Locking your exact location...</p>
+                                <div class="location-status-wrap">
+                                    <span class="status-dot"></span>
+                                    <p id="services-location-status">Locking your exact location...</p>
+                                </div>
                             </div>
                             <span id="services-gps-pill" class="services-gps-pill">GPS</span>
                         </div>
@@ -104,26 +126,41 @@
                                 <h2 id="ride-service-title">Choose your ride</h2>
                                 <p>Fares use the calculated road distance.</p>
                             </div>
+                            <a href="#" class="view-all-link">View all</a>
+                        </div>
+                        <div class="ride-distance-badge">
                             <span id="ride-distance-label">0 km</span>
                         </div>
+
                         <div class="ride-service-list">
-                            <button class="ride-service-card is-selected" type="button" data-service-type="bike" aria-pressed="true">
-                                <span class="ride-service-icon" aria-hidden="true">🏍️</span>
-                                <span class="ride-service-copy">
-                                    <strong>Bike / Scooty</strong>
-                                    <small>1 passenger</small>
-                                </span>
-                                <strong class="ride-service-fare" id="bike-fare">₹0</strong>
-                            </button>
-                            <button class="ride-service-card" type="button" data-service-type="auto" aria-pressed="false">
-                                <span class="ride-service-icon" aria-hidden="true">🛺</span>
-                                <span class="ride-service-copy">
+                            <button class="ride-service-card is-selected" type="button" data-service-type="auto" aria-pressed="true">
+                                <div class="ride-service-img-wrap">
+                                    <img src="assets/vehicle-markers/auto-marker.png" alt="Auto">
+                                </div>
+                                <div class="ride-service-copy">
                                     <strong>Auto</strong>
-                                    <small>Up to 3 passengers</small>
-                                </span>
-                                <strong class="ride-service-fare" id="auto-fare">₹0</strong>
+                                    <small>3 min away · <span class="passenger-count">4</span></small>
+                                </div>
+                                <div class="ride-service-price-wrap">
+                                    <strong class="ride-service-fare" id="auto-fare">₹0</strong>
+                                    <div class="ride-service-check"></div>
+                                </div>
+                            </button>
+                            <button class="ride-service-card" type="button" data-service-type="bike" aria-pressed="false">
+                                <div class="ride-service-img-wrap">
+                                    <img src="assets/vehicle-markers/bike-marker.png" alt="Bike">
+                                </div>
+                                <div class="ride-service-copy">
+                                    <strong>Bike / Scooty</strong>
+                                    <small>2 min away · <span class="passenger-count">1</span></small>
+                                </div>
+                                <div class="ride-service-price-wrap">
+                                    <strong class="ride-service-fare" id="bike-fare">₹0</strong>
+                                    <div class="ride-service-check"></div>
+                                </div>
                             </button>
                         </div>
+
                     </section>
 
                     <section class="services-ride-actions">
@@ -139,7 +176,11 @@
                             </button>
                         </div>
                         <button id="passenger-cancel-ride-btn" class="gy-btn gy-btn-danger-outline passenger-cancel-btn d-none" type="button">Cancel Ride</button>
-                        <p id="services-action-hint">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
+                        <div class="safety-assurance-tag">
+                            <span class="webicon webicon-safety-check" aria-hidden="true"></span>
+                            <span>Safe, secure and reliable rides</span>
+                        </div>
+                        <p id="services-action-hint" class="d-none">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>
                 </div>
             </section>
@@ -181,7 +222,7 @@
     <script src="js/core/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
     <script type="module" src="js/app.js?v=20260804-ux-polish"></script>
-    <script type="module" src="js/core/services.js?v=20260731-trip-progress-pin"></script>
+    <script type="module" src="js/core/services.js?v=20260813-null-checks"></script>
     <script src="js/core/pwa.js" defer></script>
 </body>
 </html>

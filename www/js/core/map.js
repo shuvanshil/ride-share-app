@@ -2981,3 +2981,54 @@ window.addEventListener("passenger-destination-lock-changed", (event) => {
 
 window.addEventListener("driver-location-updated", handleAssignedDriverLocation);
 window.addEventListener("ride-completed-clear-map", clearActiveDriverMarker);
+
+window.addEventListener("request-destination-pick-on-map", () => {
+    if (passengerDestinationLocked) return;
+    const dropInput = document.getElementById("drop-input");
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+
+    clearRouteAndDestination();
+    fareAmountSpan.innerText = "Move map and confirm drop";
+    fareQuoteBox.classList.remove("d-none");
+    fareQuoteBox.classList.add("d-flex");
+
+    destinationMapPickMode = {
+        destination: { name: "Dropped Pin" },
+        dropInput,
+        fareQuoteBox,
+        fareAmountSpan
+    };
+
+    window.mapInstance.panTo({ lat: userLatitude, lng: userLongitude });
+    window.mapInstance.setZoom(16);
+    showCenterMapPicker("drop");
+});
+
+window.addEventListener("locations-swapped", async (event) => {
+    const { pickup, destination } = event.detail;
+    if (!pickup || !destination) return;
+
+    userLatitude = pickup.lat;
+    userLongitude = pickup.lng;
+    addPickupMarker(pickup);
+    rememberPickupLocation(pickup, pickup.name);
+
+    window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+        detail: { name: pickup.name || pickup.mainName, lat: pickup.lat, lng: pickup.lng }
+    }));
+
+    window.selectedDestination = buildSelectedDestination(destination);
+    upsertRideDestinationMarker({
+        drop_lat: destination.lat,
+        drop_lng: destination.lng,
+        drop_name: destination.name
+    });
+
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (fareQuoteBox && fareAmountSpan) {
+        await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
+    }
+});
