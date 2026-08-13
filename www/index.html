@@ -171,11 +171,11 @@
                             </a>
                         </div>
 
-                        <section class="share-card redesign-share" id="invite-friends-card" style="cursor: pointer;" role="button" tabindex="0" aria-labelledby="share-card-heading">
+                        <section class="share-card redesign-share" id="invite-friends-card" style="cursor: pointer;" role="button" tabindex="0" aria-labelledby="share-card-heading" onclick="window.LiphtUpShareInvite && window.LiphtUpShareInvite()">
                             <div class="share-card-copy">
                                 <h2 id="share-card-heading">Ride Together,<br>Save Together.</h2>
                                 <p class="share-card-description">Invite friends &amp; get exciting<br>discounts on first few rides.</p>
-                                <button id="invite-friends-btn" class="share-card-action redesigned-btn" type="button">
+                                <button id="invite-friends-btn" class="share-card-action redesigned-btn" type="button" onclick="event.stopPropagation(); window.LiphtUpShareInvite && window.LiphtUpShareInvite()">
                                     <span>Invite Friends</span>
                                     <span class="share-card-action-arrow" aria-hidden="true">&rarr;</span>
                                 </button>
