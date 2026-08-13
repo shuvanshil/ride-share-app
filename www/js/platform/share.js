@@ -2,6 +2,24 @@
  * Platform adapter for Sharing.
  */
 export async function share(data) {
+    const Plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+    if (Plugins.Share && typeof Plugins.Share.share === 'function') {
+        try {
+            await Plugins.Share.share({
+                title: data.title,
+                text: data.text,
+                url: data.url,
+                dialogTitle: 'Share LiphtUp'
+            });
+            return { ok: true };
+        } catch (error) {
+            if (error?.name === 'AbortError' || error?.message?.includes('canceled')) {
+                return { ok: false, reason: 'aborted' };
+            }
+            console.warn("[platform/share] Capacitor native share failed:", error);
+        }
+    }
+
     if (typeof navigator.share === 'function') {
         try {
             await navigator.share(data);

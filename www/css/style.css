@@ -144,7 +144,12 @@ select {
     background: #fff;
     min-height: 100vh;
     padding: 0;
+    padding-top: max(28px, env(safe-area-inset-top));
     overflow-x: hidden;
+}
+
+.login-page .auth-container {
+    padding-top: max(16px, env(safe-area-inset-top));
 }
 
 .auth-card {
@@ -154,7 +159,7 @@ select {
     border: 0;
     padding: 24px;
     box-shadow: none;
-    margin: 0 auto;
+    margin: 12px auto 0;
 }
 
 .auth-header {
@@ -3211,6 +3216,17 @@ body.profile-editor-open {
     justify-content: space-between;
     padding-bottom: 2px;
     background: #fff;
+}
+
+.services-app-head .app-bar-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.services-app-head .guest-login-btn {
+    margin-left: auto;
 }
 
 .services-title-block {

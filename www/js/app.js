@@ -547,9 +547,12 @@ function resetPassengerBookingUi() {
     window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
 
     const requestBtn = document.getElementById('request-ride-btn');
-    requestBtn.innerHTML = 'Find Ride';
-    requestBtn.disabled = false;
-    requestBtn.className = "gy-btn gy-btn-primary w-100";
+    if (requestBtn) {
+        delete requestBtn.dataset.state;
+        requestBtn.innerHTML = 'Find Ride';
+        requestBtn.disabled = false;
+        requestBtn.className = "gy-btn gy-btn-primary w-100";
+    }
 }
 
 function applyServiceBookingDraft() {
@@ -744,8 +747,13 @@ async function expandRideDispatch(rideId) {
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
         if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
         if (data.searchStatus === "no_more_available_drivers") {
-            document.getElementById('request-ride-btn').innerHTML = "No nearby drivers online. You can cancel and rebook.";
-            document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
+            const reqBtn = document.getElementById('request-ride-btn');
+            if (reqBtn) {
+                reqBtn.dataset.state = "no_drivers";
+                reqBtn.disabled = false;
+                reqBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
+                reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
+            }
         }
         return;
     } catch (error) {
@@ -905,6 +913,25 @@ if (requestRideButton) {
 requestRideButton.addEventListener('click', async () => {
     if (!currentUser) return;
 
+    const requestBtn = document.getElementById('request-ride-btn');
+    if (requestBtn && requestBtn.dataset.state === "no_drivers") {
+        const rideId = currentPassengerRideId;
+        if (!rideId) {
+            resetPassengerBookingUi();
+            return;
+        }
+        requestBtn.innerHTML = "⏳ Retrying driver search...";
+        requestBtn.disabled = true;
+        try {
+            await expandRideDispatch(rideId);
+        } catch (e) {
+            console.error("Retry dispatch error:", e);
+            requestBtn.disabled = false;
+            requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
+        }
+        return;
+    }
+
     const pickupText = document.getElementById('pickup-input').value;
     const dropText = document.getElementById('drop-input').value;
     const requestBtn = document.getElementById('request-ride-btn');
@@ -1020,8 +1047,11 @@ function listenToRideStatusUpdates(rideId) {
         }
 
         if (ride.status === "pending") {
+            showPassengerCancelButton(rideId);
             if (ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers") {
-                requestBtn.innerHTML = "No nearby drivers online. You can cancel and rebook.";
+                requestBtn.dataset.state = "no_drivers";
+                requestBtn.disabled = false;
+                requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
                 requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
                 if (ride.search_status === "no_available_drivers") {
                     scheduleDispatchExpansion(rideId, ride);
@@ -1029,6 +1059,7 @@ function listenToRideStatusUpdates(rideId) {
                     clearDispatchExpansionTimer();
                 }
             } else {
+                delete requestBtn.dataset.state;
                 scheduleDispatchExpansion(rideId, ride);
                 requestBtn.innerHTML = "Searching nearby drivers...";
                 requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
@@ -1147,7 +1178,13 @@ addOptionalClickListener('passenger-history-btn', () => {
     window.location.href = '/history.html';
 });
 
-addOptionalClickListener('invite-friends-btn', () => {
+addOptionalClickListener('invite-friends-card', () => {
+    setInviteFriendsStatus("");
+    inviteFriends();
+});
+
+addOptionalClickListener('invite-friends-btn', (e) => {
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     setInviteFriendsStatus("");
     inviteFriends();
 });
