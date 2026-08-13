@@ -187,7 +187,7 @@ function swapLocations() {
 }
 
 function bindServicesControls() {
-    refreshLocationBtn.addEventListener('click', refreshServicesMap);
+    if (refreshLocationBtn) refreshLocationBtn.addEventListener('click', refreshServicesMap);
     if (swapLocationsBtn) swapLocationsBtn.addEventListener('click', swapLocations);
     if (selectOnMapBtn) {
         selectOnMapBtn.addEventListener('click', () => {
@@ -195,19 +195,22 @@ function bindServicesControls() {
         });
     }
 
-
     if (clearDropBtn) {
         clearDropBtn.addEventListener('click', () => {
-            if (dropInput.readOnly) return;
-            dropInput.value = "";
-            dropInput.dispatchEvent(new Event('input', { bubbles: true }));
-            dropInput.focus();
+            if (dropInput && dropInput.readOnly) return;
+            if (dropInput) {
+                dropInput.value = "";
+                dropInput.dispatchEvent(new Event('input', { bubbles: true }));
+                dropInput.focus();
+            }
         });
     }
 
-    dropInput.addEventListener('input', () => {
-        resetFareOptions();
-    });
+    if (dropInput) {
+        dropInput.addEventListener('input', () => {
+            resetFareOptions();
+        });
+    }
 
     document.querySelectorAll('[data-service-type]').forEach((card) => {
         card.addEventListener('click', () => selectRideService(card.dataset.serviceType));
@@ -219,7 +222,7 @@ function bindServicesControls() {
     window.addEventListener('ride-completed-clear-map', () => releaseWakeLock());
 
     window.addEventListener('map-engine-ready', () => {
-        setStatus(pickupInput.value || "Pickup location detected.", "ready");
+        if (pickupInput) setStatus(pickupInput.value || "Pickup location detected.", "ready");
         requestPrefilledDestination();
     });
 
@@ -253,11 +256,12 @@ function bindServicesControls() {
     }
 
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !bookingLoginGate.classList.contains('d-none')) {
+        if (event.key === 'Escape' && bookingLoginGate && !bookingLoginGate.classList.contains('d-none')) {
             closeBookingLoginGate();
         }
     });
 }
+
 
 bindServicesControls();
 findRideBtn.disabled = true;
