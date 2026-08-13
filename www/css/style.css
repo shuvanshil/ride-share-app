@@ -5055,6 +5055,7 @@ body.profile-editor-open {
 .dashboard-saved-chip-wrap {
     width: 100%;
     min-width: 0;
+    position: relative;
 }
 
 .dashboard-saved-chip {

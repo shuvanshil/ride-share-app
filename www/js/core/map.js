@@ -3015,6 +3015,10 @@ window.addEventListener("locations-swapped", async (event) => {
     addPickupMarker(pickup);
     rememberPickupLocation(pickup, pickup.name);
 
+    window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+        detail: { name: pickup.name || pickup.mainName, lat: pickup.lat, lng: pickup.lng }
+    }));
+
     window.selectedDestination = buildSelectedDestination(destination);
     upsertRideDestinationMarker({
         drop_lat: destination.lat,
