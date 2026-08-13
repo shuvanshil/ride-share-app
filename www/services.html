@@ -37,27 +37,65 @@
         <main id="dashboard-view" class="services-page">
             <header class="services-app-head">
                 <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
-                <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
+                <div class="header-right-actions">
+                    <button class="header-action-btn" type="button" aria-label="Notifications" title="Notifications">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    </button>
+                    <button class="header-profile-btn" type="button" onclick="window.location.href='/profile.html'" aria-label="Profile">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </button>
+                    <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
+                </div>
             </header>
 
             <section class="services-title-block">
-                <h1>Book a Ride</h1>
-                <p>Find nearby LiphtUp drivers from your exact pickup location.</p>
+                <div class="services-title-copy">
+                    <h1>Book a Ride</h1>
+                    <p>Find nearby LiphtUp drivers from your exact pickup location.</p>
+                </div>
+                <div class="services-title-hero">
+                    <img src="assets/vehicle-markers/auto-rickshaw.svg" alt="Auto Rickshaw" class="title-hero-img">
+                </div>
             </section>
 
             <section id="bottom-sheet" class="services-booking-shell">
                 <div class="container p-0">
                     <div class="services-location-card" aria-label="Ride locations">
-                        <div class="location-field services-location-field">
-                            <span class="pickup-dot webicon webicon-current-location" aria-hidden="true"></span>
-                            <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
-                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></button>
+                        <div class="location-field-row">
+                            <span class="pickup-dot-badge" aria-hidden="true">
+                                <span class="dot-inner"></span>
+                            </span>
+                            <div class="field-copy">
+                                <label for="pickup-input" class="field-label-text">Pickup location</label>
+                                <input type="text" id="pickup-input" class="form-control gy-input location-text-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
+                            </div>
+                            <button id="refresh-location-btn" class="field-action services-field-btn GPS-target-btn" type="button" aria-label="Use current location for pickup" title="Use current location">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+                            </button>
                         </div>
-                        <div class="location-field services-location-field">
-                            <span class="drop-pin webicon webicon-destination" aria-hidden="true"></span>
-                            <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where to? village, street, town, or landmark" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
-                            <button id="clear-drop-btn" class="field-action services-field-btn" type="button" aria-label="Clear destination">×</button>
+
+                        <div class="location-swap-divider">
+                            <div class="divider-line"></div>
+                            <button id="swap-locations-btn" class="swap-locations-btn" type="button" aria-label="Swap pickup and destination" title="Swap pickup & destination">
+                                <img src="assets/icons/webicons/swap.svg" alt="Swap" width="18" height="18">
+                            </button>
                         </div>
+
+                        <div class="location-field-row">
+                            <span class="drop-pin-badge" aria-hidden="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#D32F2F"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>
+                            </span>
+                            <div class="field-copy">
+                                <label for="drop-input" class="field-label-text">Where to?</label>
+                                <input type="text" id="drop-input" class="form-control gy-input location-text-input" placeholder="Enter destination (village, street, town or landmark)" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
+                            </div>
+                            <button id="clear-drop-btn" class="field-action services-field-btn clear-text-btn" type="button" aria-label="Clear destination">×</button>
+                        </div>
+
+                        <button id="select-drop-map-btn" class="select-drop-map-btn" type="button">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            <span>Select drop on map</span>
+                        </button>
                     </div>
 
                     <section id="services-map-card" class="services-map-card" aria-label="Passenger live location map">
@@ -104,30 +142,55 @@
                                 <h2 id="ride-service-title">Choose your ride</h2>
                                 <p>Fares use the calculated road distance.</p>
                             </div>
-                            <span id="ride-distance-label">0 km</span>
+                            <span id="ride-distance-label" class="ride-distance-badge">0 km</span>
                         </div>
                         <div class="ride-service-list">
-                            <button class="ride-service-card is-selected" type="button" data-service-type="bike" aria-pressed="true">
-                                <span class="ride-service-icon" aria-hidden="true">🏍️</span>
-                                <span class="ride-service-copy">
-                                    <strong>Bike / Scooty</strong>
-                                    <small>1 passenger</small>
-                                </span>
-                                <strong class="ride-service-fare" id="bike-fare">₹0</strong>
-                            </button>
                             <button class="ride-service-card" type="button" data-service-type="auto" aria-pressed="false">
-                                <span class="ride-service-icon" aria-hidden="true">🛺</span>
-                                <span class="ride-service-copy">
+                                <div class="ride-service-media">
+                                    <img src="assets/vehicle-markers/auto-rickshaw.svg" alt="Auto" class="ride-vehicle-img">
+                                </div>
+                                <div class="ride-service-copy">
                                     <strong>Auto</strong>
-                                    <small>Up to 3 passengers</small>
-                                </span>
-                                <strong class="ride-service-fare" id="auto-fare">₹0</strong>
+                                    <small>3 min away • 👤 4</small>
+                                </div>
+                                <div class="ride-service-end">
+                                    <strong class="ride-service-fare" id="auto-fare">₹0</strong>
+                                    <span class="radio-select-circle"></span>
+                                </div>
                             </button>
+                            <button class="ride-service-card is-selected" type="button" data-service-type="bike" aria-pressed="true">
+                                <div class="ride-service-media">
+                                    <img src="assets/vehicle-markers/bike-scooty.svg" alt="Bike / Scooty" class="ride-vehicle-img">
+                                </div>
+                                <div class="ride-service-copy">
+                                    <strong>Bike / Scooty</strong>
+                                    <small>2 min away • 👤 1</small>
+                                </div>
+                                <div class="ride-service-end">
+                                    <strong class="ride-service-fare" id="bike-fare">₹0</strong>
+                                    <span class="radio-select-circle"></span>
+                                </div>
+                            </button>
+                        </div>
+
+                        <div class="payment-method-selector-card">
+                            <div class="payment-card-left">
+                                <div class="cash-icon-box">💵</div>
+                                <div class="payment-card-info">
+                                    <small>Pay with</small>
+                                    <strong>Cash</strong>
+                                </div>
+                            </div>
+                            <span class="payment-card-chevron">▼</span>
                         </div>
                     </section>
 
                     <section class="services-ride-actions">
-                        <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Select a destination</button>
+                        <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100 confirm-ride-main-btn" type="button">Select a destination</button>
+                        <div class="safety-reassurance-badge">
+                            <span class="shield-icon">🛡️</span>
+                            <span>Safe, secure and reliable rides</span>
+                        </div>
                         <p id="trip-live-heading" class="trip-live-heading">Trip in Progress. Enjoy your Ride</p>
                         <div id="passenger-safety-actions" class="passenger-safety-actions d-none">
                             <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline" type="button">

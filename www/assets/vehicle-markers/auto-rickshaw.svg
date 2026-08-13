@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="80" height="66">
+  <defs>
+    <linearGradient id="autoYellow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFDD00"/>
+      <stop offset="100%" stop-color="#F5A623"/>
+    </linearGradient>
+    <linearGradient id="autoGreen" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#28A745"/>
+      <stop offset="100%" stop-color="#19692C"/>
+    </linearGradient>
+    <linearGradient id="windshield" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EBF5FF"/>
+      <stop offset="100%" stop-color="#B8E1FF"/>
+    </linearGradient>
+  </defs>
+  <!-- Shadow -->
+  <ellipse cx="60" cy="88" rx="42" ry="8" fill="#000" opacity="0.2"/>
+  <!-- Wheels -->
+  <circle cx="28" cy="78" r="11" fill="#222"/>
+  <circle cx="28" cy="78" r="5" fill="#888"/>
+  <circle cx="88" cy="78" r="11" fill="#222"/>
+  <circle cx="88" cy="78" r="5" fill="#888"/>
+  <circle cx="102" cy="78" r="9" fill="#111"/>
+  <!-- Lower Body (Green) -->
+  <path d="M 18 52 C 18 45, 22 42, 30 42 L 85 42 C 95 42, 104 48, 102 65 C 100 78, 88 80, 78 80 L 30 80 C 22 80, 18 72, 18 52 Z" fill="url(#autoGreen)"/>
+  <!-- Mudguards & Details -->
+  <path d="M 82 72 Q 98 62 104 76" fill="none" stroke="#155724" stroke-width="4" stroke-linecap="round"/>
+  <!-- Upper Body Roof (Yellow) -->
+  <path d="M 22 44 Q 25 18 50 16 L 82 18 C 92 18, 98 25, 96 44 Z" fill="url(#autoYellow)"/>
+  <!-- Black Roof Trim -->
+  <path d="M 24 44 L 95 44" stroke="#222" stroke-width="2"/>
+  <!-- Windshield -->
+  <path d="M 64 22 L 88 23 C 93 23, 95 27, 94 38 L 64 38 Z" fill="url(#windshield)" stroke="#222" stroke-width="1.5"/>
+  <!-- Side Opening Window -->
+  <path d="M 32 23 L 58 23 L 58 38 L 30 38 Q 28 28 32 23 Z" fill="#333" opacity="0.8"/>
+  <path d="M 34 48 Q 50 48 50 68 L 32 68 Q 28 58 34 48 Z" fill="#222"/>
+  <!-- Headlight -->
+  <circle cx="98" cy="55" r="5" fill="#FFF5CC" stroke="#FF9800" stroke-width="1.5"/>
+  <circle cx="98" cy="55" r="3" fill="#FFF"/>
+</svg>

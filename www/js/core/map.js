@@ -2123,6 +2123,76 @@ async function completePickupMapPick(lat, lng) {
     await renderDestinationFare(pickMode.existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
+export async function swapPickupAndDestination() {
+    const pickupInput = document.getElementById("pickup-input");
+    const dropInput = document.getElementById("drop-input");
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+
+    if (!pickupInput || !dropInput) return;
+    if (pickupInput.readOnly || dropInput.readOnly) return;
+
+    const currentPickupText = pickupInput.value.trim();
+    const currentDropText = dropInput.value.trim();
+
+    if (!currentPickupText && !currentDropText) return;
+
+    // Swap field input values
+    pickupInput.value = currentDropText;
+    dropInput.value = currentPickupText;
+
+    const oldPickup = {
+        lat: userLatitude,
+        lng: userLongitude,
+        name: currentPickupText || "Pickup location",
+        mainName: currentPickupText || "Pickup location"
+    };
+
+    const oldDestination = window.selectedDestination;
+
+    if (oldDestination && Number.isFinite(oldDestination.lat) && Number.isFinite(oldDestination.lng)) {
+        // Set new pickup coordinates from old destination
+        userLatitude = oldDestination.lat;
+        userLongitude = oldDestination.lng;
+        addPickupMarker({ lat: userLatitude, lng: userLongitude });
+
+        // Set new destination from old pickup
+        window.selectedDestination = {
+            lat: oldPickup.lat,
+            lng: oldPickup.lng,
+            name: oldPickup.name,
+            mainName: oldPickup.mainName,
+            source: "google",
+            provider: "google"
+        };
+
+        if (fareQuoteBox && fareAmountSpan) {
+            fareAmountSpan.innerText = "Calculating...";
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+            await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
+        }
+    } else {
+        window.latestFareQuote = null;
+        window.dispatchEvent(new CustomEvent("fare-quote-reset"));
+    }
+}
+
+export function triggerDestinationMapPick() {
+    const dropInput = document.getElementById("drop-input");
+    const fareQuoteBox = document.getElementById("fare-quote-box");
+    const fareAmountSpan = document.getElementById("fare-amount");
+    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+
+    startDestinationMapPick({
+        name: dropInput.value.trim() || "Pinned destination",
+        mainName: dropInput.value.trim() || "Pinned destination",
+        source: "google-map-pick",
+        provider: "google",
+        typeHint: "Pinned location"
+    }, dropInput, fareQuoteBox, fareAmountSpan);
+}
+
 export async function useCurrentPickupLocation() {
     const pickupInput = document.getElementById("pickup-input");
     if (!pickupInput || pickupInput.readOnly) return;
@@ -2169,6 +2239,21 @@ function setupFareEngineListeners() {
     if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
 
     fareEngineListenersBound = true;
+
+    const swapBtn = document.getElementById("swap-locations-btn");
+    if (swapBtn) {
+        swapBtn.addEventListener("click", () => {
+            swapPickupAndDestination();
+        });
+    }
+
+    const selectDropMapBtn = document.getElementById("select-drop-map-btn");
+    if (selectDropMapBtn) {
+        selectDropMapBtn.addEventListener("click", () => {
+            triggerDestinationMapPick();
+        });
+    }
+
     dropInput.addEventListener("focus", () => {
         hidePickupSuggestions();
         if (!passengerDestinationLocked && !dropInput.readOnly) {
