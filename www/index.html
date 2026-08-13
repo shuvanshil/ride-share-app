@@ -69,14 +69,47 @@
         <button id="logout-btn" class="logout-chip d-none">Logout</button>
 
         <div id="dashboard-view" class="screen-shell flex-column d-none">
-            <header class="app-bar">
+            <header class="app-bar redesign-app-bar">
                 <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
                 <div class="app-bar-actions">
-                    <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
+                    <button id="profile-menu-trigger" class="user-profile-avatar" aria-label="Open menu">
+                        <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" id="user-profile-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+                        <span class="webicon webicon-profile" style="display:none;"></span>
+                    </button>
                 </div>
             </header>
 
-            <main class="passenger-home">
+            <!-- Side Floating Menu -->
+            <div id="side-drawer" class="side-drawer-overlay d-none">
+                <div class="side-drawer-content">
+                    <div class="drawer-header">
+                        <div class="drawer-user-info">
+                            <div class="drawer-avatar">
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" id="drawer-user-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+                                <span class="webicon webicon-profile" style="display:none;"></span>
+                            </div>
+                            <div class="drawer-text">
+                                <strong id="drawer-user-name">User</strong>
+                                <small id="drawer-user-phone"></small>
+                            </div>
+                        </div>
+                        <button id="close-drawer-btn" class="drawer-close-btn">&times;</button>
+                    </div>
+                    <nav class="drawer-nav">
+                        <a href="/profile.html" class="drawer-item">
+                            <span class="webicon webicon-profile"></span>
+                            My Profile
+                        </a>
+                    </nav>
+                </div>
+            </div>
+
+            <main class="passenger-home redesign-home">
+                <section class="welcome-section">
+                    <h2 id="greeting-text">Good evening, <span id="user-display-name">User</span> 👋</h2>
+                    <p>Where are you going today?</p>
+                </section>
+
                 <section class="hero-card">
                     <div>
                         <h1>
@@ -88,41 +121,61 @@
                     </div>
                 </section>
 
-                <section id="bottom-sheet" class="booking-panel">
+                <section id="bottom-sheet" class="booking-panel redesign-panel">
                     <div class="container p-0">
-                        <div class="location-stack">
-                            <div class="location-field location-field-prominent">
+                        <div class="location-stack redesign-search">
+                            <div class="location-field redesign-input">
                                 <span class="drop-pin webicon webicon-destination" aria-hidden="true"></span>
-                                <a href="/services.html">
-                                    <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where are you going?" readonly>
+                                <a href="/services.html" class="flex-grow-1">
+                                    <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination" readonly>
                                 </a>
+                                <button class="gps-btn" aria-label="Use current location">
+                                    <span class="webicon webicon-current-location"></span>
+                                </button>
                             </div>
                         </div>
 
-                        <div id="dashboard-saved-places" class="dashboard-saved-places" aria-label="Saved places"></div>
+                        <div id="dashboard-saved-places" class="redesign-saved-places" aria-label="Saved places"></div>
 
-                        <section id="dashboard-recent-section" class="dashboard-recent-section d-none" aria-labelledby="dashboard-recent-heading">
-                            <h2 id="dashboard-recent-heading">Recent rides</h2>
-                            <div id="dashboard-recent-rides" class="dashboard-recent-rides"></div>
+                        <section id="dashboard-recent-section" class="dashboard-recent-section redesign-recent-section d-none" aria-labelledby="dashboard-recent-heading">
+                            <div class="section-header">
+                                <h2 id="dashboard-recent-heading">Recent rides</h2>
+                                <a href="/history.html" class="see-all-link">See all</a>
+                            </div>
+                            <div id="dashboard-recent-rides" class="redesign-recent-rides"></div>
                         </section>
 
-                        <div class="feature-row">
-                            <div><img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Google_Verified_Badge.svg" alt="Safe and Secure" loading="lazy" width="28" height="28"><small>Safe & Secure</small></div>
-                            <a href="/services.html"><div><img src="https://upload.wikimedia.org/wikipedia/commons/b/b6/Paomedia_small-n-flat_lightning.svg" alt="Quick Booking" loading="lazy" width="28" height="28"><small>Quick Booking</small></div></a>
-                            <div><img src="https://upload.wikimedia.org/wikipedia/commons/c/c5/Modern_clock_chris_kemps_01.svg" alt="24/7 Service" loading="lazy" width="28" height="28"><small>24/7 Service</small></div>
+                        <div class="feature-row refined-features">
+                            <div>
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Google_Verified_Badge.svg" alt="Safe and Secure" loading="lazy" width="24" height="24">
+                                <strong>Safe & Secure</strong>
+                            </div>
+                            <a href="/services.html">
+                                <div>
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/b/b6/Paomedia_small-n-flat_lightning.svg" alt="Quick Booking" loading="lazy" width="24" height="24">
+                                    <strong>Quick Booking</strong>
+                                </div>
+                            </a>
+                            <div>
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c5/Modern_clock_chris_kemps_01.svg" alt="24/7 Service" loading="lazy" width="24" height="24">
+                                <strong>24/7 Service</strong>
+                            </div>
                         </div>
 
-                        <a class="heritage-card unakoti" href="/services.html?destination=Unakoti%20Rock%20Carvings%2C%20Tripura" aria-label="Book a ride to Unakoti">
-                            <div><strong>Unakoti</strong><span>The Abode of Gods</span></div>
-                        </a>
-                        <a class="heritage-card railway" href="/services.html?destination=Kumarghat%20Railway%20Station%2C%20Tripura" aria-label="Book a ride to Railway Station">
-                            <div><strong>Railway Station</strong><span>Go anywhere with LiphtUp</span></div>
-                        </a>
-                        <section class="share-card" id="invite-friends-card" style="cursor: pointer;" role="button" tabindex="0" aria-labelledby="share-card-heading">
+                        <div class="heritage-banners">
+                            <a class="heritage-card unakoti redesign-heritage" href="/services.html?destination=Unakoti%20Rock%20Carvings%2C%20Tripura" aria-label="Book a ride to Unakoti">
+                                <div><strong>Unakoti</strong><span>The Abode of Gods</span></div>
+                            </a>
+                            <a class="heritage-card railway redesign-heritage" href="/services.html?destination=Kumarghat%20Railway%20Station%2C%20Tripura" aria-label="Book a ride to Railway Station">
+                                <div><strong>Railway Station</strong><span>Go anywhere with LiphtUp</span></div>
+                            </a>
+                        </div>
+
+                        <section class="share-card redesign-share" id="invite-friends-card" style="cursor: pointer;" role="button" tabindex="0" aria-labelledby="share-card-heading">
                             <div class="share-card-copy">
                                 <h2 id="share-card-heading">Ride Together,<br>Save Together.</h2>
-                                <p class="share-card-description">Invite friends &amp; get exciting<br>discounts on first five ride.</p>
-                                <button id="invite-friends-btn" class="share-card-action" type="button" aria-describedby="invite-friends-status">
+                                <p class="share-card-description">Invite friends &amp; get exciting<br>discounts on first few rides.</p>
+                                <button id="invite-friends-btn" class="share-card-action redesigned-btn" type="button">
                                     <span>Invite Friends</span>
                                     <span class="share-card-action-arrow" aria-hidden="true">&rarr;</span>
                                 </button>
@@ -132,6 +185,7 @@
                     </div>
                 </section>
             </main>
+
 
             <nav class="bottom-nav">
                 <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>

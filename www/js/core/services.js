@@ -18,11 +18,14 @@ const gpsPill = document.getElementById('services-gps-pill');
 const serviceOptions = document.getElementById('ride-service-options');
 const distanceLabel = document.getElementById('ride-distance-label');
 const bookingLoginGate = document.getElementById('booking-login-gate');
+const swapLocationsBtn = document.getElementById('swap-locations-btn');
+const selectOnMapBtn = document.getElementById('select-on-map-btn');
 
 let servicesSessionStarted = false;
-let selectedServiceType = "bike";
+let selectedServiceType = "auto";
 let serviceSelectionLocked = false;
 let isAuthenticatedPassenger = false;
+let currentPickup = null;
 const requestedDestination = new URLSearchParams(window.location.search).get("destination")?.trim() || "";
 
 warmGoogleMaps();
@@ -167,19 +170,47 @@ async function refreshServicesMap() {
     }
 }
 
+function swapLocations() {
+    if (serviceSelectionLocked) return;
+    const pLoc = currentPickup;
+    const dLoc = window.selectedDestination;
+
+    if (!pLoc || !dLoc) return;
+
+    // Local swap of values for immediate feedback
+    pickupInput.value = dLoc.name || dLoc.mainName;
+    dropInput.value = pLoc.name || pLoc.mainName;
+
+    window.dispatchEvent(new CustomEvent('locations-swapped', {
+        detail: { pickup: dLoc, destination: pLoc }
+    }));
+}
+
 function bindServicesControls() {
-    refreshLocationBtn.addEventListener('click', refreshServicesMap);
+    if (refreshLocationBtn) refreshLocationBtn.addEventListener('click', refreshServicesMap);
+    if (swapLocationsBtn) swapLocationsBtn.addEventListener('click', swapLocations);
+    if (selectOnMapBtn) {
+        selectOnMapBtn.addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('request-destination-pick-on-map'));
+        });
+    }
 
-    clearDropBtn.addEventListener('click', () => {
-        if (dropInput.readOnly) return;
-        dropInput.value = "";
-        dropInput.dispatchEvent(new Event('input', { bubbles: true }));
-        dropInput.focus();
-    });
+    if (clearDropBtn) {
+        clearDropBtn.addEventListener('click', () => {
+            if (dropInput && dropInput.readOnly) return;
+            if (dropInput) {
+                dropInput.value = "";
+                dropInput.dispatchEvent(new Event('input', { bubbles: true }));
+                dropInput.focus();
+            }
+        });
+    }
 
-    dropInput.addEventListener('input', () => {
-        resetFareOptions();
-    });
+    if (dropInput) {
+        dropInput.addEventListener('input', () => {
+            resetFareOptions();
+        });
+    }
 
     document.querySelectorAll('[data-service-type]').forEach((card) => {
         card.addEventListener('click', () => selectRideService(card.dataset.serviceType));
@@ -191,38 +222,60 @@ function bindServicesControls() {
     window.addEventListener('ride-completed-clear-map', () => releaseWakeLock());
 
     window.addEventListener('map-engine-ready', () => {
-        setStatus(pickupInput.value || "Pickup location detected.", "ready");
+        if (pickupInput) setStatus(pickupInput.value || "Pickup location detected.", "ready");
         requestPrefilledDestination();
     });
 
     window.addEventListener('pickup-location-updated', (event) => {
-        setStatus(event.detail?.name || "Manual pickup selected.", "ready");
+        currentPickup = event.detail;
+        setStatus(event.detail?.name || "Pickup location detected.", "ready");
     });
 
-    findRideBtn.addEventListener('click', () => {
-        if (!isAuthenticatedPassenger && window.selectedRideService) {
-            openBookingLoginGate();
-        }
-    });
-    document.getElementById('booking-login-btn').addEventListener('click', () => {
-        window.location.href = '/login.html';
-    });
-    document.getElementById('booking-login-close-btn').addEventListener('click', closeBookingLoginGate);
-    bookingLoginGate.addEventListener('click', (event) => {
-        if (event.target === bookingLoginGate) closeBookingLoginGate();
-    });
+    if (findRideBtn) {
+        findRideBtn.addEventListener('click', () => {
+            if (!isAuthenticatedPassenger && window.selectedRideService) {
+                openBookingLoginGate();
+            }
+        });
+    }
+
+    const loginBtn = document.getElementById('booking-login-btn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            window.location.href = '/login.html';
+        });
+    }
+
+    const loginCloseBtn = document.getElementById('booking-login-close-btn');
+    if (loginCloseBtn) loginCloseBtn.addEventListener('click', closeBookingLoginGate);
+
+    if (bookingLoginGate) {
+        bookingLoginGate.addEventListener('click', (event) => {
+            if (event.target === bookingLoginGate) closeBookingLoginGate();
+        });
+    }
+
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !bookingLoginGate.classList.contains('d-none')) {
+        if (event.key === 'Escape' && bookingLoginGate && !bookingLoginGate.classList.contains('d-none')) {
             closeBookingLoginGate();
         }
     });
 }
 
+
 bindServicesControls();
 findRideBtn.disabled = true;
 
 async function bootstrapServices() {
+    // Start guest services immediately if auth takes too long,
+    // ensuring the map loads for everyone.
+    const mapTimeout = setTimeout(() => {
+        if (!servicesSessionStarted) startGuestServices();
+    }, 2500);
+
     const user = await waitForAuth();
+    clearTimeout(mapTimeout);
+
     if (!user) {
         startGuestServices();
         hideInitialLoader();

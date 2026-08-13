@@ -1,14 +1,605 @@
 :root {
     --gy-green: #1A7A2E;
-    --gy-green-soft: #F0FFF0;
-    --gy-bg: #FFFFFF;
-    --gy-muted-bg: #F5F5F5;
+    --gy-green-soft: #EAF8ED;
+    --gy-bg: #F8F9FA;
+    --gy-muted-bg: #FFFFFF;
     --gy-text: #111111;
     --gy-muted: #6B7280;
     --gy-border: #E7E7E7;
     --gy-danger: #D32F2F;
-    --gy-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    --gy-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    --gy-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
 }
+
+/* Redesign Header */
+.redesign-app-bar {
+    padding: 14px 16px;
+    background: transparent;
+    border-bottom: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.user-profile-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #EAF8ED;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    border: 2px solid #fff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    color: var(--gy-green);
+    padding: 0;
+}
+
+.user-profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.user-profile-avatar .webicon {
+    width: 22px;
+    height: 22px;
+}
+
+/* Welcome Section */
+.welcome-section {
+    padding: 4px 16px 10px;
+}
+
+.welcome-section h2 {
+    font-size: clamp(18px, 5.5vw, 22px);
+    font-weight: 800;
+    margin-bottom: 2px;
+    color: #111;
+}
+
+.welcome-section p {
+    font-size: 13px;
+    color: #6B7280;
+    margin: 0;
+}
+
+/* Hero Banner - Classic Version Logic */
+.hero-card {
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 24px;
+    border-radius: 16px;
+        background-image: linear-gradient(to right, rgba(255,255,255,0.75), rgba(255,255,255,0.15)), url("../assets/hero banner.png");
+    background-size: cover;
+    background-position: center;
+    margin: 0 16px 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-card > div {
+    max-width: 260px;
+}
+
+.hero-card h1 {
+    margin: 0 0 8px;
+    color: #1d1d1d;
+    font-size: clamp(24px, 6.7vw, 30px);
+    line-height: 1.05;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.hero-card h1 .headline-line {
+    display: block;
+    white-space: nowrap;
+}
+
+.hero-card h1 .headline-accent {
+    color: #14c22e;
+}
+
+.hero-card p {
+    margin: 0;
+    color: rgba(44, 44, 44, 0.86);
+    font-size: 13px;
+    max-width: 190px;
+}
+
+/* Side Floating Menu */
+.side-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.side-drawer-content {
+    width: 280px;
+    height: 100%;
+    background: #fff;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    animation: drawer-slide-in 0.3s ease-out;
+}
+
+@keyframes drawer-slide-in {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+.drawer-header {
+    padding: 24px 20px;
+    border-bottom: 1px solid #f3f4f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.drawer-user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.drawer-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #EAF8ED;
+    border: 2px solid #fff;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gy-green);
+}
+
+.drawer-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.drawer-avatar .webicon {
+    width: 32px;
+    height: 32px;
+}
+
+.drawer-text strong {
+    display: block;
+    font-size: 18px;
+    color: #111;
+}
+
+.drawer-text small {
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.drawer-close-btn {
+    background: #f3f4f6;
+    border: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 20px;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+}
+
+.drawer-nav {
+    padding: 12px 0;
+}
+
+.drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    color: #374151;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    transition: background 0.2s;
+}
+
+.drawer-item:active {
+    background: #f9fafb;
+}
+
+.drawer-item .webicon {
+    width: 20px;
+    height: 20px;
+    color: var(--gy-green);
+}
+
+/* Redesign Search */
+.redesign-panel {
+    margin-top: 0;
+    padding: 0 16px;
+}
+
+.redesign-input {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 16px;
+    padding: 6px 12px;
+    min-height: 54px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.redesign-input .gy-input {
+    border: 0;
+    box-shadow: none;
+    font-size: 15px;
+    color: #333;
+    width: 100%;
+    background: transparent;
+}
+
+.gps-btn {
+    background: none;
+    border: 0;
+    color: #1A7A2E;
+    padding: 6px;
+    border-left: 1px solid #eee;
+    margin-left: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+/* Saved Places Redesign */
+.redesign-saved-places {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 16px 0;
+}
+
+@media (max-width: 400px) {
+    .redesign-saved-places {
+        grid-template-columns: 1fr;
+    }
+}
+
+.dashboard-saved-chip-wrap {
+    background: #fff;
+    border-radius: 12px;
+    padding: 8px 10px;
+    border: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.dashboard-saved-chip {
+    flex: 1;
+    background: none;
+    border: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+    padding: 0;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.dashboard-saved-chip .webicon {
+    background-color: currentColor !important;
+    color: var(--gy-green);
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 0;
+    flex-shrink: 0;
+}
+
+.dashboard-saved-chip-text {
+    min-width: 0;
+    flex: 1;
+}
+
+.dashboard-saved-chip-text strong {
+    display: block;
+    font-size: 13px;
+    color: #111;
+    font-weight: 700;
+}
+
+.dashboard-saved-chip-text small {
+    font-size: 10px;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+.dashboard-saved-chip-edit {
+    background: none;
+    border: 0;
+    color: #9CA3AF;
+    padding: 4px;
+    cursor: pointer;
+}
+
+/* Recent Rides Section Header */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.section-header h2 {
+    font-size: 17px;
+    font-weight: 800;
+    margin: 0;
+}
+
+.see-all-link {
+    font-size: 13px;
+    color: #1A7A2E;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.redesign-recent-rides {
+    display: grid;
+    gap: 10px;
+}
+
+.dashboard-recent-item {
+    background: #fff;
+    border-radius: 18px;
+    padding: 14px;
+    border: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    width: 100%;
+}
+
+.dashboard-recent-item .webicon {
+    background-color: currentColor !important;
+    color: var(--gy-text);
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 0;
+    flex-shrink: 0;
+}
+
+.dashboard-recent-item-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.dashboard-recent-item-text strong {
+    display: block;
+    font-size: 14px;
+    color: #111;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dashboard-recent-item-text small {
+    font-size: 12px;
+    color: #777;
+}
+
+.dashboard-recent-item.is-cancelled small {
+    color: #D32F2F;
+}
+
+/* Feature Row - Refined & Elegant */
+.refined-features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.refined-features > div, .refined-features a div {
+    min-height: 54px;
+    border-radius: 14px;
+    background: #fff;
+    border: 1px solid #f3f4f6;
+    color: var(--gy-green);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 4px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+    text-decoration: none;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.refined-features > div:active, .refined-features a div:active {
+    transform: scale(0.97);
+}
+
+.refined-features strong {
+    color: #374151;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.refined-features img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+
+/* Heritage Banners Wrapper */
+.heritage-banners {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.redesign-heritage {
+    border-radius: 18px !important;
+    min-height: 110px !important;
+}
+
+/* Share Card - Classic Version Logic */
+.share-card {
+    aspect-ratio: 1646 / 680;
+    margin-bottom: 12px;
+    border-radius: 18px;
+    padding: 12px 16px;
+    background-image: url("../assets/share-background.png");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    border: 0;
+    box-shadow: none;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+}
+
+.share-card-copy {
+    width: 58%;
+    max-width: 190px;
+}
+
+.share-card h2 {
+    margin: 0;
+    color: #16313c;
+    font-size: 14px;
+    line-height: 1.02;
+    font-weight: 800;
+}
+
+.share-card-description {
+    margin: 6px 0 0;
+    color: #526167;
+    font-size: 9px;
+    line-height: 1.18;
+    max-width: 188px;
+    white-space: nowrap;
+}
+
+.share-card-action {
+    min-height: 30px;
+    margin-top: 16px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #173d26 0%, #10311e 100%);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow: 0 6px 12px rgba(16, 49, 30, 0.18);
+    transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+    white-space: nowrap;
+}
+
+.share-card-action:active {
+    transform: scale(0.99);
+}
+
+.share-card-action-arrow {
+    font-size: 16px;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.share-card-status {
+    margin: 5px 0 0;
+    color: #1a7a2e;
+    font-size: 11px;
+    font-weight: 700;
+    max-width: 156px;
+}
+
+/* Bottom Nav - Consistent Mobile Look */
+.bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1800;
+    height: calc(84px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 10px 10px calc(14px + env(safe-area-inset-bottom));
+    background: #ffffff;
+    border-top: 1px solid #eee;
+}
+
+@media (min-width: 561px) {
+    .bottom-nav {
+        left: 50%;
+        width: min(100%, 560px);
+        transform: translateX(-50%);
+    }
+}
+
+.bottom-nav button {
+    position: relative;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #9CA3AF;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.bottom-nav .active {
+    color: #1A7A2E;
+}
+
+.bottom-nav button.active::after {
+    content: "";
+    position: absolute;
+    bottom: -10px;
+    left: 20%;
+    right: 20%;
+    height: 4px;
+    background: #1A7A2E;
+    border-radius: 4px 4px 0 0;
+}
+
 
 /* Initial loader styling for Android splash transition */
 #initial-loader {
@@ -65,6 +656,13 @@
 .webicon-about-us { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
 .webicon-view-more { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 .webicon-help { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-swap { -webkit-mask-image: url("../assets/icons/webicons/swap.svg"); mask-image: url("../assets/icons/webicons/swap.svg"); }
+.webicon-destination-marker { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
+.webicon-safety-check { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
+.webicon-cash { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
+.webicon-notification { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
+.webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 
 html,
 body {
@@ -533,9 +1131,13 @@ select {
 #reset-password-btn,
 #register-btn {
     color: #fff !important;
-    background: var(--gy-green) !important;
-    box-shadow: 0 10px 22px rgba(26, 122, 46, 0.22);
+    background: #1A7A2E !important;
+    box-shadow: 0 8px 20px rgba(26, 122, 46, 0.25);
+    border-radius: 14px;
+    font-weight: 700;
+    padding: 14px 20px;
 }
+
 
 .gy-btn-dark {
     color: #fff;
@@ -941,7 +1543,7 @@ select {
     justify-content: center;
     padding: 24px;
     border-radius: 16px;
-    background-image: linear-gradient(to right, rgba(255,255,255,0.9), rgba(255,255,255,0.2)), url("../assets/hero banner.png");
+        background-image: linear-gradient(to right, rgba(255,255,255,0.75), rgba(255,255,255,0.15)), url("../assets/hero banner.png");
     background-size: cover;
     background-position: center;
     margin-bottom: 20px;
@@ -3209,13 +3811,25 @@ body.profile-editor-open {
 }
 
 .services-app-head {
-    min-height: 48px;
-    padding-top: calc(2px + env(safe-area-inset-top));
+    min-height: 56px;
+    padding: calc(16px + env(safe-area-inset-top)) 16px 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-bottom: 2px;
     background: #fff;
+    border-bottom: 1px solid #f8f8f8;
+}
+
+.brand-logo {
+    display: flex;
+    align-items: center;
+}
+
+.brand-logo img {
+    height: 36px;
+    width: auto;
+    border-radius: 8px;
+    object-fit: contain;
 }
 
 .services-app-head .app-bar-actions {
@@ -3249,22 +3863,84 @@ body.profile-editor-open {
 }
 
 .services-location-card {
-    display: grid;
-    gap: 10px;
-    padding: 12px;
-    border: 1px solid var(--gy-border);
-    border-radius: 8px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    border: 1px solid #f1f1f1;
+    border-radius: 12px;
     background: #fff;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.location-card-connector {
+    position: absolute;
+    left: 27.5px;
+    top: 36px;
+    bottom: 36px;
+    width: 1.5px;
+    background: #eee;
+    z-index: 0;
+}
+
+.location-field-divider {
+    height: 1px;
+    background: #f1f1f1;
+    margin: 4px 0 4px 44px;
 }
 
 .services-location-field {
-    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
 }
 
-.services-location-field .gy-input {
-    padding: 10px 8px;
+.location-dot-wrap {
+    width: 24px;
+    display: flex;
+    justify-content: center;
 }
+
+
+
+.location-input-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.location-input-wrap label {
+    font-size: 11px;
+    color: #999;
+    margin-bottom: -2px;
+}
+
+.location-input-wrap .gy-input {
+    border: 0 !important;
+    padding: 4px 0 !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    height: auto !important;
+    background: transparent !important;
+}
+
+.gy-btn-success-subtle {
+    background: #1A7A2E;
+    color: #fff;
+    font-weight: 700;
+    border: 0;
+    padding: 14px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.2);
+}
+
+
 
 .services-field-btn {
     width: 34px;
@@ -3301,17 +3977,32 @@ body.profile-editor-open {
 }
 
 .services-map-head h2 {
-    margin: 0 0 3px;
+    margin: 0 0 2px;
     font-size: 16px;
     font-weight: 800;
+}
+
+.location-status-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    background: #1A7A2E;
+    border-radius: 50%;
 }
 
 .services-map-head p {
     margin: 0;
     color: var(--gy-muted);
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: 500;
     overflow-wrap: anywhere;
 }
+
 
 .services-gps-pill {
     min-height: 30px;
@@ -3448,93 +4139,295 @@ body.profile-editor-open {
 
 .services-page.trip-live #services-map-card {
     margin-top: 10px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
-.services-page.trip-live #services-map-card .services-map-frame {
-    aspect-ratio: unset;
-    /* Was 80vh when the panel floated over the map; now that the panel sits
-       in normal flow below it (so expanding it pushes content down instead
-       of overlapping), a shorter map leaves the collapsed handle visible
-       above the fixed bottom nav without needing to scroll first. */
-    height: 58vh;
-}
-
-#services-map-card {
-    position: relative;
+.services-page.trip-live .services-map-frame {
+    aspect-ratio: auto;
+    height: 60vh;
+    flex: 0 0 auto;
 }
 
 .trip-progress-panel {
-    /* In normal flow (not absolutely positioned over the map) so that
-       expanding it pushes the buttons/heading below it down the page
-       instead of overlapping the map or anything else. */
     position: relative;
-    flex: 0 0 auto;
-    border-radius: 16px;
-    margin-top: 10px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px 20px 0 0;
+    margin-top: -15px;
     background: #fff;
     border: 1px solid var(--gy-border);
-    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
+    border-bottom: 0;
+    box-shadow: 0 -10px 26px rgba(0, 0, 0, 0.08);
+    overflow-y: auto;
+    z-index: 10;
 }
 
 .trip-progress-handle {
-    display: grid;
-    grid-template-columns: 1fr auto;
+    display: flex;
     align-items: center;
     width: 100%;
-    padding: 10px 16px 12px;
+    padding: 10px 20px 15px;
     border: 0;
     background: transparent;
-    gap: 8px;
+    gap: 12px;
     cursor: pointer;
+    flex-direction: column;
 }
 
 .trip-progress-handle-bar {
-    grid-column: 1 / -1;
-    justify-self: center;
-    width: 36px;
-    height: 4px;
+    width: 40px;
+    height: 5px;
     border-radius: 999px;
-    background: var(--gy-border);
-    margin-bottom: 6px;
+    background: #E5E7EB;
+    margin-bottom: 8px;
 }
 
-.trip-progress-handle-label {
+.trip-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.trip-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: #F3F4F6;
+}
+
+.trip-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gy-green);
+    box-shadow: 0 0 0 3px rgba(26, 122, 46, 0.1);
+}
+
+.trip-status-text {
+    font-size: 14px;
+    font-weight: 700;
     color: var(--gy-text);
-    font-size: 13px;
-    font-weight: 800;
-    text-align: left;
+}
+
+.trip-status-subtext {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--gy-muted);
 }
 
 .trip-progress-handle-icon {
-    width: 9px;
-    height: 9px;
-    border-right: 2px solid var(--gy-muted);
-    border-bottom: 2px solid var(--gy-muted);
-    transform: rotate(-45deg);
-    transition: transform 200ms ease;
-}
-
-.trip-progress-panel.is-expanded .trip-progress-handle-icon {
-    transform: rotate(135deg);
+    display: none; /* Using rotation or other indicators if needed */
 }
 
 .trip-progress-details {
-    max-height: 0;
-    overflow: hidden;
-    padding: 0 16px;
-    transition: max-height 280ms ease, padding 280ms ease;
+    display: none;
+    padding: 0 20px 30px;
 }
 
 .trip-progress-panel.is-expanded .trip-progress-details {
-    max-height: 280px;
-    padding: 0 16px 16px;
+    display: block;
 }
 
-.trip-progress-driver {
+/* Compact Driver Card */
+.compact-driver-card {
+    display: flex !important;
+    align-items: center !important;
+    gap: 15px !important;
+    padding: 16px;
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    background: #fff;
+    margin-bottom: 16px;
+}
+
+.driver-avatar-wrap {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+}
+
+.driver-avatar-wrap img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #f1f1f1;
+}
+
+.driver-verified-check {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    background: var(--gy-green);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 10px;
+}
+
+.driver-info-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.driver-info-main strong {
+    display: block;
+    font-size: 17px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.driver-info-main .verified-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: #EAF8ED;
+    color: var(--gy-green);
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+
+.driver-vehicle-info {
+    font-size: 13px;
+    color: #6B7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+
+.driver-stats {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gy-text);
+}
+
+.driver-stats .star-icon {
+    color: #FBBF24;
+    margin-right: 2px;
+}
+
+.driver-action-side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.driver-vehicle-image {
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
+}
+
+.call-driver-btn-compact {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1.5px solid var(--gy-green);
+    border-radius: 8px;
+    color: var(--gy-green);
+    font-size: 13px;
+    font-weight: 700;
+    background: #fff;
+    text-decoration: none;
+}
+
+/* Highlighted PIN Section */
+.highlighted-pin-section {
+    background: #FFFBEB;
+    border: 1px solid #FEF3C7;
+    border-radius: 16px;
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.pin-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #92400E;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.pin-value {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: 6px;
+    color: #111827;
+    margin-bottom: 8px;
+}
+
+.pin-hint {
+    font-size: 12px;
+    color: #92400E;
+    margin: 0;
+    opacity: 0.8;
+}
+
+/* Trip Locations */
+.trip-locations-list {
+    border: 1px solid #F3F4F6;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.trip-location-item {
+    display: flex !important;
+    gap: 12px !important;
+    align-items: flex-start !important;
+}
+
+.trip-location-item:first-child {
     padding-bottom: 12px;
     margin-bottom: 12px;
-    border-bottom: 1px solid var(--gy-border);
+    border-bottom: 1px dashed #E5E7EB;
+}
+
+.location-marker-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+
+.location-marker-dot.pickup { background: var(--gy-green); }
+.location-marker-dot.drop { background: #EF4444; }
+
+.location-details small {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #9CA3AF;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.location-details strong {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gy-text);
 }
 
 .trip-progress-call-btn {
@@ -3594,11 +4487,25 @@ body.profile-editor-open {
 
 .ride-service-heading {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
+
+.view-all-link {
+    color: #1A7A2E;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.ride-distance-badge {
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #333;
+}
+
 
 .ride-service-heading h2,
 .ride-service-heading p {
@@ -3628,25 +4535,119 @@ body.profile-editor-open {
 
 .ride-service-card {
     width: 100%;
-    min-height: 76px;
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr) auto;
+    grid-template-columns: 60px 1fr auto;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
-    border: 1px solid var(--gy-border);
-    border-radius: 10px;
+    gap: 16px;
+    padding: 14px 16px;
+    border: 1.5px solid #f1f1f1;
+    border-radius: 16px;
     color: var(--gy-text);
     background: #fff;
     text-align: left;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
 }
 
 .ride-service-card.is-selected {
-    border: 2px solid var(--gy-green);
-    padding: 11px;
-    background: var(--gy-green-soft);
-    box-shadow: 0 6px 18px rgba(26, 122, 46, 0.12);
+    border-color: #1A7A2E;
+    background: #f0fdf4;
+    box-shadow: 0 4px 15px rgba(26, 122, 46, 0.08);
 }
+
+.ride-service-price-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ride-service-check {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ddd;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.ride-service-card.is-selected .ride-service-check {
+    border-color: #1A7A2E;
+    background: #1A7A2E;
+}
+
+.ride-service-card.is-selected .ride-service-check::after {
+    content: "";
+    width: 10px;
+    height: 6px;
+    border-left: 2.5px solid #fff;
+    border-bottom: 2.5px solid #fff;
+    transform: rotate(-45deg);
+    margin-top: -2px;
+}
+
+.payment-method-selector {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 16px;
+    background: #fcfdfe;
+    border: 1px solid #f1f1f1;
+    border-radius: 14px;
+}
+
+.payment-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    background: #f0f0f0;
+    border-radius: 8px;
+}
+
+.payment-copy {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.payment-copy small {
+    font-size: 11px;
+    color: #999;
+}
+
+.payment-copy strong {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.payment-chevron {
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid #999;
+    border-bottom: 2px solid #999;
+    transform: rotate(45deg);
+}
+
+.safety-assurance-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 0;
+    color: #666;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.safety-assurance-tag .webicon {
+    width: 16px;
+    height: 16px;
+}
+
 
 .ride-service-card:disabled {
     cursor: not-allowed;
@@ -3662,31 +4663,46 @@ body.profile-editor-open {
     color: var(--gy-green);
 }
 
-.ride-service-icon {
-    width: 52px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    border-radius: 8px;
-    color: var(--gy-green);
-    background: #EAF8ED;
-    font-size: 10px;
-    font-weight: 800;
+.ride-service-img-wrap {
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.ride-service-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .ride-service-copy {
     min-width: 0;
     display: grid;
-    gap: 4px;
+    gap: 2px;
 }
 
 .ride-service-copy strong {
     font-size: 15px;
+    font-weight: 700;
+}
+
+.ride-service-copy small {
+    color: #666;
+    font-size: 12px;
+}
+
+.ride-service-fare {
+    font-size: 18px;
+    font-weight: 800;
 }
 
 .ride-service-copy small {
     color: var(--gy-muted);
     font-size: 11px;
+}
 }
 
 .ride-service-fare {
@@ -4238,30 +5254,30 @@ body.profile-editor-open {
 
 .dashboard-saved-places {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr 1fr;
     gap: 12px;
     margin: 16px 0;
+    width: 100%;
 }
 
 .dashboard-saved-chip-wrap {
-    position: relative;
     width: 100%;
-    display: flex;
+    min-width: 0;
+    position: relative;
 }
 
 .dashboard-saved-chip {
-    flex: 1 1 auto;
+    width: 100%;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
+    gap: 10px;
+    padding: 12px 10px;
     border: 1.5px solid var(--gy-border);
     border-radius: 14px;
-    background: var(--gy-bg);
+    background: #fff;
     text-align: left;
     cursor: pointer;
-    transition: all 160ms ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
 }
 
 .dashboard-saved-chip.is-set {

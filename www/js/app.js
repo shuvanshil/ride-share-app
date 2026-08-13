@@ -433,8 +433,8 @@ function bindTripProgressPanel() {
     handle.addEventListener('click', () => {
         const expanded = panel.classList.toggle('is-expanded');
         handle.setAttribute('aria-expanded', String(expanded));
-        const label = document.getElementById('trip-progress-handle-label');
-        if (label) label.innerText = expanded ? "Trip in progress · Tap to hide details" : "Trip in progress · Tap for details";
+        const subtext = document.getElementById('trip-progress-status-subtext');
+        if (subtext) subtext.innerText = expanded ? "Tap to hide details" : "Tap for details";
     });
 }
 
@@ -447,41 +447,100 @@ function showTripProgressPanel(ride) {
     dashboardView.classList.add('trip-live');
     panel.classList.remove('d-none');
 
+    const statusText = document.getElementById('trip-progress-status-text');
+    const statusSubtext = document.getElementById('trip-progress-status-subtext');
+
+    // Set dynamic status text based on ride status and distance
+    let mainStatus = "Trip in progress";
+    let subStatus = "Tap for ride details";
+
+    if (ride.status === "accepted") {
+        mainStatus = "Driver is on the way";
+    } else if (ride.status === "arrived") {
+        mainStatus = "Driver has arrived";
+        subStatus = "Meet driver at pickup";
+    } else if (ride.status === "started" || ride.status === "en_route") {
+        mainStatus = "Trip in progress";
+    }
+
+    // Calculate and show distance if driver location is available
+    if (ride.driverLocation?.lat && ride.driverLocation?.lng) {
+        const targetLat = (ride.status === "accepted" || ride.status === "arrived") ? ride.pickup_lat : ride.drop_lat;
+        const targetLng = (ride.status === "accepted" || ride.status === "arrived") ? ride.pickup_lng : ride.drop_lng;
+
+        if (targetLat && targetLng) {
+            const distKm = calculateDispatchDistanceKm(
+                Number(ride.driverLocation.lat),
+                Number(ride.driverLocation.lng),
+                Number(targetLat),
+                Number(targetLng)
+            );
+
+            if (ride.status === "accepted") {
+                subStatus = `${distKm.toFixed(1)} km away`;
+            } else if (ride.status === "started" || ride.status === "en_route") {
+                subStatus = `${distKm.toFixed(1)} km to destination`;
+                if (distKm < 0.5) mainStatus = "Almost there";
+            }
+        }
+    }
+
+    if (statusText) statusText.innerText = mainStatus;
+    if (statusSubtext) {
+        statusSubtext.innerText = panel.classList.contains('is-expanded') ? "Tap to hide details" : subStatus;
+    }
+
     const driverName = ride.driver_name || "Assigned Driver";
     const vehicleModel = ride.vehicle_model || "Vehicle";
     const vehicleNumber = ride.vehicle_number || "Number pending";
     const driverPhone = ride.driver_phone || "";
-    const serviceLabel = ride.service_name || (ride.vehicle_type === "auto" ? "Auto" : "Bike / Scooty");
+    const vehicleType = ride.vehicle_type || "auto";
+    const serviceLabel = ride.service_name || (vehicleType === "auto" ? "Auto" : "Bike / Scooty");
+    const driverPhoto = ride.driver_profile_photo || "";
 
     const driverBox = document.getElementById('trip-progress-driver');
     if (driverBox) {
+        // Use a generic SVG placeholder if no photo is available to avoid 404s
+        const avatarSrc = driverPhoto || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239CA3AF'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+
         driverBox.innerHTML = `
-            <div class="d-flex justify-content-between align-items-start gap-3">
-                <div>
-                    <div class="fw-bold text-dark">${driverName}</div>
-                    <div class="small text-muted">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
-                    <span class="driver-verified-badge">✓ Verified Driver</span>
-                </div>
+            <div class="driver-avatar-wrap">
+                <img src="${avatarSrc}" alt="${driverName}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%239CA3AF%22%3E%3Cpath d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22/%3E%3C/svg%3E'">
+                <div class="driver-verified-check">✓</div>
+            </div>
+            <div class="driver-info-main">
+                <span class="verified-badge">✓ Verified Driver</span>
+                <strong>${driverName}</strong>
+                <div class="driver-vehicle-info">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
+            </div>
+            <div class="driver-action-side">
+                <img src="assets/vehicle-markers/${vehicleType}-marker.png" class="driver-vehicle-image" alt="${vehicleType}">
                 ${driverPhone ? `
-                    <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
-                        Call Driver
+                    <a href="tel:${driverPhone}" class="call-driver-btn-compact">
+                         <span class="webicon webicon-contact-us" style="width:14px;height:14px;"></span> Call
                     </a>
                 ` : ""}
             </div>
         `;
     }
 
-    const fareEl = document.getElementById('trip-progress-fare');
-    if (fareEl) fareEl.innerText = Number.isFinite(Number(ride.fare)) ? `₹${ride.fare}` : "₹0";
-
     const pinBox = document.getElementById('trip-progress-pin-box');
     const pinEl = document.getElementById('trip-progress-pin');
-    if (pinEl && ride.verification_pin) {
+    if (pinEl && ride.verification_pin && (ride.status === "accepted" || ride.status === "arrived")) {
         pinEl.innerText = ride.verification_pin;
         pinBox?.classList.remove('d-none');
     } else {
         pinBox?.classList.add('d-none');
     }
+
+    // Populate locations
+    const pickupEl = document.getElementById('trip-progress-pickup-name');
+    const dropEl = document.getElementById('trip-progress-drop-name');
+    if (pickupEl) pickupEl.innerText = ride.pickup_display_address || ride.pickup_name || "Pickup location";
+    if (dropEl) dropEl.innerText = ride.drop_display_address || ride.drop_name || "Destination";
+
+    const fareEl = document.getElementById('trip-progress-fare');
+    if (fareEl) fareEl.innerText = Number.isFinite(Number(ride.fare)) ? `₹${ride.fare}` : "₹0";
 }
 
 function hideTripProgressPanel() {
@@ -861,11 +920,11 @@ async function restorePassengerActiveRide() {
         showPassengerCancelButton(activeRideDoc.id);
         setPassengerDestinationLocked(true, activeRide.drop_name || "", activeRide.pickup_name || "");
         setPassengerServiceLocked(true, activeRide);
-        renderPassengerDriverCard(activeRide);
-        renderPassengerVerificationPin(activeRide.verification_pin);
-        if (["started", "en_route"].includes(activeRide.status)) {
+
+        if (["accepted", "arrived", "started", "en_route"].includes(activeRide.status)) {
             showTripProgressPanel(activeRide);
         }
+
         if (activeRide.fare) {
             document.getElementById('fare-amount').innerText = `₹${activeRide.fare}`;
             document.getElementById('fare-quote-box').classList.remove('d-none');
@@ -1066,29 +1125,24 @@ function listenToRideStatusUpdates(rideId) {
             }
         } else if (ride.status === "accepted") {
             clearDispatchExpansionTimer();
-            renderPassengerDriverCard(ride);
-            renderPassengerVerificationPin(ride.verification_pin);
-            hideTripProgressPanel();
+            showTripProgressPanel(ride);
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
             
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "arrived") {
-            renderPassengerDriverCard(ride);
-            hideTripProgressPanel();
+            showTripProgressPanel(ride);
             requestBtn.innerHTML = 'Driver arrived at pickup.';
             requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
 
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "started") {
-            renderPassengerDriverCard(ride);
             showTripProgressPanel(ride);
             requestBtn.innerHTML = 'Trip started. Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "en_route") {
-            renderPassengerDriverCard(ride);
             showTripProgressPanel(ride);
             requestBtn.innerHTML = '🚗 Trip in Progress! Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";

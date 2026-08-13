@@ -93,6 +93,74 @@ function formatRelativeDay(millis) {
     return new Date(millis).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+function updateGreeting(name) {
+    const greetingEl = document.getElementById('greeting-text');
+    if (!greetingEl) return;
+
+    const hour = new Date().getHours();
+    let greeting = "Good morning";
+    if (hour >= 12 && hour < 17) greeting = "Good afternoon";
+    else if (hour >= 17 || hour < 4) greeting = "Good evening";
+
+    greetingEl.innerHTML = `${greeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
+}
+
+function setupSideDrawer(profile) {
+    const trigger = document.getElementById('profile-menu-trigger');
+    const drawer = document.getElementById('side-drawer');
+    const closeBtn = document.getElementById('close-drawer-btn');
+    const headerImg = document.getElementById('user-profile-img');
+    const drawerImg = document.getElementById('drawer-user-img');
+    const drawerName = document.getElementById('drawer-user-name');
+    const drawerPhone = document.getElementById('drawer-user-phone');
+
+    if (!trigger || !drawer) return;
+
+    // Update profile images: prioritize the custom profilePhotoUrl from Firestore,
+    // then fall back to standard Firebase auth fields.
+    const photoUrl = profile.profilePhotoUrl || profile.photoURL || profile.avatarUrl || "";
+    if (photoUrl) {
+        if (headerImg) {
+            headerImg.src = photoUrl;
+            headerImg.style.display = 'block';
+            if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'none';
+        }
+        if (drawerImg) {
+            drawerImg.src = photoUrl;
+            drawerImg.style.display = 'block';
+            if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'none';
+        }
+    } else {
+        // Reset to placeholder if no photo is available
+        if (headerImg) {
+            headerImg.style.display = 'none';
+            if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'inline-block';
+        }
+        if (drawerImg) {
+            drawerImg.style.display = 'none';
+            if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'inline-block';
+        }
+    }
+
+    if (drawerName) drawerName.textContent = profile.name || profile.displayName || "User";
+    if (drawerPhone) drawerPhone.textContent = profile.phone || "";
+
+    trigger.addEventListener('click', () => {
+        drawer.classList.remove('d-none');
+        document.body.style.overflow = 'hidden';
+    });
+
+    const closeDrawer = () => {
+        drawer.classList.add('d-none');
+        document.body.style.overflow = '';
+    };
+
+    closeBtn?.addEventListener('click', closeDrawer);
+    drawer.addEventListener('click', (e) => {
+        if (e.target === drawer) closeDrawer();
+    });
+}
+
 // ==========================================
 // Recent rides
 // ==========================================
@@ -471,6 +539,8 @@ window.addEventListener('user-session-ready', (event) => {
     const profile = event.detail || {};
     if (profile.role === "driver" || !profile.uid) return;
     currentUid = profile.uid;
+    updateGreeting(profile.name || profile.displayName);
+    setupSideDrawer(profile);
     initRecentRides(profile.uid);
     initSavedPlaces(profile.uid);
 });

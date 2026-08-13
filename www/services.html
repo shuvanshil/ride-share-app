@@ -26,7 +26,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css?v=20260809-merge-fix">
+    <link rel="stylesheet" href="css/style.css?v=20260813-v5">
 </head>
 <body>
     <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
@@ -36,7 +36,9 @@
     <div id="app-container" class="app-root services-app-root">
         <main id="dashboard-view" class="services-page">
             <header class="services-app-head">
-                <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
+                <div class="brand-logo">
+                    <img src="assets/liphtup-logo.jpeg" alt="LiphtUp">
+                </div>
                 <div class="app-bar-actions">
                     <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
                 </div>
@@ -50,23 +52,43 @@
             <section id="bottom-sheet" class="services-booking-shell">
                 <div class="container p-0">
                     <div class="services-location-card" aria-label="Ride locations">
+                        <div class="location-card-connector"></div>
                         <div class="location-field services-location-field">
-                            <span class="pickup-dot webicon webicon-current-location" aria-hidden="true"></span>
-                            <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
-                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></button>
+                            <div class="location-dot-wrap">
+                                <span class="pickup-dot webicon webicon-current-location" aria-hidden="true" style="color: #1A7A2E;"></span>
+                            </div>
+                            <div class="location-input-wrap">
+                                <label for="pickup-input">Pickup location</label>
+                                <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
+                            </div>
+                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location">
+                                <span class="webicon webicon-use-current-location" aria-hidden="true"></span>
+                            </button>
                         </div>
+                        <div class="location-field-divider"></div>
                         <div class="location-field services-location-field">
-                            <span class="drop-pin webicon webicon-destination" aria-hidden="true"></span>
-                            <input type="text" id="drop-input" class="form-control gy-input" placeholder="Where to? village, street, town, or landmark" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
-                            <button id="clear-drop-btn" class="field-action services-field-btn" type="button" aria-label="Clear destination">×</button>
+                            <div class="location-dot-wrap">
+                                <span class="drop-pin webicon webicon-destination" aria-hidden="true" style="color: #E53935;"></span>
+                            </div>
+                            <div class="location-input-wrap">
+                                <label for="drop-input">Where to?</label>
+                                <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination (village, street, town or landmark)" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
+                            </div>
+                            <button id="swap-locations-btn" class="field-action services-field-btn" type="button" aria-label="Swap pickup and destination" title="Swap locations">
+                                <span class="webicon webicon-swap"></span>
+                            </button>
                         </div>
                     </div>
 
+
                     <section id="services-map-card" class="services-map-card" aria-label="Passenger live location map">
                         <div class="services-map-head">
-                            <div>
+                            <div class="map-head-copy">
                                 <h2>Live pickup map</h2>
-                                <p id="services-location-status">Locking your exact location...</p>
+                                <div class="location-status-wrap">
+                                    <span class="status-dot"></span>
+                                    <p id="services-location-status">Locking your exact location...</p>
+                                </div>
                             </div>
                             <span id="services-gps-pill" class="services-gps-pill">GPS</span>
                         </div>
@@ -78,23 +100,71 @@
                             <strong id="fare-amount">Choose a ride</strong>
                         </div>
 
-                        <section id="trip-progress-panel" class="trip-progress-panel d-none" aria-live="polite">
-                            <button id="trip-progress-handle" class="trip-progress-handle" type="button" aria-expanded="false" aria-controls="trip-progress-details">
+                        <section id="trip-progress-panel" class="trip-progress-panel is-expanded d-none" aria-live="polite">
+                            <button id="trip-progress-handle" class="trip-progress-handle" type="button" aria-expanded="true" aria-controls="trip-progress-details">
                                 <span class="trip-progress-handle-bar" aria-hidden="true"></span>
-                                <span class="trip-progress-handle-label" id="trip-progress-handle-label">Trip and Driver Details (tap to open)</span>
+                                <div class="trip-progress-header">
+                                    <div class="trip-status-pill">
+                                        <span class="trip-status-dot"></span>
+                                        <span id="trip-progress-status-text" class="trip-status-text">Trip in progress</span>
+                                    </div>
+                                    <span id="trip-progress-status-subtext" class="trip-status-subtext">Tap for details</span>
+                                </div>
                                 <span class="trip-progress-handle-icon" aria-hidden="true"></span>
                             </button>
                             <div id="trip-progress-details" class="trip-progress-details">
-                                <div class="trip-progress-driver" id="trip-progress-driver"></div>
-                                <div class="trip-progress-row">
+                                <div class="compact-driver-card" id="trip-progress-driver"></div>
+
+                                <div class="highlighted-pin-section d-none" id="trip-progress-pin-box">
+                                    <div class="pin-header">
+                                        <span class="webicon webicon-safety" aria-hidden="true"></span>
+                                        <span>Pickup PIN</span>
+                                    </div>
+                                    <div class="pin-value" id="trip-progress-pin">----</div>
+                                    <p class="pin-hint">Share this PIN only with your assigned driver.</p>
+                                </div>
+
+                                <div class="trip-locations-list">
+                                    <div class="trip-location-item">
+                                        <span class="location-marker-dot pickup"></span>
+                                        <div class="location-details">
+                                            <small>Pickup location</small>
+                                            <strong id="trip-progress-pickup-name">Loading...</strong>
+                                        </div>
+                                    </div>
+                                    <div class="trip-location-item">
+                                        <span class="location-marker-dot drop"></span>
+                                        <div class="location-details">
+                                            <small>Destination</small>
+                                            <strong id="trip-progress-drop-name">Loading...</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="trip-details-actions">
+                                    <div class="d-flex gap-2 mb-2">
+                                        <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline flex-fill" type="button">
+                                            <span class="webicon webicon-share" aria-hidden="true"></span>
+                                            <span id="passenger-share-trip-label">Share Trip</span>
+                                        </button>
+                                        <button id="passenger-sos-btn" class="gy-btn gy-btn-sos flex-fill" type="button">
+                                            <span class="webicon webicon-sos" aria-hidden="true"></span> SOS
+                                        </button>
+                                    </div>
+                                    <button id="passenger-cancel-ride-btn" class="gy-btn gy-btn-danger-outline w-100" type="button">Cancel Ride</button>
+                                </div>
+
+                                <div class="trip-progress-row d-none">
                                     <div class="trip-progress-fare">
                                         <span>Fare</span>
                                         <strong id="trip-progress-fare">₹0</strong>
                                     </div>
-                                    <div class="trip-progress-pin" id="trip-progress-pin-box">
-                                        <span>Pickup PIN</span>
-                                        <strong id="trip-progress-pin">----</strong>
-                                    </div>
+                                </div>
+
+                                <div class="safety-assurance-tag mt-3">
+                                    <span class="webicon webicon-safety-check" aria-hidden="true"></span>
+                                    <span>Your safety is our priority. We monitor every trip for a safe and reliable experience.</span>
+                                    <span class="webicon webicon-view-more ms-auto" style="width: 14px; height: 14px; opacity: 0.4;"></span>
                                 </div>
                             </div>
                         </section>
@@ -106,42 +176,50 @@
                                 <h2 id="ride-service-title">Choose your ride</h2>
                                 <p>Fares use the calculated road distance.</p>
                             </div>
+                            <a href="#" class="view-all-link">View all</a>
+                        </div>
+                        <div class="ride-distance-badge">
                             <span id="ride-distance-label">0 km</span>
                         </div>
+
                         <div class="ride-service-list">
-                            <button class="ride-service-card is-selected" type="button" data-service-type="bike" aria-pressed="true">
-                                <span class="ride-service-icon" aria-hidden="true">🏍️</span>
-                                <span class="ride-service-copy">
-                                    <strong>Bike / Scooty</strong>
-                                    <small>1 passenger</small>
-                                </span>
-                                <strong class="ride-service-fare" id="bike-fare">₹0</strong>
-                            </button>
-                            <button class="ride-service-card" type="button" data-service-type="auto" aria-pressed="false">
-                                <span class="ride-service-icon" aria-hidden="true">🛺</span>
-                                <span class="ride-service-copy">
+                            <button class="ride-service-card is-selected" type="button" data-service-type="auto" aria-pressed="true">
+                                <div class="ride-service-img-wrap">
+                                    <img src="assets/vehicle-markers/auto-marker.png" alt="Auto">
+                                </div>
+                                <div class="ride-service-copy">
                                     <strong>Auto</strong>
-                                    <small>Up to 3 passengers</small>
-                                </span>
-                                <strong class="ride-service-fare" id="auto-fare">₹0</strong>
+                                    <small>3 min away · <span class="passenger-count">4</span></small>
+                                </div>
+                                <div class="ride-service-price-wrap">
+                                    <strong class="ride-service-fare" id="auto-fare">₹0</strong>
+                                    <div class="ride-service-check"></div>
+                                </div>
+                            </button>
+                            <button class="ride-service-card" type="button" data-service-type="bike" aria-pressed="false">
+                                <div class="ride-service-img-wrap">
+                                    <img src="assets/vehicle-markers/bike-marker.png" alt="Bike">
+                                </div>
+                                <div class="ride-service-copy">
+                                    <strong>Bike / Scooty</strong>
+                                    <small>2 min away · <span class="passenger-count">1</span></small>
+                                </div>
+                                <div class="ride-service-price-wrap">
+                                    <strong class="ride-service-fare" id="bike-fare">₹0</strong>
+                                    <div class="ride-service-check"></div>
+                                </div>
                             </button>
                         </div>
+
                     </section>
 
                     <section class="services-ride-actions">
                         <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Select a destination</button>
-                        <p id="trip-live-heading" class="trip-live-heading">Trip in Progress. Enjoy your Ride</p>
-                        <div id="passenger-safety-actions" class="passenger-safety-actions d-none">
-                            <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline" type="button">
-                                <span class="webicon webicon-share" aria-hidden="true"></span>
-                                <span id="passenger-share-trip-label">Share Trip</span>
-                            </button>
-                            <button id="passenger-sos-btn" class="gy-btn gy-btn-sos" type="button">
-                                <span class="webicon webicon-sos" aria-hidden="true"></span> SOS
-                            </button>
+                        <div class="safety-assurance-tag">
+                            <span class="webicon webicon-safety-check" aria-hidden="true"></span>
+                            <span>Safe, secure and reliable rides</span>
                         </div>
-                        <button id="passenger-cancel-ride-btn" class="gy-btn gy-btn-danger-outline passenger-cancel-btn d-none" type="button">Cancel Ride</button>
-                        <p id="services-action-hint">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
+                        <p id="services-action-hint" class="d-none">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>
                 </div>
             </section>
@@ -183,7 +261,7 @@
     <script src="js/core/navigation.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
     <script type="module" src="js/app.js?v=20260804-ux-polish"></script>
-    <script type="module" src="js/core/services.js?v=20260731-trip-progress-pin"></script>
+    <script type="module" src="js/core/services.js?v=20260813-null-checks"></script>
     <script src="js/core/pwa.js" defer></script>
 </body>
 </html>
