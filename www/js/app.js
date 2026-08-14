@@ -215,10 +215,43 @@ async function inviteFriends() {
         url: APP_SHARE_URL
     };
 
+    setInviteFriendsStatus("Opening share...");
+
     try {
-        await share(shareData);
+        const result = await share(shareData);
+        if (result && result.ok) {
+            setInviteFriendsStatus("");
+            return;
+        }
+        if (result && result.reason === 'aborted') {
+            setInviteFriendsStatus("");
+            return;
+        }
     } catch (err) {
-        console.error("Invite friends share error:", err);
+        console.warn("Native share failed, using fallback:", err);
+    }
+
+    // Direct fallback for Android WebView / Web app share
+    const shareText = `${APP_SHARE_TEXT} ${APP_SHARE_URL}`;
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+    
+    try {
+        const opened = window.open(whatsappUrl, '_blank');
+        if (opened) {
+            setInviteFriendsStatus("");
+            return;
+        }
+    } catch (e) {
+        console.warn("WhatsApp intent failed:", e);
+    }
+
+    const copied = await copyToClipboard(shareText);
+    if (copied) {
+        showAlert("Invite link copied to clipboard! Share it with your friends to get discounts.");
+        setInviteFriendsStatus("Link copied!");
+        setTimeout(() => setInviteFriendsStatus(""), 3000);
+    } else {
+        setInviteFriendsStatus("Could not open share option.");
     }
 }
 window.LiphtUpShareInvite = inviteFriends;

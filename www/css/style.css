@@ -291,16 +291,11 @@
 
 /* Saved Places Redesign */
 .redesign-saved-places {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin: 14px 0;
-}
-
-@media (max-width: 400px) {
-    .redesign-saved-places {
-        grid-template-columns: 1fr;
-    }
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin: 12px 0 !important;
+    width: 100% !important;
 }
 
 .dashboard-saved-chip-wrap {
@@ -446,40 +441,45 @@
     color: #D32F2F;
 }
 
-/* Home Trust Features Section - Refined Single Card */
+/* Home Trust Features Section - Fully Mobile Responsive */
 .home-trust-features {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    background: #f8faf8;
-    border: 1px solid #e2ebe4;
-    border-radius: 18px;
-    padding: 14px 6px;
-    margin: 14px 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    background: #f8faf8 !important;
+    border: 1px solid #e2ebe4 !important;
+    border-radius: 16px !important;
+    padding: 12px 2px !important;
+    margin: 12px 0 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 .trust-feature-link {
-    text-decoration: none;
-    color: inherit;
-    display: flex;
-    width: 100%;
+    text-decoration: none !important;
+    color: inherit !important;
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
 }
 
 .trust-feature-item {
     display: flex !important;
-    flex-direction: row !important;
+    flex-direction: column !important;
     align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 8px !important;
-    padding: 0 8px !important;
+    justify-content: center !important;
+    text-align: center !important;
+    gap: 6px !important;
+    padding: 2px 4px !important;
     width: 100% !important;
+    min-width: 0 !important;
     min-height: auto !important;
     background: transparent !important;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     position: relative;
+    box-sizing: border-box !important;
 }
 
 .home-trust-features > .trust-feature-item:not(:last-child),
@@ -488,12 +488,12 @@
 }
 
 .trust-icon-badge {
-    width: 40px !important;
-    height: 40px !important;
-    min-width: 40px !important;
-    min-height: 40px !important;
-    max-width: 40px !important;
-    max-height: 40px !important;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    max-width: 36px !important;
+    max-height: 36px !important;
     border-radius: 50% !important;
     display: flex !important;
     align-items: center !important;
@@ -502,6 +502,7 @@
     border: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
+    margin: 0 auto !important;
 }
 
 .trust-icon-badge.badge-green {
@@ -515,8 +516,10 @@
 .trust-text {
     display: flex !important;
     flex-direction: column !important;
-    align-items: flex-start !important;
+    align-items: center !important;
     justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
     min-width: 0 !important;
     min-height: auto !important;
     background: transparent !important;
@@ -527,21 +530,23 @@
 }
 
 .trust-text strong {
-    font-size: 12.5px;
-    font-weight: 700;
-    color: #0f172a;
-    line-height: 1.2;
-    white-space: nowrap;
-    display: block;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    line-height: 1.18 !important;
+    white-space: nowrap !important;
+    display: block !important;
+    text-align: center !important;
 }
 
 .trust-text span {
-    font-size: 10.5px;
-    font-weight: 500;
-    color: #526167;
-    line-height: 1.18;
-    margin-top: 2px;
-    display: block;
+    font-size: 9.5px !important;
+    font-weight: 500 !important;
+    color: #526167 !important;
+    line-height: 1.15 !important;
+    margin-top: 2px !important;
+    display: block !important;
+    text-align: center !important;
 }
 
 /* Heritage Banners Wrapper */
@@ -5337,11 +5342,11 @@ body.profile-editor-open {
 }
 
 .dashboard-saved-places {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin: 16px 0;
-    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin: 12px 0 !important;
+    width: 100% !important;
 }
 
 .dashboard-saved-chip-wrap {
