@@ -229,7 +229,7 @@
 
 /* Redesign Search & Home Layout */
 .passenger-home.redesign-home {
-    padding: 0 6px calc(76px + env(safe-area-inset-bottom));
+    padding: 0 10px calc(76px + env(safe-area-inset-bottom));
 }
 
 .welcome-section {
@@ -446,8 +446,8 @@
     color: #D32F2F;
 }
 
-/* Feature Row - Refined & Elegant */
-.refined-features {
+/* Home Trust Features Section - Refined Single Card */
+.home-trust-features {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     background: #f8faf8;
@@ -459,66 +459,89 @@
     width: 100%;
 }
 
-.feature-item-link {
+.trust-feature-link {
     text-decoration: none;
     color: inherit;
     display: flex;
     width: 100%;
 }
 
-.feature-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 6px;
-    width: 100%;
+.trust-feature-item {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    padding: 0 8px !important;
+    width: 100% !important;
+    min-height: auto !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
     position: relative;
 }
 
-.feature-row.refined-features > .feature-item:not(:last-child),
-.feature-row.refined-features > .feature-item-link:not(:last-child) .feature-item {
-    border-right: 1px solid #e1eae3;
+.home-trust-features > .trust-feature-item:not(:last-child),
+.home-trust-features > .trust-feature-link:not(:last-child) .trust-feature-item {
+    border-right: 1px solid #e1eae3 !important;
 }
 
-.feature-icon-badge {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+.trust-icon-badge {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
+    max-width: 40px !important;
+    max-height: 40px !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
 }
 
-.feature-icon-badge.badge-green {
-    background: #e6f4ea;
+.trust-icon-badge.badge-green {
+    background: #e6f4ea !important;
 }
 
-.feature-icon-badge.badge-yellow {
-    background: #fef7e0;
+.trust-icon-badge.badge-yellow {
+    background: #fef7e0 !important;
 }
 
-.feature-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+.trust-text {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+    min-height: auto !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
 }
 
-.feature-text strong {
+.trust-text strong {
     font-size: 12.5px;
     font-weight: 700;
     color: #0f172a;
     line-height: 1.2;
     white-space: nowrap;
+    display: block;
 }
 
-.feature-text span {
+.trust-text span {
     font-size: 10.5px;
     font-weight: 500;
     color: #526167;
     line-height: 1.18;
     margin-top: 2px;
+    display: block;
 }
 
 /* Heritage Banners Wrapper */
@@ -1592,7 +1615,7 @@ select {
 .driver-main {
     flex: 1;
     overflow-y: auto;
-    padding: 6px 6px calc(76px + env(safe-area-inset-bottom));
+    padding: 6px 10px calc(76px + env(safe-area-inset-bottom));
     background: #fff;
 }
 
