@@ -766,33 +766,43 @@ async function saveProfile(event) {
 }
 
 function bindProfileActions() {
-    document.querySelector('[data-action="rides"]').addEventListener('click', () => {
-        window.location.href = '/history.html';
+    document.querySelector('[data-action="rides"]')?.addEventListener('click', () => {
+        window.navigateToPage('history.html');
     });
-    document.querySelector('[data-action="contact"]').addEventListener('click', openContactSheet);
-    document.querySelector('[data-action="help"]').addEventListener('click', openHelpSheet);
-    document.querySelector('[data-action="safety"]').addEventListener('click', openSafetySheet);
-    document.querySelector('[data-action="refer"]').addEventListener('click', shareLiphtUp);
-    document.querySelector('[data-action="about"]').addEventListener('click', openAboutSheet);
-    document.querySelector('[data-action="terms"]').addEventListener('click', openTermsSheet);
-    document.querySelector('[data-action="privacy"]').addEventListener('click', openPrivacySheet);
+    document.querySelector('[data-action="contact"]')?.addEventListener('click', () => {
+        window.navigateToPage('contact.html');
+    });
+    document.querySelector('[data-action="help"]')?.addEventListener('click', () => {
+        window.navigateToPage('help.html');
+    });
+    document.querySelector('[data-action="safety"]')?.addEventListener('click', openSafetySheet);
+    document.querySelector('[data-action="refer"]')?.addEventListener('click', shareLiphtUp);
+    document.querySelector('[data-action="about"]')?.addEventListener('click', () => {
+        window.navigateToPage('about.html');
+    });
+    document.querySelector('[data-action="terms"]')?.addEventListener('click', () => {
+        window.navigateToPage('terms.html');
+    });
+    document.querySelector('[data-action="privacy"]')?.addEventListener('click', () => {
+        window.navigateToPage('privacy.html');
+    });
 
-    editButton.addEventListener('click', openEditor);
-    document.getElementById('profile-edit-close-btn').addEventListener('click', closeEditor);
-    document.getElementById('profile-edit-cancel-btn').addEventListener('click', closeEditor);
-    document.getElementById('profile-edit-backdrop').addEventListener('click', closeEditor);
-    document.getElementById('profile-share-close-btn').addEventListener('click', closeFallbackShareSheet);
-    document.getElementById('profile-share-backdrop').addEventListener('click', closeFallbackShareSheet);
-    document.getElementById('profile-about-close-btn').addEventListener('click', closeAboutSheet);
-    document.getElementById('profile-about-backdrop').addEventListener('click', closeAboutSheet);
-    document.getElementById('profile-contact-close-btn').addEventListener('click', closeContactSheet);
-    document.getElementById('profile-contact-backdrop').addEventListener('click', closeContactSheet);
-    document.getElementById('profile-help-close-btn').addEventListener('click', closeHelpSheet);
-    document.getElementById('profile-help-backdrop').addEventListener('click', closeHelpSheet);
-    document.getElementById('profile-privacy-close-btn').addEventListener('click', closePrivacySheet);
-    document.getElementById('profile-privacy-backdrop').addEventListener('click', closePrivacySheet);
-    document.getElementById('profile-safety-close-btn').addEventListener('click', closeSafetySheet);
-    document.getElementById('profile-safety-backdrop').addEventListener('click', closeSafetySheet);
+    editButton?.addEventListener('click', openEditor);
+    document.getElementById('profile-edit-close-btn')?.addEventListener('click', closeEditor);
+    document.getElementById('profile-edit-cancel-btn')?.addEventListener('click', closeEditor);
+    document.getElementById('profile-edit-backdrop')?.addEventListener('click', closeEditor);
+    document.getElementById('profile-share-close-btn')?.addEventListener('click', closeFallbackShareSheet);
+    document.getElementById('profile-share-backdrop')?.addEventListener('click', closeFallbackShareSheet);
+    document.getElementById('profile-about-close-btn')?.addEventListener('click', closeAboutSheet);
+    document.getElementById('profile-about-backdrop')?.addEventListener('click', closeAboutSheet);
+    document.getElementById('profile-contact-close-btn')?.addEventListener('click', closeContactSheet);
+    document.getElementById('profile-contact-backdrop')?.addEventListener('click', closeContactSheet);
+    document.getElementById('profile-help-close-btn')?.addEventListener('click', closeHelpSheet);
+    document.getElementById('profile-help-backdrop')?.addEventListener('click', closeHelpSheet);
+    document.getElementById('profile-privacy-close-btn')?.addEventListener('click', closePrivacySheet);
+    document.getElementById('profile-privacy-backdrop')?.addEventListener('click', closePrivacySheet);
+    document.getElementById('profile-safety-close-btn')?.addEventListener('click', closeSafetySheet);
+    document.getElementById('profile-safety-backdrop')?.addEventListener('click', closeSafetySheet);
     document.getElementById('profile-terms-close-btn').addEventListener('click', closeTermsSheet);
     document.getElementById('profile-terms-backdrop').addEventListener('click', closeTermsSheet);
     document.getElementById('profile-account-close-btn').addEventListener('click', closeAccountSheet);

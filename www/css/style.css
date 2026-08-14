@@ -725,33 +725,31 @@
     flex-shrink: 0;
 }
 
-.webicon-home { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
-.webicon-history { -webkit-mask-image: url("../assets/icons/webicons/history.svg"); mask-image: url("../assets/icons/webicons/history.svg"); }
-.webicon-services { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
-.webicon-profile { -webkit-mask-image: url("../assets/icons/webicons/profile.svg"); mask-image: url("../assets/icons/webicons/profile.svg"); }
-.webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
-.webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
-.webicon-use-current-location { -webkit-mask-image: url("../assets/icons/webicons/use-current-location.svg"); mask-image: url("../assets/icons/webicons/use-current-location.svg"); }
-.webicon-sos { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
-.webicon-share { -webkit-mask-image: url("../assets/icons/webicons/share.svg"); mask-image: url("../assets/icons/webicons/share.svg"); }
-.webicon-favorite { -webkit-mask-image: url("../assets/icons/webicons/favorite.svg"); mask-image: url("../assets/icons/webicons/favorite.svg"); }
-.webicon-work { -webkit-mask-image: url("../assets/icons/webicons/work.svg"); mask-image: url("../assets/icons/webicons/work.svg"); }
-.webicon-edit { -webkit-mask-image: url("../assets/icons/webicons/edit.svg"); mask-image: url("../assets/icons/webicons/edit.svg"); }
-.webicon-lock { -webkit-mask-image: url("../assets/icons/webicons/lock.svg"); mask-image: url("../assets/icons/webicons/lock.svg"); }
-/* SVG fallbacks for icons missing .png files in Android assets */
-.webicon-safety { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
-.webicon-privacy { -webkit-mask-image: url("../assets/icons/webicons/privacy-policy.svg"); mask-image: url("../assets/icons/webicons/privacy-policy.svg"); }
-.webicon-contact-us { -webkit-mask-image: url("../assets/icons/webicons/profile.svg"); mask-image: url("../assets/icons/webicons/profile.svg"); }
-.webicon-about-us { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
-.webicon-view-more { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
-.webicon-help { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
-.webicon-swap { -webkit-mask-image: url("../assets/icons/webicons/swap.svg"); mask-image: url("../assets/icons/webicons/swap.svg"); }
-.webicon-destination-marker { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
-.webicon-safety-check { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
-.webicon-cash { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
-.webicon-notification { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
-.webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
-.webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
+.webicon-home { -webkit-mask-image: url("../assets/webicons/home.svg"); mask-image: url("../assets/webicons/home.svg"); }
+.webicon-history { -webkit-mask-image: url("../assets/webicons/history.svg"); mask-image: url("../assets/webicons/history.svg"); }
+.webicon-services { -webkit-mask-image: url("../assets/webicons/services.svg"); mask-image: url("../assets/webicons/services.svg"); }
+.webicon-profile { -webkit-mask-image: url("../assets/webicons/profile.svg"); mask-image: url("../assets/webicons/profile.svg"); }
+.webicon-current-location { -webkit-mask-image: url("../assets/webicons/current-location.svg"); mask-image: url("../assets/webicons/current-location.svg"); }
+.webicon-destination { -webkit-mask-image: url("../assets/webicons/destination.svg"); mask-image: url("../assets/webicons/destination.svg"); }
+.webicon-use-current-location { -webkit-mask-image: url("../assets/webicons/use-current-location.svg"); mask-image: url("../assets/webicons/use-current-location.svg"); }
+.webicon-sos { -webkit-mask-image: url("../assets/webicons/sos.svg"); mask-image: url("../assets/webicons/sos.svg"); }
+.webicon-share { -webkit-mask-image: url("../assets/webicons/share.svg"); mask-image: url("../assets/webicons/share.svg"); }
+.webicon-favorite { -webkit-mask-image: url("../assets/webicons/favorite.svg"); mask-image: url("../assets/webicons/favorite.svg"); }
+.webicon-work { -webkit-mask-image: url("../assets/webicons/work.svg"); mask-image: url("../assets/webicons/work.svg"); }
+.webicon-edit { -webkit-mask-image: url("../assets/webicons/edit.svg"); mask-image: url("../assets/webicons/edit.svg"); }
+.webicon-lock { -webkit-mask-image: url("../assets/webicons/lock.svg"); mask-image: url("../assets/webicons/lock.svg"); }
+.webicon-safety { -webkit-mask-image: url("../assets/webicons/safety-shield.svg"); mask-image: url("../assets/webicons/safety-shield.svg"); }
+.webicon-terms { -webkit-mask-image: url("../assets/webicons/privacy-policy.svg"); mask-image: url("../assets/webicons/privacy-policy.svg"); }
+.webicon-privacy { -webkit-mask-image: url("../assets/webicons/privacy-policy.png"); mask-image: url("../assets/webicons/privacy-policy.png"); }
+.webicon-contact-us { -webkit-mask-image: url("../assets/webicons/contact-us.png"); mask-image: url("../assets/webicons/contact-us.png"); }
+.webicon-about-us { -webkit-mask-image: url("../assets/webicons/about-us.png"); mask-image: url("../assets/webicons/about-us.png"); }
+.webicon-view-more { -webkit-mask-image: url("../assets/webicons/expend-right.png"); mask-image: url("../assets/webicons/expend-right.png"); }
+.webicon-help { -webkit-mask-image: url("../assets/webicons/help.png"); mask-image: url("../assets/webicons/help.png"); }
+.webicon-swap { -webkit-mask-image: url("../assets/webicons/swap.svg"); mask-image: url("../assets/webicons/swap.svg"); }
+.webicon-destination-marker { -webkit-mask-image: url("../assets/webicons/destination.svg"); mask-image: url("../assets/webicons/destination.svg"); }
+.webicon-safety-check { -webkit-mask-image: url("../assets/webicons/safety-shield.svg"); mask-image: url("../assets/webicons/safety-shield.svg"); }
+.webicon-cash { -webkit-mask-image: url("../assets/webicons/services.svg"); mask-image: url("../assets/webicons/services.svg"); }
+.webicon-notification { -webkit-mask-image: url("../assets/webicons/sos.svg"); mask-image: url("../assets/webicons/sos.svg"); }
 
 html,
 body {
@@ -5563,3 +5561,311 @@ body.profile-editor-open {
         min-width: 130px;
     }
 }
+
+/* ==========================================================================
+   STANDALONE CONTENT PAGES (About, Contact, Privacy, Terms, Help, Safety)
+   ========================================================================== */
+
+.content-page-shell {
+    min-height: 100vh;
+    background-color: var(--gy-bg-soft, #f8f9fa);
+    padding-bottom: 90px;
+}
+
+.content-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--gy-border, #e9ecef);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.head-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border: 0;
+    background: #f1f3f5;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.head-back-btn:hover,
+.head-back-btn:active {
+    background: #e9ecef;
+}
+
+.back-chevron {
+    transform: rotate(180deg);
+    width: 18px;
+    height: 18px;
+    background-color: #212529;
+}
+
+.head-spacer {
+    width: 38px;
+}
+
+.content-hero-block {
+    text-align: center;
+    padding: 24px 20px 16px;
+    background: linear-gradient(180deg, #ffffff 0%, var(--gy-bg-soft, #f8f9fa) 100%);
+}
+
+.hero-icon-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    background: rgba(26, 122, 46, 0.1);
+    border-radius: 16px;
+    margin-bottom: 12px;
+}
+
+.hero-icon-badge .webicon {
+    width: 28px;
+    height: 28px;
+    background-color: #1A7A2E;
+}
+
+.content-hero-block h1 {
+    font-size: 24px;
+    font-weight: 800;
+    color: #111827;
+    margin-bottom: 6px;
+}
+
+.content-hero-block p {
+    font-size: 14px;
+    color: #6b7280;
+    margin: 0;
+}
+
+.content-body-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+}
+
+.content-card {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--gy-border, #e9ecef);
+}
+
+.card-section-header {
+    margin-bottom: 14px;
+}
+
+.card-section-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+}
+
+.header-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #1A7A2E;
+    background: rgba(26, 122, 46, 0.08);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.styled-list {
+    padding-left: 20px;
+    margin-bottom: 0;
+}
+
+.styled-list li {
+    font-size: 14px;
+    color: #374151;
+    line-height: 1.6;
+    margin-bottom: 8px;
+}
+
+.styled-list li:last-child {
+    margin-bottom: 0;
+}
+
+.feature-checklist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.feature-checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dashed #f1f3f5;
+    font-size: 14px;
+    color: #374151;
+}
+
+.feature-checklist li:last-child {
+    border-bottom: 0;
+}
+
+.check-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: #e6f4ea;
+    color: #1A7A2E;
+    font-size: 12px;
+    font-weight: 800;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.quote-highlight-card {
+    background: linear-gradient(135deg, #1A7A2E 0%, #135d23 100%);
+    color: #ffffff;
+    border: 0;
+}
+
+.quote-highlight-card h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 8px;
+}
+
+.quote-highlight-card p {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.quote-highlight-card a {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
+.contact-methods-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.contact-method-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.contact-method-card:hover {
+    transform: translateY(-2px);
+    border-color: #1A7A2E;
+    color: inherit;
+}
+
+.contact-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.contact-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.contact-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.contact-details strong {
+    font-size: 14px;
+    color: #111827;
+}
+
+.contact-details small {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.help-topics-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.topic-pill {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    background: #f1f3f5;
+    padding: 6px 12px;
+    border-radius: 20px;
+}
+
+.faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.faq-item {
+    border-bottom: 1px solid #f1f3f5;
+    padding-bottom: 12px;
+}
+
+.faq-item:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.faq-question {
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 4px;
+}
+
+.faq-answer {
+    font-size: 14px;
+    color: #4b5563;
+    line-height: 1.5;
+}
+
+.safety-more-link {
+    color: #1A7A2E;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.safety-more-link:hover {
+    color: #135d23;
+}
+

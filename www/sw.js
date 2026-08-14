@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-shell-v31-driver-dashboard-safety";
+const CACHE_VERSION = "liphtup-shell-v32-profile-pages-ui";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -24,6 +24,12 @@ const APP_SHELL = [
     "/profile.html",
     "/history.html",
     "/login.html",
+    "/about.html",
+    "/contact.html",
+    "/privacy.html",
+    "/terms.html",
+    "/help.html",
+    "/safety.html",
     "manifest.webmanifest",
     "fare-policy.config.json",
     "favicon.ico",
