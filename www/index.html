@@ -145,20 +145,42 @@
                             <div id="dashboard-recent-rides" class="redesign-recent-rides"></div>
                         </section>
 
-                        <div class="feature-row refined-features">
-                            <div>
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Google_Verified_Badge.svg" alt="Safe and Secure" loading="lazy" width="24" height="24">
-                                <strong>Safe & Secure</strong>
+                        <div class="home-trust-features">
+                            <div class="trust-feature-item">
+                                <div class="trust-icon-badge badge-green">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="#1A7A2E"/>
+                                        <path d="M9 12l2 2 4-4" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </div>
+                                <div class="trust-text">
+                                    <strong>Safe &amp; Secure</strong>
+                                    <span>Your safety<br>our priority</span>
+                                </div>
                             </div>
-                            <a href="/services.html">
-                                <div>
-                                    <img src="https://upload.wikimedia.org/wikipedia/commons/b/b6/Paomedia_small-n-flat_lightning.svg" alt="Quick Booking" loading="lazy" width="24" height="24">
-                                    <strong>Quick Booking</strong>
+
+                            <a href="/services.html" class="trust-feature-link">
+                                <div class="trust-feature-item">
+                                    <div class="trust-icon-badge badge-yellow">
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M13 2L3 14h7v8l10-12h-7V2z" fill="#F59E0B" stroke="#F59E0B" stroke-width="1" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                    <div class="trust-text">
+                                        <strong>Quick Booking</strong>
+                                        <span>Book in just<br>few taps</span>
+                                    </div>
                                 </div>
                             </a>
-                            <div>
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/c/c5/Modern_clock_chris_kemps_01.svg" alt="24/7 Service" loading="lazy" width="24" height="24">
-                                <strong>24/7 Service</strong>
+
+                            <div class="trust-feature-item">
+                                <div class="trust-icon-badge badge-green">
+                                    <img src="assets/icons/service-247.png" alt="24/7 Service" width="22" height="22" style="filter: invert(32%) sepia(85%) saturate(740%) hue-rotate(86deg) brightness(92%) contrast(92%);">
+                                </div>
+                                <div class="trust-text">
+                                    <strong>24/7 Service</strong>
+                                    <span>We're here<br>for you</span>
+                                </div>
                             </div>
                         </div>
 
@@ -171,11 +193,11 @@
                             </a>
                         </div>
 
-                        <section class="share-card redesign-share" aria-labelledby="share-card-heading">
+                        <section class="share-card redesign-share" id="invite-friends-card" style="cursor: pointer;" role="button" tabindex="0" aria-labelledby="share-card-heading" onclick="window.LiphtUpShareInvite && window.LiphtUpShareInvite()">
                             <div class="share-card-copy">
                                 <h2 id="share-card-heading">Ride Together,<br>Save Together.</h2>
                                 <p class="share-card-description">Invite friends &amp; get exciting<br>discounts on first few rides.</p>
-                                <button id="invite-friends-btn" class="share-card-action redesigned-btn" type="button">
+                                <button id="invite-friends-btn" class="share-card-action redesigned-btn" type="button" onclick="event.stopPropagation(); window.LiphtUpShareInvite && window.LiphtUpShareInvite()">
                                     <span>Invite Friends</span>
                                     <span class="share-card-action-arrow" aria-hidden="true">&rarr;</span>
                                 </button>

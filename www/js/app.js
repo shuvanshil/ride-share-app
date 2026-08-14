@@ -214,19 +214,47 @@ async function inviteFriends() {
         text: APP_SHARE_TEXT,
         url: APP_SHARE_URL
     };
-    const shareMessage = `${APP_SHARE_TEXT} ${APP_SHARE_URL}`;
 
-    const result = await share(shareData);
-    if (result.ok) {
-        setInviteFriendsStatus("Invite shared successfully.");
-        return;
+    setInviteFriendsStatus("Opening share...");
+
+    try {
+        const result = await share(shareData);
+        if (result && result.ok) {
+            setInviteFriendsStatus("");
+            return;
+        }
+        if (result && result.reason === 'aborted') {
+            setInviteFriendsStatus("");
+            return;
+        }
+    } catch (err) {
+        console.warn("Native share failed, using fallback:", err);
     }
 
-    if (result.reason !== 'aborted') {
-        const copied = await copyToClipboard(shareMessage);
-        setInviteFriendsStatus(copied ? "Invite link copied. Share it with friends." : "Unable to share right now. Please try again.");
+    // Direct fallback for Android WebView / Web app share
+    const shareText = `${APP_SHARE_TEXT} ${APP_SHARE_URL}`;
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+    
+    try {
+        const opened = window.open(whatsappUrl, '_blank');
+        if (opened) {
+            setInviteFriendsStatus("");
+            return;
+        }
+    } catch (e) {
+        console.warn("WhatsApp intent failed:", e);
+    }
+
+    const copied = await copyToClipboard(shareText);
+    if (copied) {
+        showAlert("Invite link copied to clipboard! Share it with your friends to get discounts.");
+        setInviteFriendsStatus("Link copied!");
+        setTimeout(() => setInviteFriendsStatus(""), 3000);
+    } else {
+        setInviteFriendsStatus("Could not open share option.");
     }
 }
+window.LiphtUpShareInvite = inviteFriends;
 
 // ==========================================
 // PASSENGER SAFETY: SOS + LIVE TRIP SHARING (Feature 3)
@@ -606,9 +634,12 @@ function resetPassengerBookingUi() {
     window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
 
     const requestBtn = document.getElementById('request-ride-btn');
-    requestBtn.innerHTML = 'Find Ride';
-    requestBtn.disabled = false;
-    requestBtn.className = "gy-btn gy-btn-primary w-100";
+    if (requestBtn) {
+        delete requestBtn.dataset.state;
+        requestBtn.innerHTML = 'Find Ride';
+        requestBtn.disabled = false;
+        requestBtn.className = "gy-btn gy-btn-primary w-100";
+    }
 }
 
 function applyServiceBookingDraft() {
@@ -803,8 +834,13 @@ async function expandRideDispatch(rideId) {
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
         if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
         if (data.searchStatus === "no_more_available_drivers") {
-            document.getElementById('request-ride-btn').innerHTML = "No nearby drivers online. You can cancel and rebook.";
-            document.getElementById('request-ride-btn').className = "btn btn-secondary w-100 fw-bold py-2";
+            const reqBtn = document.getElementById('request-ride-btn');
+            if (reqBtn) {
+                reqBtn.dataset.state = "no_drivers";
+                reqBtn.disabled = false;
+                reqBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
+                reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
+            }
         }
         return;
     } catch (error) {
@@ -964,9 +1000,35 @@ if (requestRideButton) {
 requestRideButton.addEventListener('click', async () => {
     if (!currentUser) return;
 
+    const requestBtn = document.getElementById('request-ride-btn');
+    if (requestBtn && requestBtn.dataset.state === "no_drivers") {
+        const rideId = currentPassengerRideId;
+        if (!rideId) {
+            resetPassengerBookingUi();
+            return;
+        }
+        const confirmRetry = await showConfirm("No nearby drivers found yet for your ride. Would you like to try searching again or cancel this request?", {
+            okText: "Retry Search",
+            cancelText: "Cancel Request"
+        });
+        if (confirmRetry) {
+            requestBtn.innerHTML = "⏳ Retrying driver search...";
+            requestBtn.disabled = true;
+            try {
+                await expandRideDispatch(rideId);
+            } catch (e) {
+                console.error("Retry dispatch error:", e);
+                requestBtn.disabled = false;
+                requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
+            }
+        } else {
+            await cancelRideByPassenger(rideId);
+        }
+        return;
+    }
+
     const pickupText = document.getElementById('pickup-input').value;
     const dropText = document.getElementById('drop-input').value;
-    const requestBtn = document.getElementById('request-ride-btn');
     const fareQuote = window.latestFareQuote || {};
     const requestedVehicleType = window.selectedRideService?.id || "";
     const rideRequestedAt = new Date();
@@ -1079,8 +1141,11 @@ function listenToRideStatusUpdates(rideId) {
         }
 
         if (ride.status === "pending") {
+            showPassengerCancelButton(rideId);
             if (ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers") {
-                requestBtn.innerHTML = "No nearby drivers online. You can cancel and rebook.";
+                requestBtn.dataset.state = "no_drivers";
+                requestBtn.disabled = false;
+                requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
                 requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
                 if (ride.search_status === "no_available_drivers") {
                     scheduleDispatchExpansion(rideId, ride);
@@ -1088,6 +1153,7 @@ function listenToRideStatusUpdates(rideId) {
                     clearDispatchExpansionTimer();
                 }
             } else {
+                delete requestBtn.dataset.state;
                 scheduleDispatchExpansion(rideId, ride);
                 requestBtn.innerHTML = "Searching nearby drivers...";
                 requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
@@ -1201,10 +1267,25 @@ addOptionalClickListener('passenger-history-btn', () => {
     window.location.href = '/history.html';
 });
 
-addOptionalClickListener('invite-friends-btn', () => {
-    setInviteFriendsStatus("");
-    inviteFriends();
-});
+function bindShareListeners() {
+    addOptionalClickListener('invite-friends-card', (e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        setInviteFriendsStatus("");
+        inviteFriends();
+    });
+
+    addOptionalClickListener('invite-friends-btn', (e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        setInviteFriendsStatus("");
+        inviteFriends();
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindShareListeners);
+} else {
+    bindShareListeners();
+}
 
 addOptionalClickListener('passenger-sos-btn', () => sendPassengerSos());
 addOptionalClickListener('passenger-share-trip-btn', () => togglePassengerShareTrip());
