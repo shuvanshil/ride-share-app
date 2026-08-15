@@ -76,7 +76,7 @@ watchAdminAuth(async (user) => {
     }
 });
 
-$("admin-login-btn").addEventListener("click", async () => {
+async function handleAdminLogin() {
     const email = $("admin-email").value.trim();
     const password = $("admin-password").value;
     const errorEl = $("admin-login-error");
@@ -92,6 +92,14 @@ $("admin-login-btn").addEventListener("click", async () => {
         errorEl.textContent = "Sign in failed. Check your email and password.";
         errorEl.classList.remove("d-none");
     }
+}
+
+$("admin-login-btn")?.addEventListener("click", handleAdminLogin);
+$("admin-password")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") handleAdminLogin();
+});
+$("admin-email")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") handleAdminLogin();
 });
 
 $("admin-denied-back-btn").addEventListener("click", () => showOnly(loginScreen));

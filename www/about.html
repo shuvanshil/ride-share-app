@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="js/platform/native-bridge.js"></script>
+    <script src="js/platform/routes.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1A7A2E">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="LiphtUp">
+    <title>About Us | LiphtUp</title>
+    <meta name="description" content="Learn more about LiphtUp - Tripura's trusted technology-driven ride-hailing platform.">
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+    <link rel="apple-touch-icon" href="assets/icons/liphtup-icon-180.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260814-profile-ui">
+</head>
+<body>
+    <main class="content-page-shell">
+        <header class="content-page-head">
+            <button class="head-back-btn" type="button" onclick="history.length > 1 ? history.back() : window.navigateToPage('profile.html')" aria-label="Go back">
+                <span class="webicon webicon-view-more back-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
+            <div class="head-spacer"></div>
+        </header>
+
+        <section class="content-hero-block">
+            <div class="hero-icon-badge">
+                <span class="webicon webicon-about-us" aria-hidden="true"></span>
+            </div>
+            <h1>About Us</h1>
+            <p>Smarter, safer, and reliable everyday travel for everyone.</p>
+        </section>
+
+        <section class="content-body-container">
+            <article class="content-card">
+                <div class="card-section-header">
+                    <h2>Welcome to LiphtUp</h2>
+                </div>
+                <p>Welcome to <strong>LiphtUp</strong> — a technology-driven ride-hailing platform built to make everyday travel safer, smarter, and more accessible across Tripura and beyond.</p>
+                <p>Our mission is to connect passengers with trusted local drivers through a seamless digital experience, making transportation convenient, reliable, and affordable for everyone. Whether you're commuting to work, traveling across the city, or heading to an important destination, LiphtUp is designed to help you reach there with confidence.</p>
+                <p>At LiphtUp, we believe that transportation is more than just getting from one place to another. It's about creating opportunities, supporting local drivers and communities, and improving mobility through continuous innovation.</p>
+            </article>
+
+            <div class="row g-3 my-1">
+                <div class="col-md-6">
+                    <article class="content-card h-100">
+                        <div class="card-section-header">
+                            <div class="header-tag">Goal</div>
+                            <h2>Our Mission</h2>
+                        </div>
+                        <p>To provide safe, reliable, and affordable transportation while empowering local drivers and delivering exceptional service to every passenger.</p>
+                    </article>
+                </div>
+                <div class="col-md-6">
+                    <article class="content-card h-100">
+                        <div class="card-section-header">
+                            <div class="header-tag">Future</div>
+                            <h2>Our Vision</h2>
+                        </div>
+                        <p>To become one of India's most trusted mobility platforms by connecting communities through innovative, secure, and customer-focused transportation solutions.</p>
+                    </article>
+                </div>
+            </div>
+
+            <article class="content-card">
+                <div class="card-section-header">
+                    <h2>Why Choose LiphtUp?</h2>
+                </div>
+                <ul class="feature-checklist">
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <div><strong>Safe &amp; Reliable Rides:</strong> Identity verified drivers and transparent trip tracking for your peace of mind.</div>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <div><strong>Fast &amp; Easy Booking:</strong> Quick pickup matching with real-time driver tracking.</div>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <div><strong>Transparent &amp; Fair Pricing:</strong> Clear fare breakdown with no hidden charges.</div>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <div><strong>Verified Drivers &amp; Vehicles:</strong> Vehicle and driver details shared upfront before every ride.</div>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <div><strong>Customer-First Support:</strong> Dedicated support team ready to assist whenever you need help.</div>
+                    </li>
+                    <li>
+                        <span class="check-icon">✓</span>
+                        <div><strong>Community &amp; Innovation:</strong> Continuous technological improvements to serve riders and drivers better.</div>
+                    </li>
+                </ul>
+            </article>
+
+            <article class="content-card quote-highlight-card">
+                <h3>Every Journey Matters</h3>
+                <p class="mb-0">At LiphtUp, every journey matters. We are committed to building a transportation platform that people can trust — one ride at a time.</p>
+            </article>
+        </section>
+
+        <nav class="bottom-nav profile-bottom-nav">
+            <button type="button" onclick="window.navigateToPage('index.html')"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
+            <button type="button" onclick="window.navigateToPage('services.html')"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
+            <button type="button" onclick="window.navigateToPage('history.html')"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
+            <button class="active" type="button" onclick="window.navigateToPage('profile.html')"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+        </nav>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/core/pwa.js" defer></script>
+</body>
+</html>

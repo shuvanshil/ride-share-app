@@ -16,7 +16,8 @@ import { getCurrentPosition } from './platform/geolocation.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
-const DISPATCH_TIMEOUT_MS = 45000;
+const DISPATCH_TIMEOUT_MS = 15000;
+const MAX_SEARCH_DURATION_MS = 100000; // 100 seconds search timeout limit
 const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
 const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
@@ -27,6 +28,8 @@ const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my loca
 let currentUser = null;
 let activeRideListener = null;          // For Passenger monitoring
 let activeDispatchExpansionTimer = null;
+let activeSearchTimeoutTimer = null;
+const passengerSearchStartTimes = {};
 
 let currentPassengerRideId = null;
 let currentPassengerRideData = null;
@@ -427,8 +430,8 @@ function renderPassengerDriverCard(ride) {
                 <span class="driver-verified-badge">✓ Verified Driver</span>
             </div>
             ${driverPhone ? `
-                <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
-                    Call Driver
+                <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold d-inline-flex align-items-center gap-1">
+                    <span class="webicon webicon-call" style="width:14px;height:14px;"></span> Call Driver
                 </a>
             ` : ""}
         </div>
@@ -545,7 +548,7 @@ function showTripProgressPanel(ride) {
                 <img src="assets/vehicle-markers/${vehicleType}-marker.png" class="driver-vehicle-image" alt="${vehicleType}">
                 ${driverPhone ? `
                     <a href="tel:${driverPhone}" class="call-driver-btn-compact">
-                         <span class="webicon webicon-contact-us" style="width:14px;height:14px;"></span> Call
+                         <span class="webicon webicon-call" style="width:14px;height:14px;"></span> Call
                     </a>
                 ` : ""}
             </div>
@@ -582,11 +585,14 @@ function hideTripProgressPanel() {
 }
 
 function dispatchPassengerDriverLocation(ride) {
-    if (!ride?.driverLocation) return;
+    if (!ride) return;
+    const location = ride.driverLocation || (ride.driver_id ? { lat: Number(ride.pickup_lat), lng: Number(ride.pickup_lng) } : null);
+    if (!location || !Number.isFinite(Number(location.lat)) || !Number.isFinite(Number(location.lng))) return;
 
     window.dispatchEvent(new CustomEvent('driver-location-updated', {
         detail: {
-            ...ride.driverLocation,
+            ...location,
+            driverLocation: location,
             driver_id: ride.driver_id,
             driverId: ride.driver_id,
             driver_name: ride.driver_name,
@@ -594,9 +600,9 @@ function dispatchPassengerDriverLocation(ride) {
             vehicleType: ride.vehicle_type,
             vehicle_model: ride.vehicle_model,
             vehicleModel: ride.vehicle_model,
-            driverHeading: ride.driverHeading,
-            driverSpeed: ride.driverSpeed,
-            driverAccuracy: ride.driverAccuracy,
+            driverHeading: ride.driverHeading ?? location.driverHeading,
+            driverSpeed: ride.driverSpeed ?? location.driverSpeed,
+            driverAccuracy: ride.driverAccuracy ?? location.driverAccuracy,
             rideStatus: ride.status,
             status: ride.status,
             pickup_lat: ride.pickup_lat,
@@ -608,9 +614,11 @@ function dispatchPassengerDriverLocation(ride) {
 }
 
 function showPassengerCancelButton(rideId) {
-    currentPassengerRideId = rideId;
+    currentPassengerRideId = rideId || currentPassengerRideId;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.remove('d-none');
+    const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
+    if (cancelReqBtn) cancelReqBtn.classList.remove('d-none');
     document.getElementById('passenger-safety-actions')?.classList.remove('d-none');
 }
 
@@ -619,6 +627,8 @@ function hidePassengerCancelButton() {
     currentPassengerRideData = null;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.add('d-none');
+    const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
+    if (cancelReqBtn) cancelReqBtn.classList.add('d-none');
     document.getElementById('passenger-safety-actions')?.classList.add('d-none');
     setShareTripButtonState(false);
 }
@@ -811,13 +821,75 @@ function clearDispatchExpansionTimer() {
         clearTimeout(activeDispatchExpansionTimer);
         activeDispatchExpansionTimer = null;
     }
+    if (activeSearchTimeoutTimer) {
+        clearTimeout(activeSearchTimeoutTimer);
+        activeSearchTimeoutTimer = null;
+    }
 }
 
-function scheduleDispatchExpansion(rideId, ride) {
+function getRideSearchStartTime(rideId, ride = {}) {
+    if (passengerSearchStartTimes[rideId]) {
+        return passengerSearchStartTimes[rideId];
+    }
+    let timestamp = null;
+    if (ride.search_started_at) {
+        timestamp = typeof ride.search_started_at.toMillis === 'function'
+            ? ride.search_started_at.toMillis()
+            : Number(ride.search_started_at);
+    } else if (ride.requestedAt) {
+        timestamp = typeof ride.requestedAt.toMillis === 'function'
+            ? ride.requestedAt.toMillis()
+            : Number(ride.requestedAt);
+    } else if (ride.createdAt) {
+        timestamp = typeof ride.createdAt.toMillis === 'function'
+            ? ride.createdAt.toMillis()
+            : Number(ride.createdAt);
+    }
+    if (timestamp && Number.isFinite(timestamp)) {
+        passengerSearchStartTimes[rideId] = timestamp;
+        return timestamp;
+    }
+    const now = Date.now();
+    passengerSearchStartTimes[rideId] = now;
+    return now;
+}
+
+function handleSearchTimeout(rideId) {
+    clearDispatchExpansionTimer();
+    const reqBtn = document.getElementById('request-ride-btn');
+    if (reqBtn) {
+        reqBtn.dataset.state = "retry_search";
+        reqBtn.disabled = false;
+        reqBtn.innerHTML = "🔄 No drivers accepted · Tap to Retry";
+        reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
+    }
+    showPassengerCancelButton(rideId);
+}
+
+function scheduleDispatchExpansion(rideId, ride = {}) {
     if (!currentUser || currentUser.role !== "passenger" || ride.status !== "pending") return;
+
     clearDispatchExpansionTimer();
 
-    activeDispatchExpansionTimer = setTimeout(() => expandRideDispatch(rideId), ride.dispatch_timeout_ms || DISPATCH_TIMEOUT_MS);
+    const startTime = getRideSearchStartTime(rideId, ride);
+    const elapsed = Date.now() - startTime;
+    const remainingMs = MAX_SEARCH_DURATION_MS - elapsed;
+
+    if (remainingMs <= 0 || ride.search_status === "no_more_available_drivers" || ride.search_status === "no_available_drivers" || ride.search_status === "timeout") {
+        handleSearchTimeout(rideId);
+        return;
+    }
+
+    // Schedule overall 100s timeout stop
+    activeSearchTimeoutTimer = setTimeout(() => {
+        handleSearchTimeout(rideId);
+    }, remainingMs);
+
+    // Schedule periodic dispatch expansion (every 15s)
+    const nextExpansionInterval = Math.min(ride.dispatch_timeout_ms || 15000, remainingMs);
+    activeDispatchExpansionTimer = setTimeout(() => {
+        expandRideDispatch(rideId);
+    }, nextExpansionInterval);
 }
 
 async function expandRideDispatch(rideId) {
@@ -833,16 +905,22 @@ async function expandRideDispatch(rideId) {
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
         if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
-        if (data.searchStatus === "no_more_available_drivers") {
-            const reqBtn = document.getElementById('request-ride-btn');
-            if (reqBtn) {
-                reqBtn.dataset.state = "no_drivers";
-                reqBtn.disabled = false;
-                reqBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
-                reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
+
+        const reqBtn = document.getElementById('request-ride-btn');
+        if (reqBtn) {
+            const startTime = getRideSearchStartTime(rideId, currentPassengerRideData || {});
+            const elapsed = Date.now() - startTime;
+            if (elapsed >= MAX_SEARCH_DURATION_MS || data.searchStatus === "no_more_available_drivers" || data.searchStatus === "no_available_drivers") {
+                handleSearchTimeout(rideId);
+            } else {
+                delete reqBtn.dataset.state;
+                reqBtn.disabled = true;
+                reqBtn.innerHTML = "Searching nearby drivers...";
+                reqBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
+                scheduleDispatchExpansion(rideId, currentPassengerRideData || { dispatch_timeout_ms: DISPATCH_TIMEOUT_MS });
             }
         }
-        return;
+        return data;
     } catch (error) {
         console.error("Ride dispatch expansion failed:", error);
     }
@@ -896,6 +974,10 @@ function getRideHistoryAddress(ride = {}, kind = "pickup") {
 window.addEventListener('user-session-ready', (e) => {
     currentUser = e.detail;
     console.log(`Session validated. Routing profile role: ${currentUser.role}`);
+
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole(currentUser.role || "");
+    }
 
     const isCurrent = window.isCurrentPage || ((p) => window.location.pathname.includes(p));
     const isDriverPage = isCurrent('driver.html') || isCurrent('driver-service.html');
@@ -1001,28 +1083,25 @@ requestRideButton.addEventListener('click', async () => {
     if (!currentUser) return;
 
     const requestBtn = document.getElementById('request-ride-btn');
-    if (requestBtn && requestBtn.dataset.state === "no_drivers") {
+    if (requestBtn && (requestBtn.dataset.state === "no_drivers" || requestBtn.dataset.state === "retry_search")) {
         const rideId = currentPassengerRideId;
         if (!rideId) {
             resetPassengerBookingUi();
             return;
         }
-        const confirmRetry = await showConfirm("No nearby drivers found yet for your ride. Would you like to try searching again or cancel this request?", {
-            okText: "Retry Search",
-            cancelText: "Cancel Request"
-        });
-        if (confirmRetry) {
-            requestBtn.innerHTML = "⏳ Retrying driver search...";
-            requestBtn.disabled = true;
-            try {
-                await expandRideDispatch(rideId);
-            } catch (e) {
-                console.error("Retry dispatch error:", e);
-                requestBtn.disabled = false;
-                requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
-            }
-        } else {
-            await cancelRideByPassenger(rideId);
+        passengerSearchStartTimes[rideId] = Date.now();
+        delete requestBtn.dataset.state;
+        requestBtn.disabled = true;
+        requestBtn.innerHTML = "Searching nearby drivers...";
+        requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
+        showPassengerCancelButton(rideId);
+
+        try {
+            await expandRideDispatch(rideId);
+            scheduleDispatchExpansion(rideId, currentPassengerRideData || {});
+        } catch (e) {
+            console.error("Retry dispatch error:", e);
+            handleSearchTimeout(rideId);
         }
         return;
     }
@@ -1142,18 +1221,14 @@ function listenToRideStatusUpdates(rideId) {
 
         if (ride.status === "pending") {
             showPassengerCancelButton(rideId);
-            if (ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers") {
-                requestBtn.dataset.state = "no_drivers";
-                requestBtn.disabled = false;
-                requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
-                requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
-                if (ride.search_status === "no_available_drivers") {
-                    scheduleDispatchExpansion(rideId, ride);
-                } else {
-                    clearDispatchExpansionTimer();
-                }
+            const startTime = getRideSearchStartTime(rideId, ride);
+            const elapsed = Date.now() - startTime;
+
+            if (elapsed >= MAX_SEARCH_DURATION_MS || ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers" || ride.search_status === "timeout") {
+                handleSearchTimeout(rideId);
             } else {
                 delete requestBtn.dataset.state;
+                requestBtn.disabled = true;
                 scheduleDispatchExpansion(rideId, ride);
                 requestBtn.innerHTML = "Searching nearby drivers...";
                 requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
@@ -1164,12 +1239,18 @@ function listenToRideStatusUpdates(rideId) {
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
             
+            if (typeof window.clearRouteAndDestination === 'function') {
+                window.clearRouteAndDestination();
+            }
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "arrived") {
             showTripProgressPanel(ride);
             requestBtn.innerHTML = 'Driver arrived at pickup.';
             requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
 
+            if (typeof window.clearRouteAndDestination === 'function') {
+                window.clearRouteAndDestination();
+            }
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "started") {
             showTripProgressPanel(ride);
@@ -1289,3 +1370,11 @@ if (document.readyState === 'loading') {
 
 addOptionalClickListener('passenger-sos-btn', () => sendPassengerSos());
 addOptionalClickListener('passenger-share-trip-btn', () => togglePassengerShareTrip());
+addOptionalClickListener('cancel-ride-request-btn', async () => {
+    if (currentPassengerRideId) {
+        await cancelRideByPassenger(currentPassengerRideId);
+    } else {
+        resetPassengerBookingUi();
+        await showAlert("Ride request cancelled.");
+    }
+});

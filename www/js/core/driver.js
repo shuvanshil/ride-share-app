@@ -281,6 +281,9 @@ function addOptionalClickListener(elementId, handler) {
 
 function cacheProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole("driver");
+    }
     try {
         sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
             ...cacheableProfile,
@@ -672,12 +675,12 @@ function renderActivePassengerContact(ride = {}) {
             </div>
             ${callablePhone ? `
                 <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
-                    <span aria-hidden="true">☎</span>
+                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
                     <small>Call</small>
                 </a>
             ` : `
                 <button class="active-passenger-call" type="button" disabled aria-label="Passenger phone unavailable">
-                    <span aria-hidden="true">☎</span>
+                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
                     <small>Call</small>
                 </button>
             `}

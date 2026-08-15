@@ -50,6 +50,9 @@ function getCachedProfile() {
 
 function cacheProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole(profile?.role || "");
+    }
     try {
         sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
             ...cacheableProfile,
@@ -110,6 +113,9 @@ function renderSession(profile) {
 function dispatchSessionReady(profile) {
     if (sessionReadyDispatched) return;
     sessionReadyDispatched = true;
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole(profile?.role || "");
+    }
     window.dispatchEvent(new CustomEvent('user-session-ready', { detail: profile }));
 
     // Only hide if we aren't mid-redirect
@@ -141,6 +147,9 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
     try {
         showPageLoader("Logging out...");
         clearCachedProfile();
+        if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+            window.LiphtUpNative.setUserRole("");
+        }
         // Fire and forget driver offline update
         markCurrentDriverOffline();
         await signOut(auth);
@@ -156,6 +165,9 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         clearCachedProfile();
+        if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+            window.LiphtUpNative.setUserRole("");
+        }
         setGuestLoginVisibility(true);
         // Only redirect to home if we aren't already on a guest-allowed page
         const isProtectedPage = window.location.pathname.includes('driver.html') ||
@@ -181,15 +193,16 @@ onAuthStateChanged(auth, async (user) => {
         const profile = userDocSnap.data();
         cacheProfile(profile);
 
+        // Always dispatch session ready so role and events are synced on all pages
+        dispatchSessionReady(profile);
+
         // Only perform automatic routing/redirects if we are on the entry page (index.html)
         const path = window.location.pathname;
         const isEntryPage = path === "/" || path === "" || path.includes('index.html');
 
         if (isEntryPage) {
             renderSession(profile);
-            dispatchSessionReady(profile);
         } else {
-            // On other pages, just ensure the loader eventually dies
             hideInitialLoader();
         }
     } catch (error) {

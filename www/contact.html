@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="js/platform/native-bridge.js"></script>
+    <script src="js/platform/routes.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1A7A2E">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="LiphtUp">
+    <title>Contact Us | LiphtUp</title>
+    <meta name="description" content="Get in touch with the LiphtUp support team for assistance, inquiries, or feedback.">
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+    <link rel="apple-touch-icon" href="assets/icons/liphtup-icon-180.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260814-profile-ui">
+</head>
+<body>
+    <main class="content-page-shell">
+        <header class="content-page-head">
+            <button class="head-back-btn" type="button" onclick="history.length > 1 ? history.back() : window.navigateToPage('profile.html')" aria-label="Go back">
+                <span class="webicon webicon-view-more back-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
+            <div class="head-spacer"></div>
+        </header>
+
+        <section class="content-hero-block">
+            <div class="hero-icon-badge">
+                <span class="webicon webicon-contact-us" aria-hidden="true"></span>
+            </div>
+            <h1>Contact Us</h1>
+            <p>We're here to help. Get in touch with our team anytime.</p>
+        </section>
+
+        <section class="content-body-container">
+            <article class="content-card">
+                <div class="card-section-header">
+                    <h2>Reach Us</h2>
+                </div>
+                <p>Have a question, need assistance with a ride, or want to get in touch with the LiphtUp team? Reach out to us through any of the channels below.</p>
+                
+                <div class="contact-methods-grid">
+                    <a href="mailto:liphtup.in@gmail.com" class="contact-method-card">
+                        <div class="contact-icon">📧</div>
+                        <div class="contact-details">
+                            <span class="contact-label">Email Support</span>
+                            <strong>liphtup.in@gmail.com</strong>
+                            <small>Send us an email anytime</small>
+                        </div>
+                    </a>
+
+                    <a href="tel:+917628901050" class="contact-method-card">
+                        <div class="contact-icon">📞</div>
+                        <div class="contact-details">
+                            <span class="contact-label">Phone Support</span>
+                            <strong>+91 7628901050 / 9436908760</strong>
+                            <small>Mon-Sun, 9:00 AM - 9:00 PM IST</small>
+                        </div>
+                    </a>
+
+                    <div class="contact-method-card static-card">
+                        <div class="contact-icon">📍</div>
+                        <div class="contact-details">
+                            <span class="contact-label">Location</span>
+                            <strong>Tripura, India</strong>
+                            <small>Headquarters &amp; Operations</small>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="content-card">
+                <div class="card-section-header">
+                    <h2>How We Can Help</h2>
+                </div>
+                <p>Whether you need help with your account, ride bookings, fare inquiries, or have business and partnership opportunities, our dedicated team is here to support you.</p>
+                <div class="help-topics-pills">
+                    <span class="topic-pill">🚗 Ride Support</span>
+                    <span class="topic-pill">👤 Account &amp; Profile</span>
+                    <span class="topic-pill">💳 Fare &amp; Payment</span>
+                    <span class="topic-pill">🛡️ Safety &amp; Trust</span>
+                    <span class="topic-pill">💼 Driver Onboarding</span>
+                    <span class="topic-pill">🤝 Partnerships</span>
+                </div>
+            </article>
+
+            <article class="content-card quote-highlight-card">
+                <h3>Thank you for choosing LiphtUp</h3>
+                <p class="mb-0">We aim to respond to all inquiries as quickly as possible and provide the best support experience for riders and drivers alike.</p>
+            </article>
+        </section>
+
+        <nav class="bottom-nav profile-bottom-nav">
+            <button type="button" onclick="window.navigateToPage('index.html')"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
+            <button type="button" onclick="window.navigateToPage('services.html')"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
+            <button type="button" onclick="window.navigateToPage('history.html')"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
+            <button class="active" type="button" onclick="window.navigateToPage('profile.html')"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+        </nav>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/core/pwa.js" defer></script>
+</body>
+</html>
