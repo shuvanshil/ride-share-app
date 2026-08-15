@@ -82,27 +82,73 @@ function saveIgnoredRideIds(rideIds) {
     }
 }
 
+function renderOfflineEmptyState(container) {
+    if (!container) return;
+    container.className = "offline-empty-card";
+    container.innerHTML = `
+        <div class="offline-illustration-wrapper mb-3">
+            <img src="assets/driver-offline-illustration.png" alt="You're Offline" class="offline-illustration-img">
+        </div>
+        <h4 class="fw-bold text-dark mb-1">You're Offline</h4>
+        <p class="offline-subtitle fw-bold text-secondary mb-2">Duty switch is off</p>
+        <p class="offline-desc text-muted small mb-4">Turn online to get new ride requests and start earning.</p>
+        <button id="go-online-btn" class="btn-go-online" type="button">
+            <span>⚡</span> Go Online
+        </button>
+    `;
+    const goOnlineBtn = container.querySelector('#go-online-btn');
+    if (goOnlineBtn) {
+        goOnlineBtn.addEventListener('click', () => {
+            const dutySwitch = document.getElementById('driver-duty-switch');
+            if (dutySwitch && !dutySwitch.checked) {
+                dutySwitch.click();
+            }
+        });
+    }
+}
+
+function renderOnlineEmptyState(container) {
+    if (!container) return;
+    container.className = "online-empty-card";
+    container.innerHTML = `
+        <div class="searching-icon-circle">
+            <span>📡</span>
+        </div>
+        <h4 class="fw-bold text-dark mb-1">You're all set!</h4>
+        <p class="text-muted small mb-0">New ride requests will appear here.</p>
+    `;
+}
+
 function ignoreRideRequest(rideId) {
     if (!rideId || !currentUser?.uid) return;
     const ignored = new Set(loadIgnoredRideIds());
     ignored.add(rideId);
     saveIgnoredRideIds(Array.from(ignored));
 
-    const card = document.querySelector(`.card[data-ride-id="${rideId}"]`);
+    const card = document.querySelector(`.ride-request-card[data-ride-id="${rideId}"], .card[data-ride-id="${rideId}"]`);
     if (card) card.remove();
 
     const ridesContainer = document.getElementById('available-rides-list');
-    if (!ridesContainer.querySelector('.card')) {
+    const remainingCards = ridesContainer ? ridesContainer.querySelectorAll('.ride-request-card, .card[data-ride-id]').length : 0;
+    const requestsBadge = document.getElementById('incoming-requests-badge');
+    const requestsCount = document.getElementById('incoming-requests-count');
+
+    if (remainingCards === 0) {
         stopRideRequestRing();
         const noRidesMsg = document.getElementById('no-rides-msg');
-        if (noRidesMsg) noRidesMsg.classList.remove('d-none');
+        if (noRidesMsg) {
+            noRidesMsg.classList.remove('d-none');
+            if (isDriverDutyOnline()) {
+                renderOnlineEmptyState(noRidesMsg);
+            } else {
+                renderOfflineEmptyState(noRidesMsg);
+            }
+        }
+        if (requestsBadge) requestsBadge.classList.add('d-none');
+    } else if (requestsBadge && requestsCount) {
+        requestsCount.textContent = `${remainingCards} New`;
     }
 
-    // Also tell the server this driver declined the request, so it's
-    // recorded in rejected_driver_ids (kept out of this driver's queue even
-    // after a page reload) and counted in the driver dashboard's
-    // acceptance-rate stat. Best-effort: the instant local hide above is
-    // the important UX, this just keeps state in sync server-side.
     rejectRideThroughBackend(rideId).catch((error) => {
         console.warn("Could not record ride decline server-side:", error);
     });
@@ -380,6 +426,13 @@ function showDriverReview(profile) {
     document.getElementById('driver-review-view')?.classList.add('d-flex');
 }
 
+function getGreetingPrefix() {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return "Good morning";
+    if (hour >= 12 && hour < 17) return "Good afternoon";
+    return "Good evening";
+}
+
 function showDriverHome(profile) {
     document.getElementById('driver-review-view')?.classList.add('d-none');
     document.getElementById('driver-review-view')?.classList.remove('d-flex');
@@ -387,7 +440,23 @@ function showDriverHome(profile) {
     document.getElementById('driver-view')?.classList.add('d-flex');
 
     const welcomeName = document.getElementById('driver-welcome-name');
-    if (welcomeName) welcomeName.innerText = `Welcome, ${profile.name || "Driver"}`;
+    if (welcomeName) {
+        const rawName = String(profile.name || profile.displayName || "Driver").trim();
+        const prefix = getGreetingPrefix();
+        welcomeName.innerText = `${prefix}, ${rawName} 👋`;
+    }
+
+    const initialsEl = document.getElementById('driver-avatar-initials');
+    const avatarCircle = document.getElementById('driver-greeting-avatar');
+    if (avatarCircle) {
+        if (profile.profile_photo_url || profile.avatarUrl) {
+            avatarCircle.innerHTML = `<img src="${profile.profile_photo_url || profile.avatarUrl}" alt="Avatar">`;
+        } else if (initialsEl) {
+            const rawName = String(profile.name || "Driver").trim();
+            const initials = rawName.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase() || "DR";
+            initialsEl.innerText = initials;
+        }
+    }
 }
 
 function getNotificationEligibleUntilDate() {
@@ -415,29 +484,43 @@ function stopPresenceTracking() {
 function updateDutySwitchUi() {
     const switchInput = document.getElementById('driver-duty-switch');
     const pill = document.getElementById('driver-duty-pill');
+    const pillText = document.getElementById('driver-duty-pill-text');
     const label = document.getElementById('driver-duty-state');
     const helper = document.getElementById('driver-duty-helper');
+    const badge = document.getElementById('incoming-requests-badge');
     const noRidesMsg = document.getElementById('no-rides-msg');
 
-    if (switchInput) switchInput.checked = isDriverDutyOnline();
+    const online = isDriverDutyOnline();
+
+    if (switchInput) switchInput.checked = online;
     if (pill) {
-        pill.textContent = isDriverDutyOnline() ? "Online" : "Offline";
-        pill.classList.toggle('offline', !isDriverDutyOnline());
+        pill.classList.toggle('online', online);
+        pill.classList.toggle('offline', !online);
     }
-    if (label) label.textContent = isDriverDutyOnline() ? "Online for rides" : "Offline";
+    if (pillText) {
+        pillText.textContent = online ? "Online" : "Offline";
+    }
+    if (label) {
+        label.textContent = online ? "Online" : "Offline";
+    }
     if (helper) {
-        helper.textContent = isDriverDutyOnline()
+        helper.textContent = online
             ? "Ride alerts can continue while you stay online, even if the app is minimized."
             : "Passengers cannot see you and ride alerts are paused.";
     }
+
     if (noRidesMsg) {
-        noRidesMsg.querySelector('span').innerText = isDriverDutyOnline() ? "Live" : "Offline";
-        noRidesMsg.querySelector('strong').innerText = isDriverDutyOnline()
-            ? "Searching nearby passengers"
-            : "Duty switch is off";
-        noRidesMsg.querySelector('p').innerText = isDriverDutyOnline()
-            ? "Keep location enabled to receive targeted requests."
-            : "Turn online when you are ready to receive ride requests.";
+        if (!online) {
+            renderOfflineEmptyState(noRidesMsg);
+            if (badge) badge.classList.add('d-none');
+        } else {
+            const ridesContainer = document.getElementById('available-rides-list');
+            const hasCards = ridesContainer ? ridesContainer.querySelectorAll('.ride-request-card, .card[data-ride-id]').length > 0 : false;
+            if (!hasCards) {
+                renderOnlineEmptyState(noRidesMsg);
+                if (badge) badge.classList.add('d-none');
+            }
+        }
     }
 }
 
@@ -842,6 +925,8 @@ async function restoreDriverActiveRide() {
 function initDriverJobsStream() {
     const ridesContainer = document.getElementById('available-rides-list');
     const noRidesMsg = document.getElementById('no-rides-msg');
+    const requestsBadge = document.getElementById('incoming-requests-badge');
+    const requestsCount = document.getElementById('incoming-requests-count');
 
     const q = query(
         collection(db, "rides"),
@@ -855,10 +940,15 @@ function initDriverJobsStream() {
         if (querySnapshot.empty || !isDriverDutyOnline()) {
             stopRideRequestRing();
             noRidesMsg.classList.remove('d-none');
+            if (!isDriverDutyOnline()) {
+                renderOfflineEmptyState(noRidesMsg);
+            } else {
+                renderOnlineEmptyState(noRidesMsg);
+            }
+            if (requestsBadge) requestsBadge.classList.add('d-none');
             return;
         }
 
-        noRidesMsg.classList.add('d-none');
         let renderedRideCount = 0;
         let firstPendingRide = null;
 
@@ -871,6 +961,7 @@ function initDriverJobsStream() {
             if (ride.status !== "pending" || ride.driver_id) return;
             if ((ride.rejected_driver_ids || []).includes(currentUser.uid)) return;
             if (ride.vehicle_type && ride.vehicle_type !== inferVehicleTypeFromProfile(currentUser)) return;
+
             renderedRideCount += 1;
             if (!firstPendingRide) {
                 firstPendingRide = {
@@ -879,38 +970,75 @@ function initDriverJobsStream() {
                 };
             }
 
+            const passengerPhone = String(ride.passenger_phone || ride.passengerPhone || "").trim();
+            const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
+            const passengerName = escapeHtml(ride.passenger_name || "Passenger");
+            const fareAmount = Math.round(Number(ride.fare) || 0);
+            const passCount = ride.passenger_capacity || (ride.vehicle_type === "auto" ? 3 : 1);
+
             const card = document.createElement('div');
-            card.className = "card p-3 mb-3 border-start border-primary border-4 shadow-sm";
+            card.className = "ride-request-card card shadow-sm p-3 mb-3";
             card.dataset.rideId = rideId;
             card.innerHTML = `
-                <div class="d-flex justify-content-between align-items-start">
-                    <div>
-                        <h6 class="fw-bold mb-1 text-dark">${ride.passenger_name}</h6>
-                        <span class="badge bg-light text-dark border mb-2">${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${ride.passenger_capacity || (ride.vehicle_type === "auto" ? 4 : 1)} passenger${Number(ride.passenger_capacity || 1) === 1 ? "" : "s"}</span>
-                        <p class="mb-1 text-muted small"><strong>From:</strong> ${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</p>
-                        <p class="mb-2 text-muted small"><strong>To:</strong> ${escapeHtml(getRideDisplayAddress(ride, "drop"))}</p>
-                        <div class="driver-location-preview-row">
-                            ${renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng)}
-                            ${renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)}
+                <div class="request-header-row">
+                    <div class="passenger-name-wrap">
+                        <h5 class="passenger-name mb-1">${passengerName}</h5>
+                        <span class="vehicle-capacity-badge">
+                            <span>👤</span> ${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${passCount} passenger${Number(passCount) === 1 ? "" : "s"}
+                        </span>
+                    </div>
+                    <div class="d-flex flex-column align-items-end gap-1">
+                        <span class="fare-badge">₹${fareAmount}</span>
+                        ${callablePhone ? `
+                            <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
+                                <span>📞</span> Call
+                            </a>
+                        ` : `
+                            <button class="btn-call-passenger disabled mt-1" type="button" disabled aria-label="Phone unavailable">
+                                <span>📞</span> Call
+                            </button>
+                        `}
+                    </div>
+                </div>
+
+                <div class="route-display-box my-3">
+                    <div class="route-step pickup">
+                        <span class="route-dot green"></span>
+                        <div class="route-text-group">
+                            <span class="route-label">From: </span>
+                            <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</span>
                         </div>
                     </div>
-                    <span class="badge bg-primary fs-6">Rs ${ride.fare}</span>
+                    <div class="route-step drop">
+                        <span class="route-dot red"></span>
+                        <div class="route-text-group">
+                            <span class="route-label">To: </span>
+                            <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "drop"))}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="ride-request-metrics" aria-label="Ride distance and estimated time">
-                    <div>
+
+                <div class="location-preview-row">
+                    ${renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng)}
+                    ${renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)}
+                </div>
+
+                <div class="trip-metrics-card">
+                    <div class="metric-column">
                         <small>Distance</small>
                         <strong>${formatRideDistance(ride.distance_km)}</strong>
                     </div>
-                    <div>
+                    <div class="metric-column text-end">
                         <small>Estimated time</small>
                         <strong>${formatRideDuration(ride.duration_minutes)}</strong>
                     </div>
                 </div>
-                <button class="btn btn-sm btn-success w-100 fw-bold mt-2 accept-job-btn" data-id="${rideId}">
-                    Accept Ride Request
+
+                <button class="btn-accept-ride accept-job-btn" data-id="${rideId}">
+                    <span>✓</span> Accept Ride Request
                 </button>
-                <button class="btn btn-sm btn-outline-secondary w-100 fw-bold mt-2 ignore-job-btn" data-id="${rideId}">
-                    Ignore
+                <button class="btn-ignore-ride ignore-job-btn" data-id="${rideId}">
+                    <span>✕</span> Ignore
                 </button>
             `;
 
@@ -920,15 +1048,22 @@ function initDriverJobsStream() {
         if (renderedRideCount === 0) {
             stopRideRequestRing();
             noRidesMsg.classList.remove('d-none');
+            renderOnlineEmptyState(noRidesMsg);
+            if (requestsBadge) requestsBadge.classList.add('d-none');
         } else {
+            noRidesMsg.classList.add('d-none');
+            if (requestsBadge && requestsCount) {
+                requestsCount.textContent = `${renderedRideCount} New`;
+                requestsBadge.classList.remove('d-none');
+            }
             startRideRequestRing(firstPendingRide || {});
         }
 
         document.querySelectorAll('.accept-job-btn').forEach(btn => {
-            btn.addEventListener('click', (event) => acceptRideJob(event.target.getAttribute('data-id')));
+            btn.addEventListener('click', (event) => acceptRideJob(event.currentTarget.getAttribute('data-id')));
         });
         document.querySelectorAll('.ignore-job-btn').forEach(btn => {
-            btn.addEventListener('click', (event) => ignoreRideRequest(event.target.getAttribute('data-id')));
+            btn.addEventListener('click', (event) => ignoreRideRequest(event.currentTarget.getAttribute('data-id')));
         });
     });
 }
@@ -1272,6 +1407,20 @@ addOptionalClickListener('cancel-driver-trip-btn', () => cancelRideByDriver());
 addOptionalClickListener('driver-sos-btn', () => sendDriverSos());
 addOptionalClickListener('driver-history-btn', () => {
     window.location.href = '/history.html';
+});
+addOptionalClickListener('driver-earnings-btn', () => {
+    window.location.href = '/history.html';
+});
+addOptionalClickListener('logout-btn-review', async () => {
+    try {
+        clearCachedProfile();
+        await setDriverAvailability("offline");
+        await signOut(auth);
+        window.location.href = "/login.html";
+    } catch (error) {
+        console.error("Logout failed:", error);
+        await showAlert("Could not logout. Please try again.");
+    }
 });
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const checked = event.target.checked;

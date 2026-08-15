@@ -9,8 +9,8 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="LiphtUp">
-    <title>LiphtUp Driver Console</title>
+    <meta name="apple-mobile-web-app-title" content="LightUp">
+    <title>LightUp Driver Home</title>
     <meta name="robots" content="noindex, nofollow">
 
     <link rel="manifest" href="manifest.webmanifest">
@@ -24,15 +24,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=20260809-merge-fix">
+    <link rel="stylesheet" href="css/driver-redesign.css?v=20260815-redesign">
 </head>
 <body>
     <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
         <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #1A7A2E;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
         <style>@keyframes lu-spin { to { transform: rotate(360deg); } }</style>
     </div>
-    <div id="app-container" class="app-root driver-app-root">
-        <button id="logout-btn" class="logout-chip">Logout</button>
 
+    <div id="app-container" class="app-root driver-app-root">
+        <!-- Account Under Review Screen -->
         <div id="driver-review-view" class="review-screen d-none flex-column justify-content-center align-items-center p-4">
             <div class="review-card">
                 <div class="shield-icon">ID</div>
@@ -43,56 +44,94 @@
                     <div><strong>Vehicle</strong><span id="driver-review-vehicle">Not submitted</span></div>
                     <div><strong>Licence</strong><span id="driver-review-license">Not submitted</span></div>
                 </div>
+                <button id="logout-btn-review" class="gy-btn gy-btn-outline w-100 mt-3" type="button">Logout</button>
             </div>
         </div>
 
+        <!-- Driver Home View -->
         <div id="driver-view" class="screen-shell driver-shell d-none flex-column">
-            <header class="app-bar">
-                <div>
-                    <div class="brand-logo"><img src="assets/liphtup-logo.jpeg" alt="LiphtUp"></div>
-                    <small id="driver-welcome-name">Welcome, Driver</small>
+            <!-- Header -->
+            <header class="driver-header">
+                <div class="brand-logo">
+                    <img src="assets/liphtup-logo.jpeg" alt="LightUp">
                 </div>
-                <div class="app-bar-actions">
-                    <span id="driver-duty-pill" class="online-pill">Online</span>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="driver-duty-pill" class="driver-status-badge online">
+                        <span class="status-dot"></span>
+                        <span id="driver-duty-pill-text">Online</span>
+                    </span>
+                    <button id="logout-btn" class="btn btn-sm btn-light border text-secondary rounded-pill px-2 py-1" style="font-size:12px;" title="Logout">Logout</button>
                 </div>
             </header>
 
-            <main class="driver-main">
-                <section class="driver-status-card">
-                    <div>
-                        <h4>Driver Duty Console</h4>
-                        <p id="driver-duty-helper">Ride alerts can continue while you stay online, even if the app is minimized.</p>
+            <main class="driver-main container-fluid px-3 pt-2">
+                <!-- Driver Greeting Section -->
+                <section class="driver-greeting-card">
+                    <div class="driver-avatar-circle" id="driver-greeting-avatar">
+                        <span id="driver-avatar-initials">DR</span>
                     </div>
-                    <div class="driver-duty-control">
-                        <label class="driver-duty-switch" for="driver-duty-switch">
-                            <input id="driver-duty-switch" type="checkbox" checked>
-                            <span aria-hidden="true"></span>
-                        </label>
-                        <strong id="driver-duty-state">Online for rides</strong>
-                        <button id="driver-history-btn" class="mini-action" type="button">History</button>
+                    <div class="driver-greeting-info">
+                        <h2 id="driver-welcome-name">Good morning, Driver 👋</h2>
+                        <p>Drive safe and earn more with LightUp</p>
                     </div>
                 </section>
 
-                <button id="driver-dashboard-link-btn" class="gy-btn gy-btn-dashboard w-100" type="button" onclick="window.location.href='/driver-dashboard.html'">
-                    <span class="webicon webicon-services" aria-hidden="true"></span>
+                <!-- Driver Duty Console Card -->
+                <section class="duty-console-card">
+                    <div class="duty-console-top">
+                        <div class="duty-console-info">
+                            <h3>Driver Duty Console</h3>
+                            <p id="driver-duty-helper">Ride alerts can continue while you stay online, even if the app is minimized.</p>
+                        </div>
+                        <div class="duty-toggle-wrapper">
+                            <label class="driver-duty-switch" for="driver-duty-switch">
+                                <input id="driver-duty-switch" type="checkbox" checked>
+                                <span aria-hidden="true"></span>
+                            </label>
+                            <strong id="driver-duty-state">Online</strong>
+                        </div>
+                    </div>
+                    <div class="duty-console-actions">
+                        <button id="driver-history-btn" class="console-action-btn" type="button">
+                            <span class="btn-icon">🕒</span> History
+                        </button>
+                        <div class="console-action-divider"></div>
+                        <button id="driver-earnings-btn" class="console-action-btn" type="button">
+                            <span class="btn-icon">💼</span> Earnings
+                        </button>
+                    </div>
+                </section>
+
+                <!-- View Dashboard Primary CTA -->
+                <button id="driver-dashboard-link-btn" class="driver-dashboard-cta-btn" type="button" onclick="window.location.href='/driver-dashboard.html'">
+                    <span class="btn-icon">🗺️</span>
                     View Your Dashboard
                 </button>
 
-                <h6 class="section-title">Incoming Local Ride Requests</h6>
-                <div id="available-rides-list" class="ride-list">
-                    <div id="no-rides-msg" class="empty-state">
-                        <span>Live</span>
-                        <strong>Searching nearby passengers</strong>
-                        <p>Keep location enabled to receive targeted requests.</p>
+                <!-- Incoming Local Ride Requests Section -->
+                <section class="incoming-requests-section">
+                    <div class="requests-section-header">
+                        <h6 class="section-title">Incoming Local Ride Requests</h6>
+                        <span id="incoming-requests-badge" class="requests-badge d-none">
+                            <span id="incoming-requests-count">0 New</span> <span>›</span>
+                        </span>
                     </div>
-                </div>
 
-                <div id="active-trip-container" class="active-trip-card d-none">
-                    <h6>Active Trip Lifecycle</h6>
-                    <div id="active-trip-details" class="trip-details-text"></div>
-                    <button id="arrived-trip-btn" class="gy-btn gy-btn-outline w-100 mb-2">Mark Arrived at Pickup</button>
-                    <button id="start-trip-btn" class="gy-btn gy-btn-primary w-100 mb-2" disabled>Start Trip</button>
-                    <button id="complete-trip-btn" class="gy-btn gy-btn-dark w-100 mb-2" disabled>Drop off Passenger & Complete Trip</button>
+                    <div id="available-rides-list" class="ride-list">
+                        <!-- Dynamic Ride Requests / Empty States -->
+                        <div id="no-rides-msg" class="empty-state">
+                            <!-- Injected by driver.js based on duty status -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Active Trip Lifecycle Card (Preserved) -->
+                <div id="active-trip-container" class="active-trip-card d-none my-3 p-3 bg-white rounded-3 shadow-sm border">
+                    <h6 class="fw-bold text-dark mb-2">Active Trip Lifecycle</h6>
+                    <div id="active-trip-details" class="trip-details-text mb-3"></div>
+                    <button id="arrived-trip-btn" class="gy-btn gy-btn-outline w-100 mb-2 d-none">Mark Arrived at Pickup</button>
+                    <button id="start-trip-btn" class="gy-btn gy-btn-primary w-100 mb-2 d-none" disabled>Start Trip</button>
+                    <button id="complete-trip-btn" class="gy-btn gy-btn-dark w-100 mb-2 d-none" disabled>Drop off Passenger & Complete Trip</button>
                     <button id="cancel-driver-trip-btn" class="gy-btn gy-btn-danger-outline w-100 mb-2">Cancel Active Trip</button>
                     <div class="driver-sos-row">
                         <button id="driver-sos-btn" class="gy-btn gy-btn-sos" type="button">
@@ -102,6 +141,7 @@
                 </div>
             </main>
 
+            <!-- Bottom Navigation Bar -->
             <nav class="bottom-nav">
                 <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
                 <button type="button" onclick="window.location.href='/driver-service.html'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
@@ -111,6 +151,7 @@
         </div>
     </div>
 
+    <!-- Collect Fare Modal -->
     <div id="driver-payment-view" class="modal-layer d-none">
         <div class="receipt-card">
             <div class="success-mark">Rs</div>
@@ -128,7 +169,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/core/loading.js"></script>
-    <script type="module" src="js/core/driver.js?v=20260729-driver-accept-navigation"></script>
+    <script type="module" src="js/core/driver.js?v=20260815-redesign"></script>
     <script src="js/core/pwa.js" defer></script>
 </body>
 </html>

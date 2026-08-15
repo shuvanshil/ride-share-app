@@ -1,0 +1,688 @@
+/* LightUp Driver Home Page Redesign CSS */
+
+:root {
+    --lu-green: #1A7A2E;
+    --lu-green-hover: #146324;
+    --lu-green-light: #E8F8EE;
+    --lu-green-border: #BBF7D0;
+    --lu-red-light: #FCE8E8;
+    --lu-red-text: #D32F2F;
+    --lu-blue-fare: #007AFF;
+    --lu-card-bg: #FFFFFF;
+    --lu-body-bg: #F8F9FA;
+    --lu-text-dark: #111827;
+    --lu-text-muted: #6B7280;
+    --lu-border: #E5E7EB;
+    --lu-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    --lu-radius: 16px;
+}
+
+body {
+    background-color: var(--lu-body-bg);
+    color: var(--lu-text-dark);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.driver-shell {
+    background-color: var(--lu-body-bg);
+    min-height: 100vh;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
+/* Header */
+.driver-header {
+    background: #ffffff;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.driver-header .brand-logo img {
+    height: 28px;
+    width: auto;
+    object-fit: contain;
+}
+
+.driver-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+
+.driver-status-badge.online {
+    background-color: var(--lu-green-light);
+    color: var(--lu-green);
+}
+
+.driver-status-badge.offline {
+    background-color: var(--lu-red-light);
+    color: var(--lu-red-text);
+}
+
+.driver-status-badge .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.driver-status-badge.online .status-dot {
+    background-color: #22C55E;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.driver-status-badge.offline .status-dot {
+    background-color: var(--lu-red-text);
+}
+
+/* Driver Greeting */
+.driver-greeting-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 4px 12px;
+}
+
+.driver-avatar-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #EBF3FF;
+    color: #1E60D5;
+    font-size: 18px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.driver-avatar-circle img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.driver-greeting-info h2 {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--lu-text-dark);
+    margin: 0 0 2px;
+    line-height: 1.25;
+}
+
+.driver-greeting-info p {
+    font-size: 13px;
+    color: var(--lu-text-muted);
+    margin: 0;
+    font-weight: 500;
+}
+
+/* Duty Console Card */
+.duty-console-card {
+    background: var(--lu-card-bg);
+    border: 1px solid var(--lu-border);
+    border-radius: var(--lu-radius);
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--lu-shadow);
+}
+
+.duty-console-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.duty-console-info h3 {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--lu-text-dark);
+    margin: 0 0 6px;
+}
+
+.duty-console-info p {
+    font-size: 13px;
+    color: var(--lu-text-muted);
+    margin: 0;
+    line-height: 1.45;
+}
+
+.duty-toggle-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Custom Duty Switch */
+.driver-duty-switch {
+    position: relative;
+    display: inline-block;
+    width: 52px;
+    height: 28px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.driver-duty-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.driver-duty-switch span {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background-color: #D1D5DB;
+    transition: .25s ease;
+    border-radius: 34px;
+}
+
+.driver-duty-switch span:before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .25s ease;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.driver-duty-switch input:checked + span {
+    background-color: var(--lu-green);
+}
+
+.driver-duty-switch input:checked + span:before {
+    transform: translateX(24px);
+}
+
+.duty-toggle-wrapper strong {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--lu-text-dark);
+}
+
+/* Console Actions Row */
+.duty-console-actions {
+    display: flex;
+    align-items: center;
+    border-top: 1px solid #F3F4F6;
+    padding-top: 14px;
+    margin-top: 4px;
+}
+
+.console-action-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.15s ease;
+}
+
+.console-action-btn:hover, .console-action-btn:active {
+    background: #F9FAFB;
+    color: var(--lu-green);
+}
+
+.console-action-btn .btn-icon {
+    font-size: 16px;
+}
+
+.console-action-divider {
+    width: 1px;
+    height: 20px;
+    background-color: #E5E7EB;
+}
+
+/* Dashboard Link CTA Button */
+.driver-dashboard-cta-btn {
+    background-color: var(--lu-green);
+    color: #ffffff;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 20px;
+    font-size: 15px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.2);
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.driver-dashboard-cta-btn:hover {
+    background-color: var(--lu-green-hover);
+    color: #ffffff;
+}
+
+.driver-dashboard-cta-btn:active {
+    transform: scale(0.99);
+}
+
+/* Section Titles */
+.requests-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.requests-section-header .section-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--lu-text-dark);
+    margin: 0;
+}
+
+.requests-badge {
+    background: var(--lu-green-light);
+    color: var(--lu-green);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Ride Request Card Redesign */
+.ride-request-card {
+    background: var(--lu-card-bg);
+    border: 1px solid var(--lu-border);
+    border-radius: var(--lu-radius);
+    padding: 18px;
+    margin-bottom: 16px;
+    box-shadow: var(--lu-shadow);
+}
+
+.request-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.passenger-name-wrap h5 {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--lu-text-dark);
+    margin: 0 0 4px;
+}
+
+.vehicle-capacity-badge {
+    background: #F3F4F6;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fare-badge {
+    background-color: var(--lu-blue-fare);
+    color: #ffffff;
+    font-size: 17px;
+    font-weight: 800;
+    padding: 6px 16px;
+    border-radius: 10px;
+    display: inline-block;
+    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.25);
+}
+
+.call-passenger-action {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+    margin-bottom: 12px;
+}
+
+.btn-call-passenger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #ffffff;
+    border: 1px solid var(--lu-border);
+    color: var(--lu-text-dark);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 16px;
+    border-radius: 999px;
+    text-decoration: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    transition: all 0.15s ease;
+}
+
+.btn-call-passenger:hover {
+    background: #F9FAFB;
+    color: var(--lu-green);
+    border-color: var(--lu-green-border);
+}
+
+.btn-call-passenger.disabled, .btn-call-passenger:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Route Display Box */
+.route-display-box {
+    background: #F9FAFB;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    position: relative;
+}
+
+.route-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.route-step.pickup {
+    margin-bottom: 10px;
+}
+
+.route-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    margin-top: 3px;
+    flex-shrink: 0;
+}
+
+.route-dot.green {
+    background: #22C55E;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+}
+
+.route-dot.red {
+    background: #EF4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.route-text-group {
+    font-size: 13.5px;
+    line-height: 1.35;
+}
+
+.route-label {
+    font-weight: 700;
+    color: var(--lu-text-dark);
+}
+
+.route-address {
+    color: #4B5563;
+    font-weight: 500;
+}
+
+/* Location Preview Row */
+.location-preview-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.location-preview-btn {
+    flex: 1;
+    background: var(--lu-green-light);
+    border: 1px solid var(--lu-green-border);
+    color: var(--lu-green);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 8px 12px;
+    border-radius: 10px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background 0.15s ease;
+}
+
+.location-preview-btn:hover {
+    background: #DCFCE7;
+    color: var(--lu-green-hover);
+}
+
+/* Trip Metrics Row */
+.trip-metrics-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 4px 14px;
+    border-top: 1px dashed var(--lu-border);
+    margin-bottom: 12px;
+}
+
+.metric-column small {
+    display: block;
+    font-size: 12px;
+    color: var(--lu-text-muted);
+    margin-bottom: 2px;
+    font-weight: 500;
+}
+
+.metric-column strong {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--lu-text-dark);
+}
+
+/* Request Action Buttons */
+.btn-accept-ride {
+    background-color: var(--lu-green);
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 20px;
+    font-size: 15px;
+    font-weight: 700;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.18);
+    transition: background-color 0.2s ease;
+}
+
+.btn-accept-ride:hover {
+    background-color: var(--lu-green-hover);
+}
+
+.btn-ignore-ride {
+    background-color: #ffffff;
+    color: #4B5563;
+    border: 1.5px solid var(--lu-border);
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-ignore-ride:hover {
+    background-color: #F9FAFB;
+    border-color: #D1D5DB;
+    color: var(--lu-text-dark);
+}
+
+/* Offline Empty State Card */
+.offline-empty-card {
+    background: var(--lu-card-bg);
+    border: 1px solid var(--lu-border);
+    border-radius: var(--lu-radius);
+    padding: 28px 20px 24px;
+    text-align: center;
+    box-shadow: var(--lu-shadow);
+}
+
+.offline-illustration-wrapper {
+    max-width: 220px;
+    margin: 0 auto 16px;
+}
+
+.offline-illustration-img {
+    width: 100%;
+    height: auto;
+    max-height: 140px;
+    object-fit: contain;
+}
+
+.offline-empty-card h4 {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--lu-text-dark);
+    margin: 0 0 4px;
+}
+
+.offline-subtitle {
+    font-size: 14px;
+    font-weight: 700;
+    color: #4B5563;
+    margin-bottom: 6px;
+}
+
+.offline-desc {
+    font-size: 13px;
+    color: var(--lu-text-muted);
+    margin-bottom: 20px;
+    line-height: 1.4;
+}
+
+.btn-go-online {
+    background-color: var(--lu-green);
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    padding: 13px 20px;
+    font-size: 15px;
+    font-weight: 700;
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.2);
+    transition: background-color 0.2s ease;
+}
+
+.btn-go-online:hover {
+    background-color: var(--lu-green-hover);
+}
+
+/* Online Empty State (Searching for requests) */
+.online-empty-card {
+    background: var(--lu-card-bg);
+    border: 1px solid var(--lu-border);
+    border-radius: var(--lu-radius);
+    padding: 32px 20px;
+    text-align: center;
+    box-shadow: var(--lu-shadow);
+}
+
+.searching-icon-circle {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--lu-green-light);
+    color: var(--lu-green);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 14px;
+    font-size: 24px;
+    position: relative;
+}
+
+.searching-icon-circle::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid var(--lu-green-border);
+    animation: lu-radar-pulse 2s infinite ease-out;
+}
+
+@keyframes lu-radar-pulse {
+    0% { transform: scale(0.9); opacity: 1; }
+    100% { transform: scale(1.3); opacity: 0; }
+}
+
+.online-empty-card h4 {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--lu-text-dark);
+    margin: 0 0 6px;
+}
+
+.online-empty-card p {
+    font-size: 13px;
+    color: var(--lu-text-muted);
+    margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 380px) {
+    .trip-metrics-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .metric-column.text-end {
+        text-align: left !important;
+    }
+    .location-preview-row {
+        flex-direction: column;
+    }
+}
