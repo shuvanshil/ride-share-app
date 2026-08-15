@@ -742,11 +742,12 @@
 .webicon-edit { -webkit-mask-image: url("../assets/icons/webicons/edit.svg"); mask-image: url("../assets/icons/webicons/edit.svg"); }
 .webicon-lock { -webkit-mask-image: url("../assets/icons/webicons/lock.svg"); mask-image: url("../assets/icons/webicons/lock.svg"); }
 .webicon-safety { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
-.webicon-privacy { -webkit-mask-image: url("../assets/icons/webicons/privacy-policy.svg"); mask-image: url("../assets/icons/webicons/privacy-policy.svg"); }
-.webicon-contact-us { -webkit-mask-image: url("../assets/icons/webicons/profile.svg"); mask-image: url("../assets/icons/webicons/profile.svg"); }
-.webicon-about-us { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
-.webicon-view-more { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
-.webicon-help { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-terms { -webkit-mask-image: url("../assets/icons/webicons/privacy-policy.svg"); mask-image: url("../assets/icons/webicons/privacy-policy.svg"); }
+.webicon-privacy { -webkit-mask-image: url("../assets/icons/webicons/privacy-policy.png"); mask-image: url("../assets/icons/webicons/privacy-policy.png"); }
+.webicon-contact-us { -webkit-mask-image: url("../assets/icons/webicons/contact-us.png"); mask-image: url("../assets/icons/webicons/contact-us.png"); }
+.webicon-about-us { -webkit-mask-image: url("../assets/icons/webicons/about-us.png"); mask-image: url("../assets/icons/webicons/about-us.png"); }
+.webicon-view-more { -webkit-mask-image: url("../assets/icons/webicons/expend-right.png"); mask-image: url("../assets/icons/webicons/expend-right.png"); }
+.webicon-help { -webkit-mask-image: url("../assets/icons/webicons/help.png"); mask-image: url("../assets/icons/webicons/help.png"); }
 .webicon-swap { -webkit-mask-image: url("../assets/icons/webicons/swap.svg"); mask-image: url("../assets/icons/webicons/swap.svg"); }
 .webicon-destination-marker { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 .webicon-safety-check { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
