@@ -1,7 +1,7 @@
 import { adminGet, adminPatch } from "./admin-api.js";
-import { showConfirm } from "../../js/dialog.js";
+import { showConfirm } from "../../js/core/dialog.js";
 import { toast } from "./admin-toast.js";
-import { db } from "../../js/firebase-init.js";
+import { db } from "../../js/platform/firebase-init.js";
 import { collection, onSnapshot, orderBy, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
