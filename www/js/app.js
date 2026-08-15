@@ -16,7 +16,8 @@ import { getCurrentPosition } from './platform/geolocation.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
-const DISPATCH_TIMEOUT_MS = 45000;
+const DISPATCH_TIMEOUT_MS = 15000;
+const MAX_SEARCH_DURATION_MS = 100000; // 100 seconds search timeout limit
 const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
 const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
@@ -27,6 +28,8 @@ const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my loca
 let currentUser = null;
 let activeRideListener = null;          // For Passenger monitoring
 let activeDispatchExpansionTimer = null;
+let activeSearchTimeoutTimer = null;
+const passengerSearchStartTimes = {};
 
 let currentPassengerRideId = null;
 let currentPassengerRideData = null;
@@ -611,9 +614,11 @@ function dispatchPassengerDriverLocation(ride) {
 }
 
 function showPassengerCancelButton(rideId) {
-    currentPassengerRideId = rideId;
+    currentPassengerRideId = rideId || currentPassengerRideId;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.remove('d-none');
+    const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
+    if (cancelReqBtn) cancelReqBtn.classList.remove('d-none');
     document.getElementById('passenger-safety-actions')?.classList.remove('d-none');
 }
 
@@ -622,6 +627,8 @@ function hidePassengerCancelButton() {
     currentPassengerRideData = null;
     const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
     if (cancelBtn) cancelBtn.classList.add('d-none');
+    const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
+    if (cancelReqBtn) cancelReqBtn.classList.add('d-none');
     document.getElementById('passenger-safety-actions')?.classList.add('d-none');
     setShareTripButtonState(false);
 }
@@ -814,13 +821,75 @@ function clearDispatchExpansionTimer() {
         clearTimeout(activeDispatchExpansionTimer);
         activeDispatchExpansionTimer = null;
     }
+    if (activeSearchTimeoutTimer) {
+        clearTimeout(activeSearchTimeoutTimer);
+        activeSearchTimeoutTimer = null;
+    }
 }
 
-function scheduleDispatchExpansion(rideId, ride) {
+function getRideSearchStartTime(rideId, ride = {}) {
+    if (passengerSearchStartTimes[rideId]) {
+        return passengerSearchStartTimes[rideId];
+    }
+    let timestamp = null;
+    if (ride.search_started_at) {
+        timestamp = typeof ride.search_started_at.toMillis === 'function'
+            ? ride.search_started_at.toMillis()
+            : Number(ride.search_started_at);
+    } else if (ride.requestedAt) {
+        timestamp = typeof ride.requestedAt.toMillis === 'function'
+            ? ride.requestedAt.toMillis()
+            : Number(ride.requestedAt);
+    } else if (ride.createdAt) {
+        timestamp = typeof ride.createdAt.toMillis === 'function'
+            ? ride.createdAt.toMillis()
+            : Number(ride.createdAt);
+    }
+    if (timestamp && Number.isFinite(timestamp)) {
+        passengerSearchStartTimes[rideId] = timestamp;
+        return timestamp;
+    }
+    const now = Date.now();
+    passengerSearchStartTimes[rideId] = now;
+    return now;
+}
+
+function handleSearchTimeout(rideId) {
+    clearDispatchExpansionTimer();
+    const reqBtn = document.getElementById('request-ride-btn');
+    if (reqBtn) {
+        reqBtn.dataset.state = "retry_search";
+        reqBtn.disabled = false;
+        reqBtn.innerHTML = "🔄 No drivers accepted · Tap to Retry";
+        reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
+    }
+    showPassengerCancelButton(rideId);
+}
+
+function scheduleDispatchExpansion(rideId, ride = {}) {
     if (!currentUser || currentUser.role !== "passenger" || ride.status !== "pending") return;
+
     clearDispatchExpansionTimer();
 
-    activeDispatchExpansionTimer = setTimeout(() => expandRideDispatch(rideId), ride.dispatch_timeout_ms || DISPATCH_TIMEOUT_MS);
+    const startTime = getRideSearchStartTime(rideId, ride);
+    const elapsed = Date.now() - startTime;
+    const remainingMs = MAX_SEARCH_DURATION_MS - elapsed;
+
+    if (remainingMs <= 0 || ride.search_status === "no_more_available_drivers" || ride.search_status === "no_available_drivers" || ride.search_status === "timeout") {
+        handleSearchTimeout(rideId);
+        return;
+    }
+
+    // Schedule overall 100s timeout stop
+    activeSearchTimeoutTimer = setTimeout(() => {
+        handleSearchTimeout(rideId);
+    }, remainingMs);
+
+    // Schedule periodic dispatch expansion (every 15s)
+    const nextExpansionInterval = Math.min(ride.dispatch_timeout_ms || 15000, remainingMs);
+    activeDispatchExpansionTimer = setTimeout(() => {
+        expandRideDispatch(rideId);
+    }, nextExpansionInterval);
 }
 
 async function expandRideDispatch(rideId) {
@@ -839,18 +908,16 @@ async function expandRideDispatch(rideId) {
 
         const reqBtn = document.getElementById('request-ride-btn');
         if (reqBtn) {
-            if (data.searchStatus === "searching_nearby_drivers" || (data.driverIds && data.driverIds.length > 0)) {
+            const startTime = getRideSearchStartTime(rideId, currentPassengerRideData || {});
+            const elapsed = Date.now() - startTime;
+            if (elapsed >= MAX_SEARCH_DURATION_MS || data.searchStatus === "no_more_available_drivers" || data.searchStatus === "no_available_drivers") {
+                handleSearchTimeout(rideId);
+            } else {
                 delete reqBtn.dataset.state;
                 reqBtn.disabled = true;
                 reqBtn.innerHTML = "Searching nearby drivers...";
                 reqBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
                 scheduleDispatchExpansion(rideId, currentPassengerRideData || { dispatch_timeout_ms: DISPATCH_TIMEOUT_MS });
-            } else if (data.searchStatus === "no_more_available_drivers" || data.searchStatus === "no_available_drivers") {
-                reqBtn.dataset.state = "no_drivers";
-                reqBtn.disabled = false;
-                reqBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
-                reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
-                clearDispatchExpansionTimer();
             }
         }
         return data;
@@ -1016,31 +1083,25 @@ requestRideButton.addEventListener('click', async () => {
     if (!currentUser) return;
 
     const requestBtn = document.getElementById('request-ride-btn');
-    if (requestBtn && requestBtn.dataset.state === "no_drivers") {
+    if (requestBtn && (requestBtn.dataset.state === "no_drivers" || requestBtn.dataset.state === "retry_search")) {
         const rideId = currentPassengerRideId;
         if (!rideId) {
             resetPassengerBookingUi();
             return;
         }
-        const confirmRetry = await showConfirm("No nearby drivers found yet for your ride. Would you like to try searching again or cancel this request?", {
-            okText: "Retry Search",
-            cancelText: "Cancel Request"
-        });
-        if (confirmRetry) {
-            requestBtn.innerHTML = "⏳ Retrying driver search...";
-            requestBtn.disabled = true;
-            delete requestBtn.dataset.state;
-            try {
-                await expandRideDispatch(rideId);
-            } catch (e) {
-                console.error("Retry dispatch error:", e);
-                requestBtn.disabled = false;
-                requestBtn.dataset.state = "no_drivers";
-                requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
-                requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
-            }
-        } else {
-            await cancelRideByPassenger(rideId);
+        passengerSearchStartTimes[rideId] = Date.now();
+        delete requestBtn.dataset.state;
+        requestBtn.disabled = true;
+        requestBtn.innerHTML = "Searching nearby drivers...";
+        requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
+        showPassengerCancelButton(rideId);
+
+        try {
+            await expandRideDispatch(rideId);
+            scheduleDispatchExpansion(rideId, currentPassengerRideData || {});
+        } catch (e) {
+            console.error("Retry dispatch error:", e);
+            handleSearchTimeout(rideId);
         }
         return;
     }
@@ -1160,16 +1221,11 @@ function listenToRideStatusUpdates(rideId) {
 
         if (ride.status === "pending") {
             showPassengerCancelButton(rideId);
-            if (ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers") {
-                requestBtn.dataset.state = "no_drivers";
-                requestBtn.disabled = false;
-                requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
-                requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
-                if (ride.search_status === "no_available_drivers") {
-                    scheduleDispatchExpansion(rideId, ride);
-                } else {
-                    clearDispatchExpansionTimer();
-                }
+            const startTime = getRideSearchStartTime(rideId, ride);
+            const elapsed = Date.now() - startTime;
+
+            if (elapsed >= MAX_SEARCH_DURATION_MS || ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers" || ride.search_status === "timeout") {
+                handleSearchTimeout(rideId);
             } else {
                 delete requestBtn.dataset.state;
                 requestBtn.disabled = true;
@@ -1314,3 +1370,11 @@ if (document.readyState === 'loading') {
 
 addOptionalClickListener('passenger-sos-btn', () => sendPassengerSos());
 addOptionalClickListener('passenger-share-trip-btn', () => togglePassengerShareTrip());
+addOptionalClickListener('cancel-ride-request-btn', async () => {
+    if (currentPassengerRideId) {
+        await cancelRideByPassenger(currentPassengerRideId);
+    } else {
+        resetPassengerBookingUi();
+        await showAlert("Ride request cancelled.");
+    }
+});

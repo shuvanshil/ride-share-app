@@ -881,6 +881,7 @@ def expand_passenger_dispatch(
             "notified_driver_ids": notified,
             "dispatch_round": int(ride.get("dispatch_round") or 0) + (1 if next_batch else 0),
             "last_dispatch_at": fb_firestore.SERVER_TIMESTAMP,
+            "search_started_at": fb_firestore.SERVER_TIMESTAMP if not ride.get("search_started_at") or ride.get("search_status") in {"no_more_available_drivers", "no_available_drivers"} else ride.get("search_started_at"),
             "search_status": "searching_nearby_drivers" if next_batch else "no_more_available_drivers",
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         }

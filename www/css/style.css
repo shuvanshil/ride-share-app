@@ -1227,6 +1227,31 @@ select {
     padding: 14px 20px;
 }
 
+.gy-btn-cancel-request,
+.gy-btn-danger-outline {
+    background-color: rgba(220, 53, 69, 0.08) !important;
+    color: #dc3545 !important;
+    border: 1px solid rgba(220, 53, 69, 0.35) !important;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 12px 16px;
+    transition: all 0.2s ease-in-out;
+    display: block;
+    text-align: center;
+    width: 100%;
+}
+
+.gy-btn-cancel-request:hover,
+.gy-btn-cancel-request:focus,
+.gy-btn-danger-outline:hover,
+.gy-btn-danger-outline:focus {
+    background-color: rgba(220, 53, 69, 0.16) !important;
+    border-color: rgba(220, 53, 69, 0.55) !important;
+    color: #c82333 !important;
+    outline: none;
+}
+
 
 .gy-btn-dark {
     color: #fff;
