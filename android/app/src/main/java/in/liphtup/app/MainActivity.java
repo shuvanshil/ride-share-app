@@ -14,11 +14,27 @@ public class MainActivity extends BridgeActivity {
         int resourceId = getResources().getIdentifier("google_app_id", "string", getPackageName());
         final boolean firebaseReady = (resourceId != 0);
 
-        // Expose a synchronous check to Javascript that survives page navigation.
+        // Expose synchronous checks and role management to Javascript that survives page navigation.
         getBridge().getWebView().addJavascriptInterface(new Object() {
             @JavascriptInterface
             public boolean isFirebaseReady() {
                 return firebaseReady;
+            }
+
+            @JavascriptInterface
+            public void setUserRole(String role) {
+                if (role == null) role = "";
+                getSharedPreferences("liphtup_prefs", MODE_PRIVATE)
+                        .edit()
+                        .putString("user_role", role.trim().toLowerCase())
+                        .apply();
+                android.util.Log.d("MainActivity", "User role set to: " + role);
+            }
+
+            @JavascriptInterface
+            public String getUserRole() {
+                return getSharedPreferences("liphtup_prefs", MODE_PRIVATE)
+                        .getString("user_role", "");
             }
         }, "LiphtUpNativeStatus");
     }

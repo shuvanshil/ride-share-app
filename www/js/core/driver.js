@@ -235,6 +235,9 @@ function addOptionalClickListener(elementId, handler) {
 
 function cacheProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole("driver");
+    }
     try {
         sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
             ...cacheableProfile,
@@ -589,12 +592,12 @@ function renderActivePassengerContact(ride = {}) {
             </div>
             ${callablePhone ? `
                 <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
-                    <span aria-hidden="true">☎</span>
+                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
                     <small>Call</small>
                 </a>
             ` : `
                 <button class="active-passenger-call" type="button" disabled aria-label="Passenger phone unavailable">
-                    <span aria-hidden="true">☎</span>
+                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
                     <small>Call</small>
                 </button>
             `}
@@ -879,13 +882,16 @@ function initDriverJobsStream() {
                 };
             }
 
+            const passengerPhone = String(ride.passenger_phone || "").trim();
+            const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
+
             const card = document.createElement('div');
             card.className = "card p-3 mb-3 border-start border-primary border-4 shadow-sm";
             card.dataset.rideId = rideId;
             card.innerHTML = `
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <h6 class="fw-bold mb-1 text-dark">${ride.passenger_name}</h6>
+                        <h6 class="fw-bold mb-1 text-dark">${escapeHtml(ride.passenger_name || "Passenger")}</h6>
                         <span class="badge bg-light text-dark border mb-2">${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${ride.passenger_capacity || (ride.vehicle_type === "auto" ? 4 : 1)} passenger${Number(ride.passenger_capacity || 1) === 1 ? "" : "s"}</span>
                         <p class="mb-1 text-muted small"><strong>From:</strong> ${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</p>
                         <p class="mb-2 text-muted small"><strong>To:</strong> ${escapeHtml(getRideDisplayAddress(ride, "drop"))}</p>
@@ -909,6 +915,11 @@ function initDriverJobsStream() {
                 <button class="btn btn-sm btn-success w-100 fw-bold mt-2 accept-job-btn" data-id="${rideId}">
                     Accept Ride Request
                 </button>
+                ${callablePhone ? `
+                    <a href="tel:${callablePhone}" class="btn btn-sm btn-outline-primary w-100 fw-bold mt-2 d-inline-flex align-items-center justify-content-center gap-2" style="text-decoration:none;">
+                        <span class="webicon webicon-call" style="width:14px;height:14px;"></span> Call Passenger (${escapeHtml(passengerPhone)})
+                    </a>
+                ` : ""}
                 <button class="btn btn-sm btn-outline-secondary w-100 fw-bold mt-2 ignore-job-btn" data-id="${rideId}">
                     Ignore
                 </button>

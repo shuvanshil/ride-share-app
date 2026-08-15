@@ -726,31 +726,32 @@
     flex-shrink: 0;
 }
 
-.webicon-home { -webkit-mask-image: url("../assets/webicons/home.svg"); mask-image: url("../assets/webicons/home.svg"); }
-.webicon-history { -webkit-mask-image: url("../assets/webicons/history.svg"); mask-image: url("../assets/webicons/history.svg"); }
-.webicon-services { -webkit-mask-image: url("../assets/webicons/services.svg"); mask-image: url("../assets/webicons/services.svg"); }
-.webicon-profile { -webkit-mask-image: url("../assets/webicons/profile.svg"); mask-image: url("../assets/webicons/profile.svg"); }
-.webicon-current-location { -webkit-mask-image: url("../assets/webicons/current-location.svg"); mask-image: url("../assets/webicons/current-location.svg"); }
-.webicon-destination { -webkit-mask-image: url("../assets/webicons/destination.svg"); mask-image: url("../assets/webicons/destination.svg"); }
-.webicon-use-current-location { -webkit-mask-image: url("../assets/webicons/use-current-location.svg"); mask-image: url("../assets/webicons/use-current-location.svg"); }
-.webicon-sos { -webkit-mask-image: url("../assets/webicons/sos.svg"); mask-image: url("../assets/webicons/sos.svg"); }
-.webicon-share { -webkit-mask-image: url("../assets/webicons/share.svg"); mask-image: url("../assets/webicons/share.svg"); }
-.webicon-favorite { -webkit-mask-image: url("../assets/webicons/favorite.svg"); mask-image: url("../assets/webicons/favorite.svg"); }
-.webicon-work { -webkit-mask-image: url("../assets/webicons/work.svg"); mask-image: url("../assets/webicons/work.svg"); }
-.webicon-edit { -webkit-mask-image: url("../assets/webicons/edit.svg"); mask-image: url("../assets/webicons/edit.svg"); }
-.webicon-lock { -webkit-mask-image: url("../assets/webicons/lock.svg"); mask-image: url("../assets/webicons/lock.svg"); }
-.webicon-safety { -webkit-mask-image: url("../assets/webicons/safety-shield.svg"); mask-image: url("../assets/webicons/safety-shield.svg"); }
-.webicon-terms { -webkit-mask-image: url("../assets/webicons/privacy-policy.svg"); mask-image: url("../assets/webicons/privacy-policy.svg"); }
-.webicon-privacy { -webkit-mask-image: url("../assets/webicons/privacy-policy.png"); mask-image: url("../assets/webicons/privacy-policy.png"); }
-.webicon-contact-us { -webkit-mask-image: url("../assets/webicons/contact-us.png"); mask-image: url("../assets/webicons/contact-us.png"); }
-.webicon-about-us { -webkit-mask-image: url("../assets/webicons/about-us.png"); mask-image: url("../assets/webicons/about-us.png"); }
-.webicon-view-more { -webkit-mask-image: url("../assets/webicons/expend-right.png"); mask-image: url("../assets/webicons/expend-right.png"); }
-.webicon-help { -webkit-mask-image: url("../assets/webicons/help.png"); mask-image: url("../assets/webicons/help.png"); }
-.webicon-swap { -webkit-mask-image: url("../assets/webicons/swap.svg"); mask-image: url("../assets/webicons/swap.svg"); }
-.webicon-destination-marker { -webkit-mask-image: url("../assets/webicons/destination.svg"); mask-image: url("../assets/webicons/destination.svg"); }
-.webicon-safety-check { -webkit-mask-image: url("../assets/webicons/safety-shield.svg"); mask-image: url("../assets/webicons/safety-shield.svg"); }
-.webicon-cash { -webkit-mask-image: url("../assets/webicons/services.svg"); mask-image: url("../assets/webicons/services.svg"); }
-.webicon-notification { -webkit-mask-image: url("../assets/webicons/sos.svg"); mask-image: url("../assets/webicons/sos.svg"); }
+.webicon-home { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
+.webicon-history { -webkit-mask-image: url("../assets/icons/webicons/history.svg"); mask-image: url("../assets/icons/webicons/history.svg"); }
+.webicon-services { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
+.webicon-profile { -webkit-mask-image: url("../assets/icons/webicons/profile.svg"); mask-image: url("../assets/icons/webicons/profile.svg"); }
+.webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
+.webicon-use-current-location { -webkit-mask-image: url("../assets/icons/webicons/use-current-location.svg"); mask-image: url("../assets/icons/webicons/use-current-location.svg"); }
+.webicon-sos { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
+.webicon-call { -webkit-mask-image: url("../assets/icons/webicons/call.svg"); mask-image: url("../assets/icons/webicons/call.svg"); }
+.webicon-phone { -webkit-mask-image: url("../assets/icons/webicons/call.svg"); mask-image: url("../assets/icons/webicons/call.svg"); }
+.webicon-share { -webkit-mask-image: url("../assets/icons/webicons/share.svg"); mask-image: url("../assets/icons/webicons/share.svg"); }
+.webicon-favorite { -webkit-mask-image: url("../assets/icons/webicons/favorite.svg"); mask-image: url("../assets/icons/webicons/favorite.svg"); }
+.webicon-work { -webkit-mask-image: url("../assets/icons/webicons/work.svg"); mask-image: url("../assets/icons/webicons/work.svg"); }
+.webicon-edit { -webkit-mask-image: url("../assets/icons/webicons/edit.svg"); mask-image: url("../assets/icons/webicons/edit.svg"); }
+.webicon-lock { -webkit-mask-image: url("../assets/icons/webicons/lock.svg"); mask-image: url("../assets/icons/webicons/lock.svg"); }
+.webicon-safety { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
+.webicon-privacy { -webkit-mask-image: url("../assets/icons/webicons/privacy-policy.svg"); mask-image: url("../assets/icons/webicons/privacy-policy.svg"); }
+.webicon-contact-us { -webkit-mask-image: url("../assets/icons/webicons/profile.svg"); mask-image: url("../assets/icons/webicons/profile.svg"); }
+.webicon-about-us { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
+.webicon-view-more { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
+.webicon-help { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
+.webicon-swap { -webkit-mask-image: url("../assets/icons/webicons/swap.svg"); mask-image: url("../assets/icons/webicons/swap.svg"); }
+.webicon-destination-marker { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
+.webicon-safety-check { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
+.webicon-cash { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
+.webicon-notification { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
 
 html,
 body {
@@ -1224,6 +1225,31 @@ select {
     border-radius: 14px;
     font-weight: 700;
     padding: 14px 20px;
+}
+
+.gy-btn-cancel-request,
+.gy-btn-danger-outline {
+    background-color: rgba(220, 53, 69, 0.08) !important;
+    color: #dc3545 !important;
+    border: 1px solid rgba(220, 53, 69, 0.35) !important;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 12px 16px;
+    transition: all 0.2s ease-in-out;
+    display: block;
+    text-align: center;
+    width: 100%;
+}
+
+.gy-btn-cancel-request:hover,
+.gy-btn-cancel-request:focus,
+.gy-btn-danger-outline:hover,
+.gy-btn-danger-outline:focus {
+    background-color: rgba(220, 53, 69, 0.16) !important;
+    border-color: rgba(220, 53, 69, 0.55) !important;
+    color: #c82333 !important;
+    outline: none;
 }
 
 

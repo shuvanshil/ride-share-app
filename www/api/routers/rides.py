@@ -863,7 +863,17 @@ def expand_passenger_dispatch(
             float(ride.get("pickup_lng")),
             str(ride.get("vehicle_type") or ""),
         )
-        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][: int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)]
+        batch_size = int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)
+        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][:batch_size]
+
+        # Retry search resilience: If no new unnotified drivers exist, but active drivers are currently online and searching,
+        # fallback to re-dispatching active candidates (excluding explicitly rejected drivers first, then all active candidates)
+        if not next_batch and all_candidates:
+            rejected = set(ride.get("rejected_driver_ids") or [])
+            next_batch = [item["uid"] for item in all_candidates if item["uid"] not in rejected][:batch_size]
+            if not next_batch:
+                next_batch = [item["uid"] for item in all_candidates][:batch_size]
+
         notified = list(dict.fromkeys([*(ride.get("notified_driver_ids") or []), *next_batch]))
         eligible = list(dict.fromkeys([*(ride.get("eligible_driver_ids") or []), *next_batch]))
         updates = {
@@ -871,6 +881,7 @@ def expand_passenger_dispatch(
             "notified_driver_ids": notified,
             "dispatch_round": int(ride.get("dispatch_round") or 0) + (1 if next_batch else 0),
             "last_dispatch_at": fb_firestore.SERVER_TIMESTAMP,
+            "search_started_at": fb_firestore.SERVER_TIMESTAMP if not ride.get("search_started_at") or ride.get("search_status") in {"no_more_available_drivers", "no_available_drivers"} else ride.get("search_started_at"),
             "search_status": "searching_nearby_drivers" if next_batch else "no_more_available_drivers",
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
@@ -1168,29 +1179,40 @@ def accept_driver_ride(
             # a driver actually accepts -- never at ride-request time.
             verification_pin = str(ride.get("verification_pin") or "").strip() or f"{secrets.randbelow(10000):04d}"
 
+            driver_loc = profile.get("driverLocation") or profile.get("location")
+
             accepted_ride.update(ride)
             accepted_ride.update({
                 "status": "accepted",
                 "driver_id": uid,
                 "driver_name": str(profile.get("name") or "Driver")[:80],
                 "driver_phone": str(profile.get("phone") or "")[:40],
+                "driver_profile_photo": str(profile.get("profilePhotoUrl") or "")[:1500],
                 "vehicle_model": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Vehicle")[:100],
                 "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
                 "vehicle_type": driver_type,
                 "verification_pin": verification_pin,
             })
-            tx.update(ride_ref, {
+            if driver_loc and isinstance(driver_loc, dict) and "lat" in driver_loc and "lng" in driver_loc:
+                accepted_ride["driverLocation"] = {"lat": float(driver_loc["lat"]), "lng": float(driver_loc["lng"])}
+
+            update_data = {
                 "status": "accepted",
                 "driver_id": uid,
                 "driver_name": accepted_ride["driver_name"],
                 "driver_phone": accepted_ride["driver_phone"],
+                "driver_profile_photo": accepted_ride["driver_profile_photo"],
                 "vehicle_model": accepted_ride["vehicle_model"],
                 "vehicle_number": accepted_ride["vehicle_number"],
                 "vehicle_type": driver_type,
                 "verification_pin": verification_pin,
                 "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
+            }
+            if "driverLocation" in accepted_ride:
+                update_data["driverLocation"] = accepted_ride["driverLocation"]
+
+            tx.update(ride_ref, update_data)
 
         accept_transaction(transaction)
         db.collection("driverPresence").document(uid).set({

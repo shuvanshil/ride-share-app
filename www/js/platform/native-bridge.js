@@ -85,6 +85,14 @@
         var Plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
         var Push = Plugins.PushNotifications;
 
+        // Auto-detect driver pages and sync native role
+        if (window.isCurrentPage && (window.isCurrentPage('driver.html') || window.isCurrentPage('driver-service.html') || window.isCurrentPage('driver-dashboard.html'))) {
+            if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setUserRole === 'function') {
+                window.LiphtUpNativeStatus.setUserRole('driver');
+                console.log('[native-bridge] auto-set native user_role to driver');
+            }
+        }
+
         // --- Push Notification Handlers (Global) ---------------------------------
         if (Push) {
             // These listeners stay active for the entire session and handle
@@ -95,6 +103,13 @@
 
             Push.addListener('pushNotificationActionPerformed', function (notification) {
                 console.log('[native-bridge] push action:', notification);
+                var role = (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.getUserRole === 'function')
+                    ? window.LiphtUpNativeStatus.getUserRole()
+                    : '';
+                if (role && role !== 'driver') {
+                    console.log('[native-bridge] Ignoring push notification action for non-driver role:', role);
+                    return;
+                }
                 var data = notification.notification.data;
                 if (data && data.rideId) {
                     window.location.href = '/driver.html?rideId=' + data.rideId + '&from=push';
@@ -102,8 +117,13 @@
             });
         }
 
-        // --- Native Bridge for App Logic (Push Registration) ---------------------
+        // --- Native Bridge for App Logic (Push Registration & Role Sync) ---------
         window.LiphtUpNative = {
+            setUserRole: function (role) {
+                if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setUserRole === 'function') {
+                    window.LiphtUpNativeStatus.setUserRole(role);
+                }
+            },
             registerPushNotifications: function () {
                 if (!Push) return Promise.reject(new Error("push-unsupported"));
 
@@ -139,6 +159,13 @@
                             console.log('[native-bridge] push received:', notification);
                         });
                         Push.addListener('pushNotificationActionPerformed', function (notification) {
+                            var role = (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.getUserRole === 'function')
+                                ? window.LiphtUpNativeStatus.getUserRole()
+                                : '';
+                            if (role && role !== 'driver') {
+                                console.log('[native-bridge] Ignoring push action for non-driver role:', role);
+                                return;
+                            }
                             var data = notification.notification.data;
                             if (data && data.rideId) {
                                 window.location.href = '/driver.html?rideId=' + data.rideId + '&from=push';

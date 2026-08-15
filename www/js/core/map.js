@@ -856,6 +856,7 @@ function clearRouteAndDestination() {
         routeMetricElement = null;
     }
 }
+window.clearRouteAndDestination = clearRouteAndDestination;
 
 function getRideDropLocation(detail = {}) {
     const drop = normalizeCoordinatePair(detail.drop_lat, detail.drop_lng);
