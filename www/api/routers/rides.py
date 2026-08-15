@@ -863,7 +863,17 @@ def expand_passenger_dispatch(
             float(ride.get("pickup_lng")),
             str(ride.get("vehicle_type") or ""),
         )
-        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][: int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)]
+        batch_size = int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)
+        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][:batch_size]
+
+        # Retry search resilience: If no new unnotified drivers exist, but active drivers are currently online and searching,
+        # fallback to re-dispatching active candidates (excluding explicitly rejected drivers first, then all active candidates)
+        if not next_batch and all_candidates:
+            rejected = set(ride.get("rejected_driver_ids") or [])
+            next_batch = [item["uid"] for item in all_candidates if item["uid"] not in rejected][:batch_size]
+            if not next_batch:
+                next_batch = [item["uid"] for item in all_candidates][:batch_size]
+
         notified = list(dict.fromkeys([*(ride.get("notified_driver_ids") or []), *next_batch]))
         eligible = list(dict.fromkeys([*(ride.get("eligible_driver_ids") or []), *next_batch]))
         updates = {
@@ -1174,6 +1184,7 @@ def accept_driver_ride(
                 "driver_id": uid,
                 "driver_name": str(profile.get("name") or "Driver")[:80],
                 "driver_phone": str(profile.get("phone") or "")[:40],
+                "driver_profile_photo": str(profile.get("profilePhotoUrl") or "")[:1500],
                 "vehicle_model": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Vehicle")[:100],
                 "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
                 "vehicle_type": driver_type,
@@ -1184,6 +1195,7 @@ def accept_driver_ride(
                 "driver_id": uid,
                 "driver_name": accepted_ride["driver_name"],
                 "driver_phone": accepted_ride["driver_phone"],
+                "driver_profile_photo": accepted_ride["driver_profile_photo"],
                 "vehicle_model": accepted_ride["vehicle_model"],
                 "vehicle_number": accepted_ride["vehicle_number"],
                 "vehicle_type": driver_type,
