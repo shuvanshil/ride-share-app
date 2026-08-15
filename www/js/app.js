@@ -427,8 +427,8 @@ function renderPassengerDriverCard(ride) {
                 <span class="driver-verified-badge">✓ Verified Driver</span>
             </div>
             ${driverPhone ? `
-                <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold">
-                    Call Driver
+                <a href="tel:${driverPhone}" class="btn btn-outline-primary btn-sm fw-semibold d-inline-flex align-items-center gap-1">
+                    <span class="webicon webicon-call" style="width:14px;height:14px;"></span> Call Driver
                 </a>
             ` : ""}
         </div>
@@ -545,7 +545,7 @@ function showTripProgressPanel(ride) {
                 <img src="assets/vehicle-markers/${vehicleType}-marker.png" class="driver-vehicle-image" alt="${vehicleType}">
                 ${driverPhone ? `
                     <a href="tel:${driverPhone}" class="call-driver-btn-compact">
-                         <span class="webicon webicon-contact-us" style="width:14px;height:14px;"></span> Call
+                         <span class="webicon webicon-call" style="width:14px;height:14px;"></span> Call
                     </a>
                 ` : ""}
             </div>
@@ -582,11 +582,14 @@ function hideTripProgressPanel() {
 }
 
 function dispatchPassengerDriverLocation(ride) {
-    if (!ride?.driverLocation) return;
+    if (!ride) return;
+    const location = ride.driverLocation || (ride.driver_id ? { lat: Number(ride.pickup_lat), lng: Number(ride.pickup_lng) } : null);
+    if (!location || !Number.isFinite(Number(location.lat)) || !Number.isFinite(Number(location.lng))) return;
 
     window.dispatchEvent(new CustomEvent('driver-location-updated', {
         detail: {
-            ...ride.driverLocation,
+            ...location,
+            driverLocation: location,
             driver_id: ride.driver_id,
             driverId: ride.driver_id,
             driver_name: ride.driver_name,
@@ -594,9 +597,9 @@ function dispatchPassengerDriverLocation(ride) {
             vehicleType: ride.vehicle_type,
             vehicle_model: ride.vehicle_model,
             vehicleModel: ride.vehicle_model,
-            driverHeading: ride.driverHeading,
-            driverSpeed: ride.driverSpeed,
-            driverAccuracy: ride.driverAccuracy,
+            driverHeading: ride.driverHeading ?? location.driverHeading,
+            driverSpeed: ride.driverSpeed ?? location.driverSpeed,
+            driverAccuracy: ride.driverAccuracy ?? location.driverAccuracy,
             rideStatus: ride.status,
             status: ride.status,
             pickup_lat: ride.pickup_lat,
@@ -1164,12 +1167,18 @@ function listenToRideStatusUpdates(rideId) {
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
             
+            if (typeof window.clearRouteAndDestination === 'function') {
+                window.clearRouteAndDestination();
+            }
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "arrived") {
             showTripProgressPanel(ride);
             requestBtn.innerHTML = 'Driver arrived at pickup.';
             requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
 
+            if (typeof window.clearRouteAndDestination === 'function') {
+                window.clearRouteAndDestination();
+            }
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "started") {
             showTripProgressPanel(ride);

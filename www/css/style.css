@@ -733,6 +733,8 @@
 .webicon-destination { -webkit-mask-image: url("../assets/icons/webicons/destination.svg"); mask-image: url("../assets/icons/webicons/destination.svg"); }
 .webicon-use-current-location { -webkit-mask-image: url("../assets/icons/webicons/use-current-location.svg"); mask-image: url("../assets/icons/webicons/use-current-location.svg"); }
 .webicon-sos { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
+.webicon-call { -webkit-mask-image: url("../assets/icons/webicons/call.svg"); mask-image: url("../assets/icons/webicons/call.svg"); }
+.webicon-phone { -webkit-mask-image: url("../assets/icons/webicons/call.svg"); mask-image: url("../assets/icons/webicons/call.svg"); }
 .webicon-share { -webkit-mask-image: url("../assets/icons/webicons/share.svg"); mask-image: url("../assets/icons/webicons/share.svg"); }
 .webicon-favorite { -webkit-mask-image: url("../assets/icons/webicons/favorite.svg"); mask-image: url("../assets/icons/webicons/favorite.svg"); }
 .webicon-work { -webkit-mask-image: url("../assets/icons/webicons/work.svg"); mask-image: url("../assets/icons/webicons/work.svg"); }

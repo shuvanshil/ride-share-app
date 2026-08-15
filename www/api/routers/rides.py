@@ -1168,6 +1168,8 @@ def accept_driver_ride(
             # a driver actually accepts -- never at ride-request time.
             verification_pin = str(ride.get("verification_pin") or "").strip() or f"{secrets.randbelow(10000):04d}"
 
+            driver_loc = profile.get("driverLocation") or profile.get("location")
+
             accepted_ride.update(ride)
             accepted_ride.update({
                 "status": "accepted",
@@ -1179,7 +1181,10 @@ def accept_driver_ride(
                 "vehicle_type": driver_type,
                 "verification_pin": verification_pin,
             })
-            tx.update(ride_ref, {
+            if driver_loc and isinstance(driver_loc, dict) and "lat" in driver_loc and "lng" in driver_loc:
+                accepted_ride["driverLocation"] = {"lat": float(driver_loc["lat"]), "lng": float(driver_loc["lng"])}
+
+            update_data = {
                 "status": "accepted",
                 "driver_id": uid,
                 "driver_name": accepted_ride["driver_name"],
@@ -1190,7 +1195,11 @@ def accept_driver_ride(
                 "verification_pin": verification_pin,
                 "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
+            }
+            if "driverLocation" in accepted_ride:
+                update_data["driverLocation"] = accepted_ride["driverLocation"]
+
+            tx.update(ride_ref, update_data)
 
         accept_transaction(transaction)
         db.collection("driverPresence").document(uid).set({

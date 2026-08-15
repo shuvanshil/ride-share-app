@@ -479,6 +479,8 @@ function renderIncomingRideCard(rideId, ride = {}) {
     const pickupName = escapeHtml(getRideDisplayAddress(ride, "pickup"));
     const dropName = escapeHtml(getRideDisplayAddress(ride, "drop"));
     const fare = escapeHtml(ride.fare || "0");
+    const passengerPhone = String(ride.passenger_phone || "").trim();
+    const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
     const previewLinks = [
         renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng),
         renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)
@@ -513,6 +515,11 @@ function renderIncomingRideCard(rideId, ride = {}) {
         <button class="gy-btn gy-btn-primary driver-service-accept-btn w-100" type="button" data-ride-id="${escapeHtml(rideId)}">
             Accept Ride Request
         </button>
+        ${callablePhone ? `
+            <a href="tel:${callablePhone}" class="gy-btn gy-btn-outline w-100 mt-2 d-inline-flex align-items-center justify-content-center gap-2" style="text-decoration:none;font-weight:600;">
+                <span class="webicon webicon-call" style="width:16px;height:16px;"></span> Call Passenger (${escapeHtml(passengerPhone)})
+            </a>
+        ` : ""}
         <button class="gy-btn gy-btn-outline driver-service-ignore-btn w-100 mt-2" type="button" data-ride-id="${escapeHtml(rideId)}">
             Ignore
         </button>
@@ -742,12 +749,12 @@ function renderActivePassengerContact(ride = {}) {
             </div>
             ${callablePhone ? `
                 <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
-                    <span aria-hidden="true">☎</span>
+                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
                     <small>Call</small>
                 </a>
             ` : `
                 <button class="active-passenger-call" type="button" disabled aria-label="Passenger phone unavailable">
-                    <span aria-hidden="true">☎</span>
+                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
                     <small>Call</small>
                 </button>
             `}
