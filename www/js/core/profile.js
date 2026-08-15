@@ -775,9 +775,7 @@ function bindProfileActions() {
     document.querySelector('[data-action="help"]')?.addEventListener('click', () => {
         window.navigateToPage('help.html');
     });
-    document.querySelector('[data-action="safety"]')?.addEventListener('click', () => {
-        window.navigateToPage('safety.html');
-    });
+    document.querySelector('[data-action="safety"]')?.addEventListener('click', openSafetySheet);
     document.querySelector('[data-action="refer"]')?.addEventListener('click', shareLiphtUp);
     document.querySelector('[data-action="about"]')?.addEventListener('click', () => {
         window.navigateToPage('about.html');
