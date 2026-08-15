@@ -70,7 +70,7 @@ class DeleteAccountBody(BaseModel):
 
 
 class ProfileUpdateBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     name: str
     email: str

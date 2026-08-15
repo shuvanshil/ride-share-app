@@ -836,16 +836,24 @@ async function expandRideDispatch(rideId) {
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
         if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
-        if (data.searchStatus === "no_more_available_drivers") {
-            const reqBtn = document.getElementById('request-ride-btn');
-            if (reqBtn) {
+
+        const reqBtn = document.getElementById('request-ride-btn');
+        if (reqBtn) {
+            if (data.searchStatus === "searching_nearby_drivers" || (data.driverIds && data.driverIds.length > 0)) {
+                delete reqBtn.dataset.state;
+                reqBtn.disabled = true;
+                reqBtn.innerHTML = "Searching nearby drivers...";
+                reqBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
+                scheduleDispatchExpansion(rideId, currentPassengerRideData || { dispatch_timeout_ms: DISPATCH_TIMEOUT_MS });
+            } else if (data.searchStatus === "no_more_available_drivers" || data.searchStatus === "no_available_drivers") {
                 reqBtn.dataset.state = "no_drivers";
                 reqBtn.disabled = false;
                 reqBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
                 reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
+                clearDispatchExpansionTimer();
             }
         }
-        return;
+        return data;
     } catch (error) {
         console.error("Ride dispatch expansion failed:", error);
     }
@@ -899,6 +907,10 @@ function getRideHistoryAddress(ride = {}, kind = "pickup") {
 window.addEventListener('user-session-ready', (e) => {
     currentUser = e.detail;
     console.log(`Session validated. Routing profile role: ${currentUser.role}`);
+
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole(currentUser.role || "");
+    }
 
     const isCurrent = window.isCurrentPage || ((p) => window.location.pathname.includes(p));
     const isDriverPage = isCurrent('driver.html') || isCurrent('driver-service.html');
@@ -1017,12 +1029,15 @@ requestRideButton.addEventListener('click', async () => {
         if (confirmRetry) {
             requestBtn.innerHTML = "⏳ Retrying driver search...";
             requestBtn.disabled = true;
+            delete requestBtn.dataset.state;
             try {
                 await expandRideDispatch(rideId);
             } catch (e) {
                 console.error("Retry dispatch error:", e);
                 requestBtn.disabled = false;
+                requestBtn.dataset.state = "no_drivers";
                 requestBtn.innerHTML = "🔄 No drivers nearby · Tap to Retry";
+                requestBtn.className = "btn btn-secondary w-100 fw-bold py-2";
             }
         } else {
             await cancelRideByPassenger(rideId);
@@ -1157,6 +1172,7 @@ function listenToRideStatusUpdates(rideId) {
                 }
             } else {
                 delete requestBtn.dataset.state;
+                requestBtn.disabled = true;
                 scheduleDispatchExpansion(rideId, ride);
                 requestBtn.innerHTML = "Searching nearby drivers...";
                 requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";

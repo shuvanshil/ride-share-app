@@ -110,6 +110,9 @@ function renderSession(profile) {
 function dispatchSessionReady(profile) {
     if (sessionReadyDispatched) return;
     sessionReadyDispatched = true;
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole(profile?.role || "");
+    }
     window.dispatchEvent(new CustomEvent('user-session-ready', { detail: profile }));
 
     // Only hide if we aren't mid-redirect
@@ -141,6 +144,9 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
     try {
         showPageLoader("Logging out...");
         clearCachedProfile();
+        if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+            window.LiphtUpNative.setUserRole("");
+        }
         // Fire and forget driver offline update
         markCurrentDriverOffline();
         await signOut(auth);
@@ -156,6 +162,9 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         clearCachedProfile();
+        if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+            window.LiphtUpNative.setUserRole("");
+        }
         setGuestLoginVisibility(true);
         // Only redirect to home if we aren't already on a guest-allowed page
         const isProtectedPage = window.location.pathname.includes('driver.html') ||
