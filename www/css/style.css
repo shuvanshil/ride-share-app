@@ -3070,9 +3070,51 @@ body.profile-editor-open {
     line-height: 1.4;
 }
 
+.profile-edit-sheet .gy-input,
+.profile-edit-sheet .form-control,
+.profile-edit-sheet .form-select,
+.profile-safety-sheet .gy-input,
+.profile-safety-sheet .form-control,
+.profile-safety-sheet .form-select,
+.profile-safety-sheet textarea,
+.profile-delete-sheet .gy-input,
+.profile-delete-sheet .form-control,
+.emergency-contact-form input,
+.safety-report-form select,
+.safety-report-form textarea,
+.profile-form-field .gy-input,
+.profile-form-field select,
+.profile-form-field textarea {
+    border: 1px solid #d1d5db !important;
+    background-color: #ffffff !important;
+    border-radius: 8px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-edit-sheet .gy-input:focus,
+.profile-edit-sheet .form-control:focus,
+.profile-edit-sheet .form-select:focus,
+.profile-safety-sheet .gy-input:focus,
+.profile-safety-sheet .form-control:focus,
+.profile-safety-sheet .form-select:focus,
+.profile-safety-sheet textarea:focus,
+.profile-delete-sheet .gy-input:focus,
+.profile-delete-sheet .form-control:focus,
+.emergency-contact-form input:focus,
+.safety-report-form select:focus,
+.safety-report-form textarea:focus,
+.profile-form-field .gy-input:focus,
+.profile-form-field select:focus,
+.profile-form-field textarea:focus {
+    border-color: #1A7A2E !important;
+    box-shadow: 0 0 0 3px rgba(26, 122, 46, 0.15) !important;
+    outline: none;
+}
+
 .profile-form-field .gy-input[readonly] {
+    border: 1px solid #d1d5db !important;
+    background-color: #f3f4f6 !important;
     color: #687281;
-    background: #ecefed;
 }
 
 .profile-driver-fields {
