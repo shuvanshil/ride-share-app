@@ -27,9 +27,9 @@ public class PushNotificationService extends FirebaseMessagingService {
         super.onMessageReceived(remoteMessage);
         Log.d(TAG, "From: " + remoteMessage.getFrom());
 
-        // Role-based filtering: Only display ride request notifications if the current user is logged in as a driver
-        if (!isDriverLoggedIn()) {
-            Log.d(TAG, "Suppressing push notification: Active user is not logged in as a driver.");
+        // Role-based filtering: Suppress ride request notifications ONLY if the current user is logged in as a passenger
+        if (isPassengerLoggedIn()) {
+            Log.d(TAG, "Suppressing push notification: Active user is logged in as a passenger.");
             return;
         }
 
@@ -50,6 +50,12 @@ public class PushNotificationService extends FirebaseMessagingService {
         android.content.SharedPreferences prefs = getSharedPreferences("liphtup_prefs", MODE_PRIVATE);
         String role = prefs.getString("user_role", "");
         return "driver".equalsIgnoreCase(role.trim());
+    }
+
+    private boolean isPassengerLoggedIn() {
+        android.content.SharedPreferences prefs = getSharedPreferences("liphtup_prefs", MODE_PRIVATE);
+        String role = prefs.getString("user_role", "");
+        return "passenger".equalsIgnoreCase(role.trim());
     }
 
     private void handleDataMessage(Map<String, String> data) {

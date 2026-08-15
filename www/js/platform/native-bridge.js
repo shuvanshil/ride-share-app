@@ -85,6 +85,14 @@
         var Plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
         var Push = Plugins.PushNotifications;
 
+        // Auto-detect driver pages and sync native role
+        if (window.isCurrentPage && (window.isCurrentPage('driver.html') || window.isCurrentPage('driver-service.html') || window.isCurrentPage('driver-dashboard.html'))) {
+            if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setUserRole === 'function') {
+                window.LiphtUpNativeStatus.setUserRole('driver');
+                console.log('[native-bridge] auto-set native user_role to driver');
+            }
+        }
+
         // --- Push Notification Handlers (Global) ---------------------------------
         if (Push) {
             // These listeners stay active for the entire session and handle

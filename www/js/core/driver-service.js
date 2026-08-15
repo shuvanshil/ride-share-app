@@ -192,6 +192,9 @@ const VEHICLE_MARKER_ASSETS = Object.freeze({
 
 function cacheProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole("driver");
+    }
     try {
         sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
             ...cacheableProfile,

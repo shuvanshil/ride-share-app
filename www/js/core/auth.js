@@ -50,6 +50,9 @@ function getCachedProfile() {
 
 function cacheProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
+    if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
+        window.LiphtUpNative.setUserRole(profile?.role || "");
+    }
     try {
         sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
             ...cacheableProfile,
@@ -190,15 +193,16 @@ onAuthStateChanged(auth, async (user) => {
         const profile = userDocSnap.data();
         cacheProfile(profile);
 
+        // Always dispatch session ready so role and events are synced on all pages
+        dispatchSessionReady(profile);
+
         // Only perform automatic routing/redirects if we are on the entry page (index.html)
         const path = window.location.pathname;
         const isEntryPage = path === "/" || path === "" || path.includes('index.html');
 
         if (isEntryPage) {
             renderSession(profile);
-            dispatchSessionReady(profile);
         } else {
-            // On other pages, just ensure the loader eventually dies
             hideInitialLoader();
         }
     } catch (error) {
