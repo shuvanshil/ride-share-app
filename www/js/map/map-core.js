@@ -1,6 +1,6 @@
 import { db } from '../platform/firebase-init.js';
-import { calculateFareOptions, isDistanceServiceable, isNightFareTime, MAX_SERVICEABLE_DISTANCE_KM } from './fare-policy.js';
-import { showAlert } from './dialog.js';
+import { calculateFareOptions, isDistanceServiceable, isNightFareTime, MAX_SERVICEABLE_DISTANCE_KM } from '../shared/fare-policy.js';
+import { showAlert } from '../shared/dialog.js';
 import { getCurrentPosition } from '../platform/geolocation.js';
 import {
     collection,

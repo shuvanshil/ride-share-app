@@ -18,7 +18,7 @@ import {
     registerDriverPushToken,
     startRideRequestRing,
     stopRideRequestRing
-} from './messaging.js?v=20260713-driver-push';
+} from '../shared/messaging.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];

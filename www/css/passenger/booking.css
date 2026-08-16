@@ -1,0 +1,73 @@
+/* Passenger Booking & Tracking Styles */
+.welcome-section {
+    padding: 4px 16px 10px;
+}
+
+.welcome-section h2 {
+    font-size: clamp(18px, 5.5vw, 22px);
+    font-weight: 800;
+    margin-bottom: 2px;
+    color: #111;
+}
+
+.welcome-section p {
+    font-size: 13px;
+    color: #6B7280;
+    margin: 0;
+}
+
+.hero-card {
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 20px 24px;
+    border-radius: 16px;
+    background-image: url("../../assets/backgrounds/hero banner.png");
+    background-size: cover;
+    background-position: center;
+    margin: 0 0 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-card h1 {
+    margin: 0 0 8px;
+    color: #1d1d1d;
+    font-size: clamp(24px, 6.7vw, 30px);
+    line-height: 1.05;
+    font-weight: 800;
+}
+
+.hero-card p {
+    margin: 0;
+    color: rgba(44, 44, 44, 0.86);
+    font-size: 13px;
+}
+
+.vehicle-selector-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.vehicle-option-card {
+    background: #fff;
+    border: 1.5px solid var(--gy-border);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.vehicle-option-card.selected {
+    border-color: var(--gy-green);
+    background: var(--gy-green-soft);
+    box-shadow: 0 4px 14px rgba(26, 122, 46, 0.12);
+}

@@ -8,7 +8,7 @@ import {
     registerDriverPushToken,
     startRideRequestRing,
     stopRideRequestRing
-} from './messaging.js?v=20260713-driver-push';
+} from '../shared/messaging.js';
 import {
     collection,
     doc,
