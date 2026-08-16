@@ -20,7 +20,11 @@ export function startRideRequestRing(ride = {}) {
     lastOpenNotificationAt = now;
 
     if (navigator.vibrate) {
-        navigator.vibrate([350, 180, 350, 180, 700]);
+        try {
+            navigator.vibrate([350, 180, 350, 180, 700]);
+        } catch (e) {
+            // Ignore browser user activation intervention if user hasn't interacted yet
+        }
     }
 
     showRideRequestNotification(ride).catch((error) => {
@@ -58,6 +62,10 @@ export async function showRideRequestNotification(ride = {}) {
 
 export function stopRideRequestRing() {
     if (navigator.vibrate) {
-        navigator.vibrate(0);
+        try {
+            navigator.vibrate(0);
+        } catch (e) {
+            // Ignore browser user activation intervention
+        }
     }
 }
