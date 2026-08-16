@@ -1,5 +1,6 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { registerSignOutHook } from '../shared/auth.js';
 
 export async function markCurrentDriverOffline() {
     try {
@@ -28,3 +29,6 @@ export async function markCurrentDriverOffline() {
         console.warn("Could not mark driver offline during logout (non-fatal):", error);
     }
 }
+
+registerSignOutHook(markCurrentDriverOffline);
+

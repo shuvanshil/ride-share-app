@@ -1,9 +1,9 @@
 import { auth, db } from '../platform/firebase-init.js';
-import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from './map.js?v=20260731-passenger-nav-camera';
+import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from '../map/map-core.js';
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
-import { showAlert, showConfirm } from './dialog.js';
-import { showPageLoader, hidePageLoader, hideInitialLoader } from './loading.js';
-import { waitForAuth } from './auth.js';
+import { showAlert, showConfirm } from '../shared/dialog.js';
+import { showPageLoader, hidePageLoader, hideInitialLoader } from '../shared/loading.js';
+import { waitForAuth } from '../shared/auth.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,

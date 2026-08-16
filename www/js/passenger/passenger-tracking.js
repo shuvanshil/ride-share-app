@@ -1,6 +1,6 @@
 import { db } from '../platform/firebase-init.js';
 import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { hideInitialLoader } from './loading.js';
+import { hideInitialLoader } from '../shared/loading.js';
 
 const GOOGLE_MAP_SCRIPT_ID = "lu-track-google-maps";
 let googleBrowserKey = null;

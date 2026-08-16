@@ -1,4 +1,4 @@
-import { auth, db } from './platform/firebase-init.js';
+import { auth, db } from '../platform/firebase-init.js';
 import { 
     collection, 
     doc, 
@@ -9,10 +9,10 @@ import {
     onSnapshot,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { calculateServiceFare, getServiceFarePolicy } from './core/fare-policy.js';
-import { showAlert, showConfirm } from './core/dialog.js';
-import { share, copyToClipboard } from './platform/share.js';
-import { getCurrentPosition } from './platform/geolocation.js';
+import { calculateServiceFare, getServiceFarePolicy } from '../shared/fare-policy.js';
+import { showAlert, showConfirm } from '../shared/dialog.js';
+import { share, copyToClipboard } from '../platform/share.js';
+import { getCurrentPosition } from '../platform/geolocation.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;

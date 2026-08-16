@@ -9,8 +9,8 @@ import {
     setDoc,
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { showAlert, showConfirm } from './dialog.js';
-import { showSkeleton, setButtonBusy } from './loading.js';
+import { showAlert, showConfirm } from '../shared/dialog.js';
+import { showSkeleton, setButtonBusy } from '../shared/loading.js';
 
 const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 const RECENT_RIDES_LIMIT = 3;

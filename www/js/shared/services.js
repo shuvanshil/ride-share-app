@@ -1,7 +1,7 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from './map.js?v=20260731-passenger-nav-camera';
+import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from '../map/map-core.js';
 import { getRideService } from './fare-policy.js';
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { setInlineLoading, hideInitialLoader } from './loading.js';

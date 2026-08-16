@@ -11,9 +11,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
-import { showAlert, showConfirm } from './dialog.js';
-import { showPageLoader, hidePageLoader, setButtonBusy, hideInitialLoader } from './loading.js';
-import { waitForAuth } from './auth.js';
+import { showAlert, showConfirm } from '../shared/dialog.js';
+import { showPageLoader, hidePageLoader, setButtonBusy, hideInitialLoader } from '../shared/loading.js';
+import { waitForAuth } from '../shared/auth.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,

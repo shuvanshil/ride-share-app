@@ -1,7 +1,7 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { hideInitialLoader } from './loading.js';
+import { hideInitialLoader } from '../shared/loading.js';
 
 const REFRESH_INTERVAL_MS = 30000;
 let refreshTimer = null;

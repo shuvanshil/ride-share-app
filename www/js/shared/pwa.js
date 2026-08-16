@@ -1,5 +1,5 @@
 let deferredInstallPrompt = null;
-const PWA_SCRIPT_URL = document.currentScript?.src || new URL('js/core/pwa.js', window.location.origin).href;
+const PWA_SCRIPT_URL = document.currentScript?.src || new URL('js/shared/pwa.js', window.location.origin).href;
 const APP_BASE_URL = new URL('../../', PWA_SCRIPT_URL);
 
 function isStandalone() {

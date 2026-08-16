@@ -1,7 +1,6 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { markCurrentDriverOffline } from './driver-availability.js';
 import { showAlert, showConfirm } from './dialog.js';
 import { hideInitialLoader } from './loading.js';
 
@@ -575,7 +574,6 @@ async function logoutCurrentUser() {
     window.LiphtUpLoading?.showPageLoader?.("Logging out...");
     try {
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
-        await markCurrentDriverOffline();
         await signOut(auth);
     } catch (err) {
         console.warn("Logout error:", err);

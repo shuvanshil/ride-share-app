@@ -1,2 +1,1 @@
--r www/requirements.txt
-pytest>=8.0,<9.0
+-r requirements.txt

@@ -2,12 +2,19 @@ import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { showAlert } from './dialog.js';
-import { hideInitialLoader } from './loading.js';
-import { markCurrentDriverOffline } from './driver-availability.js';
+import { hideInitialLoader, showPageLoader, hidePageLoader } from './loading.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 let sessionReadyDispatched = false;
 let authInitialized = false;
+
+const signOutHooks = [];
+
+export function registerSignOutHook(fn) {
+    if (typeof fn === 'function' && !signOutHooks.includes(fn)) {
+        signOutHooks.push(fn);
+    }
+}
 
 /**
  * Returns a promise that resolves when Firebase Auth has finished its initial
@@ -150,8 +157,10 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
         if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
             window.LiphtUpNative.setUserRole("");
         }
-        // Fire and forget driver offline update
-        markCurrentDriverOffline();
+        // Run registered sign-out hooks safely
+        signOutHooks.forEach((hook) => {
+            try { hook(); } catch (e) { console.warn("Signout hook error:", e); }
+        });
         await signOut(auth);
         window.location.href = "/login.html";
     } catch (error) {
