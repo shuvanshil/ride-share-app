@@ -1303,6 +1303,7 @@ async function cancelRideByPassenger(rideId) {
 
     if (!(await showConfirm(cancelMessage, { okText: "Cancel ride", cancelText: "Keep ride" }))) return;
 
+    window.LiphtUpLoading?.showPageLoader?.("Cancelling ride request...");
     try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");
@@ -1316,16 +1317,18 @@ async function cancelRideByPassenger(rideId) {
             throw new Error(data.error || "Could not cancel this ride.");
         }
 
-        await showAlert("Your ride has been cancelled.");
         resetPassengerBookingUi();
 
         if (activeRideListener) {
             activeRideListener();
             activeRideListener = null;
         }
+        await showAlert("Your ride has been cancelled.");
     } catch (error) {
         console.error("Failed to cancel ride:", error);
         await showAlert(error.message || "Could not cancel this ride. Please try again.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
 

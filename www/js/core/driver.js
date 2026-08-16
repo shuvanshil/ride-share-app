@@ -1415,6 +1415,7 @@ addOptionalClickListener('driver-earnings-btn', () => {
     window.location.href = '/history.html';
 });
 addOptionalClickListener('logout-btn-review', async () => {
+    window.LiphtUpLoading?.showPageLoader?.("Logging out...");
     try {
         clearCachedProfile();
         await setDriverAvailability("offline");
@@ -1422,12 +1423,14 @@ addOptionalClickListener('logout-btn-review', async () => {
         window.location.href = "/login.html";
     } catch (error) {
         console.error("Logout failed:", error);
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
         await showAlert("Could not logout. Please try again.");
     }
 });
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const checked = event.target.checked;
     event.target.disabled = true;
+    window.LiphtUpLoading?.showPageLoader?.("Updating online status...");
     try {
         if (checked) {
             driverDutyOnline = true;
@@ -1446,6 +1449,7 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
     } finally {
         event.target.disabled = false;
         updateDutySwitchUi();
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 });
 
@@ -1453,8 +1457,10 @@ addOptionalClickListener('close-driver-payment-btn', async () => {
     const closeBtn = document.getElementById('close-driver-payment-btn');
     closeBtn.disabled = true;
     closeBtn.innerText = "Saving trip history...";
+    window.LiphtUpLoading?.showPageLoader?.("Saving trip history...");
 
     const saved = await markRidePaidAndCreateHistory(pendingDriverPaymentRideId);
+    window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     if (!saved) {
         closeBtn.disabled = false;
         closeBtn.innerText = "Fare Received & Clear";

@@ -557,10 +557,16 @@ function setDeleteState(isDeleting) {
 }
 
 async function logoutCurrentUser() {
-    sessionStorage.removeItem(PROFILE_CACHE_KEY);
-    await markCurrentDriverOffline();
-    await signOut(auth);
-    window.location.href = '/login.html';
+    window.LiphtUpLoading?.showPageLoader?.("Logging out...");
+    try {
+        sessionStorage.removeItem(PROFILE_CACHE_KEY);
+        await markCurrentDriverOffline();
+        await signOut(auth);
+    } catch (err) {
+        console.warn("Logout error:", err);
+    } finally {
+        window.location.href = '/login.html';
+    }
 }
 
 async function deleteAccount(event) {
@@ -578,6 +584,8 @@ async function deleteAccount(event) {
         showDeleteError("Enter your account password to delete this account.");
         return;
     }
+
+    window.LiphtUpLoading?.showPageLoader?.("Deleting account...");
 
     clearDeleteError();
     setDeleteState(true);
@@ -750,6 +758,7 @@ async function saveProfile(event) {
         });
     }
 
+    window.LiphtUpLoading?.showPageLoader?.("Saving profile changes...");
     try {
         currentProfile = await saveProfileThroughBackend(currentAuthUser, updates);
 
@@ -762,6 +771,8 @@ async function saveProfile(event) {
         console.error("Profile update failed:", error);
         setSavingState(false);
         showError("Could not save your profile. Check your connection and try again.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
 

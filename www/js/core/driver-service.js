@@ -1666,18 +1666,23 @@ async function verifyAndStartTrip(rideId) {
 async function transitionRideThroughBackend(rideId, action, pin = "") {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) throw new Error("Authentication is required.");
-    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ action, pin })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) {
-        const error = new Error(data.error || "Could not update this ride.");
-        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
-        throw error;
+    window.LiphtUpLoading?.showPageLoader?.("Updating trip status...");
+    try {
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ action, pin })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            const error = new Error(data.error || "Could not update this ride.");
+            error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+            throw error;
+        }
+        return data;
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
-    return data;
 }
 
 async function completeRideJob() {

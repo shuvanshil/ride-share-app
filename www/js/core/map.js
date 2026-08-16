@@ -1330,6 +1330,9 @@ function updateVehicleMarkerLegend() {
         vehicleLegendElement = document.createElement("div");
         vehicleLegendElement.className = "vehicle-marker-legend";
         vehicleLegendElement.setAttribute("aria-label", "Nearby vehicle counts");
+    }
+
+    if (vehicleLegendElement.parentElement !== mapContainer) {
         mapContainer.appendChild(vehicleLegendElement);
     }
 
@@ -1775,7 +1778,7 @@ async function refreshLivePickupAfterMapReady(initialCoords) {
     const fareAmountSpan = document.getElementById("fare-amount");
     if (!fareQuoteBox || !fareAmountSpan) return;
 
-    fareAmountSpan.innerText = "Calculating...";
+    fareAmountSpan.innerText = "Just a sec...";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
     await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
@@ -1845,6 +1848,7 @@ export async function initializeMapEngine() {
         setupFareEngineListeners();
         setupPickupSearchListeners();
         startGlobalDriverPresenceListener();
+        updateVehicleMarkerLegend();
         window.dispatchEvent(new CustomEvent("map-engine-ready", {
             detail: { pickup: { lat: coords.lat, lng: coords.lng } }
         }));
@@ -2000,7 +2004,7 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
                 const fareQuoteBox = document.getElementById("fare-quote-box");
                 const fareAmountSpan = document.getElementById("fare-amount");
                 if (fareQuoteBox && fareAmountSpan) {
-                    fareAmountSpan.innerText = "Calculating...";
+                    fareAmountSpan.innerText = "Just a sec...";
                     fareQuoteBox.classList.remove("d-none");
                     fareQuoteBox.classList.add("d-flex");
                     await renderDestinationFare(existingDestination, fareQuoteBox, fareAmountSpan);
@@ -2118,7 +2122,7 @@ async function completePickupMapPick(lat, lng) {
     const fareAmountSpan = document.getElementById("fare-amount");
     if (!fareQuoteBox || !fareAmountSpan) return;
 
-    fareAmountSpan.innerText = "Calculating...";
+    fareAmountSpan.innerText = "Just a sec...";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
     await renderDestinationFare(pickMode.existingDestination, fareQuoteBox, fareAmountSpan);
@@ -2155,7 +2159,7 @@ export async function useCurrentPickupLocation() {
     const fareAmountSpan = document.getElementById("fare-amount");
     if (!fareQuoteBox || !fareAmountSpan) return;
 
-    fareAmountSpan.innerText = "Calculating...";
+    fareAmountSpan.innerText = "Just a sec...";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
     await renderDestinationFare(existingDestination, fareQuoteBox, fareAmountSpan);
@@ -2199,7 +2203,7 @@ function setupFareEngineListeners() {
             return;
         }
 
-        fareAmountSpan.innerText = "Searching...";
+        fareAmountSpan.innerText = "Just a sec...";
         fareQuoteBox.classList.remove("d-none");
         fareQuoteBox.classList.add("d-flex");
         window.latestFareQuote = null;
@@ -2659,7 +2663,7 @@ async function chooseDestination(destination, dropInput, fareQuoteBox, fareAmoun
     hideDestinationSuggestions();
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-    fareAmountSpan.innerText = "Calculating...";
+    fareAmountSpan.innerText = "Just a sec...";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
 
@@ -2776,6 +2780,7 @@ export async function fetchRoadRouteDetails(origin, destination) {
         return null;
     }
 
+    // Tier 1: Fetch from backend Google route endpoint
     try {
         const params = new URLSearchParams({
             originLat: String(originCoords.lat),
@@ -2786,18 +2791,83 @@ export async function fetchRoadRouteDetails(origin, destination) {
         const response = await fetch(`/api/google-route?${params.toString()}`, {
             headers: { Accept: "application/json" }
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) return null;
-
-        return {
-            distanceKm: Number.isFinite(Number(data.distanceKm)) ? Number(data.distanceKm) : null,
-            durationMinutes: Number.isFinite(Number(data.durationMinutes)) ? Number(data.durationMinutes) : null,
-            routePath: data.encodedPolyline ? decodePolyline(data.encodedPolyline) : []
-        };
+        if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            const dist = Number(data?.distanceKm);
+            if (Number.isFinite(dist) && dist > 0) {
+                return {
+                    distanceKm: dist,
+                    durationMinutes: Number.isFinite(Number(data.durationMinutes)) ? Number(data.durationMinutes) : null,
+                    routePath: data.encodedPolyline ? decodePolyline(data.encodedPolyline) : []
+                };
+            }
+        }
     } catch (error) {
-        console.warn("Google route fetch failed:", error);
-        return null;
+        console.warn("Backend Google route endpoint fetch failed, attempting client-side Maps Services:", error);
     }
+
+    // Tier 2: Fallback to client-side Google Maps DirectionsService
+    if (window.google?.maps?.DirectionsService) {
+        try {
+            const directionsResult = await new Promise((resolve) => {
+                const ds = new window.google.maps.DirectionsService();
+                ds.route(
+                    {
+                        origin: originCoords,
+                        destination: destinationCoords,
+                        travelMode: window.google.maps.TravelMode.DRIVING
+                    },
+                    (res, status) => {
+                        if (status === "OK" && res?.routes?.[0]?.legs?.[0]) {
+                            const leg = res.routes[0].legs[0];
+                            const distanceKm = leg.distance.value / 1000;
+                            const durationMinutes = Math.round(leg.duration.value / 60);
+                            const routePath = res.routes[0].overview_path || [];
+                            resolve({ distanceKm, durationMinutes, routePath });
+                        } else {
+                            resolve(null);
+                        }
+                    }
+                );
+            });
+            if (directionsResult) return directionsResult;
+        } catch (clientErr) {
+            console.warn("Client-side DirectionsService failed:", clientErr);
+        }
+    }
+
+    // Tier 3: Fallback to client-side Google Maps DistanceMatrixService
+    if (window.google?.maps?.DistanceMatrixService) {
+        try {
+            const distanceMatrixResult = await new Promise((resolve) => {
+                const dms = new window.google.maps.DistanceMatrixService();
+                dms.getDistanceMatrix(
+                    {
+                        origins: [originCoords],
+                        destinations: [destinationCoords],
+                        travelMode: window.google.maps.TravelMode.DRIVING
+                    },
+                    (res, status) => {
+                        if (status === "OK" && res?.rows?.[0]?.elements?.[0]?.status === "OK") {
+                            const elem = res.rows[0].elements[0];
+                            resolve({
+                                distanceKm: elem.distance.value / 1000,
+                                durationMinutes: Math.round(elem.duration.value / 60),
+                                routePath: []
+                            });
+                        } else {
+                            resolve(null);
+                        }
+                    }
+                );
+            });
+            if (distanceMatrixResult) return distanceMatrixResult;
+        } catch (matrixErr) {
+            console.warn("Client-side DistanceMatrixService failed:", matrixErr);
+        }
+    }
+
+    return null;
 }
 
 async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) {
@@ -2937,7 +3007,7 @@ window.addEventListener("prefill-destination-request", async (event) => {
     if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
 
     dropInput.value = query;
-    fareAmountSpan.innerText = "Searching...";
+    fareAmountSpan.innerText = "Just a sec...";
     fareQuoteBox.classList.remove("d-none");
     fareQuoteBox.classList.add("d-flex");
 

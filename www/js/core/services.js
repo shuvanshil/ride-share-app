@@ -68,7 +68,7 @@ function resetFareOptions() {
     window.selectedRideService = null;
     serviceOptions.classList.add('d-none');
     findRideBtn.innerHTML = dropInput.value.trim()
-        ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Calculating route...</span>'
+        ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Just a sec...</span>'
         : "Please enter destination";
     findRideBtn.disabled = true;
 }
