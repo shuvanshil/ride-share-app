@@ -1768,17 +1768,148 @@ select {
 }
 
 .fare-pill {
-    min-height: 46px;
-    margin: 8px 0 12px;
-    padding: 0 14px;
-    border-radius: 8px;
-    color: var(--gy-green);
-    background: #EAF8ED;
-    font-size: 13px;
+    min-height: 52px;
+    margin: 10px 0 14px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    color: #166534;
+    background: #f0fdf4;
+    border: 1px solid rgba(22, 101, 52, 0.22);
+    box-shadow: 0 2px 8px rgba(22, 101, 52, 0.08);
+    font-size: 13.5px;
+}
+
+.estimated-price-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: #166534;
+    font-size: 14px;
+}
+
+.info-popover-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0.88;
+    transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.info-popover-btn:hover,
+.info-popover-btn:focus-visible {
+    opacity: 1;
+    transform: scale(1.12);
+    outline: none;
+}
+
+.info-popover-btn img {
+    width: 17px;
+    height: 17px;
+    display: block;
 }
 
 .fare-pill strong {
-    font-size: 19px;
+    font-size: 20px;
+    font-weight: 800;
+    color: #15803d;
+}
+
+/* Estimated Price Information Popover Modal */
+.estimated-price-popover {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.popover-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.45);
+    backdrop-filter: blur(4px);
+    border: none;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+}
+
+.popover-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 380px;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 22px 20px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+    animation: popoverSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popoverSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.popover-close-btn {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    background: #f3f4f6;
+    color: #4b5563;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.popover-close-btn:hover {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.popover-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.popover-header strong {
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.popover-body-text {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: #4b5563;
 }
 
 .section-title {
