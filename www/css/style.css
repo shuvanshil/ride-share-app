@@ -1768,17 +1768,148 @@ select {
 }
 
 .fare-pill {
-    min-height: 46px;
-    margin: 8px 0 12px;
-    padding: 0 14px;
-    border-radius: 8px;
-    color: var(--gy-green);
-    background: #EAF8ED;
-    font-size: 13px;
+    min-height: 52px;
+    margin: 10px 0 14px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    color: #166534;
+    background: #f0fdf4;
+    border: 1px solid rgba(22, 101, 52, 0.22);
+    box-shadow: 0 2px 8px rgba(22, 101, 52, 0.08);
+    font-size: 13.5px;
+}
+
+.estimated-price-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: #166534;
+    font-size: 14px;
+}
+
+.info-popover-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0.88;
+    transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.info-popover-btn:hover,
+.info-popover-btn:focus-visible {
+    opacity: 1;
+    transform: scale(1.12);
+    outline: none;
+}
+
+.info-popover-btn img {
+    width: 17px;
+    height: 17px;
+    display: block;
 }
 
 .fare-pill strong {
-    font-size: 19px;
+    font-size: 20px;
+    font-weight: 800;
+    color: #15803d;
+}
+
+/* Estimated Price Information Popover Modal */
+.estimated-price-popover {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.popover-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.45);
+    backdrop-filter: blur(4px);
+    border: none;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+}
+
+.popover-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 380px;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 22px 20px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+    animation: popoverSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popoverSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.popover-close-btn {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    background: #f3f4f6;
+    color: #4b5563;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.popover-close-btn:hover {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.popover-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.popover-header strong {
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.popover-body-text {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: #4b5563;
 }
 
 .section-title {
@@ -5940,5 +6071,378 @@ body.profile-editor-open {
 
 .safety-more-link:hover {
     color: #135d23;
+}
+
+/* ==========================================================================
+   LIGHTUP SAFETY CENTER MODAL & CARDS (MATCHING MOCKUP DESIGN)
+   ========================================================================== */
+
+.safety-center-sheet {
+    max-width: 480px;
+    border-radius: 24px 24px 0 0;
+    padding: 24px 20px 32px;
+    background: #ffffff;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+@media (min-width: 576px) {
+    .safety-center-sheet {
+        border-radius: 24px;
+        margin: 20px auto;
+        max-height: 85vh;
+    }
+}
+
+.safety-center-header {
+    position: relative;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #f3f4f6;
+    margin-bottom: 20px;
+}
+
+.safety-center-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #166534;
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.safety-center-brand .green-shield-icon {
+    width: 18px;
+    height: 18px;
+    background-color: #166534;
+}
+
+.safety-center-main-heading {
+    margin: 0 0 6px;
+    font-size: 26px;
+    font-weight: 800;
+    color: #111827;
+    letter-spacing: -0.02em;
+}
+
+.safety-center-subtext {
+    margin: 0;
+    font-size: 13.5px;
+    color: #6b7280;
+    line-height: 1.45;
+}
+
+.safety-close-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    font-size: 22px;
+    color: #374151;
+    background: #f3f4f6;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.safety-center-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.safety-center-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 18px 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.safety-card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.safety-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.badge-green {
+    background: #eaf8ed;
+}
+
+.badge-red-soft {
+    background: #fef2f2;
+}
+
+.badge-red-solid {
+    background: #ef4444;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 13px;
+    border-radius: 10px;
+}
+
+.safety-card-head h3 {
+    margin: 0 0 2px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.safety-card-head p {
+    margin: 0;
+    font-size: 12.5px;
+    color: #6b7280;
+}
+
+/* Emergency Contact Items */
+.emergency-contacts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.emergency-contact-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+}
+
+.emergency-contact-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.contact-avatar-circle {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #eaf8ed;
+    color: #166534;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.emergency-contact-info strong {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.emergency-contact-info span {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.emergency-contact-remove-btn {
+    background: none;
+    border: none;
+    color: #dc2626;
+    font-weight: 700;
+    font-size: 12.5px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.emergency-contact-remove-btn:hover {
+    text-decoration: underline;
+}
+
+.gy-btn-outline-green {
+    background: #ffffff;
+    border: 1.5px solid #166534;
+    color: #166534;
+    font-weight: 700;
+    font-size: 13.5px;
+    border-radius: 10px;
+    padding: 10px 16px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.gy-btn-outline-green:hover {
+    background: #f0fdf4;
+    color: #15803d;
+}
+
+.max-contacts-notice {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: center;
+    margin-top: 8px;
+}
+
+/* During Your Ride Card */
+.during-ride-content-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0 2px;
+}
+
+.during-ride-illustration {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #eaf8ed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.during-ride-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.during-ride-text strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 2px;
+}
+
+.during-ride-text p {
+    margin: 0;
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.35;
+}
+
+.safety-share-btn {
+    white-space: nowrap;
+    padding: 8px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+}
+
+/* Safety Report Form */
+.safety-report-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+@media (max-width: 400px) {
+    .safety-report-buttons {
+        flex-direction: column;
+    }
+}
+
+.safety-reassurance-tag {
+    text-align: center;
+    font-size: 11.5px;
+    color: #6b7280;
+    margin-top: 10px;
+}
+
+/* Emergency Assistance Row */
+.safety-emergency-card {
+    background: #fff5f5;
+    border-color: #fecaca;
+}
+
+.safety-emergency-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.safety-emergency-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.safety-emergency-copy h3 {
+    margin: 0 0 2px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #991b1b;
+}
+
+.safety-emergency-copy p {
+    margin: 0;
+    font-size: 12px;
+    color: #b91c1c;
+}
+
+.safety-get-help-btn {
+    background: #dc2626;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 13px;
+    border-radius: 10px;
+    padding: 8px 14px;
+    border: none;
+    white-space: nowrap;
+}
+
+.safety-get-help-btn:hover {
+    background: #b91c1c;
+}
+
+/* Safety Standards Card */
+.safety-standards-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.safety-standards-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.safety-standards-copy h3 {
+    margin: 0 0 2px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.safety-standards-copy p {
+    margin: 0;
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.35;
+}
+
+.safety-guidelines-btn {
+    background: none;
+    border: none;
+    color: #166534;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    padding: 6px 0;
+}
+
+.safety-guidelines-btn:hover {
+    text-decoration: underline;
 }
 

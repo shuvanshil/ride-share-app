@@ -250,16 +250,25 @@ let emergencyContactsCache = [];
 function renderEmergencyContacts() {
     const list = document.getElementById('emergency-contacts-list');
     const addBtn = document.getElementById('emergency-contact-add-btn');
+    const limitNotice = document.getElementById('emergency-contact-limit-notice');
     if (!list) return;
 
     if (!emergencyContactsCache.length) {
-        list.innerHTML = `<p class="profile-safety-tools-hint mb-0">No emergency contacts saved yet.</p>`;
+        list.innerHTML = `<p class="profile-safety-tools-hint mb-0 text-muted" style="font-size:12.5px;">No emergency contacts saved yet.</p>`;
     } else {
         list.innerHTML = emergencyContactsCache.map((contact, index) => `
             <div class="emergency-contact-item">
-                <div>
-                    <strong>${escapeHtmlText(contact.name)}</strong>
-                    <span>${escapeHtmlText(contact.phone)}</span>
+                <div class="emergency-contact-info">
+                    <div class="contact-avatar-circle">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="12" cy="7" r="4" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <strong>${escapeHtmlText(contact.name)}</strong>
+                        <span>${escapeHtmlText(contact.phone)}</span>
+                    </div>
                 </div>
                 <button type="button" class="emergency-contact-remove-btn" data-index="${index}">Remove</button>
             </div>
@@ -268,7 +277,10 @@ function renderEmergencyContacts() {
             btn.addEventListener('click', () => removeEmergencyContact(Number(btn.dataset.index)));
         });
     }
-    if (addBtn) addBtn.classList.toggle('d-none', emergencyContactsCache.length >= 3);
+
+    const isMax = emergencyContactsCache.length >= 3;
+    if (addBtn) addBtn.classList.toggle('d-none', isMax);
+    if (limitNotice) limitNotice.classList.toggle('d-none', !isMax);
 }
 
 function escapeHtmlText(text) {
@@ -344,16 +356,21 @@ document.getElementById('emergency-contact-form')?.addEventListener('submit', as
 });
 
 // ==========================================
-// FEATURE 3: REPORT A SAFETY CONCERN
+// FEATURE 3: REPORT A SAFETY CONCERN & ACTIONS
 // ==========================================
-document.getElementById('safety-report-open-btn')?.addEventListener('click', () => {
-    document.getElementById('safety-report-form')?.classList.remove('d-none');
-    document.getElementById('safety-report-open-btn')?.classList.add('d-none');
+document.getElementById('safety-center-share-btn')?.addEventListener('click', () => {
+    if (typeof window.LiphtUpShareInvite === 'function') {
+        window.LiphtUpShareInvite();
+    } else {
+        shareLiphtUp();
+    }
+});
+
+document.getElementById('safety-get-help-btn')?.addEventListener('click', () => {
+    window.location.href = 'tel:112';
 });
 
 document.getElementById('safety-report-cancel-btn')?.addEventListener('click', () => {
-    document.getElementById('safety-report-form')?.classList.add('d-none');
-    document.getElementById('safety-report-open-btn')?.classList.remove('d-none');
     document.getElementById('safety-report-form')?.reset();
 });
 
@@ -375,8 +392,6 @@ document.getElementById('safety-report-form')?.addEventListener('submit', async 
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not submit this report.");
 
-        document.getElementById('safety-report-form')?.classList.add('d-none');
-        document.getElementById('safety-report-open-btn')?.classList.remove('d-none');
         document.getElementById('safety-report-form')?.reset();
         await showAlert("Thank you. Your report has been submitted to LiphtUp's safety team.");
     } catch (error) {
@@ -557,10 +572,16 @@ function setDeleteState(isDeleting) {
 }
 
 async function logoutCurrentUser() {
-    sessionStorage.removeItem(PROFILE_CACHE_KEY);
-    await markCurrentDriverOffline();
-    await signOut(auth);
-    window.location.href = '/login.html';
+    window.LiphtUpLoading?.showPageLoader?.("Logging out...");
+    try {
+        sessionStorage.removeItem(PROFILE_CACHE_KEY);
+        await markCurrentDriverOffline();
+        await signOut(auth);
+    } catch (err) {
+        console.warn("Logout error:", err);
+    } finally {
+        window.location.href = '/login.html';
+    }
 }
 
 async function deleteAccount(event) {
@@ -578,6 +599,8 @@ async function deleteAccount(event) {
         showDeleteError("Enter your account password to delete this account.");
         return;
     }
+
+    window.LiphtUpLoading?.showPageLoader?.("Deleting account...");
 
     clearDeleteError();
     setDeleteState(true);
@@ -750,6 +773,7 @@ async function saveProfile(event) {
         });
     }
 
+    window.LiphtUpLoading?.showPageLoader?.("Saving profile changes...");
     try {
         currentProfile = await saveProfileThroughBackend(currentAuthUser, updates);
 
@@ -762,6 +786,8 @@ async function saveProfile(event) {
         console.error("Profile update failed:", error);
         setSavingState(false);
         showError("Could not save your profile. Check your connection and try again.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
 

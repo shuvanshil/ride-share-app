@@ -68,7 +68,7 @@ function resetFareOptions() {
     window.selectedRideService = null;
     serviceOptions.classList.add('d-none');
     findRideBtn.innerHTML = dropInput.value.trim()
-        ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Calculating route...</span>'
+        ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Just a sec...</span>'
         : "Please enter destination";
     findRideBtn.disabled = true;
 }
@@ -266,7 +266,39 @@ function bindServicesControls() {
 bindServicesControls();
 findRideBtn.disabled = true;
 
+function initEstimatedPriceInfoPopover() {
+    const infoBtn = document.getElementById('estimated-price-info-btn');
+    const popover = document.getElementById('estimated-price-popover');
+    const closeBtn = document.getElementById('estimated-price-popover-close');
+    const backdrop = document.getElementById('estimated-price-popover-backdrop');
+
+    if (!infoBtn || !popover) return;
+
+    const openPopover = (e) => {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        popover.classList.remove('d-none');
+        document.body.classList.add('popover-open');
+    };
+
+    const closePopover = () => {
+        popover.classList.add('d-none');
+        document.body.classList.remove('popover-open');
+    };
+
+    infoBtn.addEventListener('click', openPopover);
+    closeBtn?.addEventListener('click', closePopover);
+    backdrop?.addEventListener('click', closePopover);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !popover.classList.contains('d-none')) {
+            closePopover();
+        }
+    });
+}
+
 async function bootstrapServices() {
+    initEstimatedPriceInfoPopover();
     // Start guest services immediately if auth takes too long,
     // ensuring the map loads for everyone.
     const mapTimeout = setTimeout(() => {

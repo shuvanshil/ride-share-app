@@ -96,8 +96,25 @@
                             <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Opening map...</span></div>
                         </div>
                         <div id="fare-quote-box" class="fare-pill services-fare-pill d-none justify-content-between align-items-center">
-                            <span>Route calculated</span>
+                            <div class="estimated-price-label">
+                                <span>Estimated price</span>
+                                <button type="button" class="info-popover-btn" id="estimated-price-info-btn" aria-label="Estimated price information" title="Estimated price information">
+                                    <img src="assets/icons/info-icon.png" alt="Info" width="16" height="16">
+                                </button>
+                            </div>
                             <strong id="fare-amount">Choose a ride</strong>
+                        </div>
+
+                        <div id="estimated-price-popover" class="estimated-price-popover d-none" role="dialog" aria-modal="true" aria-labelledby="estimated-price-popover-title">
+                            <button type="button" class="popover-backdrop" id="estimated-price-popover-backdrop" aria-label="Close information modal"></button>
+                            <div class="popover-card">
+                                <button type="button" class="popover-close-btn" id="estimated-price-popover-close" aria-label="Close">&times;</button>
+                                <div class="popover-header">
+                                    <img src="assets/icons/info-icon.png" alt="" width="20" height="20">
+                                    <strong id="estimated-price-popover-title">Estimated Price Information</strong>
+                                </div>
+                                <p class="popover-body-text">This price is an estimate based on current route and time, subject to change for extra distance.</p>
+                            </div>
                         </div>
 
                         <section id="trip-progress-panel" class="trip-progress-panel is-expanded d-none" aria-live="polite">
@@ -176,7 +193,6 @@
                                 <h2 id="ride-service-title">Choose your ride</h2>
                                 <p>Fares use the calculated road distance.</p>
                             </div>
-                            <a href="#" class="view-all-link">View all</a>
                         </div>
                         <div class="ride-distance-badge">
                             <span id="ride-distance-label">0 km</span>
@@ -185,11 +201,11 @@
                         <div class="ride-service-list">
                             <button class="ride-service-card is-selected" type="button" data-service-type="auto" aria-pressed="true">
                                 <div class="ride-service-img-wrap">
-                                    <img src="assets/vehicle-markers/auto-marker.png" alt="Auto">
+                                    <img src="assets/vehicle-markers/auto-card.png" alt="Auto">
                                 </div>
                                 <div class="ride-service-copy">
                                     <strong>Auto</strong>
-                                    <small>3 min away · <span class="passenger-count">4</span></small>
+                                    <small>3 persons max</small>
                                 </div>
                                 <div class="ride-service-price-wrap">
                                     <strong class="ride-service-fare" id="auto-fare">₹0</strong>
@@ -198,11 +214,11 @@
                             </button>
                             <button class="ride-service-card" type="button" data-service-type="bike" aria-pressed="false">
                                 <div class="ride-service-img-wrap">
-                                    <img src="assets/vehicle-markers/bike-marker.png" alt="Bike">
+                                    <img src="assets/vehicle-markers/bike-card.png" alt="Bike">
                                 </div>
                                 <div class="ride-service-copy">
                                     <strong>Bike / Scooty</strong>
-                                    <small>2 min away · <span class="passenger-count">1</span></small>
+                                    <small>1 person max</small>
                                 </div>
                                 <div class="ride-service-price-wrap">
                                     <strong class="ride-service-fare" id="bike-fare">₹0</strong>

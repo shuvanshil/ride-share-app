@@ -284,57 +284,159 @@
 
     <div id="profile-safety-layer" class="profile-safety-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-safety-title">
         <button id="profile-safety-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close safety information"></button>
-        <section class="profile-safety-sheet">
-            <header class="profile-share-head">
-                <div>
-                    <span>LiphtUp safety</span>
-                    <h2 id="profile-safety-title">Safety</h2>
+        <section class="profile-safety-sheet safety-center-sheet">
+            <header class="safety-center-header">
+                <div class="safety-center-brand">
+                    <span class="webicon webicon-safety green-shield-icon" aria-hidden="true"></span>
+                    <span class="safety-brand-title">LightUp Safety</span>
                 </div>
-                <button id="profile-safety-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
+                <h2 id="profile-safety-title" class="safety-center-main-heading">Safety Center</h2>
+                <p class="safety-center-subtext">Your safety comes first. Manage emergency contacts and report safety concerns here.</p>
+                <button id="profile-safety-close-btn" class="profile-sheet-close safety-close-btn" type="button" aria-label="Close">&times;</button>
             </header>
 
-            <article class="profile-terms-content">
-                <section class="profile-safety-tools">
-                    <h3>Emergency Contacts</h3>
-                    <p class="profile-safety-tools-hint">Add up to 3 trusted contacts. You can send them a live trip-tracking link any time from an active ride via "Share Trip".</p>
+            <article class="safety-center-body">
+                <!-- Section 1: Emergency Contacts -->
+                <section class="safety-center-card">
+                    <div class="safety-card-head">
+                        <div class="safety-badge badge-green">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="9" cy="7" r="4" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3>Emergency Contacts</h3>
+                            <p>Add up to 3 trusted contacts.</p>
+                        </div>
+                    </div>
+
                     <div id="emergency-contacts-list" class="emergency-contacts-list"></div>
+
                     <form id="emergency-contact-form" class="emergency-contact-form d-none">
                         <input type="text" id="emergency-contact-name" class="form-control gy-input" placeholder="Contact name" maxlength="80" required>
-                        <input type="tel" id="emergency-contact-phone" class="form-control gy-input" placeholder="Phone number" maxlength="20" required>
+                        <input type="tel" id="emergency-contact-phone" class="form-control gy-input" placeholder="Phone number (+91...)" maxlength="20" required>
                         <div class="emergency-contact-form-actions">
                             <button type="submit" class="gy-btn gy-btn-primary flex-fill">Save Contact</button>
                             <button type="button" id="emergency-contact-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
                         </div>
                     </form>
-                    <button id="emergency-contact-add-btn" class="gy-btn gy-btn-outline w-100 mt-2" type="button">+ Add Emergency Contact</button>
+
+                    <button id="emergency-contact-add-btn" class="gy-btn gy-btn-outline-green w-100 mt-2" type="button">+ Add Emergency Contact</button>
+                    <div id="emergency-contact-limit-notice" class="max-contacts-notice d-none">You've reached the 3-contact limit.</div>
                 </section>
 
-                <section class="profile-safety-tools">
-                    <h3>Report a Safety Concern</h3>
-                    <p class="profile-safety-tools-hint">Report unsafe driving, harassment, or any other concern to LiphtUp's safety team.</p>
-                    <button id="safety-report-open-btn" class="gy-btn gy-btn-danger-outline w-100" type="button">Report a Concern</button>
-                    <form id="safety-report-form" class="safety-report-form d-none">
-                        <select id="safety-report-category" class="form-select gy-input">
-                            <option value="unsafe_driving">Unsafe driving</option>
-                            <option value="harassment">Harassment</option>
-                            <option value="route_deviation">Route deviation</option>
-                            <option value="vehicle_condition">Vehicle condition</option>
-                            <option value="payment_dispute">Payment dispute</option>
-                            <option value="rude_behavior">Rude behavior</option>
-                            <option value="other">Other</option>
-                        </select>
-                        <textarea id="safety-report-description" class="form-control gy-input" rows="3" maxlength="1000" placeholder="Describe what happened (optional)"></textarea>
-                        <div class="emergency-contact-form-actions">
+                <!-- Section 2: During your ride -->
+                <section class="safety-center-card">
+                    <div class="safety-card-head">
+                        <div class="safety-badge badge-green">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="12" cy="10" r="3" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3>During your ride</h3>
+                        </div>
+                    </div>
+
+                    <div class="during-ride-content-box">
+                        <div class="during-ride-illustration">
+                            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="5" y="2" width="14" height="20" rx="3" stroke="#166534" stroke-width="1.8"/>
+                                <path d="M12 18h.01" stroke="#166534" stroke-width="2" stroke-linecap="round"/>
+                                <path d="M12 7c-1.66 0-3 1.34-3 3 0 2.25 3 5 3 5s3-2.75 3-5c0-1.66-1.34-3-3-3z" stroke="#166534" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="during-ride-text">
+                            <strong>Share your trip</strong>
+                            <p id="safety-share-trip-hint">Send your live trip location to your emergency contacts.</p>
+                        </div>
+                        <button type="button" id="safety-center-share-btn" class="gy-btn gy-btn-outline-green safety-share-btn">
+                            Share Trip &rarr;
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Section 3: Report a Safety Concern -->
+                <section class="safety-center-card">
+                    <div class="safety-card-head">
+                        <div class="safety-badge badge-red-soft">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <line x1="12" y1="9" x2="12" y2="13" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3>Report a Safety Concern</h3>
+                            <p>Help us keep LightUp safe for everyone.</p>
+                        </div>
+                    </div>
+
+                    <form id="safety-report-form" class="safety-report-form">
+                        <div class="form-group mb-2">
+                            <select id="safety-report-category" class="form-select gy-input" required>
+                                <option value="" disabled selected>Select a concern</option>
+                                <option value="unsafe_driving">Unsafe driving</option>
+                                <option value="harassment">Harassment</option>
+                                <option value="route_deviation">Route deviation</option>
+                                <option value="vehicle_condition">Vehicle condition</option>
+                                <option value="payment_dispute">Payment dispute</option>
+                                <option value="rude_behavior">Rude behavior</option>
+                                <option value="other">Other concern</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <textarea id="safety-report-description" class="form-control gy-input" rows="3" maxlength="1000" placeholder="Tell us more (optional)"></textarea>
+                        </div>
+
+                        <div class="safety-report-buttons">
                             <button type="submit" class="gy-btn gy-btn-primary flex-fill">Submit Report</button>
                             <button type="button" id="safety-report-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
+                        </div>
+                        <div class="safety-reassurance-tag">
+                            <span>🔒 Your report will be reviewed by the LightUp safety team.</span>
                         </div>
                     </form>
                 </section>
 
-                <section class="safety-intro-section">
-                    <h3>Safety</h3>
-                    <p>At <strong>LiphtUp</strong>, your safety is our top priority. We are committed to providing a secure, reliable, and respectful ride experience for every passenger and driver.</p>
-                    <p class="mt-3">For more information about our Safety Standards, Passenger and Driver Guidelines, please <a href="javascript:void(0)" onclick="window.navigateToPage('safety.html')" class="safety-more-link">click here</a>.</p>
+                <!-- Section 4: Emergency Assistance (Need immediate help?) -->
+                <section class="safety-center-card safety-emergency-card">
+                    <div class="safety-emergency-row">
+                        <div class="safety-badge badge-red-solid">
+                            <strong>SOS</strong>
+                        </div>
+                        <div class="safety-emergency-copy">
+                            <h3>Need immediate help?</h3>
+                            <p>Get emergency assistance from LightUp.</p>
+                        </div>
+                        <button type="button" id="safety-get-help-btn" class="gy-btn gy-btn-danger safety-get-help-btn">
+                            📞 Get Help
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Section 5: LightUp Safety Standards -->
+                <section class="safety-center-card safety-standards-card">
+                    <div class="safety-standards-row">
+                        <div class="safety-badge badge-green">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="#166534"/>
+                                <path d="M9 12l2 2 4-4" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <div class="safety-standards-copy">
+                            <h3>LightUp Safety Standards</h3>
+                            <p>Learn about our safety standards, passenger guidelines, and driver guidelines.</p>
+                        </div>
+                        <button type="button" class="safety-guidelines-btn" onclick="window.navigateToPage('safety.html')">
+                            Read Safety Guidelines &rarr;
+                        </button>
+                    </div>
                 </section>
             </article>
         </section>

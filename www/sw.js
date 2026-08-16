@@ -69,6 +69,9 @@ const APP_SHELL = [
     "assets/liphtup-logo.jpeg",
     "assets/vehicle-markers/bike-marker.png",
     "assets/vehicle-markers/auto-marker.png",
+    "assets/vehicle-markers/bike-card.png",
+    "assets/vehicle-markers/auto-card.png",
+    "assets/icons/info-icon.png",
     "assets/hero banner.png",
     "assets/unakoti background image.jpg",
     "assets/railway background.jpeg"
