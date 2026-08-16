@@ -55,7 +55,7 @@ export async function registerForPush() {
         });
         return { ok: !!token, token };
     } catch (error) {
-        console.error("[platform/notifications] web registration failed:", error);
+        console.warn("[platform/notifications] web push registration warning:", error?.message || error);
         return { ok: false, reason: "registration-failed" };
     }
 }
