@@ -635,6 +635,8 @@ function hidePassengerCancelButton() {
 
 function resetPassengerBookingUi() {
     clearDispatchExpansionTimer();
+    currentPassengerRideId = null;
+    currentPassengerRideData = null;
     hidePassengerVerificationPin();
     hidePassengerDriverCard();
     hidePassengerCancelButton();
@@ -793,6 +795,8 @@ async function buildInitialDispatchState(pickupLat, pickupLng, requestedVehicleT
 async function notifyRideDrivers(rideId, driverIds = []) {
     const uniqueDriverIds = [...new Set(driverIds.filter(Boolean))];
     if (!rideId || !uniqueDriverIds.length) return;
+    if (currentPassengerRideId && currentPassengerRideId !== rideId) return;
+    if (currentPassengerRideData?.status && currentPassengerRideData.status !== "pending") return;
 
     try {
         const idToken = await auth.currentUser?.getIdToken();
@@ -828,34 +832,19 @@ function clearDispatchExpansionTimer() {
 }
 
 function getRideSearchStartTime(rideId, ride = {}) {
-    if (passengerSearchStartTimes[rideId]) {
-        return passengerSearchStartTimes[rideId];
-    }
-    let timestamp = null;
-    if (ride.search_started_at) {
-        timestamp = typeof ride.search_started_at.toMillis === 'function'
-            ? ride.search_started_at.toMillis()
-            : Number(ride.search_started_at);
-    } else if (ride.requestedAt) {
-        timestamp = typeof ride.requestedAt.toMillis === 'function'
-            ? ride.requestedAt.toMillis()
-            : Number(ride.requestedAt);
-    } else if (ride.createdAt) {
-        timestamp = typeof ride.createdAt.toMillis === 'function'
-            ? ride.createdAt.toMillis()
-            : Number(ride.createdAt);
-    }
-    if (timestamp && Number.isFinite(timestamp)) {
-        passengerSearchStartTimes[rideId] = timestamp;
-        return timestamp;
-    }
-    const now = Date.now();
-    passengerSearchStartTimes[rideId] = now;
-    return now;
+    const key = `liphtup_ride_search_start_${rideId}`;
+    const stored = sessionStorage.getItem(key);
+    if (stored) return Number(stored);
+
+    const createdTime = Date.parse(ride.created_at || "") || Date.now();
+    sessionStorage.setItem(key, String(createdTime));
+    return createdTime;
 }
 
 function handleSearchTimeout(rideId) {
     clearDispatchExpansionTimer();
+    hidePassengerCancelButton();
+
     const reqBtn = document.getElementById('request-ride-btn');
     if (reqBtn) {
         reqBtn.dataset.state = "retry_search";
@@ -868,6 +857,7 @@ function handleSearchTimeout(rideId) {
 
 function scheduleDispatchExpansion(rideId, ride = {}) {
     if (!currentUser || currentUser.role !== "passenger" || ride.status !== "pending") return;
+    if (currentPassengerRideId && currentPassengerRideId !== rideId) return;
 
     clearDispatchExpansionTimer();
 
@@ -894,6 +884,14 @@ function scheduleDispatchExpansion(rideId, ride = {}) {
 
 async function expandRideDispatch(rideId) {
     if (!currentUser || currentUser.role !== "passenger") return;
+    if (!rideId || (currentPassengerRideId && currentPassengerRideId !== rideId)) {
+        clearDispatchExpansionTimer();
+        return;
+    }
+    if (currentPassengerRideData?.status && currentPassengerRideData.status !== "pending") {
+        clearDispatchExpansionTimer();
+        return;
+    }
 
     try {
         const idToken = await auth.currentUser?.getIdToken();
@@ -904,10 +902,16 @@ async function expandRideDispatch(rideId) {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
+
+        if (currentPassengerRideId !== rideId || currentPassengerRideData?.status !== "pending") {
+            clearDispatchExpansionTimer();
+            return;
+        }
+
         if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
 
         const reqBtn = document.getElementById('request-ride-btn');
-        if (reqBtn) {
+        if (reqBtn && currentPassengerRideId === rideId && currentPassengerRideData?.status === "pending") {
             const startTime = getRideSearchStartTime(rideId, currentPassengerRideData || {});
             const elapsed = Date.now() - startTime;
             if (elapsed >= MAX_SEARCH_DURATION_MS || data.searchStatus === "no_more_available_drivers" || data.searchStatus === "no_available_drivers") {
@@ -922,7 +926,7 @@ async function expandRideDispatch(rideId) {
         }
         return data;
     } catch (error) {
-        console.error("Ride dispatch expansion failed:", error);
+        console.warn("Ride dispatch expansion skipped or ended:", error.message || error);
     }
 }
 
@@ -1201,21 +1205,18 @@ function listenToRideStatusUpdates(rideId) {
             setPassengerServiceLocked(true, ride);
         }
 
-        // FIXED: Added handling for when a driver cancels mid-trip
-        if (ride.status === "cancelled_by_driver") {
-            const message = fareAdjustmentMessage(ride, "Please request a new ride.");
-            showAlert(`Your driver cancelled the trip. ${message}`);
-            resetPassengerBookingUi();
-            
-            window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
-            if (activeRideListener) activeRideListener(); // Unsubscribe stream
-            return;
-        }
-
-        if (ride.status === "cancelled_by_passenger") {
+        if (["cancelled", "cancelled_by_passenger", "cancelled_by_driver"].includes(ride.status)) {
+            clearDispatchExpansionTimer();
+            if (ride.status === "cancelled_by_driver") {
+                const message = fareAdjustmentMessage(ride, "Please request a new ride.");
+                showAlert(`Your driver cancelled the trip. ${message}`);
+            }
             resetPassengerBookingUi();
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
-            if (activeRideListener) activeRideListener();
+            if (activeRideListener) {
+                activeRideListener();
+                activeRideListener = null;
+            }
             return;
         }
 
