@@ -39,7 +39,7 @@ body {
 /* Header */
 .driver-header {
     background: #ffffff;
-    padding: 14px 20px;
+    padding: calc(14px + env(safe-area-inset-top)) 20px 14px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -843,8 +843,7 @@ body {
 .driver-service-header {
     gap: 16px;
     z-index: 5;
-    padding-top: calc(2px + env(safe-area-inset-top));
-    padding-bottom: 2px;
+    padding: calc(14px + env(safe-area-inset-top)) 20px 10px;
 }
 
 .driver-service-header small {

@@ -6408,12 +6408,13 @@ body.profile-editor-open {
 /* Safety Standards Card */
 .safety-standards-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
 }
 
 .safety-standards-copy {
-    flex: 1;
+    flex: 1 1 220px;
     min-width: 0;
 }
 
@@ -6440,6 +6441,10 @@ body.profile-editor-open {
     cursor: pointer;
     white-space: nowrap;
     padding: 6px 0;
+    margin-top: 4px;
+    flex: 0 0 100%;
+    text-align: left;
+    display: inline-block;
 }
 
 .safety-guidelines-btn:hover {
