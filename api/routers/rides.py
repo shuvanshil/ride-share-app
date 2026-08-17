@@ -1209,12 +1209,41 @@ def accept_driver_ride(
             if not snapshot.exists:
                 raise ApiError("Ride request no longer exists.", 404)
             ride = snapshot.to_dict() or {}
-            if ride.get("status") != "pending" or ride.get("driver_id"):
+            status = str(ride.get("status") or "").strip().lower()
+
+            if status in ("cancelled", "cancelled_by_passenger", "cancelled_by_driver"):
+                raise ApiError("This ride request was cancelled by the passenger.", 409)
+            if status != "pending" or ride.get("driver_id"):
                 raise ApiError("This ride was already accepted by another driver.", 409)
+
+            # Enforce 5-minute expiration timer server-side
+            now = datetime.now(timezone.utc)
+            created_at = ride.get("createdAt")
+            c_time = None
+            if created_at:
+                if isinstance(created_at, datetime):
+                    c_time = created_at
+                elif hasattr(created_at, "timestamp"):
+                    c_time = datetime.fromtimestamp(created_at.timestamp(), tz=timezone.utc)
+            elif ride.get("fare_requested_at"):
+                try:
+                    c_time = datetime.fromisoformat(str(ride["fare_requested_at"]).replace("Z", "+00:00"))
+                except Exception:
+                    c_time = None
+
+            if c_time and (now - c_time).total_seconds() > 300:  # 5 minutes
+                tx.update(ride_ref, {
+                    "status": "timeout",
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP
+                })
+                raise ApiError("This ride request has expired.", 410)
+
             if ride.get("vehicle_type") != driver_type:
                 raise ApiError("This ride requires a matching registered vehicle.", 403)
             if uid not in (ride.get("eligible_driver_ids") or []):
                 raise ApiError("This ride request is no longer available for you.", 403)
+            if uid in (ride.get("rejected_driver_ids") or []):
+                raise ApiError("You have already declined this ride request.", 403)
 
             # The pickup verification PIN is assigned only now, at the moment
             # a driver actually accepts -- never at ride-request time.
