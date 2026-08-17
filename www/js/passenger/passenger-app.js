@@ -216,7 +216,6 @@ function setPassengerServiceLocked(locked, ride = {}) {
 function hasPassengerLifecycleSurface() {
     return Boolean(
         document.getElementById('request-ride-btn') &&
-        document.getElementById('fare-quote-box') &&
         document.getElementById('drop-input')
     );
 }
@@ -863,21 +862,29 @@ async function handleTryAgainNow() {
     }
 }
 
+function openModalById(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.remove('d-none');
+}
+
+function closeModalById(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) modal.classList.add('d-none');
+}
+
 function openScheduleModal() {
-    const modal = document.getElementById('schedule-ride-modal');
     const timeInput = document.getElementById('schedule-time-input');
-    if (modal && timeInput) {
+    if (timeInput) {
         const defaultTime = new Date(Date.now() + 20 * 60 * 1000);
         const isoLocal = new Date(defaultTime.getTime() - defaultTime.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
         timeInput.value = isoLocal;
         timeInput.min = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-        modal.classList.remove('d-none');
     }
+    openModalById('schedule-ride-modal');
 }
 
 function closeScheduleModal() {
-    const modal = document.getElementById('schedule-ride-modal');
-    if (modal) modal.classList.add('d-none');
+    closeModalById('schedule-ride-modal');
 }
 
 async function confirmScheduleRide() {
@@ -896,6 +903,7 @@ async function confirmScheduleRide() {
 }
 
 async function handleNotifyMeWhenAvailable() {
+    closeModalById('notify-ride-modal');
     try {
         const { registerForPush, sendTokenToBackend } = await import('../platform/notifications.js');
         const pushResult = await registerForPush();
@@ -914,21 +922,14 @@ async function handleIncreaseSearchRadius() {
     logClientDemandEvent("radius_expanded", { newRadiusMeters: currentSearchRadiusMeters });
 
     const fareAmount = window.selectedRideService?.fare || 0;
-    const modal = document.getElementById('fare-disclosure-modal');
     const amountEl = document.getElementById('fare-disclosure-new-amount');
     if (amountEl) amountEl.innerText = `₹${fareAmount}`;
 
-    if (modal) {
-        modal.classList.remove('d-none');
-    } else {
-        proceedExpandedSearch();
-    }
+    openModalById('fare-disclosure-modal');
 }
 
 function proceedExpandedSearch() {
-    const modal = document.getElementById('fare-disclosure-modal');
-    if (modal) modal.classList.add('d-none');
-
+    closeModalById('fare-disclosure-modal');
     hideNoDriverOptions();
     updateAvailabilityIndicator(2);
     startSearchStateUi(40);
@@ -1436,9 +1437,12 @@ async function restorePassengerActiveRide() {
         }
 
         if (activeRide.fare) {
-            document.getElementById('fare-amount').innerText = `₹${activeRide.fare}`;
-            document.getElementById('fare-quote-box').classList.remove('d-none');
-            document.getElementById('fare-quote-box').classList.add('d-flex');
+            const fareAmountEl = document.getElementById('fare-amount');
+            if (fareAmountEl) fareAmountEl.innerText = `₹${activeRide.fare}`;
+            const availPriceEl = document.getElementById('availability-price-amount');
+            if (availPriceEl) availPriceEl.innerText = `₹${activeRide.fare}`;
+            const availWrapper = document.getElementById('availability-card-wrapper');
+            if (availWrapper) availWrapper.classList.remove('d-none');
         }
 
         resetPassengerRequestButtonForActiveRide(activeRide.status);
@@ -1790,10 +1794,11 @@ addOptionalClickListener('availability-info-btn', () => {
     const popover = document.getElementById('estimated-price-popover');
     if (popover) popover.classList.toggle('d-none');
 });
-
-addOptionalClickListener('close-popover-btn', () => {
-    const popover = document.getElementById('estimated-price-popover');
-    if (popover) popover.classList.add('d-none');
+addOptionalClickListener('estimated-price-popover-close', () => {
+    closeModalById('estimated-price-popover');
+});
+addOptionalClickListener('estimated-price-popover-backdrop', () => {
+    closeModalById('estimated-price-popover');
 });
 
 addOptionalClickListener('availability-schedule-shortcut', () => {
@@ -1805,37 +1810,50 @@ addOptionalClickListener('search-tapout-btn', () => {
     showNoDriverOptions();
 });
 
-// No-Driver Options Sheet Handlers
+// Option 1: Try Again Modal
 addOptionalClickListener('opt-try-again-btn', () => {
+    openModalById('try-again-modal');
+});
+addOptionalClickListener('try-again-close-btn', () => closeModalById('try-again-modal'));
+addOptionalClickListener('try-again-cancel-btn', () => closeModalById('try-again-modal'));
+addOptionalClickListener('try-again-backdrop', () => closeModalById('try-again-modal'));
+addOptionalClickListener('try-again-confirm-btn', () => {
+    closeModalById('try-again-modal');
     handleTryAgainNow();
 });
 
-addOptionalClickListener('opt-schedule-btn', () => {
-    openScheduleModal();
-});
-
-addOptionalClickListener('opt-notify-btn', () => {
-    handleNotifyMeWhenAvailable();
-});
-
-addOptionalClickListener('opt-widen-radius-btn', () => {
-    handleIncreaseSearchRadius();
-});
-
-// Schedule Ride Modal Handlers
+// Option 2: Schedule Ride Modal
+addOptionalClickListener('opt-schedule-btn', () => openScheduleModal());
 addOptionalClickListener('schedule-modal-close-btn', () => closeScheduleModal());
 addOptionalClickListener('schedule-modal-cancel-btn', () => closeScheduleModal());
+addOptionalClickListener('schedule-modal-backdrop', () => closeScheduleModal());
 addOptionalClickListener('schedule-modal-confirm-btn', () => confirmScheduleRide());
 
-// Fare Disclosure Modal Handlers
-addOptionalClickListener('fare-disclosure-close-btn', () => {
-    document.getElementById('fare-disclosure-modal')?.classList.add('d-none');
+// Option 3: Notify Me Modal
+addOptionalClickListener('opt-notify-btn', () => {
+    openModalById('notify-ride-modal');
 });
-addOptionalClickListener('fare-disclosure-cancel-btn', () => {
-    document.getElementById('fare-disclosure-modal')?.classList.add('d-none');
-});
-addOptionalClickListener('fare-disclosure-confirm-btn', () => {
-    proceedExpandedSearch();
+addOptionalClickListener('notify-modal-close-btn', () => closeModalById('notify-ride-modal'));
+addOptionalClickListener('notify-modal-cancel-btn', () => closeModalById('notify-ride-modal'));
+addOptionalClickListener('notify-modal-backdrop', () => closeModalById('notify-ride-modal'));
+addOptionalClickListener('notify-modal-confirm-btn', () => handleNotifyMeWhenAvailable());
+
+// Option 4: Increase Search Radius Modal
+addOptionalClickListener('opt-widen-radius-btn', () => handleIncreaseSearchRadius());
+addOptionalClickListener('fare-disclosure-close-btn', () => closeModalById('fare-disclosure-modal'));
+addOptionalClickListener('fare-disclosure-cancel-btn', () => closeModalById('fare-disclosure-modal'));
+addOptionalClickListener('fare-disclosure-backdrop', () => closeModalById('fare-disclosure-modal'));
+addOptionalClickListener('fare-disclosure-confirm-btn', () => proceedExpandedSearch());
+
+// Escape key to dismiss any open modal
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+        closeModalById('estimated-price-popover');
+        closeModalById('try-again-modal');
+        closeModalById('schedule-ride-modal');
+        closeModalById('notify-ride-modal');
+        closeModalById('fare-disclosure-modal');
+    }
 });
 
 // Pending Request Cancel Button

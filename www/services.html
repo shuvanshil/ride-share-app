@@ -95,9 +95,6 @@
                         <div id="map-container" class="services-map-frame">
                             <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Loading Map...</span></div>
                         </div>
-                        <div id="fare-quote-box" class="fare-pill services-fare-pill d-none">
-                            <strong id="fare-amount">Choose a ride</strong>
-                        </div>
 
                         <!-- Feature 1: 3-Level Availability Indicator & Estimated Price -->
                         <section id="availability-card-wrapper" class="availability-card-wrapper d-none">
@@ -129,14 +126,14 @@
                         </section>
 
                         <div id="estimated-price-popover" class="estimated-price-popover d-none" role="dialog" aria-modal="true" aria-labelledby="estimated-price-popover-title">
-                            <button type="button" class="popover-backdrop" id="estimated-price-popover-backdrop" aria-label="Close information modal"></button>
+                            <div class="popover-backdrop" id="estimated-price-popover-backdrop"></div>
                             <div class="popover-card">
-                                <button type="button" class="popover-close-btn" id="estimated-price-popover-close" aria-label="Close">&times;</button>
+                                <button type="button" class="popover-close-btn" id="estimated-price-popover-close" aria-label="Close modal">&times;</button>
                                 <div class="popover-header">
-                                    <img src="assets/icons/info-icon.png" alt="" width="20" height="20">
-                                    <strong id="estimated-price-popover-title">Driver Availability & Pricing</strong>
+                                    <img src="assets/icons/info-icon.png" alt="" width="22" height="22">
+                                    <strong id="estimated-price-popover-title">Live Availability & Pricing</strong>
                                 </div>
-                                <p class="popover-body-text" id="availability-popover-desc">Availability is calculated live from active, approved drivers within your pickup area. Price is estimated based on current route and standard government-calibrated rates.</p>
+                                <p class="popover-body-text" id="availability-popover-desc">Availability is calculated in real-time from approved, free drivers in your pickup radius. Fares are calculated using standard government rates based on road distance with zero hidden surge charges.</p>
                             </div>
                         </div>
 
@@ -353,33 +350,101 @@
                         <p id="services-action-hint" class="d-none">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>
 
-                    <!-- Modals -->
-                    <div id="schedule-ride-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title">
+                    <!-- Modals for 4 Options -->
+                    <!-- Option 1: Try Again Modal -->
+                    <div id="try-again-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="try-again-modal-title">
+                        <div class="custom-flow-backdrop" id="try-again-backdrop"></div>
                         <div class="custom-flow-card">
-                            <h3 id="schedule-modal-title">Schedule for Later</h3>
-                            <p>Choose when you would like this ride request to be automatically sent to nearby drivers.</p>
-                            <div class="d-flex flex-column gap-2">
-                                <label for="schedule-time-input" style="font-size: 12px; font-weight: 600; color: #374151;">Pickup Time</label>
-                                <input type="datetime-local" id="schedule-time-input" class="form-control gy-input" style="font-size: 14px; padding: 10px;">
+                            <button type="button" class="custom-flow-close-btn" id="try-again-close-btn" aria-label="Close dialog">&times;</button>
+                            <div class="custom-flow-header">
+                                <div class="custom-flow-badge badge-green">
+                                    <span class="webicon webicon-try-again" style="width: 22px; height: 22px;"></span>
+                                </div>
+                                <h3 id="try-again-modal-title">Try Searching Again</h3>
+                                <p>We'll re-scan for 35 seconds to check for drivers who just came online or finished their previous trips.</p>
                             </div>
                             <div class="custom-flow-actions">
-                                <button type="button" id="schedule-modal-cancel" class="gy-btn gy-btn-outline">Cancel</button>
-                                <button type="button" id="schedule-modal-confirm" class="gy-btn gy-btn-primary">Confirm Schedule</button>
+                                <button type="button" id="try-again-cancel-btn" class="gy-btn gy-btn-outline">Cancel</button>
+                                <button type="button" id="try-again-confirm-btn" class="gy-btn gy-btn-primary">Scan Again</button>
                             </div>
                         </div>
                     </div>
 
-                    <div id="fare-disclosure-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="fare-disclosure-title">
+                    <!-- Option 2: Schedule Ride Modal -->
+                    <div id="schedule-ride-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title">
+                        <div class="custom-flow-backdrop" id="schedule-modal-backdrop"></div>
                         <div class="custom-flow-card">
-                            <h3 id="fare-disclosure-title">Search Radius Expanded</h3>
-                            <p id="fare-disclosure-body">Drivers further away may take longer to reach you. Please review the updated estimate before confirming.</p>
-                            <div style="background: #F9FAFB; border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 13px; color: #4B5563;">Updated Fare Estimate:</span>
-                                <strong id="fare-disclosure-new-amount" style="font-size: 18px; color: #16A34A;">₹0</strong>
+                            <button type="button" class="custom-flow-close-btn" id="schedule-modal-close-btn" aria-label="Close dialog">&times;</button>
+                            <div class="custom-flow-header">
+                                <div class="custom-flow-badge badge-orange">
+                                    <span class="webicon webicon-schedule" style="width: 22px; height: 22px;"></span>
+                                </div>
+                                <h3 id="schedule-modal-title">Schedule for Later</h3>
+                                <p>Choose a future pickup time. We'll automatically start matching nearby drivers when your time approaches.</p>
+                            </div>
+                            <div class="custom-flow-field-group">
+                                <label for="schedule-time-input" class="custom-flow-label">Pickup Date & Time</label>
+                                <input type="datetime-local" id="schedule-time-input" class="custom-flow-input" aria-describedby="schedule-time-hint">
+                                <span id="schedule-time-hint" class="custom-flow-hint">Booking dispatch begins 5 minutes before scheduled time.</span>
                             </div>
                             <div class="custom-flow-actions">
-                                <button type="button" id="fare-disclosure-cancel" class="gy-btn gy-btn-outline">Keep Current</button>
-                                <button type="button" id="fare-disclosure-confirm" class="gy-btn gy-btn-primary">Accept & Search</button>
+                                <button type="button" id="schedule-modal-cancel-btn" class="gy-btn gy-btn-outline">Cancel</button>
+                                <button type="button" id="schedule-modal-confirm-btn" class="gy-btn gy-btn-primary">Confirm Schedule</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Option 3: Notify Me Modal -->
+                    <div id="notify-ride-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="notify-modal-title">
+                        <div class="custom-flow-backdrop" id="notify-modal-backdrop"></div>
+                        <div class="custom-flow-card">
+                            <button type="button" class="custom-flow-close-btn" id="notify-modal-close-btn" aria-label="Close dialog">&times;</button>
+                            <div class="custom-flow-header">
+                                <div class="custom-flow-badge badge-purple">
+                                    <span class="webicon webicon-notify" style="width: 22px; height: 22px;"></span>
+                                </div>
+                                <h3 id="notify-modal-title">Notify When Driver Available</h3>
+                                <p>Keep your request active in our background queue. We will instantly alert you when an approved driver comes online nearby.</p>
+                            </div>
+                            <div class="custom-flow-info-box">
+                                <div class="custom-flow-info-row">
+                                    <span>Queue Validity</span>
+                                    <strong>25 minutes</strong>
+                                </div>
+                                <div class="custom-flow-info-row">
+                                    <span>Fare Guarantee</span>
+                                    <strong>Locked upfront</strong>
+                                </div>
+                            </div>
+                            <div class="custom-flow-actions">
+                                <button type="button" id="notify-modal-cancel-btn" class="gy-btn gy-btn-outline">Cancel</button>
+                                <button type="button" id="notify-modal-confirm-btn" class="gy-btn gy-btn-primary">Notify Me</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Option 4: Increase Search Radius / Fare Disclosure Modal -->
+                    <div id="fare-disclosure-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="fare-disclosure-title">
+                        <div class="custom-flow-backdrop" id="fare-disclosure-backdrop"></div>
+                        <div class="custom-flow-card">
+                            <button type="button" class="custom-flow-close-btn" id="fare-disclosure-close-btn" aria-label="Close dialog">&times;</button>
+                            <div class="custom-flow-header">
+                                <div class="custom-flow-badge badge-blue">
+                                    <span class="webicon webicon-radius" style="width: 22px; height: 22px;"></span>
+                                </div>
+                                <h3 id="fare-disclosure-title">Expand Search Radius</h3>
+                                <p id="fare-disclosure-body">We'll search up to 12 km around your pickup point to reach more drivers who can pick you up.</p>
+                            </div>
+                            <div class="custom-flow-info-box">
+                                <div class="custom-flow-info-row">
+                                    <span>Estimated Trip Fare</span>
+                                    <strong id="fare-disclosure-new-amount" style="color: #16723A; font-size: 16px;">₹0</strong>
+                                </div>
+                                <span class="custom-flow-hint" style="margin-top: 4px; display: block;">Standard road distance rate applies. No extra surge surcharge.</span>
+                            </div>
+                            <div class="custom-flow-actions">
+                                <button type="button" id="fare-disclosure-cancel-btn" class="gy-btn gy-btn-outline">Keep Current</button>
+                                <button type="button" id="fare-disclosure-confirm-btn" class="gy-btn gy-btn-primary">Expand & Search</button>
                             </div>
                         </div>
                     </div>

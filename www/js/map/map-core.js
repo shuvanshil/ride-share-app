@@ -1774,12 +1774,12 @@ async function refreshLivePickupAfterMapReady(initialCoords) {
     if (!window.selectedDestination) return;
 
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!fareQuoteBox || !fareAmountSpan) return;
-
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
     await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
 }
 
@@ -2118,12 +2118,12 @@ async function completePickupMapPick(lat, lng) {
     if (!pickMode.existingDestination) return;
     window.selectedDestination = pickMode.existingDestination;
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!fareQuoteBox || !fareAmountSpan) return;
-
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
     await renderDestinationFare(pickMode.existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
@@ -2155,12 +2155,12 @@ export async function useCurrentPickupLocation() {
     if (!existingDestination) return;
     window.selectedDestination = existingDestination;
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!fareQuoteBox || !fareAmountSpan) return;
-
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
     await renderDestinationFare(existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
@@ -2169,8 +2169,8 @@ function setupFareEngineListeners() {
 
     const dropInput = document.getElementById("drop-input");
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (!dropInput) return;
 
     fareEngineListenersBound = true;
     dropInput.addEventListener("focus", () => {
@@ -2202,16 +2202,20 @@ function setupFareEngineListeners() {
             return;
         }
 
-        fareAmountSpan.innerText = "Just a sec...";
-        fareQuoteBox.classList.remove("d-none");
-        fareQuoteBox.classList.add("d-flex");
+        if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+        if (fareQuoteBox) {
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+        }
         window.latestFareQuote = null;
 
         const cachedDestinations = getCachedAutocompleteResults(query);
         if (cachedDestinations) {
             showDestinationSuggestions(dropInput, cachedDestinations.slice(0, MAX_VISIBLE_SUGGESTIONS), fareQuoteBox, fareAmountSpan);
-            fareQuoteBox.classList.add("d-none");
-            fareQuoteBox.classList.remove("d-flex");
+            if (fareQuoteBox) {
+                fareQuoteBox.classList.add("d-none");
+                fareQuoteBox.classList.remove("d-flex");
+            }
         }
 
         destinationSearchTimer = setTimeout(async () => {
@@ -2224,8 +2228,10 @@ function setupFareEngineListeners() {
 
             if (destinations.length) {
                 showDestinationSuggestions(dropInput, destinations.slice(0, MAX_VISIBLE_SUGGESTIONS), fareQuoteBox, fareAmountSpan);
-                fareQuoteBox.classList.add("d-none");
-                fareQuoteBox.classList.remove("d-flex");
+                if (fareQuoteBox) {
+                    fareQuoteBox.classList.add("d-none");
+                    fareQuoteBox.classList.remove("d-flex");
+                }
             } else {
                 resetDestinationFareState(fareQuoteBox);
                 showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan);
@@ -2662,9 +2668,11 @@ async function chooseDestination(destination, dropInput, fareQuoteBox, fareAmoun
     hideDestinationSuggestions();
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     const resolved = await resolveGooglePlace(destination);
     if (!resolved) {
@@ -2705,9 +2713,11 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
     clearRouteAndDestination();
-    fareAmountSpan.innerText = "Move map and confirm drop";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Move map and confirm drop";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     destinationMapPickMode = {
         destination,
@@ -2883,18 +2893,22 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
     if (!Number.isFinite(distance) || distance < 0) {
         window.latestFareQuote = null;
         window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-        fareAmountSpan.innerText = "Road route unavailable";
-        fareQuoteBox.classList.remove("d-none");
-        fareQuoteBox.classList.add("d-flex");
+        if (fareAmountSpan) fareAmountSpan.innerText = "Road route unavailable";
+        if (fareQuoteBox) {
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+        }
         return true;
     }
 
     if (!isDistanceServiceable(distance)) {
         window.latestFareQuote = null;
         window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-        fareAmountSpan.innerText = "Outside service area";
-        fareQuoteBox.classList.remove("d-none");
-        fareQuoteBox.classList.add("d-flex");
+        if (fareAmountSpan) fareAmountSpan.innerText = "Outside service area";
+        if (fareQuoteBox) {
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+        }
         showAlert(`This destination is about ${distance.toFixed(0)} km away, which is beyond LiphtUp's current service area of ${MAX_SERVICEABLE_DISTANCE_KM} km. Please choose a closer destination.`);
         return true;
     }
@@ -2923,9 +2937,11 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         fare_options: fareOptions
     };
 
-    fareAmountSpan.innerText = "Choose a ride";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Choose a ride";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     drawDestinationAndRoute(destination, routeDetails?.routePath || [], {
         distanceKm: routeDetails?.distanceKm,
@@ -3002,13 +3018,15 @@ window.addEventListener("prefill-destination-request", async (event) => {
 
     const dropInput = document.getElementById("drop-input");
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (!dropInput) return;
 
     dropInput.value = query;
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     const destinations = await searchGoogleDestinations(query);
     if (passengerDestinationLocked || dropInput.value.trim() !== query) return;
@@ -3056,13 +3074,15 @@ window.addEventListener("request-destination-pick-on-map", () => {
     if (passengerDestinationLocked) return;
     const dropInput = document.getElementById("drop-input");
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (!dropInput) return;
 
     clearRouteAndDestination();
-    fareAmountSpan.innerText = "Move map and confirm drop";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Move map and confirm drop";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     destinationMapPickMode = {
         destination: { name: "Dropped Pin" },
