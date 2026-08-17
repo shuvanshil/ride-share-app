@@ -587,6 +587,7 @@ function hideTripProgressPanel() {
     const panel = document.getElementById('trip-progress-panel');
     dashboardView?.classList.remove('trip-live');
     if (!panel) return;
+    delete panel.dataset.userToggled;
     panel.classList.add('d-none');
     panel.classList.remove('is-expanded');
     document.getElementById('trip-progress-handle')?.setAttribute('aria-expanded', 'false');
@@ -639,17 +640,6 @@ function hidePassengerCancelButton() {
     if (cancelReqBtn) cancelReqBtn.classList.add('d-none');
     document.getElementById('passenger-safety-actions')?.classList.add('d-none');
     setShareTripButtonState(false);
-}
-
-function hideTripProgressPanel() {
-    const dashboardView = document.getElementById('dashboard-view');
-    const panel = document.getElementById('trip-progress-panel');
-    if (dashboardView) dashboardView.classList.remove('trip-live');
-    if (panel) {
-        delete panel.dataset.userToggled;
-        panel.classList.remove('is-expanded');
-        panel.classList.add('d-none');
-    }
 }
 
 function resetPassengerBookingUi(options = {}) {
