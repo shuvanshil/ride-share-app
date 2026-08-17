@@ -624,8 +624,6 @@ function dispatchPassengerDriverLocation(ride) {
 
 function showPassengerCancelButton(rideId) {
     currentPassengerRideId = rideId || currentPassengerRideId;
-    const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
-    if (cancelBtn) cancelBtn.classList.remove('d-none');
     const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
     if (cancelReqBtn) cancelReqBtn.classList.remove('d-none');
     document.getElementById('passenger-safety-actions')?.classList.remove('d-none');
@@ -634,8 +632,6 @@ function showPassengerCancelButton(rideId) {
 function hidePassengerCancelButton() {
     currentPassengerRideId = null;
     currentPassengerRideData = null;
-    const cancelBtn = document.getElementById('passenger-cancel-ride-btn');
-    if (cancelBtn) cancelBtn.classList.add('d-none');
     const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
     if (cancelReqBtn) cancelReqBtn.classList.add('d-none');
     document.getElementById('passenger-safety-actions')?.classList.add('d-none');
@@ -1380,7 +1376,6 @@ async function cancelRideByPassenger(rideId) {
 // ==========================================
 // 4. GLOBAL UI EVENT LISTENERS
 // ==========================================
-addOptionalClickListener('passenger-cancel-ride-btn', () => cancelRideByPassenger());
 
 addOptionalClickListener('passenger-payment-close-btn', () => {
     document.getElementById('passenger-payment-view').classList.add('d-none');
