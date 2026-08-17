@@ -627,6 +627,45 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
     return data;
 }
 
+let demandPollInterval = null;
+
+async function pollDriverNearbyDemand() {
+    if (!currentUser?.uid || currentUser.driverAvailability === "offline") return;
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) return;
+        const res = await fetch("/api/rides/driver/nearby-demand", {
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.ok && data.waitingCount > 0) {
+            updateDriverDemandChip(data.waitingCount, data.roughArea);
+        } else {
+            hideDriverDemandChip();
+        }
+    } catch (e) {
+        console.warn("Driver demand check skipped:", e);
+    }
+}
+
+function updateDriverDemandChip(count, area) {
+    let chip = document.getElementById('driver-demand-chip');
+    if (!chip) {
+        chip = document.createElement('div');
+        chip.id = 'driver-demand-chip';
+        chip.className = 'driver-demand-chip animate-fade-in';
+        chip.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#16723a;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.25);z-index:1050;pointer-events:none;';
+        document.body.appendChild(chip);
+    }
+    chip.innerHTML = `⚡ <strong>${count} rider${count > 1 ? 's' : ''}</strong> waiting near you${area ? ` (${area})` : ''}`;
+    chip.classList.remove('d-none');
+}
+
+function hideDriverDemandChip() {
+    const chip = document.getElementById('driver-demand-chip');
+    if (chip) chip.classList.add('d-none');
+}
+
 async function setServiceDriverAvailability(status) {
     if (!currentUser?.uid) return;
 
@@ -635,6 +674,19 @@ async function setServiceDriverAvailability(status) {
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
     await updateDriverAvailabilityThroughBackend(status, locationData);
     cacheProfile(currentUser);
+
+    if (status === "searching") {
+        pollDriverNearbyDemand();
+        if (!demandPollInterval) {
+            demandPollInterval = setInterval(pollDriverNearbyDemand, 30000);
+        }
+    } else {
+        if (demandPollInterval) {
+            clearInterval(demandPollInterval);
+            demandPollInterval = null;
+        }
+        hideDriverDemandChip();
+    }
 }
 
 async function acceptIncomingRide(rideId, button) {

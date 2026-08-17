@@ -20,9 +20,19 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# www/api/core/fare_policy.py -> parents[2] is www/, where the shared config
-# and the js/ folder both live.
-_CONFIG_PATH = Path(__file__).resolve().parents[2] / "fare-policy.config.json"
+def _find_config_path() -> Path:
+    candidates = [
+        Path(__file__).resolve().parents[2] / "fare-policy.config.json",
+        Path(__file__).resolve().parents[2] / "www" / "fare-policy.config.json",
+        Path(__file__).resolve().parents[1] / "fare-policy.config.json",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[1]
+
+
+_CONFIG_PATH = _find_config_path()
 
 
 def _load_config() -> dict[str, Any]:

@@ -95,15 +95,38 @@
                         <div id="map-container" class="services-map-frame">
                             <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Loading Map...</span></div>
                         </div>
-                        <div id="fare-quote-box" class="fare-pill services-fare-pill d-none justify-content-between align-items-center">
-                            <div class="estimated-price-label">
-                                <span>Estimated price</span>
-                                <button type="button" class="info-popover-btn" id="estimated-price-info-btn" aria-label="Estimated price information" title="Estimated price information">
-                                    <img src="assets/icons/info-icon.png" alt="Info" width="16" height="16">
-                                </button>
-                            </div>
+                        <div id="fare-quote-box" class="fare-pill services-fare-pill d-none">
                             <strong id="fare-amount">Choose a ride</strong>
                         </div>
+
+                        <!-- Feature 1: 3-Level Availability Indicator & Estimated Price -->
+                        <section id="availability-card-wrapper" class="availability-card-wrapper d-none">
+                            <div id="availability-card" class="availability-card is-high">
+                                <div class="availability-content-left">
+                                    <div class="availability-signal-icon" aria-hidden="true">
+                                        <span class="bar"></span>
+                                        <span class="bar"></span>
+                                        <span class="bar"></span>
+                                    </div>
+                                    <div class="availability-text-group">
+                                        <div class="availability-header-row">
+                                            <span class="availability-label-title">Availability: <strong id="availability-status-name" class="availability-status-name">High</strong></span>
+                                            <button type="button" class="availability-info-trigger" id="availability-info-btn" aria-label="Driver availability info" title="Availability info">
+                                                <img src="assets/icons/info-icon.png" alt="Info" width="15" height="15">
+                                            </button>
+                                        </div>
+                                        <span id="availability-subtext" class="availability-subtext">Plenty of drivers online nearby.</span>
+                                        <button type="button" id="availability-schedule-shortcut" class="availability-schedule-chip d-none">
+                                            <span class="webicon webicon-schedule" style="width:12px; height:12px;"></span> Schedule for later
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="availability-price-right">
+                                    <small>Estimated price</small>
+                                    <strong id="availability-price-amount">₹0</strong>
+                                </div>
+                            </div>
+                        </section>
 
                         <div id="estimated-price-popover" class="estimated-price-popover d-none" role="dialog" aria-modal="true" aria-labelledby="estimated-price-popover-title">
                             <button type="button" class="popover-backdrop" id="estimated-price-popover-backdrop" aria-label="Close information modal"></button>
@@ -111,9 +134,9 @@
                                 <button type="button" class="popover-close-btn" id="estimated-price-popover-close" aria-label="Close">&times;</button>
                                 <div class="popover-header">
                                     <img src="assets/icons/info-icon.png" alt="" width="20" height="20">
-                                    <strong id="estimated-price-popover-title">Estimated Price Information</strong>
+                                    <strong id="estimated-price-popover-title">Driver Availability & Pricing</strong>
                                 </div>
-                                <p class="popover-body-text">This price is an estimate based on current route and time, subject to change for extra distance.</p>
+                                <p class="popover-body-text" id="availability-popover-desc">Availability is calculated live from active, approved drivers within your pickup area. Price is estimated based on current route and standard government-calibrated rates.</p>
                             </div>
                         </div>
 
@@ -190,7 +213,7 @@
                         <div class="ride-service-heading">
                             <div>
                                 <h2 id="ride-service-title">Choose your ride</h2>
-                                <p>Fares use the calculated road distance.</p>
+                                <p>Vehicle locked for your active ride.</p>
                             </div>
                         </div>
                         <div class="ride-distance-badge">
@@ -204,7 +227,7 @@
                                 </div>
                                 <div class="ride-service-copy">
                                     <strong>Auto</strong>
-                                    <small>3 persons max</small>
+                                    <small>Up to 3 passengers</small>
                                 </div>
                                 <div class="ride-service-price-wrap">
                                     <strong class="ride-service-fare" id="auto-fare">₹0</strong>
@@ -217,7 +240,7 @@
                                 </div>
                                 <div class="ride-service-copy">
                                     <strong>Bike / Scooty</strong>
-                                    <small>1 person max</small>
+                                    <small>Up to 1 passenger</small>
                                 </div>
                                 <div class="ride-service-price-wrap">
                                     <strong class="ride-service-fare" id="bike-fare">₹0</strong>
@@ -225,18 +248,141 @@
                                 </div>
                             </button>
                         </div>
+                    </section>
 
+                    <!-- Feature 2: Engaging Search State Card -->
+                    <section id="engaging-search-card" class="engaging-search-card d-none" aria-live="polite">
+                        <div class="search-main-row">
+                            <div class="search-radar-icon-box">
+                                <span class="webicon webicon-search-radar" style="width: 22px; height: 22px;"></span>
+                            </div>
+                            <div class="search-copy-wrap">
+                                <h3 id="search-headline" class="search-headline">Finding the best driver for you...</h3>
+                                <p id="search-subline" class="search-subline">This usually takes less than 35s</p>
+                            </div>
+                        </div>
+                        <div class="search-progress-dots" id="search-progress-dots" aria-label="Search progress">
+                            <span class="search-dot is-active"></span>
+                            <span class="search-dot"></span>
+                            <span class="search-dot"></span>
+                            <span class="search-dot"></span>
+                            <span class="search-dot"></span>
+                        </div>
+                        <div class="search-tapout-hint">
+                            <span style="font-size: 11.5px; color: #6B7280;">Need options sooner?</span>
+                            <button type="button" id="search-tapout-btn" class="search-tapout-btn">View choices now &rarr;</button>
+                        </div>
+                    </section>
+
+                    <!-- Feature 3: No-Driver Options Action Sheet -->
+                    <section id="no-driver-options-shell" class="no-driver-options-shell d-none">
+                        <div class="no-driver-header">
+                            <h2>We're still looking for a driver for you</h2>
+                            <p>In the meantime, you can try one of these options.</p>
+                        </div>
+                        <div class="options-action-list">
+                            <button type="button" class="option-action-card" id="opt-try-again-btn">
+                                <div class="option-icon-badge badge-green">
+                                    <span class="webicon webicon-try-again" style="width: 20px; height: 20px;"></span>
+                                </div>
+                                <div class="option-copy">
+                                    <strong>Try Again Now</strong>
+                                    <small>Search again for nearby drivers</small>
+                                </div>
+                                <span class="option-chevron">&rsaquo;</span>
+                            </button>
+
+                            <button type="button" class="option-action-card" id="opt-schedule-btn">
+                                <div class="option-icon-badge badge-orange">
+                                    <span class="webicon webicon-schedule" style="width: 20px; height: 20px;"></span>
+                                </div>
+                                <div class="option-copy">
+                                    <strong>Schedule for Later</strong>
+                                    <small>Book this ride for a later time</small>
+                                </div>
+                                <span class="option-chevron">&rsaquo;</span>
+                            </button>
+
+                            <button type="button" class="option-action-card" id="opt-notify-btn">
+                                <div class="option-icon-badge badge-purple">
+                                    <span class="webicon webicon-notify" style="width: 20px; height: 20px;"></span>
+                                </div>
+                                <div class="option-copy">
+                                    <strong>Notify Me When Available</strong>
+                                    <small>We'll notify you when drivers are available</small>
+                                </div>
+                                <span class="option-chevron">&rsaquo;</span>
+                            </button>
+
+                            <button type="button" class="option-action-card" id="opt-widen-radius-btn">
+                                <div class="option-icon-badge badge-blue">
+                                    <span class="webicon webicon-radius" style="width: 20px; height: 20px;"></span>
+                                </div>
+                                <div class="option-copy">
+                                    <strong>Increase Search Radius</strong>
+                                    <small>Expand the area to find more drivers</small>
+                                </div>
+                                <span class="option-chevron">&rsaquo;</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <!-- Feature 3: Pending Queue State Card -->
+                    <section id="pending-active-card" class="pending-active-card d-none">
+                        <div class="pending-active-header">
+                            <span class="pending-badge-pill">
+                                <span class="webicon webicon-notify" style="width: 14px; height: 14px;"></span> In Background Queue
+                            </span>
+                            <small id="pending-expires-in" style="font-size: 11px; color: #64748B;">Expires in 25 min</small>
+                        </div>
+                        <div class="pending-active-body">
+                            <strong id="pending-mode-title">Waiting for next free driver</strong>
+                            <p id="pending-mode-desc">We are actively monitoring for newly available drivers in your pickup area.</p>
+                        </div>
                     </section>
 
                     <section class="services-ride-actions">
                         <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Select a destination</button>
-                        <button id="cancel-ride-request-btn" class="gy-btn gy-btn-cancel-request w-100 mt-2 d-none" type="button">Cancel Ride Request</button>
+                        <button id="cancel-ride-request-btn" class="gy-btn-cancel-outline mt-2 d-none" type="button">
+                            <span class="webicon webicon-trash" style="width: 18px; height: 18px;"></span> Cancel Ride Request
+                        </button>
                         <div class="safety-assurance-tag">
                             <span class="webicon webicon-safety-check" aria-hidden="true"></span>
                             <span>Safe, secure and reliable rides</span>
                         </div>
                         <p id="services-action-hint" class="d-none">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>
+
+                    <!-- Modals -->
+                    <div id="schedule-ride-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title">
+                        <div class="custom-flow-card">
+                            <h3 id="schedule-modal-title">Schedule for Later</h3>
+                            <p>Choose when you would like this ride request to be automatically sent to nearby drivers.</p>
+                            <div class="d-flex flex-column gap-2">
+                                <label for="schedule-time-input" style="font-size: 12px; font-weight: 600; color: #374151;">Pickup Time</label>
+                                <input type="datetime-local" id="schedule-time-input" class="form-control gy-input" style="font-size: 14px; padding: 10px;">
+                            </div>
+                            <div class="custom-flow-actions">
+                                <button type="button" id="schedule-modal-cancel" class="gy-btn gy-btn-outline">Cancel</button>
+                                <button type="button" id="schedule-modal-confirm" class="gy-btn gy-btn-primary">Confirm Schedule</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="fare-disclosure-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="fare-disclosure-title">
+                        <div class="custom-flow-card">
+                            <h3 id="fare-disclosure-title">Search Radius Expanded</h3>
+                            <p id="fare-disclosure-body">Drivers further away may take longer to reach you. Please review the updated estimate before confirming.</p>
+                            <div style="background: #F9FAFB; border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 13px; color: #4B5563;">Updated Fare Estimate:</span>
+                                <strong id="fare-disclosure-new-amount" style="font-size: 18px; color: #16A34A;">₹0</strong>
+                            </div>
+                            <div class="custom-flow-actions">
+                                <button type="button" id="fare-disclosure-cancel" class="gy-btn gy-btn-outline">Keep Current</button>
+                                <button type="button" id="fare-disclosure-confirm" class="gy-btn gy-btn-primary">Accept & Search</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 

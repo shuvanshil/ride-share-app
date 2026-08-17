@@ -43,7 +43,12 @@ function selectRideService(serviceType) {
         card.classList.toggle('is-selected', selected);
         card.setAttribute('aria-pressed', String(selected));
     });
-    document.getElementById('fare-amount').innerText = `₹${fare}`;
+    const fareAmountEl = document.getElementById('fare-amount');
+    if (fareAmountEl) fareAmountEl.innerText = `₹${fare}`;
+    const availPriceEl = document.getElementById('availability-price-amount');
+    if (availPriceEl) availPriceEl.innerText = `₹${fare}`;
+    const availWrapper = document.getElementById('availability-card-wrapper');
+    if (availWrapper) availWrapper.classList.remove('d-none');
     findRideBtn.innerText = `Confirm ${service.shortName} · ₹${fare}`;
     findRideBtn.disabled = false;
 }
@@ -57,8 +62,10 @@ function renderFareOptions(quote) {
     if (headingCopy) {
         headingCopy.innerText = quote.is_night_fare
             ? "Night fare applies from 10:00 PM to 4:30 AM."
-            : "Fares use the calculated road distance.";
+            : "Vehicle locked for your active ride.";
     }
+    const availWrapper = document.getElementById('availability-card-wrapper');
+    if (availWrapper) availWrapper.classList.remove('d-none');
     serviceOptions.classList.remove('d-none');
     selectRideService(selectedServiceType);
 }
@@ -72,6 +79,8 @@ function resetFareOptions() {
         fareQuoteBox.classList.add('d-none');
         fareQuoteBox.classList.remove('d-flex');
     }
+    const availWrapper = document.getElementById('availability-card-wrapper');
+    if (availWrapper) availWrapper.classList.add('d-none');
     findRideBtn.innerHTML = dropInput.value.trim()
         ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Just a sec...</span>'
         : "Please enter destination";
@@ -109,7 +118,10 @@ function setServiceSelectionLocked(detail = {}) {
     window.selectedRideService = { ...service, fare: detail.fare };
     if (Number.isFinite(detail.fare)) {
         document.getElementById(`${selectedServiceType}-fare`).innerText = `₹${detail.fare}`;
-        document.getElementById('fare-amount').innerText = `₹${detail.fare}`;
+        const fareAmountEl = document.getElementById('fare-amount');
+        if (fareAmountEl) fareAmountEl.innerText = `₹${detail.fare}`;
+        const availPriceEl = document.getElementById('availability-price-amount');
+        if (availPriceEl) availPriceEl.innerText = `₹${detail.fare}`;
     }
     if (Number.isFinite(detail.distanceKm)) {
         distanceLabel.innerText = `${detail.distanceKm.toFixed(1)} km`;

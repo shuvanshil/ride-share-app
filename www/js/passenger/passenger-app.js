@@ -24,6 +24,15 @@ const APP_SHARE_TITLE = "LiphtUp";
 const APP_SHARE_TEXT = "Ride Together, Save Together. Invite friends and unlock exciting LiphtUp discounts.";
 const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 
+const AVAILABILITY_THRESHOLDS = {
+    HIGH: 3,
+    MODERATE: 1,
+    VERY_LOW: 0
+};
+const DEFAULT_SEARCH_RADIUS_METERS = 5000;
+const EXPANDED_SEARCH_RADIUS_METERS = 12000;
+const SEARCH_WINDOW_SECONDS = 35;
+
 // Global variables
 let currentUser = null;
 let activeRideListener = null;          // For Passenger monitoring
@@ -33,6 +42,20 @@ const passengerSearchStartTimes = {};
 
 let currentPassengerRideId = null;
 let currentPassengerRideData = null;
+
+let currentSearchRadiusMeters = DEFAULT_SEARCH_RADIUS_METERS;
+let searchStateInterval = null;
+let searchDotsCycle = 0;
+let searchStartedAt = 0;
+let activePendingRequestId = null;
+let activePendingRequestData = null;
+
+const SEARCH_STATUS_MESSAGES = [
+    { maxSec: 7, headline: "Finding the best driver for you...", subline: "This usually takes less than 35s" },
+    { maxSec: 15, headline: "Checking nearby drivers...", subline: "Reaching out to vehicles near your pickup" },
+    { maxSec: 25, headline: "Waiting on driver confirmation...", subline: "Almost there, securing your ride" },
+    { maxSec: 999, headline: "Still looking for available drivers...", subline: "It's a quiet hour, expanding our search" }
+];
 
 function formatFareAmount(value) {
     const amount = Number(value);
@@ -641,6 +664,9 @@ function hidePassengerCancelButton() {
 function resetPassengerBookingUi(options = {}) {
     const preserveSelections = Boolean(options.preserveSelections);
     clearDispatchExpansionTimer();
+    stopSearchStateUi();
+    hideNoDriverOptions();
+    currentSearchRadiusMeters = DEFAULT_SEARCH_RADIUS_METERS;
     currentPassengerRideId = null;
     currentPassengerRideData = null;
     hidePassengerVerificationPin();
@@ -652,6 +678,8 @@ function resetPassengerBookingUi(options = {}) {
 
     const requestBtn = document.getElementById('request-ride-btn');
     const dropInput = document.getElementById('drop-input');
+    const pendingCard = document.getElementById('pending-active-card');
+    if (pendingCard) pendingCard.classList.add('d-none');
 
     if (preserveSelections) {
         // Scenario A: Driver had accepted the ride.
@@ -659,6 +687,7 @@ function resetPassengerBookingUi(options = {}) {
         if (requestBtn) {
             delete requestBtn.dataset.state;
             requestBtn.disabled = false;
+            requestBtn.classList.remove('d-none');
             if (window.selectedRideService && window.latestFareQuote?.fare_options?.[window.selectedRideService.id]) {
                 const serviceName = window.selectedRideService.shortName || window.selectedRideService.name || "Ride";
                 const fare = window.latestFareQuote.fare_options[window.selectedRideService.id];
@@ -679,15 +708,353 @@ function resetPassengerBookingUi(options = {}) {
             fareQuoteBox.classList.add('d-none');
             fareQuoteBox.classList.remove('d-flex');
         }
+        const availWrapper = document.getElementById('availability-card-wrapper');
+        if (availWrapper) availWrapper.classList.add('d-none');
         window.dispatchEvent(new CustomEvent('fare-quote-reset'));
         window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
 
         if (requestBtn) {
             delete requestBtn.dataset.state;
             requestBtn.disabled = true;
+            requestBtn.classList.remove('d-none');
             requestBtn.innerHTML = 'Please enter destination';
             requestBtn.className = "gy-btn gy-btn-primary w-100";
         }
+    }
+}
+
+function updateAvailabilityIndicator(freeDriversCount = 0) {
+    const cardWrapper = document.getElementById('availability-card-wrapper');
+    const card = document.getElementById('availability-card');
+    const statusName = document.getElementById('availability-status-name');
+    const subtext = document.getElementById('availability-subtext');
+    const scheduleShortcut = document.getElementById('availability-schedule-shortcut');
+    if (!card || !statusName || !subtext) return;
+
+    if (cardWrapper && window.latestFareQuote) {
+        cardWrapper.classList.remove('d-none');
+    }
+
+    card.classList.remove('is-high', 'is-moderate', 'is-low');
+
+    if (freeDriversCount >= AVAILABILITY_THRESHOLDS.HIGH) {
+        card.classList.add('is-high');
+        statusName.innerText = "High";
+        subtext.innerText = "Plenty of drivers online nearby.";
+        scheduleShortcut?.classList.add('d-none');
+    } else if (freeDriversCount >= AVAILABILITY_THRESHOLDS.MODERATE) {
+        card.classList.add('is-moderate');
+        statusName.innerText = "Moderate";
+        subtext.innerText = "Drivers are available, may take a few mins.";
+        scheduleShortcut?.classList.add('d-none');
+    } else {
+        card.classList.add('is-low');
+        statusName.innerText = "Very Low";
+        subtext.innerText = "Fewer drivers online in this area right now.";
+        scheduleShortcut?.classList.remove('d-none');
+    }
+}
+
+window.addEventListener('nearby-drivers-updated', (e) => {
+    const detail = e.detail || {};
+    const totalFree = (detail.drivers || []).filter((d) => d.driverAvailability === "searching" || !d.driverAvailability).length;
+    updateAvailabilityIndicator(totalFree);
+});
+
+function startSearchStateUi(customDurationSeconds = SEARCH_WINDOW_SECONDS) {
+    const requestBtn = document.getElementById('request-ride-btn');
+    const searchCard = document.getElementById('engaging-search-card');
+    const noDriverShell = document.getElementById('no-driver-options-shell');
+    const pendingCard = document.getElementById('pending-active-card');
+
+    if (requestBtn) requestBtn.classList.add('d-none');
+    if (noDriverShell) noDriverShell.classList.add('d-none');
+    if (pendingCard) pendingCard.classList.add('d-none');
+    if (searchCard) searchCard.classList.remove('d-none');
+
+    searchStartedAt = Date.now();
+    if (searchStateInterval) clearInterval(searchStateInterval);
+
+    const dots = document.querySelectorAll('.search-dot');
+    const headline = document.getElementById('search-headline');
+    const subline = document.getElementById('search-subline');
+
+    searchStateInterval = setInterval(() => {
+        const elapsedSec = Math.floor((Date.now() - searchStartedAt) / 1000);
+        searchDotsCycle = (searchDotsCycle + 1) % (dots.length || 5);
+
+        dots.forEach((dot, idx) => {
+            dot.classList.toggle('is-active', idx === searchDotsCycle);
+        });
+
+        const msgObj = SEARCH_STATUS_MESSAGES.find((m) => elapsedSec <= m.maxSec) || SEARCH_STATUS_MESSAGES[SEARCH_STATUS_MESSAGES.length - 1];
+        if (headline && msgObj) headline.innerText = msgObj.headline;
+        if (subline && msgObj) subline.innerText = msgObj.subline;
+
+        if (elapsedSec >= customDurationSeconds) {
+            stopSearchStateUi();
+            showNoDriverOptions();
+        }
+    }, 1000);
+}
+
+function stopSearchStateUi() {
+    if (searchStateInterval) {
+        clearInterval(searchStateInterval);
+        searchStateInterval = null;
+    }
+    const searchCard = document.getElementById('engaging-search-card');
+    if (searchCard) searchCard.classList.add('d-none');
+}
+
+function showNoDriverOptions() {
+    stopSearchStateUi();
+    const noDriverShell = document.getElementById('no-driver-options-shell');
+    const requestBtn = document.getElementById('request-ride-btn');
+    const cancelBtn = document.getElementById('cancel-ride-request-btn');
+
+    if (noDriverShell) noDriverShell.classList.remove('d-none');
+    if (requestBtn) requestBtn.classList.add('d-none');
+    if (cancelBtn) cancelBtn.classList.remove('d-none');
+
+    logClientDemandEvent("search_timeout", {
+        searchRadius: currentSearchRadiusMeters,
+        rideId: currentPassengerRideId
+    });
+}
+
+function hideNoDriverOptions() {
+    const noDriverShell = document.getElementById('no-driver-options-shell');
+    if (noDriverShell) noDriverShell.classList.add('d-none');
+}
+
+async function logClientDemandEvent(eventType, metadata = {}) {
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        const fareQuote = window.latestFareQuote || {};
+        await fetch("/api/rides/log-demand-event", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+            },
+            body: JSON.stringify({
+                eventType,
+                pickupLat: Number(fareQuote.pickup_lat) || null,
+                pickupLng: Number(fareQuote.pickup_lng) || null,
+                vehicleType: window.selectedRideService?.id || "auto",
+                metadata
+            })
+        });
+    } catch (e) {
+        console.warn("Client demand event logging skipped:", e);
+    }
+}
+
+async function handleTryAgainNow() {
+    hideNoDriverOptions();
+    startSearchStateUi(35);
+    if (currentPassengerRideId) {
+        try {
+            await expandRideDispatch(currentPassengerRideId);
+        } catch (e) {
+            console.warn("Retry dispatch:", e);
+        }
+    }
+}
+
+function openScheduleModal() {
+    const modal = document.getElementById('schedule-ride-modal');
+    const timeInput = document.getElementById('schedule-time-input');
+    if (modal && timeInput) {
+        const defaultTime = new Date(Date.now() + 20 * 60 * 1000);
+        const isoLocal = new Date(defaultTime.getTime() - defaultTime.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        timeInput.value = isoLocal;
+        timeInput.min = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        modal.classList.remove('d-none');
+    }
+}
+
+function closeScheduleModal() {
+    const modal = document.getElementById('schedule-ride-modal');
+    if (modal) modal.classList.add('d-none');
+}
+
+async function confirmScheduleRide() {
+    const timeInput = document.getElementById('schedule-time-input');
+    if (!timeInput?.value) {
+        await showAlert("Please choose a pickup time.");
+        return;
+    }
+    const chosenDate = new Date(timeInput.value);
+    if (chosenDate <= new Date()) {
+        await showAlert("Please select a time in the future.");
+        return;
+    }
+    closeScheduleModal();
+    await submitPendingRideRequest("schedule", chosenDate.toISOString());
+}
+
+async function handleNotifyMeWhenAvailable() {
+    try {
+        const { registerForPush, sendTokenToBackend } = await import('../platform/notifications.js');
+        const pushResult = await registerForPush();
+        if (pushResult?.ok && pushResult.token) {
+            await sendTokenToBackend(pushResult.token);
+        }
+    } catch (e) {
+        console.warn("Push token registration check skipped:", e);
+    }
+
+    await submitPendingRideRequest("notify_only");
+}
+
+async function handleIncreaseSearchRadius() {
+    currentSearchRadiusMeters = EXPANDED_SEARCH_RADIUS_METERS;
+    logClientDemandEvent("radius_expanded", { newRadiusMeters: currentSearchRadiusMeters });
+
+    const fareAmount = window.selectedRideService?.fare || 0;
+    const modal = document.getElementById('fare-disclosure-modal');
+    const amountEl = document.getElementById('fare-disclosure-new-amount');
+    if (amountEl) amountEl.innerText = `₹${fareAmount}`;
+
+    if (modal) {
+        modal.classList.remove('d-none');
+    } else {
+        proceedExpandedSearch();
+    }
+}
+
+function proceedExpandedSearch() {
+    const modal = document.getElementById('fare-disclosure-modal');
+    if (modal) modal.classList.add('d-none');
+
+    hideNoDriverOptions();
+    updateAvailabilityIndicator(2);
+    startSearchStateUi(40);
+    if (currentPassengerRideId) {
+        expandRideDispatch(currentPassengerRideId).catch(() => {});
+    }
+}
+
+async function submitPendingRideRequest(mode = "notify_only", activatesAt = null) {
+    const pickupText = document.getElementById('pickup-input')?.value || "";
+    const dropText = document.getElementById('drop-input')?.value || "";
+    const fareQuote = window.latestFareQuote || {};
+    const requestedVehicleType = window.selectedRideService?.id || "auto";
+
+    if (!pickupText || !dropText) {
+        await showAlert("Please specify pickup and destination.");
+        return;
+    }
+
+    window.LiphtUpLoading?.showPageLoader?.("Saving waiting request...");
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Please log in to continue.");
+
+        const response = await fetch("/api/rides/pending-request", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({
+                pickupName: pickupText,
+                dropName: dropText,
+                pickupLat: Number(fareQuote.pickup_lat) || 0,
+                pickupLng: Number(fareQuote.pickup_lng) || 0,
+                dropLat: Number(fareQuote.drop_lat) || 0,
+                dropLng: Number(fareQuote.drop_lng) || 0,
+                vehicleType: requestedVehicleType,
+                searchRadius: currentSearchRadiusMeters,
+                mode,
+                fareEstimate: {
+                    fare: window.selectedRideService?.fare || 0,
+                    distance_km: fareQuote.distance_km || 0,
+                    vehicle_type: requestedVehicleType
+                },
+                activatesAt,
+                dropFullAddress: fareQuote.drop_full_address || ""
+            })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || "Could not register pending request.");
+        }
+
+        activePendingRequestId = data.requestId;
+        hideNoDriverOptions();
+        stopSearchStateUi();
+        showPendingActiveCard(mode, activatesAt);
+        await showAlert(
+            mode === "schedule"
+                ? "Ride scheduled! We'll auto-search for nearby drivers when your time arrives."
+                : "You're in queue! We'll notify you the moment an approved driver becomes free."
+        );
+    } catch (e) {
+        console.error("Pending request error:", e);
+        await showAlert(e.message || "Could not save pending request.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
+
+function showPendingActiveCard(mode = "notify_only", activatesAt = null) {
+    const pendingCard = document.getElementById('pending-active-card');
+    const titleEl = document.getElementById('pending-mode-title');
+    const descEl = document.getElementById('pending-mode-desc');
+    const requestBtn = document.getElementById('request-ride-btn');
+    const cancelBtn = document.getElementById('cancel-ride-request-btn');
+
+    if (!pendingCard) return;
+
+    if (requestBtn) requestBtn.classList.add('d-none');
+    if (cancelBtn) cancelBtn.classList.remove('d-none');
+
+    if (mode === "schedule" && activatesAt) {
+        const timeStr = new Date(activatesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (titleEl) titleEl.innerText = `Scheduled for ${timeStr}`;
+        if (descEl) descEl.innerText = "We'll dispatch this request to nearby drivers automatically at your scheduled time.";
+    } else {
+        if (titleEl) titleEl.innerText = "Waiting for next available driver";
+        if (descEl) descEl.innerText = "We are actively monitoring for newly available drivers in your pickup area.";
+    }
+
+    pendingCard.classList.remove('d-none');
+}
+
+async function cancelPendingRideRequest() {
+    if (!activePendingRequestId) return;
+    const confirmed = await showConfirm("Cancel your waiting ride request?", { okText: "Yes, cancel", cancelText: "Keep waiting" });
+    if (!confirmed) return;
+
+    window.LiphtUpLoading?.showPageLoader?.("Cancelling...");
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+
+        await fetch(`/api/rides/pending-request/${encodeURIComponent(activePendingRequestId)}/cancel`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ reason: "cancelled_by_passenger" })
+        });
+
+        activePendingRequestId = null;
+        activePendingRequestData = null;
+        const pendingCard = document.getElementById('pending-active-card');
+        if (pendingCard) pendingCard.classList.add('d-none');
+        resetPassengerBookingUi();
+        await showAlert("Waiting request cancelled.");
+    } catch (e) {
+        console.error("Cancel pending failed:", e);
+        await showAlert(e.message || "Could not cancel request.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
 
@@ -880,16 +1247,8 @@ function getRideSearchStartTime(rideId, ride = {}) {
 
 function handleSearchTimeout(rideId) {
     clearDispatchExpansionTimer();
-    hidePassengerCancelButton();
-
-    const reqBtn = document.getElementById('request-ride-btn');
-    if (reqBtn) {
-        reqBtn.dataset.state = "retry_search";
-        reqBtn.disabled = false;
-        reqBtn.innerHTML = "🔄 No drivers accepted · Tap to Retry";
-        reqBtn.className = "btn btn-secondary w-100 fw-bold py-2";
-    }
-    showPassengerCancelButton(rideId);
+    stopSearchStateUi();
+    showNoDriverOptions();
 }
 
 function scheduleDispatchExpansion(rideId, ride = {}) {
@@ -1192,9 +1551,7 @@ requestRideButton.addEventListener('click', async () => {
         fare: fareAmount,
         distance_km: fareQuote.distance_km
     });
-    requestBtn.innerHTML = '⏳ Waiting for a driver to accept...';
-    requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
-    requestBtn.disabled = true;
+    startSearchStateUi(35);
 
     try {
         const backendRide = await createRideThroughBackend({
@@ -1212,17 +1569,20 @@ requestRideButton.addEventListener('click', async () => {
             dropEloc: fareQuote.drop_eloc || "",
             dropTypeHint: fareQuote.drop_type_hint || ""
         });
+        currentPassengerRideId = backendRide.rideId;
         notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
         showPassengerCancelButton(backendRide.rideId);
         listenToRideStatusUpdates(backendRide.rideId);
 
     } catch (error) {
         console.error("Database Write Failure:", error);
+        stopSearchStateUi();
         setPassengerDestinationLocked(false);
         setPassengerServiceLocked(false);
         requestBtn.innerHTML = 'Find Ride';
         requestBtn.className = "gy-btn gy-btn-primary w-100";
         requestBtn.disabled = false;
+        requestBtn.classList.remove('d-none');
         await showAlert(error.message || "Could not create this ride request. Please try again.");
     }
 });
@@ -1244,6 +1604,8 @@ function listenToRideStatusUpdates(rideId) {
 
         if (["cancelled", "cancelled_by_passenger", "cancelled_by_driver"].includes(ride.status)) {
             clearDispatchExpansionTimer();
+            stopSearchStateUi();
+            hideNoDriverOptions();
             const driverHadAccepted = Boolean(ride.driver_id) || ["accepted", "arrived", "started", "en_route", "cancelled_by_driver"].includes(ride.status);
             if (ride.status === "cancelled_by_driver") {
                 const message = fareAdjustmentMessage(ride, "Please request a new ride.");
@@ -1266,14 +1628,12 @@ function listenToRideStatusUpdates(rideId) {
             if (elapsed >= MAX_SEARCH_DURATION_MS || ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers" || ride.search_status === "timeout") {
                 handleSearchTimeout(rideId);
             } else {
-                delete requestBtn.dataset.state;
-                requestBtn.disabled = true;
                 scheduleDispatchExpansion(rideId, ride);
-                requestBtn.innerHTML = "Searching nearby drivers...";
-                requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
             }
         } else if (ride.status === "accepted") {
             clearDispatchExpansionTimer();
+            stopSearchStateUi();
+            hideNoDriverOptions();
             showTripProgressPanel(ride);
             requestBtn.innerHTML = `Driver accepted. On the way to pickup.`;
             requestBtn.className = "btn btn-success w-100 fw-bold py-2";
@@ -1283,6 +1643,8 @@ function listenToRideStatusUpdates(rideId) {
             }
             dispatchPassengerDriverLocation(ride);
         } else if (ride.status === "arrived") {
+            stopSearchStateUi();
+            hideNoDriverOptions();
             showTripProgressPanel(ride);
             requestBtn.innerHTML = 'Driver arrived at pickup.';
             requestBtn.className = "btn btn-info w-100 fw-bold py-2 text-dark";
@@ -1413,10 +1775,94 @@ if (document.readyState === 'loading') {
 addOptionalClickListener('passenger-sos-btn', () => sendPassengerSos());
 addOptionalClickListener('passenger-share-trip-btn', () => togglePassengerShareTrip());
 addOptionalClickListener('cancel-ride-request-btn', async () => {
-    if (currentPassengerRideId) {
+    if (activePendingRequestId) {
+        await cancelPendingRideRequest();
+    } else if (currentPassengerRideId) {
         await cancelRideByPassenger(currentPassengerRideId);
     } else {
         resetPassengerBookingUi();
         await showAlert("Ride request cancelled.");
     }
+});
+
+// Availability Card Info & Popover
+addOptionalClickListener('availability-info-btn', () => {
+    const popover = document.getElementById('estimated-price-popover');
+    if (popover) popover.classList.toggle('d-none');
+});
+
+addOptionalClickListener('close-popover-btn', () => {
+    const popover = document.getElementById('estimated-price-popover');
+    if (popover) popover.classList.add('d-none');
+});
+
+addOptionalClickListener('availability-schedule-shortcut', () => {
+    openScheduleModal();
+});
+
+// Engaging Search State Early Tap-Out
+addOptionalClickListener('search-tapout-btn', () => {
+    showNoDriverOptions();
+});
+
+// No-Driver Options Sheet Handlers
+addOptionalClickListener('opt-try-again-btn', () => {
+    handleTryAgainNow();
+});
+
+addOptionalClickListener('opt-schedule-btn', () => {
+    openScheduleModal();
+});
+
+addOptionalClickListener('opt-notify-btn', () => {
+    handleNotifyMeWhenAvailable();
+});
+
+addOptionalClickListener('opt-widen-radius-btn', () => {
+    handleIncreaseSearchRadius();
+});
+
+// Schedule Ride Modal Handlers
+addOptionalClickListener('schedule-modal-close-btn', () => closeScheduleModal());
+addOptionalClickListener('schedule-modal-cancel-btn', () => closeScheduleModal());
+addOptionalClickListener('schedule-modal-confirm-btn', () => confirmScheduleRide());
+
+// Fare Disclosure Modal Handlers
+addOptionalClickListener('fare-disclosure-close-btn', () => {
+    document.getElementById('fare-disclosure-modal')?.classList.add('d-none');
+});
+addOptionalClickListener('fare-disclosure-cancel-btn', () => {
+    document.getElementById('fare-disclosure-modal')?.classList.add('d-none');
+});
+addOptionalClickListener('fare-disclosure-confirm-btn', () => {
+    proceedExpandedSearch();
+});
+
+// Pending Request Cancel Button
+addOptionalClickListener('pending-cancel-btn', () => {
+    cancelPendingRideRequest();
+});
+
+// Check and restore active pending requests on session load
+async function checkActivePendingRequestOnLoad() {
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) return;
+
+        const response = await fetch("/api/rides/pending-request/active", {
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (data.ok && data.hasActivePending && data.pendingRequest) {
+            activePendingRequestId = data.pendingRequest.requestId;
+            activePendingRequestData = data.pendingRequest;
+            showPendingActiveCard(data.pendingRequest.mode, data.pendingRequest.activatesAt);
+        }
+    } catch (e) {
+        console.warn("Active pending check skipped:", e);
+    }
+}
+
+window.addEventListener('user-session-ready', () => {
+    setTimeout(checkActivePendingRequestOnLoad, 1000);
 });

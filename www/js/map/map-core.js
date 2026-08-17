@@ -1318,29 +1318,28 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [])
 }
 
 function updateVehicleMarkerLegend() {
-    const mapContainer = document.getElementById("map-container");
-    if (!mapContainer) return;
-
-    const counts = { bike: 0, auto: 0 };
-    globalDriverMarkers.forEach(({ vehicleType }) => {
+    const counts = { bike: 0, auto: 0, total: 0 };
+    const activeDrivers = [];
+    globalDriverMarkers.forEach((markerData) => {
+        const vehicleType = markerData.vehicleType || "auto";
         counts[vehicleType] = (counts[vehicleType] || 0) + 1;
+        counts.total += 1;
+        activeDrivers.push(markerData);
     });
 
-    if (!vehicleLegendElement) {
-        vehicleLegendElement = document.createElement("div");
-        vehicleLegendElement.className = "vehicle-marker-legend";
-        vehicleLegendElement.setAttribute("aria-label", "Nearby vehicle counts");
+    if (vehicleLegendElement && vehicleLegendElement.parentElement) {
+        vehicleLegendElement.remove();
+        vehicleLegendElement = null;
     }
 
-    if (vehicleLegendElement.parentElement !== mapContainer) {
-        mapContainer.appendChild(vehicleLegendElement);
-    }
-
-    vehicleLegendElement.innerHTML = `
-        <span><img src="${VEHICLE_MARKER_ASSETS.bike}" alt="">Bike ${counts.bike}</span>
-        <span><img src="${VEHICLE_MARKER_ASSETS.auto}" alt="">Auto ${counts.auto}</span>
-    `;
-    vehicleLegendElement.classList.toggle("d-none", Boolean(assignedDriverTrackingDriverId));
+    window.dispatchEvent(new CustomEvent("nearby-drivers-updated", {
+        detail: {
+            bikeCount: counts.bike,
+            autoCount: counts.auto,
+            totalCount: counts.total,
+            drivers: activeDrivers
+        }
+    }));
 }
 
 function stopDriverMarkerCoast(existing) {

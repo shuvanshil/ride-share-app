@@ -753,6 +753,12 @@
 .webicon-safety-check { -webkit-mask-image: url("../assets/icons/webicons/safety-shield.svg"); mask-image: url("../assets/icons/webicons/safety-shield.svg"); }
 .webicon-cash { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
 .webicon-notification { -webkit-mask-image: url("../assets/icons/webicons/sos.svg"); mask-image: url("../assets/icons/webicons/sos.svg"); }
+.webicon-try-again { -webkit-mask-image: url("../assets/icons/webicons/try-again.svg"); mask-image: url("../assets/icons/webicons/try-again.svg"); }
+.webicon-schedule { -webkit-mask-image: url("../assets/icons/webicons/schedule.svg"); mask-image: url("../assets/icons/webicons/schedule.svg"); }
+.webicon-notify { -webkit-mask-image: url("../assets/icons/webicons/notify.svg"); mask-image: url("../assets/icons/webicons/notify.svg"); }
+.webicon-radius { -webkit-mask-image: url("../assets/icons/webicons/radius.svg"); mask-image: url("../assets/icons/webicons/radius.svg"); }
+.webicon-trash { -webkit-mask-image: url("../assets/icons/webicons/trash.svg"); mask-image: url("../assets/icons/webicons/trash.svg"); }
+.webicon-search-radar { -webkit-mask-image: url("../assets/icons/webicons/search-radar.svg"); mask-image: url("../assets/icons/webicons/search-radar.svg"); }
 
 html,
 body {
@@ -6451,3 +6457,552 @@ body.profile-editor-open {
     text-decoration: underline;
 }
 
+/* ==========================================================================
+   Availability Indicator & Engaging Search & Pending Ride Flow
+   ========================================================================== */
+
+.availability-card-wrapper {
+    margin-top: 14px;
+}
+
+.availability-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 16px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.availability-card.is-high {
+    border-color: #DCFCE7;
+    background: #F0FDF4;
+}
+
+.availability-card.is-moderate {
+    border-color: #FEF3C7;
+    background: #FFFBEB;
+}
+
+.availability-card.is-low {
+    border-color: #FEE2E2;
+    background: #FEF2F2;
+}
+
+.availability-content-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+}
+
+.availability-signal-icon {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2.5px;
+    height: 18px;
+    width: 20px;
+    flex-shrink: 0;
+}
+
+.availability-signal-icon .bar {
+    width: 4px;
+    border-radius: 2px;
+    background: #D1D5DB;
+    transition: background-color 0.2s ease, height 0.2s ease;
+}
+
+.availability-signal-icon .bar:nth-child(1) { height: 7px; }
+.availability-signal-icon .bar:nth-child(2) { height: 12px; }
+.availability-signal-icon .bar:nth-child(3) { height: 17px; }
+
+.availability-card.is-high .availability-signal-icon .bar { background: #16A34A; }
+.availability-card.is-moderate .availability-signal-icon .bar:nth-child(1),
+.availability-card.is-moderate .availability-signal-icon .bar:nth-child(2) { background: #D97706; }
+.availability-card.is-moderate .availability-signal-icon .bar:nth-child(3) { background: #E5E7EB; }
+.availability-card.is-low .availability-signal-icon .bar:nth-child(1) { background: #DC2626; }
+.availability-card.is-low .availability-signal-icon .bar:nth-child(2),
+.availability-card.is-low .availability-signal-icon .bar:nth-child(3) { background: #E5E7EB; }
+
+.availability-text-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.availability-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.availability-label-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.availability-card.is-high .availability-status-name { color: #16A34A; }
+.availability-card.is-moderate .availability-status-name { color: #D97706; }
+.availability-card.is-low .availability-status-name { color: #DC2626; }
+
+.availability-info-trigger {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #9CA3AF;
+    opacity: 0.8;
+}
+
+.availability-info-trigger:hover {
+    opacity: 1;
+}
+
+.availability-subtext {
+    font-size: 11.5px;
+    color: #6B7280;
+    margin-top: 1px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.availability-price-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+}
+
+.availability-price-right small {
+    font-size: 11px;
+    color: #6B7280;
+    font-weight: 500;
+}
+
+.availability-price-right strong {
+    font-size: 19px;
+    font-weight: 800;
+    color: #16A34A;
+    line-height: 1.2;
+}
+
+/* Proactive Schedule Shortcut */
+.availability-schedule-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #D97706;
+    background: #FEF3C7;
+    border: 1px solid #FDE68A;
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-top: 4px;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.availability-schedule-chip:hover {
+    background: #FDE68A;
+}
+
+/* ==========================================
+   Feature 2: Engaging Search State Card
+   ========================================== */
+.engaging-search-card {
+    background: #F0FDF4;
+    border: 1.5px solid #BBF7D0;
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.3s ease;
+}
+
+.search-main-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.search-radar-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #DCFCE7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #16A34A;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.search-radar-icon-box::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 2px solid #16A34A;
+    opacity: 0.4;
+    animation: searchRadarPulse 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+@keyframes searchRadarPulse {
+    0% { transform: scale(0.9); opacity: 0.8; }
+    100% { transform: scale(1.4); opacity: 0; }
+}
+
+.search-copy-wrap {
+    flex: 1;
+    min-width: 0;
+}
+
+.search-headline {
+    font-size: 14px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 2px;
+    line-height: 1.3;
+}
+
+.search-subline {
+    font-size: 12px;
+    color: #6B7280;
+    margin: 0;
+    transition: opacity 0.3s ease;
+}
+
+.search-progress-dots {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding-left: 2px;
+}
+
+.search-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #E5E7EB;
+    transition: all 0.3s ease;
+}
+
+.search-dot.is-active {
+    background: #16A34A;
+    transform: scale(1.25);
+}
+
+.search-tapout-hint {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2px;
+    padding-top: 8px;
+    border-top: 1px solid #DCFCE7;
+}
+
+.search-tapout-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #16A34A;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.search-tapout-btn:hover {
+    color: #15803D;
+}
+
+/* ==========================================
+   Feature 3: No-Driver Options Action Sheet
+   ========================================== */
+.no-driver-options-shell {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.no-driver-header {
+    text-align: left;
+    margin-bottom: 2px;
+}
+
+.no-driver-header h2 {
+    font-size: 16px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0 0 4px;
+}
+
+.no-driver-header p {
+    font-size: 13px;
+    color: #6B7280;
+    margin: 0;
+}
+
+.options-action-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.option-action-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 16px;
+    padding: 13px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+}
+
+.option-action-card:hover,
+.option-action-card:active {
+    border-color: #D1D5DB;
+    background: #F9FAFB;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.option-icon-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.option-icon-badge.badge-green {
+    background: #DCFCE7;
+    color: #16A34A;
+}
+
+.option-icon-badge.badge-orange {
+    background: #FEF3C7;
+    color: #D97706;
+}
+
+.option-icon-badge.badge-purple {
+    background: #EDE9FE;
+    color: #7C3AED;
+}
+
+.option-icon-badge.badge-blue {
+    background: #DBEAFE;
+    color: #2563EB;
+}
+
+.option-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.option-copy strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 2px;
+}
+
+.option-copy small {
+    display: block;
+    font-size: 12px;
+    color: #6B7280;
+    line-height: 1.25;
+}
+
+.option-chevron {
+    color: #9CA3AF;
+    font-size: 18px;
+    font-weight: 600;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.option-action-card:hover .option-chevron {
+    transform: translateX(2px);
+    color: #4B5563;
+}
+
+.gy-btn-cancel-outline {
+    width: 100%;
+    border: 1.5px solid #FCA5A5;
+    background: #FEF2F2;
+    color: #DC2626;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: 14px;
+    padding: 12px 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.gy-btn-cancel-outline:hover,
+.gy-btn-cancel-outline:active {
+    background: #FEE2E2;
+    border-color: #EF4444;
+    color: #B91C1C;
+}
+
+/* ==========================================
+   Pending Request Status Card (Background queue)
+   ========================================== */
+.pending-active-card {
+    background: #F8FAFC;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pending-active-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.pending-badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #EDE9FE;
+    color: #7C3AED;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.pending-active-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pending-active-body strong {
+    font-size: 14px;
+    color: #1E293B;
+}
+
+.pending-active-body p {
+    font-size: 12px;
+    color: #64748B;
+    margin: 0;
+}
+
+/* Fare Disclosure Modal & Schedule Dialog */
+.custom-flow-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.custom-flow-card {
+    background: #FFFFFF;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 400px;
+    padding: 22px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    animation: modalScaleIn 0.2s ease-out;
+}
+
+@keyframes modalScaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.custom-flow-card h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 800;
+    color: #111827;
+}
+
+.custom-flow-card p {
+    margin: 0;
+    font-size: 13px;
+    color: #4B5563;
+    line-height: 1.4;
+}
+
+.custom-flow-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.custom-flow-actions button {
+    flex: 1;
+}
+
+/* In-App Toast Alert for fallback */
+.in-app-ride-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 32px);
+    max-width: 440px;
+    background: #111827;
+    color: #FFFFFF;
+    border-radius: 14px;
+    padding: 14px 16px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    animation: toastSlideDown 0.3s ease-out;
+}
+
+@keyframes toastSlideDown {
+    from { transform: translate(-50%, -20px); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+}
