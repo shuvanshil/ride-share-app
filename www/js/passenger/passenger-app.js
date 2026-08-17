@@ -678,6 +678,11 @@ function resetPassengerBookingUi(options = {}) {
         if (dropInput) dropInput.value = "";
         window.latestFareQuote = null;
         window.selectedRideService = null;
+        const fareQuoteBox = document.getElementById('fare-quote-box');
+        if (fareQuoteBox) {
+            fareQuoteBox.classList.add('d-none');
+            fareQuoteBox.classList.remove('d-flex');
+        }
         window.dispatchEvent(new CustomEvent('fare-quote-reset'));
         window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
 

@@ -67,6 +67,11 @@ function resetFareOptions() {
     if (serviceSelectionLocked) return;
     window.selectedRideService = null;
     serviceOptions.classList.add('d-none');
+    const fareQuoteBox = document.getElementById('fare-quote-box');
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.add('d-none');
+        fareQuoteBox.classList.remove('d-flex');
+    }
     findRideBtn.innerHTML = dropInput.value.trim()
         ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Just a sec...</span>'
         : "Please enter destination";
