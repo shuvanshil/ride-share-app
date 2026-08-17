@@ -462,6 +462,7 @@ function bindTripProgressPanel() {
     if (!handle || !panel) return;
 
     handle.addEventListener('click', () => {
+        panel.dataset.userToggled = 'true';
         const expanded = panel.classList.toggle('is-expanded');
         handle.setAttribute('aria-expanded', String(expanded));
         const subtext = document.getElementById('trip-progress-status-subtext');
@@ -477,6 +478,13 @@ function showTripProgressPanel(ride) {
     bindTripProgressPanel();
     dashboardView.classList.add('trip-live');
     panel.classList.remove('d-none');
+
+    // Requirement 5: Passenger ride-details card must be expanded by default for every newly accepted/active ride
+    if (!panel.dataset.userToggled) {
+        panel.classList.add('is-expanded');
+        const handle = document.getElementById('trip-progress-handle');
+        if (handle) handle.setAttribute('aria-expanded', 'true');
+    }
 
     const statusText = document.getElementById('trip-progress-status-text');
     const statusSubtext = document.getElementById('trip-progress-status-subtext');
@@ -633,7 +641,19 @@ function hidePassengerCancelButton() {
     setShareTripButtonState(false);
 }
 
-function resetPassengerBookingUi() {
+function hideTripProgressPanel() {
+    const dashboardView = document.getElementById('dashboard-view');
+    const panel = document.getElementById('trip-progress-panel');
+    if (dashboardView) dashboardView.classList.remove('trip-live');
+    if (panel) {
+        delete panel.dataset.userToggled;
+        panel.classList.remove('is-expanded');
+        panel.classList.add('d-none');
+    }
+}
+
+function resetPassengerBookingUi(options = {}) {
+    const preserveSelections = Boolean(options.preserveSelections);
     clearDispatchExpansionTimer();
     currentPassengerRideId = null;
     currentPassengerRideData = null;
@@ -643,14 +663,40 @@ function resetPassengerBookingUi() {
     hideTripProgressPanel();
     setPassengerDestinationLocked(false);
     setPassengerServiceLocked(false);
-    window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
 
     const requestBtn = document.getElementById('request-ride-btn');
-    if (requestBtn) {
-        delete requestBtn.dataset.state;
-        requestBtn.innerHTML = 'Find Ride';
-        requestBtn.disabled = false;
-        requestBtn.className = "gy-btn gy-btn-primary w-100";
+    const dropInput = document.getElementById('drop-input');
+
+    if (preserveSelections) {
+        // Scenario A: Driver had accepted the ride.
+        // Preserve passenger's destination, vehicle selection, and fare quote.
+        if (requestBtn) {
+            delete requestBtn.dataset.state;
+            requestBtn.disabled = false;
+            if (window.selectedRideService && window.latestFareQuote?.fare_options?.[window.selectedRideService.id]) {
+                const serviceName = window.selectedRideService.shortName || window.selectedRideService.name || "Ride";
+                const fare = window.latestFareQuote.fare_options[window.selectedRideService.id];
+                requestBtn.innerHTML = `Confirm ${serviceName} · ₹${fare}`;
+            } else {
+                requestBtn.innerHTML = 'Find Ride';
+            }
+            requestBtn.className = "gy-btn gy-btn-primary w-100";
+        }
+    } else {
+        // Scenario B: Pending ride request cancelled before acceptance.
+        // Completely reset destination, vehicle selection, and search state.
+        if (dropInput) dropInput.value = "";
+        window.latestFareQuote = null;
+        window.selectedRideService = null;
+        window.dispatchEvent(new CustomEvent('fare-quote-reset'));
+        window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
+
+        if (requestBtn) {
+            delete requestBtn.dataset.state;
+            requestBtn.disabled = true;
+            requestBtn.innerHTML = 'Please enter destination';
+            requestBtn.className = "gy-btn gy-btn-primary w-100";
+        }
     }
 }
 
@@ -1207,11 +1253,12 @@ function listenToRideStatusUpdates(rideId) {
 
         if (["cancelled", "cancelled_by_passenger", "cancelled_by_driver"].includes(ride.status)) {
             clearDispatchExpansionTimer();
+            const driverHadAccepted = Boolean(ride.driver_id) || ["accepted", "arrived", "started", "en_route", "cancelled_by_driver"].includes(ride.status);
             if (ride.status === "cancelled_by_driver") {
                 const message = fareAdjustmentMessage(ride, "Please request a new ride.");
                 showAlert(`Your driver cancelled the trip. ${message}`);
             }
-            resetPassengerBookingUi();
+            resetPassengerBookingUi({ preserveSelections: driverHadAccepted });
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             if (activeRideListener) {
                 activeRideListener();
@@ -1296,6 +1343,7 @@ async function cancelRideByPassenger(rideId) {
     }
 
     const status = currentPassengerRideData?.status || "";
+    const driverHadAccepted = Boolean(currentPassengerRideData?.driver_id) || ["accepted", "arrived", "started", "en_route"].includes(status);
     const cancelMessage = ["started", "en_route"].includes(status)
         ? "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully."
         : ["accepted", "arrived"].includes(status)
@@ -1318,7 +1366,7 @@ async function cancelRideByPassenger(rideId) {
             throw new Error(data.error || "Could not cancel this ride.");
         }
 
-        resetPassengerBookingUi();
+        resetPassengerBookingUi({ preserveSelections: driverHadAccepted });
 
         if (activeRideListener) {
             activeRideListener();

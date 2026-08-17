@@ -476,55 +476,75 @@ function updateIncomingRequestsVisibility() {
 }
 
 function renderIncomingRideCard(rideId, ride = {}) {
-    const passengerName = escapeHtml(ride.passenger_name || "Passenger");
-    const serviceName = escapeHtml(ride.service_name || getServiceLabel(ride.vehicle_type));
-    const passengerCapacity = Number(ride.passenger_capacity || (ride.vehicle_type === "auto" ? 4 : 1));
-    const pickupName = escapeHtml(getRideDisplayAddress(ride, "pickup"));
-    const dropName = escapeHtml(getRideDisplayAddress(ride, "drop"));
-    const fare = escapeHtml(ride.fare || "0");
-    const passengerPhone = String(ride.passenger_phone || "").trim();
+    const passengerPhone = String(ride.passenger_phone || ride.passengerPhone || "").trim();
     const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
-    const previewLinks = [
-        renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng),
-        renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)
-    ].filter(Boolean).join("");
+    const passengerName = escapeHtml(ride.passenger_name || "Passenger");
+    const fareAmount = Math.round(Number(ride.fare) || 0);
+    const passCount = ride.passenger_capacity || (ride.vehicle_type === "auto" ? 3 : 1);
 
     const card = document.createElement('div');
-    card.className = "driver-service-request-card";
+    card.className = "ride-request-card card shadow-sm p-3 mb-3";
     card.dataset.rideId = rideId;
     card.innerHTML = `
-        <div class="driver-service-request-head">
-            <div>
-                <h6>${passengerName}</h6>
-                <span>${serviceName} - ${passengerCapacity} passenger${passengerCapacity === 1 ? "" : "s"}</span>
+        <div class="request-header-row">
+            <div class="passenger-name-wrap">
+                <h5 class="passenger-name mb-1">${passengerName}</h5>
+                <span class="vehicle-capacity-badge">
+                    <span>👤</span> ${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${passCount} passenger${Number(passCount) === 1 ? "" : "s"}
+                </span>
             </div>
-            <strong>Rs ${fare}</strong>
+            <div class="d-flex flex-column align-items-end gap-1">
+                <span class="fare-badge">₹${fareAmount}</span>
+                ${callablePhone ? `
+                    <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
+                        <span>📞</span> Call
+                    </a>
+                ` : `
+                    <button class="btn-call-passenger disabled mt-1" type="button" disabled aria-label="Phone unavailable">
+                        <span>📞</span> Call
+                    </button>
+                `}
+            </div>
         </div>
-        <div class="driver-service-request-route">
-            <p><b>From:</b> ${pickupName}</p>
-            <p><b>To:</b> ${dropName}</p>
-            ${previewLinks ? `<div class="driver-location-preview-row">${previewLinks}</div>` : ""}
+
+        <div class="route-display-box my-3">
+            <div class="route-step pickup">
+                <span class="route-dot green"></span>
+                <div class="route-text-group">
+                    <span class="route-label">From: </span>
+                    <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</span>
+                </div>
+            </div>
+            <div class="route-step drop">
+                <span class="route-dot red"></span>
+                <div class="route-text-group">
+                    <span class="route-label">To: </span>
+                    <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "drop"))}</span>
+                </div>
+            </div>
         </div>
-        <div class="ride-request-metrics" aria-label="Ride distance and estimated time">
-            <div>
+
+        <div class="location-preview-row">
+            ${renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng)}
+            ${renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)}
+        </div>
+
+        <div class="trip-metrics-card">
+            <div class="metric-column">
                 <small>Distance</small>
                 <strong>${formatRideDistance(ride.distance_km)}</strong>
             </div>
-            <div>
+            <div class="metric-column text-end">
                 <small>Estimated time</small>
                 <strong>${formatRideDuration(ride.duration_minutes)}</strong>
             </div>
         </div>
-        <button class="gy-btn gy-btn-primary driver-service-accept-btn w-100" type="button" data-ride-id="${escapeHtml(rideId)}">
-            Accept Ride Request
+
+        <button class="btn-accept-ride accept-job-btn driver-service-accept-btn" data-id="${rideId}" data-ride-id="${rideId}">
+            <span>✓</span> Accept Ride Request
         </button>
-        ${callablePhone ? `
-            <a href="tel:${callablePhone}" class="gy-btn gy-btn-outline w-100 mt-2 d-inline-flex align-items-center justify-content-center gap-2" style="text-decoration:none;font-weight:600;">
-                <span class="webicon webicon-call" style="width:16px;height:16px;"></span> Call Passenger (${escapeHtml(passengerPhone)})
-            </a>
-        ` : ""}
-        <button class="gy-btn gy-btn-outline driver-service-ignore-btn w-100 mt-2" type="button" data-ride-id="${escapeHtml(rideId)}">
-            Ignore
+        <button class="btn-ignore-ride ignore-job-btn driver-service-ignore-btn" data-id="${rideId}" data-ride-id="${rideId}">
+            <span>✕</span> Ignore
         </button>
     `;
 
@@ -1734,6 +1754,7 @@ async function cancelRideByDriver() {
     try {
         const rideId = currentRideId;
         const result = await transitionRideThroughBackend(rideId, "cancel");
+        renderIdleState();
         await showAlert(fareAdjustmentMessage(result.ride, "Trip cancelled. You are back online."));
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
@@ -1777,6 +1798,8 @@ function startActiveRideListener() {
                     const ride = rideSnap.exists() ? rideSnap.data() : null;
                     if (ride?.status === "cancelled_by_passenger") {
                         await showAlert("Passenger cancelled this ride. You are back online.");
+                    } else if (ride?.status === "cancelled_by_driver" || ride?.status === "cancelled") {
+                        await showAlert("Trip cancelled. You are back online.");
                     }
                 } catch (error) {
                     console.warn("Could not check final ride status:", error);

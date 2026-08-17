@@ -1078,8 +1078,11 @@ function attachDriverTripListener(rideRef) {
         if (!docSnap.exists()) return;
         const currentRideData = docSnap.data();
 
-        if (currentRideData.status === "cancelled_by_passenger") {
-            showAlert("Passenger cancelled this ride. You are back online.");
+        if (["cancelled_by_passenger", "cancelled_by_driver", "cancelled"].includes(currentRideData.status)) {
+            const cancelledMsg = currentRideData.status === "cancelled_by_passenger"
+                ? "Passenger cancelled this ride. You are back online."
+                : "Trip cancelled. You are back online.";
+            showAlert(cancelledMsg);
             releaseWakeLock();
 
             if (activeDriverLocationWatchId !== null) {
@@ -1087,13 +1090,16 @@ function attachDriverTripListener(rideRef) {
                 activeDriverLocationWatchId = null;
             }
 
-            document.getElementById('active-trip-container').classList.add('d-none');
+            document.getElementById('active-trip-container')?.classList.add('d-none');
             currentlyAssignedRideId = null;
             activeDriverRideData = null;
             activeDriverRenderedStatus = null;
             setDriverAvailability("searching");
 
-            if (activeDriverTripListener) activeDriverTripListener();
+            if (activeDriverTripListener) {
+                activeDriverTripListener();
+                activeDriverTripListener = null;
+            }
             return;
         }
 
