@@ -87,6 +87,10 @@ function setGuestLoginVisibility(visible) {
     document.querySelectorAll('.guest-login-btn').forEach((button) => {
         button.classList.toggle('d-none', !visible);
     });
+    const profileTrigger = document.getElementById('profile-menu-trigger');
+    if (profileTrigger) {
+        profileTrigger.classList.toggle('d-none', visible);
+    }
 }
 
 function renderSession(profile) {
