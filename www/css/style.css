@@ -6467,36 +6467,36 @@ body.profile-editor-open {
 
 .availability-card {
     background: #FFFFFF;
-    border: 1px solid #E5E7EB;
-    border-radius: 16px;
-    padding: 12px 16px;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 18px;
+    padding: 14px 18px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 14px;
     transition: all 0.25s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
 }
 
 .availability-card.is-high {
-    border-color: #DCFCE7;
+    border-color: #BBF7D0;
     background: #F0FDF4;
 }
 
 .availability-card.is-moderate {
-    border-color: #FEF3C7;
+    border-color: #FDE68A;
     background: #FFFBEB;
 }
 
 .availability-card.is-low {
-    border-color: #FEE2E2;
+    border-color: #FECACA;
     background: #FEF2F2;
 }
 
 .availability-content-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     min-width: 0;
     flex: 1;
 }
@@ -6504,22 +6504,22 @@ body.profile-editor-open {
 .availability-signal-icon {
     display: inline-flex;
     align-items: flex-end;
-    gap: 2.5px;
-    height: 18px;
-    width: 20px;
+    gap: 3.5px;
+    height: 22px;
+    width: 24px;
     flex-shrink: 0;
 }
 
 .availability-signal-icon .bar {
-    width: 4px;
-    border-radius: 2px;
+    width: 5px;
+    border-radius: 3px;
     background: #D1D5DB;
     transition: background-color 0.2s ease, height 0.2s ease;
 }
 
-.availability-signal-icon .bar:nth-child(1) { height: 7px; }
-.availability-signal-icon .bar:nth-child(2) { height: 12px; }
-.availability-signal-icon .bar:nth-child(3) { height: 17px; }
+.availability-signal-icon .bar:nth-child(1) { height: 9px; }
+.availability-signal-icon .bar:nth-child(2) { height: 15px; }
+.availability-signal-icon .bar:nth-child(3) { height: 22px; }
 
 .availability-card.is-high .availability-signal-icon .bar { background: #16A34A; }
 .availability-card.is-moderate .availability-signal-icon .bar:nth-child(1),
@@ -6538,45 +6538,46 @@ body.profile-editor-open {
 .availability-header-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: wrap;
 }
 
 .availability-label-title {
-    font-size: 13.5px;
+    font-size: 15px;
     font-weight: 700;
     color: #111827;
 }
 
-.availability-card.is-high .availability-status-name { color: #16A34A; }
-.availability-card.is-moderate .availability-status-name { color: #D97706; }
-.availability-card.is-low .availability-status-name { color: #DC2626; }
+.availability-card.is-high .availability-status-name { color: #16A34A; font-weight: 800; }
+.availability-card.is-moderate .availability-status-name { color: #D97706; font-weight: 800; }
+.availability-card.is-low .availability-status-name { color: #DC2626; font-weight: 800; }
 
 .availability-info-trigger {
-    background: none;
+    background: #F3F4F6;
     border: none;
-    padding: 0;
-    margin: 0;
+    padding: 6px;
+    border-radius: 50%;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #9CA3AF;
-    opacity: 0.8;
+    color: #4B5563;
+    width: 28px;
+    height: 28px;
+    transition: background 0.2s, transform 0.2s;
 }
 
-.availability-info-trigger:hover {
-    opacity: 1;
+.availability-info-trigger:hover,
+.availability-info-trigger:active {
+    background: #E5E7EB;
+    transform: scale(1.1);
 }
 
 .availability-subtext {
-    font-size: 11.5px;
-    color: #6B7280;
-    margin-top: 1px;
-    line-height: 1.3;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 13px;
+    color: #4B5563;
+    margin-top: 2px;
+    line-height: 1.35;
 }
 
 .availability-price-right {
@@ -6584,40 +6585,44 @@ body.profile-editor-open {
     flex-direction: column;
     align-items: flex-end;
     flex-shrink: 0;
+    padding-left: 8px;
 }
 
 .availability-price-right small {
-    font-size: 11px;
+    font-size: 12px;
     color: #6B7280;
-    font-weight: 500;
+    font-weight: 600;
 }
 
 .availability-price-right strong {
-    font-size: 19px;
+    font-size: 22px;
     font-weight: 800;
     color: #16A34A;
-    line-height: 1.2;
+    line-height: 1.15;
 }
 
 /* Proactive Schedule Shortcut */
 .availability-schedule-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 11px;
+    gap: 5px;
+    font-size: 12px;
     font-weight: 700;
-    color: #D97706;
+    color: #92400E;
     background: #FEF3C7;
-    border: 1px solid #FDE68A;
+    border: 1.5px solid #FDE68A;
     border-radius: 999px;
-    padding: 2px 8px;
-    margin-top: 4px;
+    padding: 4px 12px;
+    margin-top: 6px;
     cursor: pointer;
     text-decoration: none;
+    transition: all 0.2s ease;
 }
 
-.availability-schedule-chip:hover {
+.availability-schedule-chip:hover,
+.availability-schedule-chip:active {
     background: #FDE68A;
+    transform: translateY(-1px);
 }
 
 /* ==========================================
@@ -6625,25 +6630,26 @@ body.profile-editor-open {
    ========================================== */
 .engaging-search-card {
     background: #F0FDF4;
-    border: 1.5px solid #BBF7D0;
-    border-radius: 16px;
-    padding: 16px;
+    border: 1.5px solid #86EFAC;
+    border-radius: 18px;
+    padding: 18px;
     margin-top: 14px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
     transition: all 0.3s ease;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.08);
 }
 
 .search-main-row {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
 }
 
 .search-radar-icon-box {
-    width: 44px;
-    height: 44px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
     background: #DCFCE7;
     display: flex;
@@ -6657,16 +6663,16 @@ body.profile-editor-open {
 .search-radar-icon-box::after {
     content: "";
     position: absolute;
-    inset: -3px;
+    inset: -4px;
     border-radius: 50%;
-    border: 2px solid #16A34A;
-    opacity: 0.4;
+    border: 2.5px solid #16A34A;
+    opacity: 0.5;
     animation: searchRadarPulse 2s cubic-bezier(0, 0.2, 0.8, 1) infinite;
 }
 
 @keyframes searchRadarPulse {
     0% { transform: scale(0.9); opacity: 0.8; }
-    100% { transform: scale(1.4); opacity: 0; }
+    100% { transform: scale(1.45); opacity: 0; }
 }
 
 .search-copy-wrap {
@@ -6675,16 +6681,16 @@ body.profile-editor-open {
 }
 
 .search-headline {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 700;
     color: #111827;
-    margin: 0 0 2px;
+    margin: 0 0 4px;
     line-height: 1.3;
 }
 
 .search-subline {
-    font-size: 12px;
-    color: #6B7280;
+    font-size: 13.5px;
+    color: #4B5563;
     margin: 0;
     transition: opacity 0.3s ease;
 }
@@ -6692,45 +6698,230 @@ body.profile-editor-open {
 .search-progress-dots {
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
     padding-left: 2px;
 }
 
 .search-dot {
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
-    background: #E5E7EB;
+    background: #D1D5DB;
     transition: all 0.3s ease;
 }
 
 .search-dot.is-active {
     background: #16A34A;
-    transform: scale(1.25);
+    transform: scale(1.3);
+    box-shadow: 0 0 8px rgba(22, 163, 74, 0.5);
 }
 
 .search-tapout-hint {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 2px;
-    padding-top: 8px;
+    margin-top: 4px;
+    padding-top: 10px;
     border-top: 1px solid #DCFCE7;
 }
 
 .search-tapout-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: #16A34A;
+    background: #DCFCE7;
+    border: 1px solid #BBF7D0;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #15803D;
     cursor: pointer;
-    text-decoration: underline;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
-.search-tapout-btn:hover {
-    color: #15803D;
+.search-tapout-btn:hover,
+.search-tapout-btn:active {
+    background: #BBF7D0;
+    color: #166534;
+    transform: translateY(-1px);
+}
+
+/* ==========================================
+   Map Markers: Ripple & Floating "This is you!" Tag
+   ========================================== */
+.user-location-overlay-marker {
+    position: absolute;
+    width: 42px;
+    height: 54px;
+    pointer-events: none;
+    z-index: 950;
+    will-change: transform;
+}
+
+.user-location-ripple-wrap {
+    position: absolute;
+    top: 52px;
+    left: 21px;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.user-location-ripple-wrap.is-hidden {
+    display: none !important;
+}
+
+.user-location-ripple-ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(22, 163, 74, 0.7);
+    background: rgba(34, 197, 94, 0.18);
+    pointer-events: none;
+    animation: userRippleSpread 2.4s cubic-bezier(0.1, 0.5, 0.4, 1) infinite;
+}
+
+.user-location-ripple-ring.ring-1 {
+    animation-delay: 0s;
+}
+
+.user-location-ripple-ring.ring-2 {
+    animation-delay: 0.8s;
+}
+
+.user-location-ripple-ring.ring-3 {
+    animation-delay: 1.6s;
+}
+
+@keyframes userRippleSpread {
+    0% {
+        width: 14px;
+        height: 14px;
+        opacity: 0.9;
+    }
+    100% {
+        width: 90px;
+        height: 90px;
+        opacity: 0;
+    }
+}
+
+.user-location-bubble-card {
+    position: absolute;
+    top: -46px;
+    left: 21px;
+    transform: translateX(-50%);
+    background: #111827;
+    color: #FFFFFF;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    pointer-events: none;
+    z-index: 10;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    animation: floatingBob 2.2s ease-in-out infinite, bubbleFadeIn 0.3s ease-out;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.user-location-bubble-card.is-faded {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+}
+
+@keyframes floatingBob {
+    0%, 100% {
+        transform: translateX(-50%) translateY(0);
+    }
+    50% {
+        transform: translateX(-50%) translateY(-5px);
+    }
+}
+
+@keyframes bubbleFadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) scale(0.85);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+}
+
+.user-location-bubble-arrow {
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid #111827;
+}
+
+/* ==========================================
+   Scroll to Proceed UX Floating Button
+   ========================================== */
+.scroll-to-proceed-btn {
+    position: fixed;
+    bottom: 82px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 990;
+    background: #111827;
+    color: #FFFFFF;
+    border: 1.5px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    padding: 10px 22px;
+    font-size: 13.5px;
+    font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: scrollHintBounce 2s ease-in-out infinite, fadeInScale 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.25s ease;
+}
+
+.scroll-to-proceed-btn:hover,
+.scroll-to-proceed-btn:active {
+    background: #1F2937;
+    transform: translateX(-50%) scale(1.04);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes scrollHintBounce {
+    0%, 100% {
+        transform: translateX(-50%) translateY(0);
+    }
+    50% {
+        transform: translateX(-50%) translateY(5px);
+    }
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
 }
 
 /* ==========================================

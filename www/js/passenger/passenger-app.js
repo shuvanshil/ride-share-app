@@ -1861,6 +1861,78 @@ addOptionalClickListener('pending-cancel-btn', () => {
     cancelPendingRideRequest();
 });
 
+// ==========================================
+// Scroll to Proceed Guidance Controller
+// ==========================================
+let scrollHintTimer = null;
+
+function isElementInViewport(el) {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+    return (
+        rect.top < windowHeight * 0.85 &&
+        rect.bottom > 0
+    );
+}
+
+function startScrollHintTimer() {
+    if (scrollHintTimer) clearTimeout(scrollHintTimer);
+    const vehicleSection = document.getElementById('ride-service-options');
+    if (!vehicleSection || isElementInViewport(vehicleSection)) return;
+
+    scrollHintTimer = setTimeout(() => {
+        const vehicleSec = document.getElementById('ride-service-options');
+        if (vehicleSec && !vehicleSec.classList.contains('d-none') && !isElementInViewport(vehicleSec) && !currentPassengerRideId) {
+            const btn = document.getElementById('scroll-to-proceed-btn');
+            if (btn) btn.classList.remove('d-none');
+        }
+    }, 3000);
+}
+
+function hideScrollHintButton() {
+    if (scrollHintTimer) {
+        clearTimeout(scrollHintTimer);
+        scrollHintTimer = null;
+    }
+    const btn = document.getElementById('scroll-to-proceed-btn');
+    if (btn) btn.classList.add('d-none');
+}
+
+function handleUserScroll() {
+    const vehicleSection = document.getElementById('ride-service-options');
+    if (!vehicleSection || vehicleSection.classList.contains('d-none')) return;
+
+    if (isElementInViewport(vehicleSection)) {
+        hideScrollHintButton();
+    } else if (scrollHintTimer) {
+        clearTimeout(scrollHintTimer);
+        scrollHintTimer = setTimeout(() => {
+            if (vehicleSection && !vehicleSection.classList.contains('d-none') && !isElementInViewport(vehicleSection) && !currentPassengerRideId) {
+                const btn = document.getElementById('scroll-to-proceed-btn');
+                if (btn) btn.classList.remove('d-none');
+            }
+        }, 3000);
+    }
+}
+
+function scrollToVehicleSection() {
+    hideScrollHintButton();
+    const vehicleSection = document.getElementById('ride-service-options');
+    if (vehicleSection) {
+        vehicleSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+addOptionalClickListener('scroll-to-proceed-btn', () => scrollToVehicleSection());
+window.addEventListener('scroll', handleUserScroll, { passive: true });
+window.addEventListener('fare-quote-updated', () => {
+    startScrollHintTimer();
+});
+window.addEventListener('fare-quote-reset', () => {
+    hideScrollHintButton();
+});
+
 // Check and restore active pending requests on session load
 async function checkActivePendingRequestOnLoad() {
     try {

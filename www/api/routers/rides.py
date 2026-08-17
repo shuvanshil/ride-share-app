@@ -2015,9 +2015,12 @@ def get_driver_nearby_demand(
     )
 
     waiting_count = 0
+    scheduled_count = 0
+    scheduled_rides = []
     rough_area = ""
     for doc in pending_docs:
         data = doc.to_dict() or {}
+        mode = str(data.get("mode") or "notify_only").strip().lower()
         expires_at = data.get("expiresAt")
         if expires_at:
             exp_time = (
@@ -2029,6 +2032,7 @@ def get_driver_nearby_demand(
                 continue
 
         pickup = data.get("pickup") or {}
+        drop = data.get("drop") or {}
         p_lat = pickup.get("lat")
         p_lng = pickup.get("lng")
         if p_lat is None or p_lng is None:
@@ -2039,12 +2043,31 @@ def get_driver_nearby_demand(
             continue
 
         dist_km = _haversine_km(d_lat, d_lng, float(p_lat), float(p_lng))
-        if dist_km <= 7.5:
-            waiting_count += 1
-            if not rough_area:
-                rough_area = str(pickup.get("name") or "your area")
+        if dist_km <= 10.0:
+            if mode == "schedule":
+                scheduled_count += 1
+                if len(scheduled_rides) < 5:
+                    scheduled_rides.append({
+                        "requestId": doc.id,
+                        "pickupName": str(pickup.get("name") or "Pickup point"),
+                        "dropName": str(drop.get("name") or "Destination"),
+                        "scheduledTime": str(data.get("activatesAt") or ""),
+                        "fare": data.get("fare") or 0,
+                        "vehicleType": req_vehicle or "any",
+                        "distanceKm": round(dist_km, 1)
+                    })
+            else:
+                waiting_count += 1
+                if not rough_area:
+                    rough_area = str(pickup.get("name") or "your area")
 
-    return {"ok": True, "waitingCount": waiting_count, "roughArea": rough_area}
+    return {
+        "ok": True,
+        "waitingCount": waiting_count,
+        "scheduledCount": scheduled_count,
+        "scheduledRides": scheduled_rides,
+        "roughArea": rough_area
+    }
 
 
 @router.post("/log-demand-event")

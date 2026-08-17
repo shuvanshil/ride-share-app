@@ -638,8 +638,8 @@ async function pollDriverNearbyDemand() {
             headers: { Authorization: `Bearer ${idToken}` }
         });
         const data = await res.json().catch(() => ({}));
-        if (data.ok && data.waitingCount > 0) {
-            updateDriverDemandChip(data.waitingCount, data.roughArea);
+        if (data.ok && (data.waitingCount > 0 || data.scheduledCount > 0)) {
+            updateDriverDemandChip(data);
         } else {
             hideDriverDemandChip();
         }
@@ -648,16 +648,26 @@ async function pollDriverNearbyDemand() {
     }
 }
 
-function updateDriverDemandChip(count, area) {
+function updateDriverDemandChip(data) {
     let chip = document.getElementById('driver-demand-chip');
     if (!chip) {
         chip = document.createElement('div');
         chip.id = 'driver-demand-chip';
         chip.className = 'driver-demand-chip animate-fade-in';
-        chip.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#16723a;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.25);z-index:1050;pointer-events:none;';
+        chip.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 18px;border-radius:24px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.3);z-index:1050;pointer-events:auto;border:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;';
         document.body.appendChild(chip);
     }
-    chip.innerHTML = `⚡ <strong>${count} rider${count > 1 ? 's' : ''}</strong> waiting near you${area ? ` (${area})` : ''}`;
+    
+    let content = "";
+    if (data.waitingCount > 0 && data.scheduledCount > 0) {
+        content = `⚡ <strong>${data.waitingCount} rider${data.waitingCount > 1 ? 's' : ''} waiting</strong> &bull; ⏰ <strong>${data.scheduledCount} scheduled</strong>`;
+    } else if (data.waitingCount > 0) {
+        content = `⚡ <strong>${data.waitingCount} rider${data.waitingCount > 1 ? 's' : ''}</strong> waiting near you${data.roughArea ? ` (${data.roughArea})` : ''}`;
+    } else if (data.scheduledCount > 0) {
+        content = `⏰ <strong>${data.scheduledCount} ride${data.scheduledCount > 1 ? 's' : ''} scheduled</strong> for upcoming hours`;
+    }
+
+    chip.innerHTML = content;
     chip.classList.remove('d-none');
 }
 
@@ -1245,19 +1255,30 @@ function upsertDriverMarker(position, heading = null) {
     animateDriverMarkerTo(position, heading);
 }
 
+function getTargetMarkerIcon(kind) {
+    const maps = window.google.maps;
+    const isPickup = kind === "pickup";
+    const iconUrl = isPickup
+        ? "/assets/icons/webicons/passenger-pickup-marker.png"
+        : "/assets/icons/webicons/destination-flag-marker.png";
+    return {
+        url: iconUrl,
+        scaledSize: new maps.Size(40, 50),
+        anchor: new maps.Point(20, 48)
+    };
+}
+
 function upsertTargetMarker() {
     if (!map || !currentTarget || !window.google?.maps) return;
+
+    const markerIcon = getTargetMarkerIcon(currentTarget.kind);
 
     if (!targetMarker) {
         targetMarker = new window.google.maps.Marker({
             map,
             position: currentTarget.position,
             title: currentTarget.place,
-            label: {
-                text: currentTarget.kind === "pickup" ? "P" : "D",
-                color: "#ffffff",
-                fontWeight: "800"
-            },
+            icon: markerIcon,
             animation: window.google.maps.Animation.DROP,
             zIndex: 900
         });
@@ -1266,11 +1287,8 @@ function upsertTargetMarker() {
 
     targetMarker.setPosition(currentTarget.position);
     targetMarker.setTitle(currentTarget.place);
-    targetMarker.setLabel({
-        text: currentTarget.kind === "pickup" ? "P" : "D",
-        color: "#ffffff",
-        fontWeight: "800"
-    });
+    targetMarker.setIcon(markerIcon);
+    targetMarker.setLabel(null);
 }
 
 function fitActiveRoute(path) {
