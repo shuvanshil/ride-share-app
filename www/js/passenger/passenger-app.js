@@ -1879,6 +1879,12 @@ addOptionalClickListener('pending-cancel-btn', () => {
     cancelPendingRideRequest();
 });
 
+// Pending Request Rebook Button when driver becomes available
+addOptionalClickListener('pending-rebook-btn', () => {
+    rebookPendingRequestToLiveRide();
+});
+
+
 // ==========================================
 // Scroll to Proceed Guidance Controller
 // ==========================================
@@ -1982,6 +1988,8 @@ function listenToPendingRequestUpdates(requestId) {
         activePendingRequestListener = null;
     }
 
+    let lastKnownNotifiedAt = undefined;
+
     activePendingRequestListener = onSnapshot(doc(db, "pendingRideRequests", requestId), (docSnap) => {
         if (!docSnap.exists()) return;
         const data = docSnap.data();
@@ -2017,7 +2025,166 @@ function listenToPendingRequestUpdates(requestId) {
             if (data.status === "expired") {
                 showAlert("Your waiting request has expired. No drivers became available in time.");
             }
+        } else {
+            // Document status is still pending. Check for notify_only notification event.
+            if (data.lastNotifiedAt) {
+                const notifiedSec = data.lastNotifiedAt.seconds || data.lastNotifiedAt;
+                
+                if (lastKnownNotifiedAt !== undefined && notifiedSec !== lastKnownNotifiedAt) {
+                    // Play vibration and show browser notification
+                    if (navigator.vibrate) {
+                        try { navigator.vibrate([200, 100, 200]); } catch (e) {}
+                    }
+                    if (Notification.permission === "granted") {
+                        try {
+                            new Notification("Driver Available Nearby", {
+                                body: "Driver availability has changed. Tap to search again!",
+                                icon: "/assets/icons/liphtup-icon-192.png"
+                            });
+                        } catch (e) {
+                            navigator.serviceWorker.ready.then(reg => {
+                                reg.showNotification("Driver Available Nearby", {
+                                    body: "Driver availability has changed. Tap to search again!",
+                                    icon: "/assets/icons/liphtup-icon-192.png"
+                                });
+                            }).catch(() => {});
+                        }
+                    }
+                    showAlert("Driver availability has changed! Click 'Yes!' on the card to search for a driver.");
+                }
+                
+                lastKnownNotifiedAt = notifiedSec;
+
+                // Update UI text and display rebook prompt
+                const titleEl = document.getElementById('pending-mode-title');
+                const descEl = document.getElementById('pending-mode-desc');
+                if (titleEl) titleEl.innerText = "Driver Availability Changed";
+                if (descEl) descEl.innerText = "Driver availability has changed, some drivers got available, would you like to try again?";
+                
+                const promptEl = document.getElementById('pending-driver-available-prompt');
+                if (promptEl) promptEl.classList.remove('d-none');
+            } else {
+                lastKnownNotifiedAt = null;
+                
+                // Set default texts depending on mode
+                const titleEl = document.getElementById('pending-mode-title');
+                const descEl = document.getElementById('pending-mode-desc');
+                if (data.mode === "schedule") {
+                    if (data.activatesAt) {
+                        const timeStr = new Date(data.activatesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        if (titleEl) titleEl.innerText = `Scheduled for ${timeStr}`;
+                    } else {
+                        if (titleEl) titleEl.innerText = "Scheduled Ride";
+                    }
+                    if (descEl) descEl.innerText = "We'll dispatch this request to nearby drivers automatically at your scheduled time.";
+                } else {
+                    if (titleEl) titleEl.innerText = "Waiting for next available driver";
+                    if (descEl) descEl.innerText = "We are actively monitoring for newly available drivers in your pickup area.";
+                }
+                
+                const promptEl = document.getElementById('pending-driver-available-prompt');
+                if (promptEl) promptEl.classList.add('d-none');
+            }
         }
     });
 }
+
+async function rebookPendingRequestToLiveRide() {
+    if (!activePendingRequestId || !activePendingRequestData) return;
+
+    window.LiphtUpLoading?.showPageLoader?.("Starting search...");
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+
+        const reqId = activePendingRequestId;
+        const data = activePendingRequestData;
+
+        // 1. Unsubscribe listener to avoid snapshot updates during cancellation
+        if (activePendingRequestListener) {
+            activePendingRequestListener();
+            activePendingRequestListener = null;
+        }
+
+        // 2. Cancel the pending request on the backend silently
+        await fetch(`/api/rides/pending-request/${encodeURIComponent(reqId)}/cancel`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ reason: "rebooked_to_live" })
+        }).catch((err) => console.warn("Failed to cancel pending request before rebooking:", err));
+
+        // 3. Clear pending states
+        activePendingRequestId = null;
+        activePendingRequestData = null;
+
+        const pendingCard = document.getElementById('pending-active-card');
+        if (pendingCard) pendingCard.classList.add('d-none');
+
+        const promptEl = document.getElementById('pending-driver-available-prompt');
+        if (promptEl) promptEl.classList.add('d-none');
+
+        // 4. Lock UI and configure searching state
+        const requestBtn = document.getElementById('request-ride-btn');
+        if (requestBtn) {
+            requestBtn.disabled = true;
+            requestBtn.innerHTML = "Searching nearby drivers...";
+            requestBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
+        }
+
+        setPassengerDestinationLocked(true, data.drop?.name || "", data.pickup?.name || "");
+
+        const fakeService = {
+            id: data.vehicleType || "auto",
+            name: (data.vehicleType || "auto").toUpperCase(),
+            vehicle_type: data.vehicleType || "auto",
+            fare: data.fare || 0,
+            distance_km: data.distanceKm || 0
+        };
+        setPassengerServiceLocked(true, fakeService);
+        startSearchStateUi(35);
+
+        // 5. Submit new live ride request
+        const backendRide = await createRideThroughBackend({
+            pickupName: data.pickup?.name || "",
+            dropName: data.drop?.name || "",
+            pickupLat: Number(data.pickup?.lat || 0),
+            pickupLng: Number(data.pickup?.lng || 0),
+            dropLat: Number(data.drop?.lat || 0),
+            dropLng: Number(data.drop?.lng || 0),
+            vehicleType: data.vehicleType || "auto",
+            dropFullAddress: data.drop?.address || data.drop?.name || "",
+            dropSource: "google",
+            dropProvider: "google",
+            dropPlaceId: "",
+            dropEloc: "",
+            dropTypeHint: ""
+        });
+
+        currentPassengerRideId = backendRide.rideId;
+        notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
+        showPassengerCancelButton(backendRide.rideId);
+        listenToRideStatusUpdates(backendRide.rideId);
+
+    } catch (e) {
+        console.error("Rebook pending request failed:", e);
+        stopSearchStateUi();
+        setPassengerDestinationLocked(false);
+        setPassengerServiceLocked(false);
+        
+        const requestBtn = document.getElementById('request-ride-btn');
+        if (requestBtn) {
+            requestBtn.innerHTML = 'Find Ride';
+            requestBtn.className = "gy-btn gy-btn-primary w-100";
+            requestBtn.disabled = false;
+            requestBtn.classList.remove('d-none');
+        }
+        await showAlert(e.message || "Could not start searching. Please try again.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
+
 
