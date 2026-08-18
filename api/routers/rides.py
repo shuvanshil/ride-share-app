@@ -353,25 +353,39 @@ def _require_role(profile: dict[str, Any], expected_role: str, message: str) -> 
         raise ApiError(message, 403)
 
 
+def _to_utc_datetime(val: Any) -> Optional[datetime]:
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=KOLKATA_TZ).astimezone(timezone.utc)
+        return val.astimezone(timezone.utc)
+    if hasattr(val, "timestamp"):
+        try:
+            return datetime.fromtimestamp(val.timestamp(), tz=timezone.utc)
+        except Exception:
+            pass
+    try:
+        s = str(val).strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=KOLKATA_TZ).astimezone(timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
 def _require_approved_driver(profile: dict[str, Any], message: str) -> None:
-    if profile.get("role") != "driver" or profile.get("verificationStatus") != "approved":
+    v_status = profile.get("verificationStatus") or profile.get("verification_status") or profile.get("status") or ("approved" if profile.get("role") == "driver" else None)
+    if profile.get("role") != "driver" or v_status != "approved":
         raise ApiError(message, 403)
 
 
 def _coarse_location(location: Optional[dict[str, float]]) -> Optional[dict[str, float]]:
     if not location:
         return None
-    # NOTE: this used to round to 2 decimal places (~1.1km grid cells).
-    # That's coarser than the 2-5km "nearby driver" radius the passenger
-    # map filters to, so a driver sitting near a grid-cell boundary would
-    # flip between two ~1.1km-apart points on every tiny few-metre GPS
-    # wobble - that discrete snapping is what showed up as the vehicle
-    # icon "randomly jumping between places" on the passenger's map only
-    # (the driver's own marker, and the assigned-driver tracking used
-    # after booking, both read the *uncoarsened* location and never had
-    # this problem). 4 decimal places (~11m) still blurs the driver's
-    # exact address for a browsing passenger, while staying well within
-    # normal consumer GPS accuracy - so it no longer visibly snaps.
     return {
         "lat": round(float(location["lat"]), 4),
         "lng": round(float(location["lng"]), 4),
@@ -390,6 +404,7 @@ def _build_driver_availability_updates(
         if online
         else datetime.fromtimestamp(0, timezone.utc)
     )
+    v_status = profile.get("verificationStatus") or profile.get("verification_status") or profile.get("status") or "approved"
     user_update: dict[str, Any] = {
         "driverAvailability": status,
         "desiredAvailability": "online" if online else "offline",
@@ -404,7 +419,7 @@ def _build_driver_availability_updates(
         "phone": str(profile.get("phone") or "")[:40],
         "driverAvailability": status,
         "desiredAvailability": "online" if online else "offline",
-        "verificationStatus": profile.get("verificationStatus") or "pending_review",
+        "verificationStatus": v_status,
         "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
         "vehicle_number": profile.get("vehicle_number") or profile.get("vehicleNumber") or "",
         "vehicle_type": _driver_type(profile),
@@ -421,10 +436,13 @@ def _build_driver_availability_updates(
             "updatedAt", "lastSeenAt",
         )
     }
-    if location is not None:
-        user_update["driverLocation"] = {"lat": location["lat"], "lng": location["lng"]}
-        presence_update["driverLocation"] = {"lat": location["lat"], "lng": location["lng"]}
-        map_presence_update["driverLocation"] = _coarse_location({"lat": location["lat"], "lng": location["lng"]})
+    eff_loc = location or profile.get("driverLocation") or profile.get("location")
+    if eff_loc and "lat" in eff_loc and "lng" in eff_loc:
+        loc_dict = {"lat": float(eff_loc["lat"]), "lng": float(eff_loc["lng"])}
+        user_update["driverLocation"] = loc_dict
+        presence_update["driverLocation"] = loc_dict
+        map_presence_update["driverLocation"] = _coarse_location(loc_dict)
+
     return user_update, presence_update, map_presence_update
 
 
@@ -835,13 +853,9 @@ async def create_pending_request(
     expires_at = now + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
     activates_at_dt = None
     if body.activatesAt:
-        try:
-            parsed_dt = datetime.fromisoformat(body.activatesAt.replace("Z", "+00:00"))
-            if parsed_dt > now:
-                activates_at_dt = parsed_dt
-                expires_at = activates_at_dt + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
-        except Exception:  # noqa: BLE001
-            pass
+        activates_at_dt = _to_utc_datetime(body.activatesAt)
+        if activates_at_dt:
+            expires_at = activates_at_dt + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
 
     # Prevent duplicate active requests by reusing existing active document
     existing_q = (
@@ -2058,16 +2072,7 @@ def _match_pending_requests_for_driver(
         # Check scheduled activation time (lead time: 10 minutes)
         activates_at = data.get("activatesAt")
         if activates_at:
-            act_time = (
-                activates_at
-                if isinstance(activates_at, datetime)
-                else (datetime.fromtimestamp(activates_at.timestamp(), tz=timezone.utc) if hasattr(activates_at, "timestamp") else None)
-            )
-            if not act_time:
-                try:
-                    act_time = datetime.fromisoformat(str(activates_at).replace("Z", "+00:00"))
-                except Exception:
-                    act_time = None
+            act_time = _to_utc_datetime(activates_at)
             if act_time and now < (act_time - timedelta(minutes=10)):
                 continue
 
@@ -2271,16 +2276,7 @@ def activate_due_scheduled_requests(db) -> int:
         activates_at = data.get("activatesAt")
         if not activates_at:
             continue
-        act_time = (
-            activates_at
-            if isinstance(activates_at, datetime)
-            else (datetime.fromtimestamp(activates_at.timestamp(), tz=timezone.utc) if hasattr(activates_at, "timestamp") else None)
-        )
-        if not act_time:
-            try:
-                act_time = datetime.fromisoformat(str(activates_at).replace("Z", "+00:00"))
-            except Exception:
-                continue
+        act_time = _to_utc_datetime(activates_at)
 
         if act_time and now >= (act_time - timedelta(minutes=10)):
             doc.reference.update({
