@@ -1656,6 +1656,7 @@ requestRideButton.addEventListener('click', async () => {
 }
 
 function listenToRideStatusUpdates(rideId) {
+    if (!rideId || typeof rideId !== 'string') return;
     const requestBtn = document.getElementById('request-ride-btn');
     showPassengerCancelButton(rideId);
 
