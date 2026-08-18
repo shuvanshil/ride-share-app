@@ -49,6 +49,8 @@ let searchDotsCycle = 0;
 let searchStartedAt = 0;
 let activePendingRequestId = null;
 let activePendingRequestData = null;
+let activePendingRequestListener = null;
+
 
 const SEARCH_STATUS_MESSAGES = [
     { maxSec: 7, headline: "Finding the best driver for you...", subline: "This usually takes less than 35s" },
@@ -909,6 +911,8 @@ async function handleNotifyMeWhenAvailable() {
         const pushResult = await registerForPush();
         if (pushResult?.ok && pushResult.token) {
             await sendTokenToBackend(pushResult.token);
+        } else if (pushResult?.reason === "denied") {
+            await showAlert("Notification permission denied. We won't be able to send you background push notifications, but we'll monitor in-app.");
         }
     } catch (e) {
         console.warn("Push token registration check skipped:", e);
@@ -989,6 +993,7 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
         hideNoDriverOptions();
         stopSearchStateUi();
         showPendingActiveCard(mode, activatesAt);
+        listenToPendingRequestUpdates(data.requestId);
         await showAlert(
             mode === "schedule"
                 ? "Ride scheduled! We'll auto-search for nearby drivers when your time arrives."
@@ -1047,6 +1052,10 @@ async function cancelPendingRideRequest() {
 
         activePendingRequestId = null;
         activePendingRequestData = null;
+        if (activePendingRequestListener) {
+            activePendingRequestListener();
+            activePendingRequestListener = null;
+        }
         const pendingCard = document.getElementById('pending-active-card');
         if (pendingCard) pendingCard.classList.add('d-none');
         resetPassengerBookingUi();
@@ -1604,6 +1613,15 @@ function listenToRideStatusUpdates(rideId) {
         if (ACTIVE_RIDE_STATUSES.includes(ride.status)) {
             setPassengerDestinationLocked(true, ride.drop_name || "", ride.pickup_name || "");
             setPassengerServiceLocked(true, ride);
+            
+            const pendingCard = document.getElementById('pending-active-card');
+            if (pendingCard) pendingCard.classList.add('d-none');
+            activePendingRequestId = null;
+            activePendingRequestData = null;
+            if (activePendingRequestListener) {
+                activePendingRequestListener();
+                activePendingRequestListener = null;
+            }
         }
 
         if (["cancelled", "cancelled_by_passenger", "cancelled_by_driver"].includes(ride.status)) {
@@ -1947,6 +1965,7 @@ async function checkActivePendingRequestOnLoad() {
             activePendingRequestId = data.pendingRequest.requestId;
             activePendingRequestData = data.pendingRequest;
             showPendingActiveCard(data.pendingRequest.mode, data.pendingRequest.activatesAt);
+            listenToPendingRequestUpdates(data.pendingRequest.requestId);
         }
     } catch (e) {
         console.warn("Active pending check skipped:", e);
@@ -1956,3 +1975,49 @@ async function checkActivePendingRequestOnLoad() {
 window.addEventListener('user-session-ready', () => {
     setTimeout(checkActivePendingRequestOnLoad, 1000);
 });
+
+function listenToPendingRequestUpdates(requestId) {
+    if (activePendingRequestListener) {
+        activePendingRequestListener();
+        activePendingRequestListener = null;
+    }
+
+    activePendingRequestListener = onSnapshot(doc(db, "pendingRideRequests", requestId), (docSnap) => {
+        if (!docSnap.exists()) return;
+        const data = docSnap.data();
+        activePendingRequestData = data;
+
+        if (data.status === "matched_auto" || data.status === "dispatching" || data.status === "matched" || (data.rideId && data.status !== "pending")) {
+            const rideId = data.rideId;
+            if (rideId) {
+                const pendingCard = document.getElementById('pending-active-card');
+                if (pendingCard) pendingCard.classList.add('d-none');
+                
+                activePendingRequestId = null;
+                activePendingRequestData = null;
+                if (activePendingRequestListener) {
+                    activePendingRequestListener();
+                    activePendingRequestListener = null;
+                }
+
+                currentPassengerRideId = rideId;
+                listenToRideStatusUpdates(rideId);
+            }
+        } else if (data.status === "cancelled" || data.status === "expired") {
+            const pendingCard = document.getElementById('pending-active-card');
+            if (pendingCard) pendingCard.classList.add('d-none');
+            
+            activePendingRequestId = null;
+            activePendingRequestData = null;
+            if (activePendingRequestListener) {
+                activePendingRequestListener();
+                activePendingRequestListener = null;
+            }
+            
+            if (data.status === "expired") {
+                showAlert("Your waiting request has expired. No drivers became available in time.");
+            }
+        }
+    });
+}
+

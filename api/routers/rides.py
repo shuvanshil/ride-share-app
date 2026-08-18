@@ -751,6 +751,206 @@ async def create_passenger_ride(
         raise ApiError("Could not create this ride request.", 503)
 
 
+# ---------------------------------------------------------------------------
+# Pending Ride Requests (Feature 3): notify_only / auto / schedule
+# IMPORTANT: These fixed-path routes MUST be registered before the
+# /{ride_id} wildcard routes so FastAPI matches them without ambiguity.
+# ---------------------------------------------------------------------------
+
+@router.get("/pending-request/active")
+def get_active_pending_request(
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Fetch active pending ride request for the passenger with lazy-expiry enforcement."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    db = fb_firestore.client(get_admin_app())
+    pending_q = (
+        db.collection("pendingRideRequests")
+        .where("passengerId", "==", uid)
+        .where("status", "in", ["pending", "dispatching"])
+        .limit(1)
+    )
+    docs = list(pending_q.stream())
+    if not docs:
+        return {"ok": True, "hasActivePending": False, "pendingRequest": None}
+
+    doc = docs[0]
+    data = doc.to_dict() or {}
+    now = datetime.now(timezone.utc)
+    expires_at = data.get("expiresAt")
+    if expires_at:
+        exp_time = (
+            expires_at
+            if isinstance(expires_at, datetime)
+            else (datetime.fromtimestamp(expires_at.timestamp(), tz=timezone.utc) if hasattr(expires_at, "timestamp") else None)
+        )
+        if exp_time and now > exp_time:
+            doc.reference.update({"status": "expired", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
+            _log_demand_event(db, "pending_expired", {"requestId": doc.id, "passengerId": uid})
+            return {"ok": True, "hasActivePending": False, "pendingRequest": None}
+
+    return {"ok": True, "hasActivePending": True, "pendingRequest": {**data, "requestId": doc.id}}
+
+
+@router.post("/pending-request")
+async def create_pending_request(
+    body: PendingRideRequestBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Create or update a persistent pending ride request (Feature 3)."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    db = fb_firestore.client(get_admin_app())
+    profile = db.collection("users").document(uid).get().to_dict() or {}
+    _require_role(profile, "passenger", "Only passengers can create pending ride requests.")
+
+    pickup_lat = _coordinate(body.pickupLat, -90, 90)
+    pickup_lng = _coordinate(body.pickupLng, -180, 180)
+    drop_lat = _coordinate(body.dropLat, -90, 90)
+    drop_lng = _coordinate(body.dropLng, -180, 180)
+    mode = body.mode.strip().lower()
+    if mode not in {"auto", "notify_only", "schedule"}:
+        mode = "notify_only"
+
+    # Check for no-show cooldown on auto mode
+    if mode == "auto":
+        no_show_count = int(profile.get("autoNoShowCount") or 0)
+        last_no_show = _timestamp_seconds(profile.get("lastAutoNoShowAt"))
+        if no_show_count >= MAX_AUTO_NO_SHOW_THRESHOLD and last_no_show:
+            elapsed = datetime.now(timezone.utc).timestamp() - last_no_show
+            if elapsed < AUTO_NO_SHOW_COOLDOWN_SECONDS:
+                remaining_min = math.ceil((AUTO_NO_SHOW_COOLDOWN_SECONDS - elapsed) / 60)
+                raise ApiError(
+                    f"Auto-booking is temporarily cooling down ({remaining_min} min remaining) due to recent missed requests. Please use 'Notify Me' mode instead.",
+                    429,
+                )
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
+    activates_at_dt = None
+    if body.activatesAt:
+        try:
+            parsed_dt = datetime.fromisoformat(body.activatesAt.replace("Z", "+00:00"))
+            if parsed_dt > now:
+                activates_at_dt = parsed_dt
+                expires_at = activates_at_dt + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Prevent duplicate active requests by reusing existing active document
+    existing_q = (
+        db.collection("pendingRideRequests")
+        .where("passengerId", "==", uid)
+        .where("status", "==", "pending")
+        .limit(1)
+    )
+    existing_docs = list(existing_q.stream())
+    if existing_docs:
+        req_ref = existing_docs[0].reference
+    else:
+        req_ref = db.collection("pendingRideRequests").document()
+
+    fare_estimate = body.fareEstimate or {}
+    pending_doc_data = {
+        "requestId": req_ref.id,
+        "passengerId": uid,
+        "passengerName": str(profile.get("name") or "User")[:80],
+        "passengerPhone": str(profile.get("phone") or "")[:40],
+        "pickup": {
+            "name": body.pickupName.strip()[:200],
+            "address": body.pickupName.strip()[:200],
+            "lat": pickup_lat,
+            "lng": pickup_lng,
+        },
+        "drop": {
+            "name": body.dropName.strip()[:200],
+            "address": body.dropFullAddress.strip()[:500] or body.dropName.strip()[:200],
+            "lat": drop_lat,
+            "lng": drop_lng,
+        },
+        "vehicleType": body.vehicleType.strip().lower() or "auto",
+        "searchRadius": float(body.searchRadius or 5000.0),
+        "mode": mode,
+        "status": "pending",
+        "createdAt": fb_firestore.SERVER_TIMESTAMP if not existing_docs else existing_docs[0].to_dict().get("createdAt"),
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        "expiresAt": expires_at,
+        "activatesAt": activates_at_dt,
+        "fare": float(fare_estimate.get("fare") or 0),
+        "distanceKm": float(fare_estimate.get("distance_km") or 0),
+        "fareEstimate": fare_estimate,
+        "lockedByDriverId": None,
+        "rejected_driver_ids": [],
+    }
+
+    req_ref.set(pending_doc_data, merge=True)
+
+    _log_demand_event(db, "pending_created", {
+        "requestId": req_ref.id,
+        "passengerId": uid,
+        "mode": mode,
+        "searchRadius": float(body.searchRadius or 5000.0),
+        "vehicleType": body.vehicleType,
+        "pickupLat": pickup_lat,
+        "pickupLng": pickup_lng,
+    })
+
+    return {
+        "ok": True,
+        "requestId": req_ref.id,
+        "mode": mode,
+        "expiresAt": expires_at.isoformat(),
+    }
+
+
+@router.post("/pending-request/{request_id}/cancel")
+def cancel_pending_request(
+    request_id: str,
+    body: PendingRideCancelBody = PendingRideCancelBody(),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Cancel an active pending ride request."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    clean_req_id = request_id.strip()[:160]
+    db = fb_firestore.client(get_admin_app())
+    doc_ref = db.collection("pendingRideRequests").document(clean_req_id)
+    doc_snap = doc_ref.get()
+    if not doc_snap.exists:
+        raise ApiError("Pending request not found.", 404)
+
+    data = doc_snap.to_dict() or {}
+    if data.get("passengerId") != uid:
+        raise ApiError("You can only cancel your own pending request.", 403)
+
+    doc_ref.update({
+        "status": "cancelled",
+        "cancelReason": (body.reason or "cancelled_by_user")[:100],
+        "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    })
+
+    _log_demand_event(db, "pending_cancelled", {
+        "requestId": clean_req_id,
+        "passengerId": uid,
+        "reason": (body.reason or "cancelled_by_user")[:100],
+    })
+
+    return {"ok": True, "requestId": clean_req_id, "status": "cancelled"}
+
+
+# ---------------------------------------------------------------------------
+# End of pending-request routes
+# ---------------------------------------------------------------------------
+
+
 @router.post("/{ride_id}/transition")
 def transition_driver_ride(
     ride_id: str,
@@ -1820,7 +2020,8 @@ def _match_pending_requests_for_driver(
 
         mode = str(data.get("mode") or "notify_only").strip().lower()
         passenger_id = data.get("passengerId")
-        drop = data.get("drop") or {}
+        # Support both "drop" (new) and "dropoff" (legacy) field names
+        drop = data.get("drop") or data.get("dropoff") or {}
         d_lat = drop.get("lat") or p_lat
         d_lng = drop.get("lng") or p_lng
 
@@ -1951,190 +2152,6 @@ def _match_pending_requests_for_driver(
     return None
 
 
-@router.post("/pending-request")
-async def create_pending_request(
-    body: PendingRideRequestBody,
-    user: dict[str, Any] = Depends(current_user),
-) -> dict[str, Any]:
-    """Create or update a persistent pending ride request (Feature 3)."""
-    uid = str(user.get("uid") or "").strip()
-    if not uid:
-        raise ApiError("Authenticated user identity is missing.", 401)
-
-    db = fb_firestore.client(get_admin_app())
-    profile = db.collection("users").document(uid).get().to_dict() or {}
-    _require_role(profile, "passenger", "Only passengers can create pending ride requests.")
-
-    pickup_lat = _coordinate(body.pickupLat, -90, 90)
-    pickup_lng = _coordinate(body.pickupLng, -180, 180)
-    drop_lat = _coordinate(body.dropLat, -90, 90)
-    drop_lng = _coordinate(body.dropLng, -180, 180)
-    mode = body.mode.strip().lower()
-    if mode not in {"auto", "notify_only", "schedule"}:
-        mode = "notify_only"
-
-    # Check for no-show cooldown on auto mode
-    if mode == "auto":
-        no_show_count = int(profile.get("autoNoShowCount") or 0)
-        last_no_show = _timestamp_seconds(profile.get("lastAutoNoShowAt"))
-        if no_show_count >= MAX_AUTO_NO_SHOW_THRESHOLD and last_no_show:
-            elapsed = datetime.now(timezone.utc).timestamp() - last_no_show
-            if elapsed < AUTO_NO_SHOW_COOLDOWN_SECONDS:
-                remaining_min = math.ceil((AUTO_NO_SHOW_COOLDOWN_SECONDS - elapsed) / 60)
-                raise ApiError(
-                    f"Auto-booking is temporarily cooling down ({remaining_min} min remaining) due to recent missed requests. Please use 'Notify Me' mode instead.",
-                    429,
-                )
-
-    now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
-    activates_at_dt = None
-    if body.activatesAt:
-        try:
-            parsed_dt = datetime.fromisoformat(body.activatesAt.replace("Z", "+00:00"))
-            if parsed_dt > now:
-                activates_at_dt = parsed_dt
-                expires_at = activates_at_dt + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
-        except Exception:  # noqa: BLE001
-            pass
-
-    # Prevent duplicate active requests by reusing existing active document
-    existing_q = (
-        db.collection("pendingRideRequests")
-        .where("passengerId", "==", uid)
-        .where("status", "==", "pending")
-        .limit(1)
-    )
-    existing_docs = list(existing_q.stream())
-    if existing_docs:
-        req_ref = existing_docs[0].reference
-    else:
-        req_ref = db.collection("pendingRideRequests").document()
-
-    pending_doc_data = {
-        "requestId": req_ref.id,
-        "passengerId": uid,
-        "passengerName": str(profile.get("name") or "User")[:80],
-        "passengerPhone": str(profile.get("phone") or "")[:40],
-        "pickup": {
-            "name": body.pickupName.strip()[:200],
-            "address": body.pickupName.strip()[:200],
-            "lat": pickup_lat,
-            "lng": pickup_lng,
-        },
-        "dropoff": {
-            "name": body.dropName.strip()[:200],
-            "address": body.dropFullAddress.strip()[:500] or body.dropName.strip()[:200],
-            "lat": drop_lat,
-            "lng": drop_lng,
-        },
-        "vehicleType": body.vehicleType.strip().lower() or "auto",
-        "searchRadius": float(body.searchRadius or 5000.0),
-        "mode": mode,
-        "status": "pending",
-        "createdAt": fb_firestore.SERVER_TIMESTAMP if not existing_docs else existing_docs[0].to_dict().get("createdAt"),
-        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        "expiresAt": expires_at,
-        "activatesAt": activates_at_dt,
-        "fareEstimate": body.fareEstimate or {},
-        "matchedDriverId": None,
-        "matchedAt": None,
-    }
-
-    req_ref.set(pending_doc_data, merge=True)
-
-    _log_demand_event(db, "pending_created", {
-        "requestId": req_ref.id,
-        "passengerId": uid,
-        "mode": mode,
-        "searchRadius": float(body.searchRadius or 5000.0),
-        "vehicleType": body.vehicleType,
-        "pickupLat": pickup_lat,
-        "pickupLng": pickup_lng,
-    })
-
-    return {
-        "ok": True,
-        "requestId": req_ref.id,
-        "mode": mode,
-        "expiresAt": expires_at.isoformat(),
-    }
-
-
-@router.post("/pending-request/{request_id}/cancel")
-def cancel_pending_request(
-    request_id: str,
-    body: PendingRideCancelBody = PendingRideCancelBody(),
-    user: dict[str, Any] = Depends(current_user),
-) -> dict[str, Any]:
-    """Cancel an active pending ride request."""
-    uid = str(user.get("uid") or "").strip()
-    if not uid:
-        raise ApiError("Authenticated user identity is missing.", 401)
-
-    clean_req_id = request_id.strip()[:160]
-    db = fb_firestore.client(get_admin_app())
-    doc_ref = db.collection("pendingRideRequests").document(clean_req_id)
-    doc_snap = doc_ref.get()
-    if not doc_snap.exists:
-        raise ApiError("Pending request not found.", 404)
-
-    data = doc_snap.to_dict() or {}
-    if data.get("passengerId") != uid:
-        raise ApiError("You can only cancel your own pending request.", 403)
-
-    doc_ref.update({
-        "status": "cancelled",
-        "cancelReason": (body.reason or "cancelled_by_user")[:100],
-        "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
-        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-    })
-
-    _log_demand_event(db, "pending_cancelled", {
-        "requestId": clean_req_id,
-        "passengerId": uid,
-        "reason": (body.reason or "cancelled_by_user")[:100],
-    })
-
-    return {"ok": True, "requestId": clean_req_id, "status": "cancelled"}
-
-
-@router.get("/pending-request/active")
-def get_active_pending_request(
-    user: dict[str, Any] = Depends(current_user),
-) -> dict[str, Any]:
-    """Fetch active pending ride request for passenger with lazy-expiry enforcement."""
-    uid = str(user.get("uid") or "").strip()
-    if not uid:
-        raise ApiError("Authenticated user identity is missing.", 401)
-
-    db = fb_firestore.client(get_admin_app())
-    pending_q = (
-        db.collection("pendingRideRequests")
-        .where("passengerId", "==", uid)
-        .where("status", "==", "pending")
-        .limit(1)
-    )
-    docs = list(pending_q.stream())
-    if not docs:
-        return {"ok": True, "hasActivePending": False, "pendingRequest": None}
-
-    doc = docs[0]
-    data = doc.to_dict() or {}
-    now = datetime.now(timezone.utc)
-    expires_at = data.get("expiresAt")
-    if expires_at:
-        exp_time = (
-            expires_at
-            if isinstance(expires_at, datetime)
-            else (datetime.fromtimestamp(expires_at.timestamp(), tz=timezone.utc) if hasattr(expires_at, "timestamp") else None)
-        )
-        if exp_time and now > exp_time:
-            doc.reference.update({"status": "expired", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
-            _log_demand_event(db, "pending_expired", {"requestId": doc.id, "passengerId": uid})
-            return {"ok": True, "hasActivePending": False, "pendingRequest": None}
-
-    return {"ok": True, "hasActivePending": True, "pendingRequest": data}
 
 
 def activate_due_scheduled_requests(db) -> int:

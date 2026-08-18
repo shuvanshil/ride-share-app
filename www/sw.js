@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.1.2-remove-redundant-cancel-btn";
+const CACHE_VERSION = "liphtup-v2.2.0-pending-routes-and-notifications";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -151,6 +151,13 @@ self.addEventListener("message", (event) => {
 });
 
 function getRideNotificationUrl(data = {}) {
+    if (data.url) {
+        try {
+            return new URL(data.url, BASE_URL).href;
+        } catch (e) {
+            return data.url;
+        }
+    }
     const rideId = data.rideId || data.ride_id || "";
     const url = new URL("/driver.html", BASE_URL);
     if (rideId) url.searchParams.set("rideId", rideId);
@@ -164,20 +171,23 @@ function showRideNotification(payload = {}) {
     const title = notification.title || data.title || "New LiphtUp ride request";
     const body = notification.body || data.body || "Open LiphtUp to view and accept this ride.";
 
+    const targetUrl = getRideNotificationUrl(data);
+    const tag = data.rideId ? `liphtup-ride-${data.rideId}` : (data.requestId ? `liphtup-req-${data.requestId}` : "liphtup-general");
+
     return self.registration.showNotification(title, {
         body,
         icon: new URL("assets/icons/liphtup-icon-192.png", BASE_URL).href,
         badge: new URL("assets/icons/liphtup-icon-192.png", BASE_URL).href,
-        tag: data.rideId ? `liphtup-ride-${data.rideId}` : "liphtup-ride-request",
+        tag: tag,
         renotify: true,
         requireInteraction: true,
         vibrate: [350, 180, 350, 180, 700],
         data: {
             ...data,
-            url: getRideNotificationUrl(data)
+            url: targetUrl
         },
         actions: [
-            { action: "open", title: "Open ride" }
+            { action: "open", title: "Open" }
         ]
     });
 }
@@ -195,12 +205,17 @@ self.addEventListener("notificationclick", (event) => {
         const sameOriginClient = clientList.find((client) => new URL(client.url).origin === self.location.origin);
         if (sameOriginClient) {
             await sameOriginClient.focus();
-            sameOriginClient.postMessage({
-                type: "OPEN_DRIVER_RIDE",
-                rideId: event.notification.data?.rideId || ""
-            });
+            if (targetUrl.includes("services")) {
+                await sameOriginClient.navigate(targetUrl);
+            } else if (event.notification.data?.rideId) {
+                sameOriginClient.postMessage({
+                    type: "OPEN_DRIVER_RIDE",
+                    rideId: event.notification.data?.rideId || ""
+                });
+            }
             return;
         }
         await self.clients.openWindow(targetUrl);
     })());
 });
+
