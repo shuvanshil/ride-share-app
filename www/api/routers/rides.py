@@ -2160,7 +2160,7 @@ def _match_pending_requests_for_driver(
             continue
 
         mode = str(data.get("mode") or "notify_only").strip().lower()
-        passenger_id = data.get("passengerId")
+        passenger_id = str(data.get("passengerId") or data.get("passenger_id") or "").strip()
         # Support both "drop" (new) and "dropoff" (legacy) field names
         drop = data.get("drop") or data.get("dropoff") or {}
         d_lat = drop.get("lat") or p_lat
@@ -2214,6 +2214,7 @@ def _match_pending_requests_for_driver(
             fare_amount = float(data.get("fare") or 0)
             ride_data = {
                 "passenger_id": passenger_id,
+                "passengerId": passenger_id,
                 "passenger_name": str(data.get("passengerName") or "Passenger")[:80],
                 "passenger_phone": str(data.get("passengerPhone") or "")[:40],
                 "pickup_name": str(pickup.get("name") or "Pickup location")[:120],

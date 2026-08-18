@@ -28,7 +28,9 @@ service cloud.firestore {
     function rideParticipant() {
       return signedIn()
         && (resource.data.passenger_id == request.auth.uid
-          || resource.data.driver_id == request.auth.uid);
+          || resource.data.passengerId == request.auth.uid
+          || resource.data.driver_id == request.auth.uid
+          || resource.data.driverId == request.auth.uid);
     }
 
     function eligibleDriver() {
@@ -166,7 +168,7 @@ service cloud.firestore {
     // Allows passengers to read their own pending requests, and admins to read all.
     // All creation, updates, matching, and cancellation are handled server-side via FastAPI.
     match /pendingRideRequests/{requestId} {
-      allow read: if signedIn() && (resource == null || resource.data.passengerId == request.auth.uid || isAdmin());
+      allow read: if signedIn() && (resource == null || resource.data.passengerId == request.auth.uid || resource.data.passenger_id == request.auth.uid || isAdmin());
       allow create, update, delete: if false;
     }
 
