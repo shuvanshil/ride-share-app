@@ -990,6 +990,7 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
         }
 
         activePendingRequestId = data.requestId;
+        clearDispatchExpansionTimer();
         hideNoDriverOptions();
         stopSearchStateUi();
         showPendingActiveCard(mode, activatesAt);

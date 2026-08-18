@@ -1264,6 +1264,8 @@ def update_driver_location(
                 db.collection("tripShareView").document(ride_id).set(
                     {"driverLocation": location, "status": ride.get("status"), "updatedAt": now}, merge=True
                 )
+        if availability == "searching" and not ride_id:
+            _match_pending_requests_for_driver(db, uid, profile, location)
         return {"ok": True, "rideId": ride_id or None, "status": availability}
     except ApiError:
         raise
@@ -1935,6 +1937,40 @@ def _send_passenger_push_and_inapp(db, passenger_id: str, title: str, body: str,
         print(f"Passenger notification skipped: {exc}")
 
 
+def _send_driver_push_notification(db, driver_id: str, title: str, body: str, data_payload: dict[str, Any]) -> None:
+    """Send push notification to driver if tokens exist."""
+    try:
+        user_doc = db.collection("users").document(driver_id).get()
+        if not user_doc.exists:
+            return
+        user_data = user_doc.to_dict() or {}
+        tokens = _collect_tokens(user_data)
+        if not tokens:
+            return
+
+        app = get_admin_app()
+        link_url = data_payload.get("url") or f"{APP_BASE_URL}/driver?rideId={data_payload.get('rideId', '')}&from=push"
+        message = fb_messaging.MulticastMessage(
+            tokens=tokens,
+            data={**{k: str(v) for k, v in data_payload.items()}, "title": title, "body": body},
+            webpush=fb_messaging.WebpushConfig(
+                headers={"Urgency": "high", "TTL": "600"},
+                fcm_options=fb_messaging.WebpushFCMOptions(link=link_url),
+                notification=fb_messaging.WebpushNotification(
+                    title=title,
+                    body=body,
+                    icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    tag=f"liphtup-driver-{driver_id}",
+                    renotify=True,
+                    require_interaction=True,
+                ),
+            ),
+        )
+        fb_messaging.send_each_for_multicast(message, app=app)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Driver notification skipped: {exc}")
+
+
 def _match_pending_requests_for_driver(
     db,
     driver_id: str,
@@ -2133,6 +2169,20 @@ def _match_pending_requests_for_driver(
                 "Driver Found!",
                 f"We found a driver for your ride to {drop.get('name', 'Destination')}.",
                 {"url": f"{APP_BASE_URL}/services", "type": "pending_matched_auto", "requestId": req_id, "rideId": ride_ref.id}
+            )
+            _send_driver_push_notification(
+                db,
+                driver_id,
+                "New Ride Request!",
+                f"Passenger: {data.get('passengerName', 'Rider')} - Pickup: {pickup.get('name', 'Pickup')}",
+                {
+                    "type": "NEW_PASSENGER_AVAILABLE",
+                    "rideId": ride_ref.id,
+                    "passengerName": str(data.get("passengerName") or "Rider"),
+                    "pickupLocation": str(pickup.get("name") or "Pickup"),
+                    "estimatedEarning": str(round(fare_amount)),
+                    "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push"
+                }
             )
             return req_id
 
