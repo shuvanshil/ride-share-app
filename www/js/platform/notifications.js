@@ -67,11 +67,27 @@ export async function sendTokenToBackend(token) {
     try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");
-        const response = await fetch("/api/rides/driver-push-token", {
+        
+        const isDriver = (window.LIPHTUP_USER_ROLE === "driver") || 
+            (window.isCurrentPage && (window.isCurrentPage('driver') || window.isCurrentPage('driver-service')));
+        const primaryEndpoint = isDriver ? "/api/rides/driver-push-token" : "/api/rides/passenger-push-token";
+
+        let response = await fetch(primaryEndpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({ token, userAgent: navigator.userAgent, permission: "granted" })
         });
+        
+        // Fallback retry if 403 (e.g. role mismatch)
+        if (response.status === 403) {
+            const fallbackEndpoint = isDriver ? "/api/rides/passenger-push-token" : "/api/rides/driver-push-token";
+            response = await fetch(fallbackEndpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+                body: JSON.stringify({ token, userAgent: navigator.userAgent, permission: "granted" })
+            });
+        }
+
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) {
             const backendError = new Error(data.error || "Could not register push token.");

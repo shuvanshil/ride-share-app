@@ -27,9 +27,11 @@ public class PushNotificationService extends FirebaseMessagingService {
         super.onMessageReceived(remoteMessage);
         Log.d(TAG, "From: " + remoteMessage.getFrom());
 
-        // Role-based filtering: Suppress ride request notifications ONLY if the current user is logged in as a passenger
-        if (isPassengerLoggedIn()) {
-            Log.d(TAG, "Suppressing push notification: Active user is logged in as a passenger.");
+        // Role-based filtering: Suppress driver-only ride request notifications if current user is logged in as a passenger
+        Map<String, String> dataMap = remoteMessage.getData();
+        String msgType = dataMap != null ? dataMap.get("type") : null;
+        if (isPassengerLoggedIn() && "NEW_PASSENGER_AVAILABLE".equals(msgType)) {
+            Log.d(TAG, "Suppressing driver notification: Active user is logged in as a passenger.");
             return;
         }
 

@@ -119,23 +119,79 @@ function renderOnlineEmptyState(container) {
     `;
 }
 
-function ignoreRideRequest(rideId) {
-    if (!rideId || !currentUser?.uid) return;
-    const ignored = new Set(loadIgnoredRideIds());
-    ignored.add(rideId);
-    saveIgnoredRideIds(Array.from(ignored));
+// ==========================================
+// 5-MINUTE RIDE REQUEST TIMEOUT & LIFECYCLE
+// ==========================================
+const RIDE_REQUEST_TTL_MS = 5 * 60 * 1000;
+const activeRideRequestTimers = new Map();
 
+function getRideCreatedAtMs(ride = {}) {
+    if (ride.createdAt) {
+        if (typeof ride.createdAt.toMillis === "function") return ride.createdAt.toMillis();
+        if (typeof ride.createdAt.toDate === "function") return ride.createdAt.toDate().getTime();
+        if (typeof ride.createdAt === "number") return ride.createdAt;
+        if (typeof ride.createdAt.seconds === "number") return ride.createdAt.seconds * 1000;
+    }
+    if (ride.fare_requested_at) {
+        const t = new Date(ride.fare_requested_at).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    if (ride.requested_at) {
+        const t = new Date(ride.requested_at).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    return Date.now();
+}
+
+function getRideRemainingMs(ride = {}) {
+    const createdMs = getRideCreatedAtMs(ride);
+    const elapsed = Date.now() - createdMs;
+    return Math.max(0, RIDE_REQUEST_TTL_MS - elapsed);
+}
+
+function formatCountdownTimer(remainingMs) {
+    const totalSecs = Math.max(0, Math.floor(remainingMs / 1000));
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+}
+
+function clearRideRequestTimer(rideId) {
+    const timer = activeRideRequestTimers.get(rideId);
+    if (timer) {
+        clearInterval(timer);
+        activeRideRequestTimers.delete(rideId);
+    }
+}
+
+function clearAllRideRequestTimers() {
+    activeRideRequestTimers.forEach((timer) => clearInterval(timer));
+    activeRideRequestTimers.clear();
+}
+
+function removeExpiredRideCard(rideId) {
+    clearRideRequestTimer(rideId);
     const card = document.querySelector(`.ride-request-card[data-ride-id="${rideId}"], .card[data-ride-id="${rideId}"]`);
-    if (card) card.remove();
+    if (card) {
+        card.classList.add('fade-out');
+        setTimeout(() => {
+            if (card) card.remove();
+            recheckAvailableRidesCount();
+        }, 280);
+    } else {
+        recheckAvailableRidesCount();
+    }
+}
 
+function recheckAvailableRidesCount() {
     const ridesContainer = document.getElementById('available-rides-list');
     const remainingCards = ridesContainer ? ridesContainer.querySelectorAll('.ride-request-card, .card[data-ride-id]').length : 0;
     const requestsBadge = document.getElementById('incoming-requests-badge');
     const requestsCount = document.getElementById('incoming-requests-count');
+    const noRidesMsg = document.getElementById('no-rides-msg');
 
     if (remainingCards === 0) {
         stopRideRequestRing();
-        const noRidesMsg = document.getElementById('no-rides-msg');
         if (noRidesMsg) {
             noRidesMsg.classList.remove('d-none');
             if (isDriverDutyOnline()) {
@@ -147,7 +203,49 @@ function ignoreRideRequest(rideId) {
         if (requestsBadge) requestsBadge.classList.add('d-none');
     } else if (requestsBadge && requestsCount) {
         requestsCount.textContent = `${remainingCards} New`;
+        requestsBadge.classList.remove('d-none');
     }
+}
+
+function attachRideCardCountdown(rideId, ride) {
+    clearRideRequestTimer(rideId);
+    const initialRemaining = getRideRemainingMs(ride);
+    if (initialRemaining <= 0) {
+        removeExpiredRideCard(rideId);
+        return;
+    }
+
+    const timer = setInterval(() => {
+        const remaining = getRideRemainingMs(ride);
+        const timerVal = document.getElementById(`req-timer-val-${rideId}`);
+        const timerPill = document.getElementById(`req-timer-${rideId}`);
+
+        if (remaining <= 0) {
+            clearRideRequestTimer(rideId);
+            removeExpiredRideCard(rideId);
+            return;
+        }
+
+        if (timerVal) {
+            timerVal.textContent = formatCountdownTimer(remaining);
+        }
+        if (timerPill) {
+            timerPill.classList.toggle('is-urgent', remaining <= 60000);
+        }
+    }, 1000);
+
+    activeRideRequestTimers.set(rideId, timer);
+}
+
+function ignoreRideRequest(rideId) {
+    if (!rideId || !currentUser?.uid) return;
+    clearRideRequestTimer(rideId);
+
+    const ignored = new Set(loadIgnoredRideIds());
+    ignored.add(rideId);
+    saveIgnoredRideIds(Array.from(ignored));
+
+    removeExpiredRideCard(rideId);
 
     rejectRideThroughBackend(rideId).catch((error) => {
         console.warn("Could not record ride decline server-side:", error);
@@ -941,6 +1039,7 @@ function initDriverJobsStream() {
         ridesContainer.appendChild(noRidesMsg);
 
         if (querySnapshot.empty || !isDriverDutyOnline()) {
+            clearAllRideRequestTimers();
             stopRideRequestRing();
             noRidesMsg.classList.remove('d-none');
             if (!isDriverDutyOnline()) {
@@ -952,6 +1051,16 @@ function initDriverJobsStream() {
             return;
         }
 
+        const validSnapshotRideIds = new Set();
+        querySnapshot.forEach((docSnapshot) => validSnapshotRideIds.add(docSnapshot.id));
+
+        // Clear timers for any ride that is no longer active / pending in the snapshot
+        activeRideRequestTimers.forEach((_, trackedRideId) => {
+            if (!validSnapshotRideIds.has(trackedRideId)) {
+                clearRideRequestTimer(trackedRideId);
+            }
+        });
+
         let renderedRideCount = 0;
         let firstPendingRide = null;
 
@@ -961,9 +1070,25 @@ function initDriverJobsStream() {
             if (ignored.includes(rideId)) return;
             const ride = docSnapshot.data();
 
-            if (ride.status !== "pending" || ride.driver_id) return;
-            if ((ride.rejected_driver_ids || []).includes(currentUser.uid)) return;
-            if (ride.vehicle_type && ride.vehicle_type !== inferVehicleTypeFromProfile(currentUser)) return;
+            if (ride.status !== "pending" || ride.driver_id) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
+            if ((ride.rejected_driver_ids || []).includes(currentUser.uid)) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
+            if (ride.vehicle_type && ride.vehicle_type !== inferVehicleTypeFromProfile(currentUser)) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
+
+            // Expiration check: if older than 5 minutes, do not render and clear timer
+            const remainingMs = getRideRemainingMs(ride);
+            if (remainingMs <= 0) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
 
             renderedRideCount += 1;
             if (!firstPendingRide) {
@@ -992,6 +1117,11 @@ function initDriverJobsStream() {
                     </div>
                     <div class="d-flex flex-column align-items-end gap-1">
                         <span class="fare-badge">₹${fareAmount}</span>
+                        <div class="request-timer-pill ${remainingMs <= 60000 ? 'is-urgent' : ''}" id="req-timer-${rideId}">
+                            <span class="timer-icon">⏳</span>
+                            <span class="timer-label">Expires in</span>
+                            <strong class="timer-val" id="req-timer-val-${rideId}">${formatCountdownTimer(remainingMs)}</strong>
+                        </div>
                         ${callablePhone ? `
                             <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
                                 <span>📞</span> Call
@@ -1046,6 +1176,7 @@ function initDriverJobsStream() {
             `;
 
             ridesContainer.appendChild(card);
+            attachRideCardCountdown(rideId, ride);
         });
 
         if (renderedRideCount === 0) {
@@ -1194,6 +1325,7 @@ async function acceptRideJob(rideId) {
     const restoreBtn = setButtonBusy(clickedBtn, "Accepting…");
 
     try {
+        clearRideRequestTimer(rideId);
         stopRideRequestRing();
         driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
         const result = await acceptRideThroughBackend(rideId);
@@ -1217,8 +1349,18 @@ async function acceptRideJob(rideId) {
         restoreBtn();
         setRideListBusy(false);
 
-        const alreadyTaken = /already accepted|no longer available|no longer exists/i.test(error.message || "");
-        if (alreadyTaken) {
+        clearRideRequestTimer(rideId);
+        removeExpiredRideCard(rideId);
+
+        const isCancelled = /cancelled|no longer available|no longer exists|cancelled by the passenger/i.test(error.message || "");
+        const isExpired = /expired|timeout|time limit/i.test(error.message || "");
+        const alreadyTaken = /already accepted/i.test(error.message || "");
+
+        if (isCancelled) {
+            await showAlert("This ride request was cancelled by the passenger.");
+        } else if (isExpired) {
+            await showAlert("This ride request has expired.");
+        } else if (alreadyTaken) {
             await showAlert("Another driver already accepted this ride. Refreshing the list…");
         } else {
             await showAlert(error.message || "Could not accept this ride.");

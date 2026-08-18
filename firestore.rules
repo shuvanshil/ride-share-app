@@ -162,6 +162,22 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 
+    // Persistent Pending Ride Requests (Feature 3):
+    // Allows passengers to read their own pending requests, and admins to read all.
+    // All creation, updates, matching, and cancellation are handled server-side via FastAPI.
+    match /pendingRideRequests/{requestId} {
+      allow read: if signedIn() && (resource == null || resource.data.passengerId == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // Ride Demand Analytics Events (Feature 3.6):
+    // Search timeouts, radius widenings, pending creations and matches.
+    // Only admins can read for analytics; writes are server-only via FastAPI.
+    match /rideDemandEvents/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

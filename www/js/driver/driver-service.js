@@ -83,20 +83,121 @@ function saveIgnoredRideIds(rideIds) {
         // Ignore storage failures; this feature is optional.
     }
 }
+// ==========================================
+// 5-MINUTE RIDE REQUEST TIMEOUT & LIFECYCLE
+// ==========================================
+const RIDE_REQUEST_TTL_MS = 5 * 60 * 1000;
+const activeRideRequestTimers = new Map();
+
+function getRideCreatedAtMs(ride = {}) {
+    if (ride.createdAt) {
+        if (typeof ride.createdAt.toMillis === "function") return ride.createdAt.toMillis();
+        if (typeof ride.createdAt.toDate === "function") return ride.createdAt.toDate().getTime();
+        if (typeof ride.createdAt === "number") return ride.createdAt;
+        if (typeof ride.createdAt.seconds === "number") return ride.createdAt.seconds * 1000;
+    }
+    if (ride.fare_requested_at) {
+        const t = new Date(ride.fare_requested_at).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    if (ride.requested_at) {
+        const t = new Date(ride.requested_at).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    return Date.now();
+}
+
+function getRideRemainingMs(ride = {}) {
+    const createdMs = getRideCreatedAtMs(ride);
+    const elapsed = Date.now() - createdMs;
+    return Math.max(0, RIDE_REQUEST_TTL_MS - elapsed);
+}
+
+function formatCountdownTimer(remainingMs) {
+    const totalSecs = Math.max(0, Math.floor(remainingMs / 1000));
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+}
+
+function clearRideRequestTimer(rideId) {
+    const timer = activeRideRequestTimers.get(rideId);
+    if (timer) {
+        clearInterval(timer);
+        activeRideRequestTimers.delete(rideId);
+    }
+}
+
+function clearAllRideRequestTimers() {
+    activeRideRequestTimers.forEach((timer) => clearInterval(timer));
+    activeRideRequestTimers.clear();
+}
+
+function removeExpiredRideCard(rideId) {
+    clearRideRequestTimer(rideId);
+    const card = ridesContainer?.querySelector(`.ride-request-card[data-ride-id="${rideId}"], .driver-service-request-card[data-ride-id="${rideId}"]`);
+    if (card) {
+        card.classList.add('fade-out');
+        setTimeout(() => {
+            if (card) card.remove();
+            recheckIncomingRequestsCount();
+        }, 280);
+    } else {
+        recheckIncomingRequestsCount();
+    }
+}
+
+function recheckIncomingRequestsCount() {
+    const remainingCards = ridesContainer ? ridesContainer.querySelectorAll('.ride-request-card, .driver-service-request-card').length : 0;
+    if (remainingCards === 0) {
+        stopRideRequestRing();
+        renderNoIncomingRequests();
+    }
+}
+
+function attachRideCardCountdown(rideId, ride) {
+    clearRideRequestTimer(rideId);
+    const initialRemaining = getRideRemainingMs(ride);
+    if (initialRemaining <= 0) {
+        removeExpiredRideCard(rideId);
+        return;
+    }
+
+    const timer = setInterval(() => {
+        const remaining = getRideRemainingMs(ride);
+        const timerVal = document.getElementById(`srv-timer-val-${rideId}`);
+        const timerPill = document.getElementById(`srv-timer-${rideId}`);
+
+        if (remaining <= 0) {
+            clearRideRequestTimer(rideId);
+            removeExpiredRideCard(rideId);
+            return;
+        }
+
+        if (timerVal) {
+            timerVal.textContent = formatCountdownTimer(remaining);
+        }
+        if (timerPill) {
+            timerPill.classList.toggle('is-urgent', remaining <= 60000);
+        }
+    }, 1000);
+
+    activeRideRequestTimers.set(rideId, timer);
+}
 
 function ignoreRideRequest(rideId) {
     if (!rideId || !currentUser?.uid) return;
+    clearRideRequestTimer(rideId);
+
     const ignored = new Set(loadIgnoredRideIds());
     ignored.add(rideId);
     saveIgnoredRideIds(Array.from(ignored));
 
-    const card = ridesContainer.querySelector(`.driver-service-request-card[data-ride-id="${rideId}"]`);
-    if (card) card.remove();
+    removeExpiredRideCard(rideId);
 
-    if (!ridesContainer.querySelector('.driver-service-request-card')) {
-        stopRideRequestRing();
-        renderNoIncomingRequests();
-    }
+    rejectRideThroughBackend(rideId).catch((error) => {
+        console.warn("Could not record ride decline server-side:", error);
+    });
 }
 const livePill = document.getElementById('driver-service-live-pill');
 const routePanel = document.getElementById('driver-route-panel');
@@ -481,9 +582,10 @@ function renderIncomingRideCard(rideId, ride = {}) {
     const passengerName = escapeHtml(ride.passenger_name || "Passenger");
     const fareAmount = Math.round(Number(ride.fare) || 0);
     const passCount = ride.passenger_capacity || (ride.vehicle_type === "auto" ? 3 : 1);
+    const remainingMs = getRideRemainingMs(ride);
 
     const card = document.createElement('div');
-    card.className = "ride-request-card card shadow-sm p-3 mb-3";
+    card.className = "ride-request-card card shadow-sm p-3 mb-3 driver-service-request-card";
     card.dataset.rideId = rideId;
     card.innerHTML = `
         <div class="request-header-row">
@@ -495,6 +597,11 @@ function renderIncomingRideCard(rideId, ride = {}) {
             </div>
             <div class="d-flex flex-column align-items-end gap-1">
                 <span class="fare-badge">₹${fareAmount}</span>
+                <div class="request-timer-pill ${remainingMs <= 60000 ? 'is-urgent' : ''}" id="srv-timer-${rideId}">
+                    <span class="timer-icon">⏳</span>
+                    <span class="timer-label">Expires in</span>
+                    <strong class="timer-val" id="srv-timer-val-${rideId}">${formatCountdownTimer(remainingMs)}</strong>
+                </div>
                 ${callablePhone ? `
                     <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
                         <span>📞</span> Call
@@ -573,25 +680,55 @@ function startIncomingRideListener() {
         ridesContainer.appendChild(noRidesMsg);
         noRidesMsg.classList.add('d-none');
 
+        const validSnapshotRideIds = new Set();
+        snapshot.forEach((docSnapshot) => validSnapshotRideIds.add(docSnapshot.id));
+
+        // Clear timers for any ride that is no longer active / pending
+        activeRideRequestTimers.forEach((_, trackedRideId) => {
+            if (!validSnapshotRideIds.has(trackedRideId)) {
+                clearRideRequestTimer(trackedRideId);
+            }
+        });
+
         let renderedRideCount = 0;
         let firstPendingRide = null;
         const driverVehicleType = getDriverRequestVehicleType(currentUser);
 
         const ignored = loadIgnoredRideIds();
         snapshot.forEach((docSnapshot) => {
-            if (ignored.includes(docSnapshot.id)) return;
+            const rideId = docSnapshot.id;
+            if (ignored.includes(rideId)) return;
             const ride = docSnapshot.data();
-            if (ride.status !== "pending" || ride.driver_id) return;
-            if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) return;
+
+            if (ride.status !== "pending" || ride.driver_id) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
+            if ((ride.rejected_driver_ids || []).includes(currentUser.uid)) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
+            if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
+
+            // Expiration check: if older than 5 minutes, do not render and clear timer
+            const remainingMs = getRideRemainingMs(ride);
+            if (remainingMs <= 0) {
+                clearRideRequestTimer(rideId);
+                return;
+            }
 
             renderedRideCount += 1;
             if (!firstPendingRide) {
                 firstPendingRide = {
-                    id: docSnapshot.id,
+                    id: rideId,
                     body: `${getRideDisplayAddress(ride, "pickup")} to ${getRideDisplayAddress(ride, "drop")}`
                 };
             }
-            ridesContainer.appendChild(renderIncomingRideCard(docSnapshot.id, ride));
+            ridesContainer.appendChild(renderIncomingRideCard(rideId, ride));
+            attachRideCardCountdown(rideId, ride);
         });
 
         if (renderedRideCount === 0) {
@@ -604,6 +741,7 @@ function startIncomingRideListener() {
         updateIncomingRequestsVisibility();
     }, (error) => {
         console.error("Driver service incoming ride listener failed:", error);
+        clearAllRideRequestTimers();
         renderNoIncomingRequests();
         noRidesMsg.querySelector('strong').innerText = "Could not sync ride requests";
         noRidesMsg.querySelector('p').innerText = "Check your connection and keep this page open.";
@@ -627,6 +765,60 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
     return data;
 }
 
+let demandPollInterval = null;
+
+async function pollDriverNearbyDemand() {
+    if (!currentUser?.uid || currentUser.driverAvailability === "offline") return;
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) return;
+        const res = await fetch("/api/rides/driver/nearby-demand", {
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.ok && (data.waitingCount > 0 || data.scheduledSoonCount > 0)) {
+            updateDriverDemandChip(data);
+        } else {
+            hideDriverDemandChip();
+        }
+    } catch (e) {
+        console.warn("Driver demand check skipped:", e);
+    }
+}
+
+function updateDriverDemandChip(data) {
+    let chip = document.getElementById('driver-demand-chip');
+    if (!chip) {
+        chip = document.createElement('div');
+        chip.id = 'driver-demand-chip';
+        chip.className = 'driver-demand-chip animate-fade-in';
+        chip.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 18px;border-radius:24px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.3);z-index:1050;pointer-events:auto;border:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;max-width:90vw;text-align:center;';
+        document.body.appendChild(chip);
+    }
+
+    const waiting = data.waitingCount || 0;
+    const scheduled = data.scheduledSoonCount || 0;
+    const windowLabel = data.scheduledWindowLabel || "in the next hour";
+    const area = data.roughArea ? ` near ${data.roughArea}` : "";
+
+    let content = "";
+    if (waiting > 0 && scheduled > 0) {
+        content = `⚡ <strong>${waiting} rider${waiting > 1 ? 's' : ''} waiting</strong>${area} &bull; ⏰ <strong>${scheduled} scheduled</strong> ${windowLabel}`;
+    } else if (waiting > 0) {
+        content = `⚡ <strong>${waiting} rider${waiting > 1 ? 's' : ''} waiting</strong>${area || " nearby"}`;
+    } else if (scheduled > 0) {
+        content = `⏰ <strong>${scheduled} scheduled pickup${scheduled > 1 ? 's' : ''}</strong> ${windowLabel}`;
+    }
+
+    chip.innerHTML = content;
+    chip.classList.remove('d-none');
+}
+
+function hideDriverDemandChip() {
+    const chip = document.getElementById('driver-demand-chip');
+    if (chip) chip.classList.add('d-none');
+}
+
 async function setServiceDriverAvailability(status) {
     if (!currentUser?.uid) return;
 
@@ -635,12 +827,26 @@ async function setServiceDriverAvailability(status) {
     const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
     await updateDriverAvailabilityThroughBackend(status, locationData);
     cacheProfile(currentUser);
+
+    if (status === "searching") {
+        pollDriverNearbyDemand();
+        if (!demandPollInterval) {
+            demandPollInterval = setInterval(pollDriverNearbyDemand, 30000);
+        }
+    } else {
+        if (demandPollInterval) {
+            clearInterval(demandPollInterval);
+            demandPollInterval = null;
+        }
+        hideDriverDemandChip();
+    }
 }
 
 async function acceptIncomingRide(rideId, button) {
     if (!rideId || !currentUser?.uid || acceptRideInProgress) return;
 
     acceptRideInProgress = true;
+    clearRideRequestTimer(rideId);
     stopRideRequestRing();
     if (button) {
         button.disabled = true;
@@ -667,7 +873,23 @@ async function acceptIncomingRide(rideId, button) {
         statusText.innerText = "Ride accepted - route is loading";
     } catch (error) {
         console.error("Driver service ride acceptance failed:", error);
-        await showAlert(error.message || "Could not accept this ride.");
+        clearRideRequestTimer(rideId);
+        removeExpiredRideCard(rideId);
+
+        const isCancelled = /cancelled|no longer available|no longer exists|cancelled by the passenger/i.test(error.message || "");
+        const isExpired = /expired|timeout|time limit/i.test(error.message || "");
+        const alreadyTaken = /already accepted/i.test(error.message || "");
+
+        if (isCancelled) {
+            await showAlert("This ride request was cancelled by the passenger.");
+        } else if (isExpired) {
+            await showAlert("This ride request has expired.");
+        } else if (alreadyTaken) {
+            await showAlert("Another driver already accepted this ride. Refreshing the list…");
+        } else {
+            await showAlert(error.message || "Could not accept this ride.");
+        }
+
         if (button) {
             button.disabled = false;
             button.innerText = "Accept Ride Request";
@@ -1193,19 +1415,30 @@ function upsertDriverMarker(position, heading = null) {
     animateDriverMarkerTo(position, heading);
 }
 
+function getTargetMarkerIcon(kind) {
+    const maps = window.google.maps;
+    const isPickup = kind === "pickup";
+    const iconUrl = isPickup
+        ? "/assets/icons/webicons/passenger-pickup-marker.png"
+        : "/assets/icons/webicons/destination-flag-marker.png";
+    return {
+        url: iconUrl,
+        scaledSize: new maps.Size(40, 50),
+        anchor: new maps.Point(20, 48)
+    };
+}
+
 function upsertTargetMarker() {
     if (!map || !currentTarget || !window.google?.maps) return;
+
+    const markerIcon = getTargetMarkerIcon(currentTarget.kind);
 
     if (!targetMarker) {
         targetMarker = new window.google.maps.Marker({
             map,
             position: currentTarget.position,
             title: currentTarget.place,
-            label: {
-                text: currentTarget.kind === "pickup" ? "P" : "D",
-                color: "#ffffff",
-                fontWeight: "800"
-            },
+            icon: markerIcon,
             animation: window.google.maps.Animation.DROP,
             zIndex: 900
         });
@@ -1214,11 +1447,8 @@ function upsertTargetMarker() {
 
     targetMarker.setPosition(currentTarget.position);
     targetMarker.setTitle(currentTarget.place);
-    targetMarker.setLabel({
-        text: currentTarget.kind === "pickup" ? "P" : "D",
-        color: "#ffffff",
-        fontWeight: "800"
-    });
+    targetMarker.setIcon(markerIcon);
+    targetMarker.setLabel(null);
 }
 
 function fitActiveRoute(path) {

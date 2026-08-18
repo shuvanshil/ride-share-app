@@ -874,11 +874,19 @@ function upsertRideDestinationMarker(detail = {}) {
     const destination = getRideDropLocation(detail);
     if (!destination) return null;
 
+    const maps = getGoogleMaps();
+    const destIcon = {
+        url: "/assets/icons/webicons/destination-flag-marker.png",
+        scaledSize: new maps.Size(42, 54),
+        anchor: new maps.Point(21, 52)
+    };
+
     if (!destinationMarker) {
         destinationMarker = makeMarker({
             map: window.mapInstance,
             position: googleLatLngLiteral(destination.position),
             title: destination.title,
+            icon: destIcon,
             zIndex: 920
         });
         return destination.position;
@@ -887,6 +895,7 @@ function upsertRideDestinationMarker(detail = {}) {
     destinationMarker.setMap(window.mapInstance);
     destinationMarker.setPosition(googleLatLngLiteral(destination.position));
     destinationMarker.setTitle(destination.title);
+    destinationMarker.setIcon(destIcon);
     return destination.position;
 }
 
@@ -1106,8 +1115,14 @@ function syncGlobalDriverMarkerVisibility() {
 }
 
 function clearPickupMarker() {
-    removeMarker(userMarker);
-    userMarker = null;
+    if (userMarker) {
+        if (typeof userMarker.setMap === "function") {
+            userMarker.setMap(null);
+        } else {
+            removeMarker(userMarker);
+        }
+        userMarker = null;
+    }
 }
 
 export async function createRideMapSurface(hostElementOrId, options = {}) {
@@ -1231,24 +1246,130 @@ async function getUserLocation() {
     }
 }
 
-function addPickupMarker(coords) {
-    const maps = getGoogleMaps();
-    clearPickupMarker();
+class UserLocationMarkerOverlay {
+    constructor({ map, position, title = "Your pickup location" }) {
+        this.position = position;
+        this.overlay = new window.google.maps.OverlayView();
+        this.element = document.createElement("div");
+        this.element.className = "user-location-overlay-marker";
+        this.element.style.cssText = "position:absolute;width:42px;height:54px;pointer-events:none;z-index:950;will-change:transform;";
 
-    userMarker = makeMarker({
-        map: window.mapInstance,
-        position: googleLatLngLiteral(coords),
-        title: "Your pickup location",
-        icon: {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 9,
-            fillColor: "#22c55e",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 3
-        },
-        zIndex: 1000
-    });
+        // Concentric Ripple Container
+        this.rippleWrap = document.createElement("div");
+        this.rippleWrap.className = "user-location-ripple-wrap";
+        this.rippleWrap.innerHTML = `
+            <div class="user-location-ripple-ring ring-1"></div>
+            <div class="user-location-ripple-ring ring-2"></div>
+            <div class="user-location-ripple-ring ring-3"></div>
+        `;
+        this.element.appendChild(this.rippleWrap);
+
+        // Pin Image (New Green Passenger Pin Icon)
+        this.pinImg = document.createElement("img");
+        this.pinImg.src = "/assets/icons/webicons/passenger-pickup-marker.png";
+        this.pinImg.alt = "Pickup point";
+        this.pinImg.className = "user-location-pin-img";
+        this.pinImg.style.cssText = "width:42px;height:54px;object-fit:contain;position:relative;z-index:2;filter:drop-shadow(0 4px 10px rgba(0,0,0,0.35));pointer-events:auto;";
+        this.pinImg.title = title;
+        this.element.appendChild(this.pinImg);
+
+        // Floating Pointed "This is you!" Tag
+        this.bubbleCard = document.createElement("div");
+        this.bubbleCard.className = "user-location-bubble-card";
+        this.bubbleCard.innerHTML = `
+            <span class="user-location-bubble-text">This is you!</span>
+            <div class="user-location-bubble-arrow"></div>
+        `;
+        this.element.appendChild(this.bubbleCard);
+
+        // Automatically fade out the "This is you!" bubble after 4.5 seconds
+        this.fadeTimer = setTimeout(() => {
+            if (this.bubbleCard) {
+                this.bubbleCard.classList.add("is-faded");
+                setTimeout(() => {
+                    if (this.bubbleCard) this.bubbleCard.remove();
+                }, 600);
+            }
+        }, 4500);
+
+        this.overlay.onAdd = () => {
+            const panes = this.overlay.getPanes();
+            if (panes?.overlayMouseTarget) {
+                panes.overlayMouseTarget.appendChild(this.element);
+            }
+        };
+
+        this.overlay.draw = () => this.draw();
+        this.overlay.onRemove = () => {
+            if (this.fadeTimer) clearTimeout(this.fadeTimer);
+            this.element.remove();
+        };
+        this.overlay.setMap(map);
+    }
+
+    draw() {
+        const projection = this.overlay.getProjection();
+        if (!projection || !this.position) return;
+        const lat = this.position.lat != null ? this.position.lat : (typeof this.position.latitude === "number" ? this.position.latitude : 0);
+        const lng = this.position.lng != null ? this.position.lng : (typeof this.position.longitude === "number" ? this.position.longitude : 0);
+        const latLng = new window.google.maps.LatLng(lat, lng);
+        const point = projection.fromLatLngToDivPixel(latLng);
+        if (!point) return;
+        this.element.style.transform = `translate(${point.x - 21}px, ${point.y - 52}px)`;
+    }
+
+    setPosition(coords) {
+        this.position = coords;
+        this.draw();
+    }
+
+    stopRipple() {
+        if (this.rippleWrap) {
+            this.rippleWrap.classList.add("is-hidden");
+        }
+        if (this.bubbleCard) {
+            this.bubbleCard.classList.add("is-faded");
+            setTimeout(() => {
+                if (this.bubbleCard) this.bubbleCard.remove();
+            }, 600);
+        }
+    }
+
+    setMap(map) {
+        this.overlay.setMap(map);
+    }
+
+    getPosition() {
+        const lat = this.position.lat != null ? this.position.lat : (typeof this.position.latitude === "number" ? this.position.latitude : 0);
+        const lng = this.position.lng != null ? this.position.lng : (typeof this.position.longitude === "number" ? this.position.longitude : 0);
+        return new window.google.maps.LatLng(lat, lng);
+    }
+}
+
+function addPickupMarker(coords) {
+    clearPickupMarker();
+    if (!window.mapInstance || !window.google?.maps) return;
+
+    if (window.google.maps.OverlayView) {
+        userMarker = new UserLocationMarkerOverlay({
+            map: window.mapInstance,
+            position: coords,
+            title: "Your pickup location"
+        });
+    } else {
+        const maps = getGoogleMaps();
+        userMarker = makeMarker({
+            map: window.mapInstance,
+            position: googleLatLngLiteral(coords),
+            title: "Your pickup location",
+            icon: {
+                url: "/assets/icons/webicons/passenger-pickup-marker.png",
+                scaledSize: new maps.Size(42, 54),
+                anchor: new maps.Point(21, 52)
+            },
+            zIndex: 1000
+        });
+    }
 }
 
 function inferDriverVehicleType(driver) {
@@ -1318,29 +1439,28 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [])
 }
 
 function updateVehicleMarkerLegend() {
-    const mapContainer = document.getElementById("map-container");
-    if (!mapContainer) return;
-
-    const counts = { bike: 0, auto: 0 };
-    globalDriverMarkers.forEach(({ vehicleType }) => {
+    const counts = { bike: 0, auto: 0, total: 0 };
+    const activeDrivers = [];
+    globalDriverMarkers.forEach((markerData) => {
+        const vehicleType = markerData.vehicleType || "auto";
         counts[vehicleType] = (counts[vehicleType] || 0) + 1;
+        counts.total += 1;
+        activeDrivers.push(markerData);
     });
 
-    if (!vehicleLegendElement) {
-        vehicleLegendElement = document.createElement("div");
-        vehicleLegendElement.className = "vehicle-marker-legend";
-        vehicleLegendElement.setAttribute("aria-label", "Nearby vehicle counts");
+    if (vehicleLegendElement && vehicleLegendElement.parentElement) {
+        vehicleLegendElement.remove();
+        vehicleLegendElement = null;
     }
 
-    if (vehicleLegendElement.parentElement !== mapContainer) {
-        mapContainer.appendChild(vehicleLegendElement);
-    }
-
-    vehicleLegendElement.innerHTML = `
-        <span><img src="${VEHICLE_MARKER_ASSETS.bike}" alt="">Bike ${counts.bike}</span>
-        <span><img src="${VEHICLE_MARKER_ASSETS.auto}" alt="">Auto ${counts.auto}</span>
-    `;
-    vehicleLegendElement.classList.toggle("d-none", Boolean(assignedDriverTrackingDriverId));
+    window.dispatchEvent(new CustomEvent("nearby-drivers-updated", {
+        detail: {
+            bikeCount: counts.bike,
+            autoCount: counts.auto,
+            totalCount: counts.total,
+            drivers: activeDrivers
+        }
+    }));
 }
 
 function stopDriverMarkerCoast(existing) {
@@ -1775,12 +1895,12 @@ async function refreshLivePickupAfterMapReady(initialCoords) {
     if (!window.selectedDestination) return;
 
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!fareQuoteBox || !fareAmountSpan) return;
-
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
     await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
 }
 
@@ -2119,12 +2239,12 @@ async function completePickupMapPick(lat, lng) {
     if (!pickMode.existingDestination) return;
     window.selectedDestination = pickMode.existingDestination;
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!fareQuoteBox || !fareAmountSpan) return;
-
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
     await renderDestinationFare(pickMode.existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
@@ -2156,12 +2276,12 @@ export async function useCurrentPickupLocation() {
     if (!existingDestination) return;
     window.selectedDestination = existingDestination;
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!fareQuoteBox || !fareAmountSpan) return;
-
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
     await renderDestinationFare(existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
@@ -2170,8 +2290,8 @@ function setupFareEngineListeners() {
 
     const dropInput = document.getElementById("drop-input");
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (!dropInput) return;
 
     fareEngineListenersBound = true;
     dropInput.addEventListener("focus", () => {
@@ -2203,16 +2323,20 @@ function setupFareEngineListeners() {
             return;
         }
 
-        fareAmountSpan.innerText = "Just a sec...";
-        fareQuoteBox.classList.remove("d-none");
-        fareQuoteBox.classList.add("d-flex");
+        if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+        if (fareQuoteBox) {
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+        }
         window.latestFareQuote = null;
 
         const cachedDestinations = getCachedAutocompleteResults(query);
         if (cachedDestinations) {
             showDestinationSuggestions(dropInput, cachedDestinations.slice(0, MAX_VISIBLE_SUGGESTIONS), fareQuoteBox, fareAmountSpan);
-            fareQuoteBox.classList.add("d-none");
-            fareQuoteBox.classList.remove("d-flex");
+            if (fareQuoteBox) {
+                fareQuoteBox.classList.add("d-none");
+                fareQuoteBox.classList.remove("d-flex");
+            }
         }
 
         destinationSearchTimer = setTimeout(async () => {
@@ -2225,8 +2349,10 @@ function setupFareEngineListeners() {
 
             if (destinations.length) {
                 showDestinationSuggestions(dropInput, destinations.slice(0, MAX_VISIBLE_SUGGESTIONS), fareQuoteBox, fareAmountSpan);
-                fareQuoteBox.classList.add("d-none");
-                fareQuoteBox.classList.remove("d-flex");
+                if (fareQuoteBox) {
+                    fareQuoteBox.classList.add("d-none");
+                    fareQuoteBox.classList.remove("d-flex");
+                }
             } else {
                 resetDestinationFareState(fareQuoteBox);
                 showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan);
@@ -2663,9 +2789,11 @@ async function chooseDestination(destination, dropInput, fareQuoteBox, fareAmoun
     hideDestinationSuggestions();
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     const resolved = await resolveGooglePlace(destination);
     if (!resolved) {
@@ -2706,9 +2834,11 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
     clearRouteAndDestination();
-    fareAmountSpan.innerText = "Move map and confirm drop";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Move map and confirm drop";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     destinationMapPickMode = {
         destination,
@@ -2884,18 +3014,22 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
     if (!Number.isFinite(distance) || distance < 0) {
         window.latestFareQuote = null;
         window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-        fareAmountSpan.innerText = "Road route unavailable";
-        fareQuoteBox.classList.remove("d-none");
-        fareQuoteBox.classList.add("d-flex");
+        if (fareAmountSpan) fareAmountSpan.innerText = "Road route unavailable";
+        if (fareQuoteBox) {
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+        }
         return true;
     }
 
     if (!isDistanceServiceable(distance)) {
         window.latestFareQuote = null;
         window.dispatchEvent(new CustomEvent("fare-quote-reset"));
-        fareAmountSpan.innerText = "Outside service area";
-        fareQuoteBox.classList.remove("d-none");
-        fareQuoteBox.classList.add("d-flex");
+        if (fareAmountSpan) fareAmountSpan.innerText = "Outside service area";
+        if (fareQuoteBox) {
+            fareQuoteBox.classList.remove("d-none");
+            fareQuoteBox.classList.add("d-flex");
+        }
         showAlert(`This destination is about ${distance.toFixed(0)} km away, which is beyond LiphtUp's current service area of ${MAX_SERVICEABLE_DISTANCE_KM} km. Please choose a closer destination.`);
         return true;
     }
@@ -2924,9 +3058,11 @@ async function renderDestinationFare(destination, fareQuoteBox, fareAmountSpan) 
         fare_options: fareOptions
     };
 
-    fareAmountSpan.innerText = "Choose a ride";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Choose a ride";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     drawDestinationAndRoute(destination, routeDetails?.routePath || [], {
         distanceKm: routeDetails?.distanceKm,
@@ -2951,6 +3087,11 @@ function drawDestinationAndRoute(destination, routePath = [], routeMetrics = {})
         map: window.mapInstance,
         position: googleLatLngLiteral(destinationCoords),
         title: destination.mainName || destination.name || "Drop location",
+        icon: {
+            url: "/assets/icons/webicons/destination-flag-marker.png",
+            scaledSize: new maps.Size(42, 54),
+            anchor: new maps.Point(21, 52)
+        },
         zIndex: 900
     });
 
@@ -3003,13 +3144,15 @@ window.addEventListener("prefill-destination-request", async (event) => {
 
     const dropInput = document.getElementById("drop-input");
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (!dropInput) return;
 
     dropInput.value = query;
-    fareAmountSpan.innerText = "Just a sec...";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     const destinations = await searchGoogleDestinations(query);
     if (passengerDestinationLocked || dropInput.value.trim() !== query) return;
@@ -3057,13 +3200,15 @@ window.addEventListener("request-destination-pick-on-map", () => {
     if (passengerDestinationLocked) return;
     const dropInput = document.getElementById("drop-input");
     const fareQuoteBox = document.getElementById("fare-quote-box");
-    const fareAmountSpan = document.getElementById("fare-amount");
-    if (!dropInput || !fareQuoteBox || !fareAmountSpan) return;
+    const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+    if (!dropInput) return;
 
     clearRouteAndDestination();
-    fareAmountSpan.innerText = "Move map and confirm drop";
-    fareQuoteBox.classList.remove("d-none");
-    fareQuoteBox.classList.add("d-flex");
+    if (fareAmountSpan) fareAmountSpan.innerText = "Move map and confirm drop";
+    if (fareQuoteBox) {
+        fareQuoteBox.classList.remove("d-none");
+        fareQuoteBox.classList.add("d-flex");
+    }
 
     destinationMapPickMode = {
         destination: { name: "Dropped Pin" },
@@ -3102,4 +3247,18 @@ window.addEventListener("locations-swapped", async (event) => {
     if (fareQuoteBox && fareAmountSpan) {
         await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
     }
+});
+
+// Turn off passenger marker ripple and "This is you!" card once driver accepts
+window.addEventListener("driver-assigned", () => {
+    userMarker?.stopRipple?.();
+});
+window.addEventListener("ride-status-updated", (event) => {
+    const status = event.detail?.status || event.detail?.ride?.status;
+    if (["accepted", "arrived", "started", "en_route", "completed"].includes(status)) {
+        userMarker?.stopRipple?.();
+    }
+});
+window.addEventListener("ride-completed-clear-map", () => {
+    userMarker?.stopRipple?.();
 });
