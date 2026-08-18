@@ -1858,20 +1858,28 @@ function startGlobalDriverPresenceListener() {
         globalDriversUnsubscribe = null;
     }
 
-    clearGlobalDriverMarkers();
-    updateVehicleMarkerLegend();
     globalDriversUnsubscribe = onSnapshot(collection(db, "driverMapPresence"), (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            const driverId = change.doc.id;
-            const driver = { id: driverId, ...change.doc.data() };
+        const currentDriverIds = new Set();
+        snapshot.forEach((docSnap) => {
+            const driverId = docSnap.id;
+            const driver = { id: driverId, ...docSnap.data() };
+            currentDriverIds.add(driverId);
 
-            if (change.type === "removed" || !isLiveDriverVisible(driver)) {
+            if (!isLiveDriverVisible(driver)) {
                 removeGlobalDriverMarker(driverId);
-                return;
+            } else {
+                upsertGlobalDriverMarker(driverId, driver);
             }
-
-            upsertGlobalDriverMarker(driverId, driver);
         });
+
+        // Remove any markers no longer present in driverMapPresence snapshot
+        globalDriverMarkers.forEach((_, driverId) => {
+            if (!currentDriverIds.has(driverId)) {
+                removeGlobalDriverMarker(driverId);
+            }
+        });
+
+        updateVehicleMarkerLegend();
     }, (error) => {
         console.warn("Global live driver listener failed:", error);
     });

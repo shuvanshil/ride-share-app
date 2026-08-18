@@ -708,7 +708,8 @@ function startIncomingRideListener() {
                 clearRideRequestTimer(rideId);
                 return;
             }
-            if (ride.vehicle_type && ride.vehicle_type !== driverVehicleType) {
+            const isEligibleTarget = (ride.eligible_driver_ids || []).includes(currentUser.uid);
+            if (!isEligibleTarget && ride.vehicle_type && driverVehicleType && ride.vehicle_type !== driverVehicleType) {
                 clearRideRequestTimer(rideId);
                 return;
             }

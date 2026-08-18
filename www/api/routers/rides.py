@@ -2172,7 +2172,8 @@ def _match_pending_requests_for_driver(
                 mode = "auto"
 
         if mode == "auto":
-            # Race condition prevention: Atomic Claim Transaction
+            # Create standard live ride document targeting this driver
+            ride_ref = db.collection("rides").document()
             pending_ref = db.collection("pendingRideRequests").document(req_id)
             claimed = False
 
@@ -2189,6 +2190,7 @@ def _match_pending_requests_for_driver(
                 
                 update_fields = {
                     "status": "dispatching",
+                    "rideId": ride_ref.id,
                     "lockedByDriverId": driver_id,
                     "dispatchLockedAt": fb_firestore.SERVER_TIMESTAMP,
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
@@ -2208,8 +2210,6 @@ def _match_pending_requests_for_driver(
             if not claimed:
                 continue  # Another worker claimed it; gracefully evaluate next candidate
 
-            # Create standard live ride document targeting this driver
-            ride_ref = db.collection("rides").document()
             service = RIDE_SERVICES.get(driver_type, RIDE_SERVICES["bike"])
             fare_amount = float(data.get("fare") or 0)
             ride_data = {
