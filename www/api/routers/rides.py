@@ -1183,6 +1183,7 @@ def update_driver_availability(
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
         db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
         if status == "searching":
+            activate_due_scheduled_requests(db)
             _match_pending_requests_for_driver(
                 db, uid, profile, {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
             )
@@ -1283,6 +1284,7 @@ def update_driver_location(
                     {"driverLocation": location, "status": ride.get("status"), "updatedAt": now}, merge=True
                 )
         if availability == "searching" and not ride_id:
+            activate_due_scheduled_requests(db)
             _match_pending_requests_for_driver(db, uid, profile, location)
         return {"ok": True, "rideId": ride_id or None, "status": availability}
     except ApiError:
@@ -1292,12 +1294,11 @@ def update_driver_location(
 
 
 @router.post("/driver-push-token")
-@router.post("/passenger-push-token")
 def save_driver_push_token(
     body: DriverPushTokenBody,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Store a push token for the authenticated user's (driver or passenger) account."""
+    """Store a push token only for the authenticated driver's own account."""
     uid = str(user.get("uid") or "").strip()
     if not uid:
         raise ApiError("Authenticated user identity is missing.", 401)
@@ -1306,24 +1307,17 @@ def save_driver_push_token(
     try:
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
-        role = str(profile.get("role") or "").strip().lower()
-        
-        is_driver = (role == "driver")
-        if is_driver:
-            _require_approved_driver(profile, "Only approved drivers can register driver push tokens.")
-            notification_eligible_until = (
-                datetime.now(timezone.utc) + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS)
-                if str(profile.get("desiredAvailability") or profile.get("driverAvailability") or "").strip().lower() != "offline"
-                else datetime.fromtimestamp(0, timezone.utc)
-            )
-        else:
-            notification_eligible_until = datetime.now(timezone.utc) + timedelta(days=365)
-            
+        _require_approved_driver(profile, "Only approved drivers can register driver push tokens.")
         token_detail = {
             "token": body.token,
             "userAgent": body.userAgent,
             "updatedAt": datetime.now(timezone.utc),
         }
+        notification_eligible_until = (
+            datetime.now(timezone.utc) + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS)
+            if str(profile.get("desiredAvailability") or profile.get("driverAvailability") or "").strip().lower() != "offline"
+            else datetime.fromtimestamp(0, timezone.utc)
+        )
         update = {
             "pushTokens": fb_firestore.ArrayUnion([body.token]),
             "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
@@ -1333,14 +1327,47 @@ def save_driver_push_token(
             "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
         db.collection("users").document(uid).set(update, merge=True)
-        if is_driver:
-            db.collection("driverPresence").document(uid).set(update, merge=True)
+        db.collection("driverPresence").document(uid).set(update, merge=True)
         return {"ok": True}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not register push token.", 503)
+        raise ApiError("Could not register driver push token.", 503)
 
+
+@router.post("/passenger-push-token")
+def save_passenger_push_token(
+    body: DriverPushTokenBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Store a push token for the authenticated passenger's account."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if body.permission != "granted":
+        raise ApiError("Push permission is not granted.", 400)
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can register passenger push tokens.")
+        token_detail = {
+            "token": body.token,
+            "userAgent": body.userAgent,
+            "updatedAt": datetime.now(timezone.utc),
+        }
+        update = {
+            "pushTokens": fb_firestore.ArrayUnion([body.token]),
+            "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
+            "notificationPermission": "granted",
+            "lastAppSeenAt": fb_firestore.SERVER_TIMESTAMP,
+            "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        db.collection("users").document(uid).set(update, merge=True)
+        return {"ok": True}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not register passenger push token.", 503)
 
 
 @router.post("/{ride_id}/cancel")
@@ -1506,6 +1533,17 @@ def accept_driver_ride(
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             })
 
+            # Synchronize pendingRideRequest status if this was an auto/scheduled dispatch
+            pending_req_id = ride.get("pendingRequestId")
+            if pending_req_id:
+                pending_ref = db.collection("pendingRideRequests").document(str(pending_req_id))
+                tx.update(pending_ref, {
+                    "status": "matched",
+                    "matchedDriverId": uid,
+                    "matchedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+
         accept_transaction(transaction)
         db.collection("driverPresence").document(uid).set({
             "driverAvailability": "busy",
@@ -1584,8 +1622,22 @@ def reject_driver_ride(
                                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                             })
                 rollback_pending_tx(db.transaction())
+
+                # Cascading dispatch: immediately attempt to match next available driver
+                searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
+                for d_doc in searching_drivers:
+                    if d_doc.id == uid:
+                        continue
+                    driver_uid = d_doc.id
+                    d_data = d_doc.to_dict() or {}
+                    d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
+                    d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
+                    if driver_uid and d_loc:
+                        matched_id = _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+                        if matched_id:
+                            break
             except Exception as e:
-                print(f"Pending rollback error: {e}")
+                print(f"Pending rollback cascading dispatch error: {e}")
 
         _bump_daily_stats(db, uid, {"declined_count": 1})
         return {"ok": True, "rideId": clean_ride_id, "status": "declined"}
@@ -2004,6 +2056,32 @@ def _match_pending_requests_for_driver(
     driver_type = _driver_type(driver_profile)
 
     now = datetime.now(timezone.utc)
+
+    # Clean up stale locks for requests locked > 45s without driver acceptance (ignored requests)
+    try:
+        stale_locks = list(
+            db.collection("pendingRideRequests")
+            .where("status", "==", "dispatching")
+            .limit(10)
+            .stream()
+        )
+        for sdoc in stale_locks:
+            sdata = sdoc.to_dict() or {}
+            locked_at = sdata.get("dispatchLockedAt")
+            locked_driver = sdata.get("lockedByDriverId")
+            if locked_at:
+                locked_dt = _to_utc_datetime(locked_at)
+                if locked_dt and (now - locked_dt) > timedelta(seconds=45):
+                    sdoc.reference.update({
+                        "status": "pending",
+                        "lockedByDriverId": None,
+                        "dispatchLockedAt": None,
+                        "rejected_driver_ids": fb_firestore.ArrayUnion([locked_driver]) if locked_driver else [],
+                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                    })
+    except Exception:
+        pass
+
     pending_query = (
         db.collection("pendingRideRequests")
         .where("status", "==", "pending")
@@ -2037,7 +2115,7 @@ def _match_pending_requests_for_driver(
                 _log_demand_event(db, "pending_expired", {"requestId": req_id, "passengerId": data.get("passengerId")})
                 continue
 
-        # Check scheduled activation time (lead time: 10 minutes before activatesAt)
+        # Check scheduled activation time (lead time: 10 minutes)
         activates_at = data.get("activatesAt")
         if activates_at:
             act_time = _to_utc_datetime(activates_at)
@@ -2106,7 +2184,7 @@ def _match_pending_requests_for_driver(
 
             try:
                 claimed = claim_tx(db.transaction())
-            except Exception:
+            except Exception as e:
                 claimed = False
 
             if not claimed:
@@ -2224,8 +2302,6 @@ def _match_pending_requests_for_driver(
 
 
 
-
-
 def activate_due_scheduled_requests(db) -> int:
     """Converts scheduled requests reaching (activatesAt - 10m) into active auto-matching mode."""
     now = datetime.now(timezone.utc)
@@ -2247,6 +2323,7 @@ def activate_due_scheduled_requests(db) -> int:
         if not activates_at:
             continue
         act_time = _to_utc_datetime(activates_at)
+
         if act_time and now >= (act_time - timedelta(minutes=10)):
             doc.reference.update({
                 "mode": "auto",
@@ -2254,6 +2331,8 @@ def activate_due_scheduled_requests(db) -> int:
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             })
             activated_count += 1
+
+            # If past scheduled activation time and still finding driver, reassure passenger
             if now >= act_time and not data.get("reassuranceNotified"):
                 doc.reference.update({"reassuranceNotified": True})
                 _send_passenger_push_and_inapp(
@@ -2263,6 +2342,20 @@ def activate_due_scheduled_requests(db) -> int:
                     "We are actively searching for a driver for your scheduled pickup. Your ride request is priority-queued.",
                     {"url": f"{APP_BASE_URL}/services", "type": "schedule_priority_search"}
                 )
+
+    if activated_count > 0:
+        try:
+            searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
+            for d_doc in searching_drivers:
+                d_data = d_doc.to_dict() or {}
+                driver_uid = d_doc.id
+                d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
+                d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
+                if driver_uid and d_loc:
+                    _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+        except Exception as exc:
+            print(f"Scheduled activation driver sweep error: {exc}")
+
     return activated_count
 
 
@@ -2324,7 +2417,13 @@ def get_driver_nearby_demand(
 
     driver_loc = profile.get("driverLocation") or profile.get("location")
     if not driver_loc or "lat" not in driver_loc or "lng" not in driver_loc:
-        return {"ok": True, "waitingCount": 0, "scheduledSoonCount": 0, "scheduledWindowLabel": "", "roughArea": ""}
+        return {
+            "ok": True,
+            "waitingCount": 0,
+            "scheduledSoonCount": 0,
+            "scheduledWindowLabel": "",
+            "roughArea": ""
+        }
 
     d_lat = float(driver_loc["lat"])
     d_lng = float(driver_loc["lng"])
@@ -2332,6 +2431,8 @@ def get_driver_nearby_demand(
 
     now = datetime.now(timezone.utc)
     next_hour = now + timedelta(hours=1)
+
+    # Perform activation sweep on due scheduled requests
     activate_due_scheduled_requests(db)
 
     pending_docs = list(
@@ -2387,6 +2488,7 @@ def get_driver_nearby_demand(
                 if not rough_area:
                     rough_area = str(pickup.get("name") or "your area")
 
+    # Build human-friendly scheduled time window label
     window_start = now.strftime("%I:%M %p").lstrip("0")
     window_end = next_hour.strftime("%I:%M %p").lstrip("0")
     scheduled_window_label = f"between {window_start} – {window_end}"
@@ -2396,7 +2498,7 @@ def get_driver_nearby_demand(
         "waitingCount": waiting_count,
         "scheduledSoonCount": scheduled_soon_count,
         "scheduledWindowLabel": scheduled_window_label,
-        "roughArea": rough_area,
+        "roughArea": rough_area
     }
 
 

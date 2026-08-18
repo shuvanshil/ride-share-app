@@ -1171,7 +1171,10 @@ function isDriverRecentlyConnected(driver) {
 function getTimestampMs(value) {
     if (!value) return 0;
     if (typeof value.toMillis === "function") return value.toMillis();
+    if (typeof value.seconds === "number") return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+    if (typeof value._seconds === "number") return value._seconds * 1000 + Math.floor((value._nanoseconds || 0) / 1000000);
     if (value instanceof Date) return value.getTime();
+    if (typeof value === "number") return value > 1e11 ? value : value * 1000;
     const parsed = Date.parse(value);
     return Number.isFinite(parsed) ? parsed : 0;
 }

@@ -1183,6 +1183,7 @@ def update_driver_availability(
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
         db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
         if status == "searching":
+            activate_due_scheduled_requests(db)
             _match_pending_requests_for_driver(
                 db, uid, profile, {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
             )
@@ -1283,6 +1284,7 @@ def update_driver_location(
                     {"driverLocation": location, "status": ride.get("status"), "updatedAt": now}, merge=True
                 )
         if availability == "searching" and not ride_id:
+            activate_due_scheduled_requests(db)
             _match_pending_requests_for_driver(db, uid, profile, location)
         return {"ok": True, "rideId": ride_id or None, "status": availability}
     except ApiError:
@@ -1620,8 +1622,22 @@ def reject_driver_ride(
                                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                             })
                 rollback_pending_tx(db.transaction())
+
+                # Cascading dispatch: immediately attempt to match next available driver
+                searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
+                for d_doc in searching_drivers:
+                    if d_doc.id == uid:
+                        continue
+                    driver_uid = d_doc.id
+                    d_data = d_doc.to_dict() or {}
+                    d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
+                    d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
+                    if driver_uid and d_loc:
+                        matched_id = _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+                        if matched_id:
+                            break
             except Exception as e:
-                print(f"Pending rollback error: {e}")
+                print(f"Pending rollback cascading dispatch error: {e}")
 
         _bump_daily_stats(db, uid, {"declined_count": 1})
         return {"ok": True, "rideId": clean_ride_id, "status": "declined"}
@@ -2040,6 +2056,32 @@ def _match_pending_requests_for_driver(
     driver_type = _driver_type(driver_profile)
 
     now = datetime.now(timezone.utc)
+
+    # Clean up stale locks for requests locked > 45s without driver acceptance (ignored requests)
+    try:
+        stale_locks = list(
+            db.collection("pendingRideRequests")
+            .where("status", "==", "dispatching")
+            .limit(10)
+            .stream()
+        )
+        for sdoc in stale_locks:
+            sdata = sdoc.to_dict() or {}
+            locked_at = sdata.get("dispatchLockedAt")
+            locked_driver = sdata.get("lockedByDriverId")
+            if locked_at:
+                locked_dt = _to_utc_datetime(locked_at)
+                if locked_dt and (now - locked_dt) > timedelta(seconds=45):
+                    sdoc.reference.update({
+                        "status": "pending",
+                        "lockedByDriverId": None,
+                        "dispatchLockedAt": None,
+                        "rejected_driver_ids": fb_firestore.ArrayUnion([locked_driver]) if locked_driver else [],
+                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                    })
+    except Exception:
+        pass
+
     pending_query = (
         db.collection("pendingRideRequests")
         .where("status", "==", "pending")
@@ -2300,6 +2342,19 @@ def activate_due_scheduled_requests(db) -> int:
                     "We are actively searching for a driver for your scheduled pickup. Your ride request is priority-queued.",
                     {"url": f"{APP_BASE_URL}/services", "type": "schedule_priority_search"}
                 )
+
+    if activated_count > 0:
+        try:
+            searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
+            for d_doc in searching_drivers:
+                d_data = d_doc.to_dict() or {}
+                driver_uid = d_doc.id
+                d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
+                d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
+                if driver_uid and d_loc:
+                    _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+        except Exception as exc:
+            print(f"Scheduled activation driver sweep error: {exc}")
 
     return activated_count
 
