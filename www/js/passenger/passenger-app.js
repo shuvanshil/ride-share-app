@@ -1029,8 +1029,9 @@ function showPendingActiveCard(mode = "notify_only", activatesAt = null) {
     if (cancelBtn) cancelBtn.classList.remove('d-none');
 
     if (mode === "schedule" && activatesAt) {
-        const timeStr = new Date(activatesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        if (titleEl) titleEl.innerText = `Scheduled for ${timeStr}`;
+        const parsedDt = parseDateValue(activatesAt);
+        const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
+        if (titleEl) titleEl.innerText = timeStr ? `Scheduled for ${timeStr}` : "Scheduled Ride";
         if (descEl) descEl.innerText = "We'll dispatch this request to nearby drivers automatically at your scheduled time.";
     } else {
         if (titleEl) titleEl.innerText = "Waiting for next available driver";
@@ -1086,8 +1087,21 @@ async function cancelPendingRideRequest() {
     }
 }
 
+function parseDateValue(val) {
+    if (!val) return null;
+    if (typeof val.toDate === 'function') return val.toDate();
+    if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
+    if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+    const parsed = new Date(val);
+    return isNaN(parsed.getTime()) ? null : parsed;
+}
+
 async function cancelActiveRideSilently(rideId) {
     if (!rideId) return;
+    if (activeRideListener) {
+        activeRideListener();
+        activeRideListener = null;
+    }
     try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) return;
@@ -1095,10 +1109,6 @@ async function cancelActiveRideSilently(rideId) {
             method: "POST",
             headers: { Authorization: `Bearer ${idToken}` }
         });
-        if (activeRideListener) {
-            activeRideListener();
-            activeRideListener = null;
-        }
     } catch (e) {
         console.warn("Silent ride cancellation failed:", e);
     }
@@ -2002,6 +2012,9 @@ async function checkActivePendingRequestOnLoad() {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) return;
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const restoreId = urlParams.get('restorePending');
+
         const response = await fetch("/api/rides/pending-request/active", {
             headers: { Authorization: `Bearer ${idToken}` }
         });
@@ -2009,6 +2022,17 @@ async function checkActivePendingRequestOnLoad() {
         if (data.ok && data.hasActivePending && data.pendingRequest) {
             activePendingRequestId = data.pendingRequest.requestId;
             activePendingRequestData = data.pendingRequest;
+
+            // Preserve pickup / drop names in inputs if available
+            const dropInput = document.getElementById('drop-input');
+            const pickupInput = document.getElementById('pickup-input');
+            if (dropInput && data.pendingRequest.drop?.name && !dropInput.value) {
+                dropInput.value = data.pendingRequest.drop.name;
+            }
+            if (pickupInput && data.pendingRequest.pickup?.name && !pickupInput.value) {
+                pickupInput.value = data.pendingRequest.pickup.name;
+            }
+
             showPendingActiveCard(data.pendingRequest.mode, data.pendingRequest.activatesAt);
             listenToPendingRequestUpdates(data.pendingRequest.requestId);
         }
@@ -2109,12 +2133,9 @@ function listenToPendingRequestUpdates(requestId) {
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
                 if (data.mode === "schedule") {
-                    if (data.activatesAt) {
-                        const timeStr = new Date(data.activatesAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        if (titleEl) titleEl.innerText = `Scheduled for ${timeStr}`;
-                    } else {
-                        if (titleEl) titleEl.innerText = "Scheduled Ride";
-                    }
+                    const parsedDt = parseDateValue(data.activatesAt);
+                    const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
+                    if (titleEl) titleEl.innerText = timeStr ? `Scheduled for ${timeStr}` : "Scheduled Ride";
                     if (descEl) descEl.innerText = "We'll dispatch this request to nearby drivers automatically at your scheduled time.";
                 } else {
                     if (titleEl) titleEl.innerText = "Waiting for next available driver";

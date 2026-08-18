@@ -14,5 +14,11 @@
       "source": "/api/(.*)",
       "destination": "/api/index"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/rides/cron/activate-scheduled",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }

@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import math
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from firebase_admin import firestore as fb_firestore
 from firebase_admin import messaging as fb_messaging
 from pydantic import BaseModel, ConfigDict, Field
@@ -1312,6 +1313,41 @@ def save_driver_push_token(
         raise ApiError("Could not register driver push token.", 503)
 
 
+@router.post("/passenger-push-token")
+def save_passenger_push_token(
+    body: DriverPushTokenBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Store a push token for the authenticated passenger's account."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    if body.permission != "granted":
+        raise ApiError("Push permission is not granted.", 400)
+    try:
+        db = fb_firestore.client(get_admin_app())
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        _require_role(profile, "passenger", "Only passengers can register passenger push tokens.")
+        token_detail = {
+            "token": body.token,
+            "userAgent": body.userAgent,
+            "updatedAt": datetime.now(timezone.utc),
+        }
+        update = {
+            "pushTokens": fb_firestore.ArrayUnion([body.token]),
+            "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
+            "notificationPermission": "granted",
+            "lastAppSeenAt": fb_firestore.SERVER_TIMESTAMP,
+            "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        db.collection("users").document(uid).set(update, merge=True)
+        return {"ok": True}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not register passenger push token.", 503)
+
+
 @router.post("/{ride_id}/cancel")
 def cancel_passenger_ride(
     ride_id: str,
@@ -2225,6 +2261,39 @@ def activate_scheduled_due_endpoint(
     """Background trigger to activate scheduled requests due within 10 minutes."""
     db = fb_firestore.client(get_admin_app())
     count = activate_due_scheduled_requests(db)
+    return {"ok": True, "activatedCount": count}
+
+
+@router.get("/cron/activate-scheduled")
+@router.get("/scheduled/activate-due-cron")
+def cron_activate_scheduled(request: Request) -> dict[str, Any]:
+    """Cron endpoint called periodically (e.g. Vercel Cron) to promote scheduled rides."""
+    cron_secret = os.getenv("CRON_SECRET", "").strip()
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization") or ""
+    x_cron_header = request.headers.get("x-cron-secret") or request.headers.get("X-Cron-Secret") or ""
+    
+    if cron_secret:
+        valid_auth = (auth_header == f"Bearer {cron_secret}") or (x_cron_header == cron_secret)
+        if not valid_auth:
+            raise ApiError("Unauthorized cron request.", 401)
+            
+    db = fb_firestore.client(get_admin_app())
+    count = activate_due_scheduled_requests(db)
+    
+    # Trigger matching for active searching drivers against promoted schedule requests
+    if count > 0:
+        try:
+            searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
+            for doc in searching_drivers:
+                d_data = doc.to_dict() or {}
+                driver_uid = doc.id
+                d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
+                d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation")
+                if driver_uid and d_loc:
+                    _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+        except Exception as exc:
+            print(f"Cron matching sweep skipped: {exc}")
+
     return {"ok": True, "activatedCount": count}
 
 
