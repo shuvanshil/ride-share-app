@@ -1401,6 +1401,23 @@ def cancel_passenger_ride(
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_role(profile, "passenger", "Only passengers can cancel passenger rides.")
         ride_ref = db.collection("rides").document(clean_ride_id)
+        if not ride_ref.get().exists:
+            pending_ref = db.collection("pendingRideRequests").document(clean_ride_id)
+            pending_snap = pending_ref.get()
+            if pending_snap.exists:
+                p_data = pending_snap.to_dict() or {}
+                if p_data.get("passengerId") == uid or p_data.get("passenger_id") == uid:
+                    pending_ref.update({
+                        "status": "cancelled",
+                        "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                    })
+                    _log_demand_event(db, "pending_cancelled", {"requestId": clean_ride_id, "passengerId": uid, "reason": "passenger_cancelled"})
+                    return {"ok": True, "requestId": clean_ride_id, "status": "cancelled"}
+                else:
+                    raise ApiError("Only the passenger can cancel this request.", 403)
+            raise ApiError("Ride not found.", 404)
+
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         transaction = db.transaction()
 
@@ -1411,7 +1428,7 @@ def cancel_passenger_ride(
                 raise ApiError("Ride not found.", 404)
 
             ride = snapshot.to_dict() or {}
-            if ride.get("passenger_id") != uid:
+            if ride.get("passenger_id") != uid and ride.get("passengerId") != uid:
                 raise ApiError("Only the passenger can cancel this ride.", 403)
 
             status = ride.get("status")

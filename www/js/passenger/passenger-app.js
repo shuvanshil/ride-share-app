@@ -1767,7 +1767,12 @@ function listenToRideStatusUpdates(rideId) {
 }
 
 async function cancelRideByPassenger(rideId) {
-    rideId = rideId || currentPassengerRideId;
+    if (activePendingRequestId && (!currentPassengerRideId || rideId === activePendingRequestId)) {
+        await cancelPendingRideRequest();
+        return;
+    }
+
+    rideId = rideId || currentPassengerRideId || activePendingRequestId;
     if (!rideId) {
         await showAlert("No active ride found to cancel.");
         return;
