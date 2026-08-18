@@ -364,7 +364,14 @@ def _to_utc_datetime(val: Any) -> Optional[datetime]:
         if val.tzinfo is None:
             return val.replace(tzinfo=KOLKATA_TZ).astimezone(timezone.utc)
         return val.astimezone(timezone.utc)
-    if hasattr(val, "timestamp"):
+    if isinstance(val, dict):
+        secs = val.get("seconds") or val.get("_seconds")
+        if secs is not None:
+            try:
+                return datetime.fromtimestamp(float(secs), tz=timezone.utc)
+            except Exception:
+                pass
+    if hasattr(val, "timestamp") and callable(getattr(val, "timestamp")):
         try:
             return datetime.fromtimestamp(val.timestamp(), tz=timezone.utc)
         except Exception:
@@ -859,7 +866,7 @@ async def create_pending_request(
     if body.activatesAt:
         activates_at_dt = _to_utc_datetime(body.activatesAt)
         if activates_at_dt:
-            expires_at = activates_at_dt + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS)
+            expires_at = max(now + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS), activates_at_dt + timedelta(hours=2))
 
     # Prevent duplicate active requests by reusing existing active document
     existing_q = (
@@ -2115,12 +2122,17 @@ def _match_pending_requests_for_driver(
                 _log_demand_event(db, "pending_expired", {"requestId": req_id, "passengerId": data.get("passengerId")})
                 continue
 
-        # Check scheduled activation time (lead time: 10 minutes)
+        # Check scheduled activation time (lead window: 15 minutes before activatesAt up to 2 hours after)
         activates_at = data.get("activatesAt")
+        act_time = None
         if activates_at:
             act_time = _to_utc_datetime(activates_at)
-            if act_time and now < (act_time - timedelta(minutes=10)):
-                continue
+            if act_time:
+                if now < (act_time - timedelta(minutes=15)):
+                    continue
+                if now > (act_time + timedelta(hours=2)):
+                    doc.reference.update({"status": "expired", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
+                    continue
 
         # Check vehicle type match
         req_vehicle = str(data.get("vehicleType") or "").strip().lower()
@@ -2148,9 +2160,9 @@ def _match_pending_requests_for_driver(
         d_lat = drop.get("lat") or p_lat
         d_lng = drop.get("lng") or p_lng
 
-        if mode == "schedule":
-            # Promote schedule mode to auto mode if it is due (within 10 minutes of activation)
-            if act_time and now >= (act_time - timedelta(minutes=10)):
+        if mode == "schedule" or data.get("sourceMode") == "schedule":
+            # Promote schedule mode to auto mode if it is due (within 15 minutes of activation or after activation)
+            if act_time and now >= (act_time - timedelta(minutes=15)):
                 mode = "auto"
 
         if mode == "auto":
@@ -2319,17 +2331,20 @@ def activate_due_scheduled_requests(db) -> int:
     activated_count = 0
     for doc in docs:
         data = doc.to_dict() or {}
+        mode = str(data.get("mode") or "").strip().lower()
+        source_mode = str(data.get("sourceMode") or "").strip().lower()
         activates_at = data.get("activatesAt")
         if not activates_at:
             continue
         act_time = _to_utc_datetime(activates_at)
 
-        if act_time and now >= (act_time - timedelta(minutes=10)):
-            doc.reference.update({
-                "mode": "auto",
-                "sourceMode": "schedule",
-                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
+        if act_time and now >= (act_time - timedelta(minutes=15)) and now <= (act_time + timedelta(hours=2)):
+            if mode == "schedule":
+                doc.reference.update({
+                    "mode": "auto",
+                    "sourceMode": "schedule",
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
             activated_count += 1
 
             # If past scheduled activation time and still finding driver, reassure passenger
@@ -2343,18 +2358,17 @@ def activate_due_scheduled_requests(db) -> int:
                     {"url": f"{APP_BASE_URL}/services", "type": "schedule_priority_search"}
                 )
 
-    if activated_count > 0:
-        try:
-            searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
-            for d_doc in searching_drivers:
-                d_data = d_doc.to_dict() or {}
-                driver_uid = d_doc.id
-                d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
-                d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
-                if driver_uid and d_loc:
-                    _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
-        except Exception as exc:
-            print(f"Scheduled activation driver sweep error: {exc}")
+    try:
+        searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
+        for d_doc in searching_drivers:
+            d_data = d_doc.to_dict() or {}
+            driver_uid = d_doc.id
+            d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
+            d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
+            if driver_uid and d_loc:
+                _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+    except Exception as exc:
+        print(f"Scheduled activation driver sweep error: {exc}")
 
     return activated_count
 
