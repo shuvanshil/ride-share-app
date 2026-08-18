@@ -775,7 +775,7 @@ async function pollDriverNearbyDemand() {
             headers: { Authorization: `Bearer ${idToken}` }
         });
         const data = await res.json().catch(() => ({}));
-        if (data.ok && (data.waitingCount > 0 || data.scheduledCount > 0)) {
+        if (data.ok && (data.waitingCount > 0 || data.scheduledSoonCount > 0)) {
             updateDriverDemandChip(data);
         } else {
             hideDriverDemandChip();
@@ -791,17 +791,22 @@ function updateDriverDemandChip(data) {
         chip = document.createElement('div');
         chip.id = 'driver-demand-chip';
         chip.className = 'driver-demand-chip animate-fade-in';
-        chip.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 18px;border-radius:24px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.3);z-index:1050;pointer-events:auto;border:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;';
+        chip.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 18px;border-radius:24px;font-size:13px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.3);z-index:1050;pointer-events:auto;border:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;max-width:90vw;text-align:center;';
         document.body.appendChild(chip);
     }
-    
+
+    const waiting = data.waitingCount || 0;
+    const scheduled = data.scheduledSoonCount || 0;
+    const windowLabel = data.scheduledWindowLabel || "in the next hour";
+    const area = data.roughArea ? ` near ${data.roughArea}` : "";
+
     let content = "";
-    if (data.waitingCount > 0 && data.scheduledCount > 0) {
-        content = `⚡ <strong>${data.waitingCount} rider${data.waitingCount > 1 ? 's' : ''} waiting</strong> &bull; ⏰ <strong>${data.scheduledCount} scheduled</strong>`;
-    } else if (data.waitingCount > 0) {
-        content = `⚡ <strong>${data.waitingCount} rider${data.waitingCount > 1 ? 's' : ''}</strong> waiting near you${data.roughArea ? ` (${data.roughArea})` : ''}`;
-    } else if (data.scheduledCount > 0) {
-        content = `⏰ <strong>${data.scheduledCount} ride${data.scheduledCount > 1 ? 's' : ''} scheduled</strong> for upcoming hours`;
+    if (waiting > 0 && scheduled > 0) {
+        content = `⚡ <strong>${waiting} rider${waiting > 1 ? 's' : ''} waiting</strong>${area} &bull; ⏰ <strong>${scheduled} scheduled</strong> ${windowLabel}`;
+    } else if (waiting > 0) {
+        content = `⚡ <strong>${waiting} rider${waiting > 1 ? 's' : ''} waiting</strong>${area || " nearby"}`;
+    } else if (scheduled > 0) {
+        content = `⏰ <strong>${scheduled} scheduled pickup${scheduled > 1 ? 's' : ''}</strong> ${windowLabel}`;
     }
 
     chip.innerHTML = content;
