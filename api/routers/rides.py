@@ -337,15 +337,19 @@ def _timestamp_seconds(value: Any) -> Optional[float]:
 
 
 def _driver_type(driver: dict[str, Any]) -> str:
+    v_type = str(driver.get("vehicle_type") or driver.get("vehicleType") or "").strip().lower()
+    if v_type in {"auto", "bike"}:
+        return v_type
+
     text = " ".join(
         str(driver.get(key) or "")
         for key in ("vehicle_type", "vehicleType", "vehicle_model", "vehicleModel", "vehicleName")
     ).lower()
-    if "auto" in text or "rickshaw" in text or "tuk" in text:
+
+    if "auto" in text or "rickshaw" in text or "tuk" in text or "3w" in text or "three" in text:
         return "auto"
-    if "bike" in text or "scooter" in text or "activa" in text or "motorcycle" in text:
-        return "bike"
-    return ""
+
+    return "bike"
 
 
 def _require_role(profile: dict[str, Any], expected_role: str, message: str) -> None:

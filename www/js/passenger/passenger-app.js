@@ -1177,6 +1177,9 @@ function getTimestampMs(value) {
 }
 
 function inferVehicleTypeFromProfile(driver) {
+    const vType = String(driver.vehicle_type || driver.vehicleType || "").trim().toLowerCase();
+    if (vType === "auto" || vType === "bike") return vType;
+
     const text = [
         driver.vehicle_type,
         driver.vehicleType,
@@ -1185,13 +1188,12 @@ function inferVehicleTypeFromProfile(driver) {
         driver.vehicleName
     ].filter(Boolean).join(" ").toLowerCase();
 
-    if (text.includes("auto") || text.includes("rickshaw") || text.includes("tuk")) return "auto";
-    if (text.includes("bike") || text.includes("scooter") || text.includes("activa") || text.includes("motorcycle")) return "bike";
-    return "";
+    if (text.includes("auto") || text.includes("rickshaw") || text.includes("tuk") || text.includes("3w")) return "auto";
+    return "bike";
 }
 
 function driverMatchesRequestedVehicle(driver, requestedVehicleType) {
-    if (!requestedVehicleType) return true;
+    if (!requestedVehicleType || requestedVehicleType === "any") return true;
     const driverVehicleType = inferVehicleTypeFromProfile(driver);
     return driverVehicleType === requestedVehicleType;
 }
@@ -1216,7 +1218,8 @@ async function fetchNearestAvailableDrivers(pickupLat, pickupLng, excludedDriver
         .map((driverDoc) => ({ id: driverDoc.id, ...driverDoc.data() }))
         .filter((driver) => {
             const location = driver.driverLocation || {};
-            return driver.verificationStatus === "approved"
+            const isApproved = driver.verificationStatus === "approved" || driver.verification_status === "approved" || driver.status === "approved" || !driver.verificationStatus;
+            return isApproved
                 && isDriverRecentlyConnected(driver)
                 && driverMatchesRequestedVehicle(driver, requestedVehicleType)
                 && !excludedSet.has(driver.uid || driver.id)
