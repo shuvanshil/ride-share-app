@@ -994,6 +994,15 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
         stopSearchStateUi();
         showPendingActiveCard(mode, activatesAt);
         listenToPendingRequestUpdates(data.requestId);
+
+        // Cancel any active live ride search since we are going to background queue
+        if (currentPassengerRideId) {
+            const oldRideId = currentPassengerRideId;
+            currentPassengerRideId = null;
+            currentPassengerRideData = null;
+            cancelActiveRideSilently(oldRideId);
+        }
+
         await showAlert(
             mode === "schedule"
                 ? "Ride scheduled! We'll auto-search for nearby drivers when your time arrives."
@@ -1056,6 +1065,15 @@ async function cancelPendingRideRequest() {
             activePendingRequestListener();
             activePendingRequestListener = null;
         }
+
+        // Also cancel any active live ride just in case
+        if (currentPassengerRideId) {
+            const oldRideId = currentPassengerRideId;
+            currentPassengerRideId = null;
+            currentPassengerRideData = null;
+            cancelActiveRideSilently(oldRideId);
+        }
+
         const pendingCard = document.getElementById('pending-active-card');
         if (pendingCard) pendingCard.classList.add('d-none');
         resetPassengerBookingUi();
@@ -1067,6 +1085,25 @@ async function cancelPendingRideRequest() {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
+
+async function cancelActiveRideSilently(rideId) {
+    if (!rideId) return;
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) return;
+        await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        if (activeRideListener) {
+            activeRideListener();
+            activeRideListener = null;
+        }
+    } catch (e) {
+        console.warn("Silent ride cancellation failed:", e);
+    }
+}
+
 
 function applyServiceBookingDraft() {
     if (!currentUser || currentUser.role !== "passenger") return false;

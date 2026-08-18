@@ -2025,6 +2025,11 @@ def _match_pending_requests_for_driver(
         d_lat = drop.get("lat") or p_lat
         d_lng = drop.get("lng") or p_lng
 
+        if mode == "schedule":
+            # Promote schedule mode to auto mode if it is due (within 10 minutes of activation)
+            if act_time and now >= (act_time - timedelta(minutes=10)):
+                mode = "auto"
+
         if mode == "auto":
             # Race condition prevention: Atomic Claim Transaction
             pending_ref = db.collection("pendingRideRequests").document(req_id)
@@ -2040,12 +2045,18 @@ def _match_pending_requests_for_driver(
                     return False
                 if driver_id in (curr.get("rejected_driver_ids") or []):
                     return False
-                tx.update(pending_ref, {
+                
+                update_fields = {
                     "status": "dispatching",
                     "lockedByDriverId": driver_id,
                     "dispatchLockedAt": fb_firestore.SERVER_TIMESTAMP,
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                })
+                }
+                if curr.get("mode") == "schedule":
+                    update_fields["mode"] = "auto"
+                    update_fields["sourceMode"] = "schedule"
+                    
+                tx.update(pending_ref, update_fields)
                 return True
 
             try:
@@ -2086,7 +2097,7 @@ def _match_pending_requests_for_driver(
                 "service_name": service["name"],
                 "passenger_capacity": service["capacity"],
                 "status": "pending",
-                "sourceMode": data.get("sourceMode") or "auto",
+                "sourceMode": data.get("sourceMode") or ("schedule" if data.get("mode") == "schedule" else "auto"),
                 "pendingRequestId": req_id,
                 "driver_id": None,
                 "driver_name": None,
