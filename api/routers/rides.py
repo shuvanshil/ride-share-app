@@ -916,6 +916,12 @@ async def create_pending_request(
 
     req_ref.set(pending_doc_data, merge=True)
 
+    # Immediately trigger activation & driver matching sweep if due or searching
+    try:
+        activate_due_scheduled_requests(db)
+    except Exception as exc:
+        print(f"Immediate scheduled activation error: {exc}")
+
     _log_demand_event(db, "pending_created", {
         "requestId": req_ref.id,
         "passengerId": uid,

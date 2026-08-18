@@ -2057,8 +2057,32 @@ function listenToPendingRequestUpdates(requestId) {
         activePendingRequestListener();
         activePendingRequestListener = null;
     }
+    if (window.pendingActivationPollTimer) {
+        clearInterval(window.pendingActivationPollTimer);
+        window.pendingActivationPollTimer = null;
+    }
 
     let lastKnownNotifiedAt = undefined;
+
+    // Periodically trigger backend activation sweep every 10 seconds while active request is pending
+    window.pendingActivationPollTimer = setInterval(async () => {
+        if (!activePendingRequestId) {
+            if (window.pendingActivationPollTimer) {
+                clearInterval(window.pendingActivationPollTimer);
+                window.pendingActivationPollTimer = null;
+            }
+            return;
+        }
+        try {
+            const token = await auth.currentUser?.getIdToken();
+            if (token) {
+                await fetch("/api/rides/scheduled/activate-due", {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+            }
+        } catch (e) {}
+    }, 10000);
 
     activePendingRequestListener = onSnapshot(doc(db, "pendingRideRequests", requestId), (docSnap) => {
         if (!docSnap.exists()) return;
@@ -2071,6 +2095,10 @@ function listenToPendingRequestUpdates(requestId) {
                 const pendingCard = document.getElementById('pending-active-card');
                 if (pendingCard) pendingCard.classList.add('d-none');
                 
+                if (window.pendingActivationPollTimer) {
+                    clearInterval(window.pendingActivationPollTimer);
+                    window.pendingActivationPollTimer = null;
+                }
                 activePendingRequestId = null;
                 activePendingRequestData = null;
                 if (activePendingRequestListener) {
@@ -2085,6 +2113,10 @@ function listenToPendingRequestUpdates(requestId) {
             const pendingCard = document.getElementById('pending-active-card');
             if (pendingCard) pendingCard.classList.add('d-none');
             
+            if (window.pendingActivationPollTimer) {
+                clearInterval(window.pendingActivationPollTimer);
+                window.pendingActivationPollTimer = null;
+            }
             activePendingRequestId = null;
             activePendingRequestData = null;
             if (activePendingRequestListener) {
