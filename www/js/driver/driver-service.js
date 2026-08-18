@@ -82,6 +82,7 @@ function saveIgnoredRideIds(rideIds) {
     } catch {
         // Ignore storage failures; this feature is optional.
     }
+}
 // ==========================================
 // 5-MINUTE RIDE REQUEST TIMEOUT & LIFECYCLE
 // ==========================================
