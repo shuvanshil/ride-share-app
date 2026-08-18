@@ -117,6 +117,8 @@ function renderOnlineEmptyState(container) {
         <h4 class="fw-bold text-dark mb-1">You're all set!</h4>
         <p class="text-muted small mb-0">New ride requests will appear here.</p>
     `;
+}
+
 // ==========================================
 // 5-MINUTE RIDE REQUEST TIMEOUT & LIFECYCLE
 // ==========================================
