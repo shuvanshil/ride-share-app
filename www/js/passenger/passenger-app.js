@@ -1744,6 +1744,8 @@ function listenToRideStatusUpdates(rideId) {
             
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
         }
+    }, (error) => {
+        console.warn("Active ride listener error caught:", error);
     });
 }
 
@@ -2123,6 +2125,8 @@ function listenToPendingRequestUpdates(requestId) {
                 if (promptEl) promptEl.classList.add('d-none');
             }
         }
+    }, (error) => {
+        console.warn("Active pending request listener error caught:", error);
     });
 }
 
