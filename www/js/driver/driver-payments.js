@@ -21,6 +21,16 @@ async function getAuthToken() {
     return await currentAuthUser.getIdToken();
 }
 
+function formatErrorMessage(errData, fallback = 'An error occurred') {
+    if (!errData) return fallback;
+    if (typeof errData.error === 'string') return errData.error;
+    if (typeof errData.error === 'object' && errData.error !== null) {
+        return errData.error.message || JSON.stringify(errData.error);
+    }
+    if (typeof errData.detail === 'string') return errData.detail;
+    return fallback;
+}
+
 async function fetchPaymentStatus() {
     try {
         const token = await getAuthToken();
@@ -35,7 +45,7 @@ async function fetchPaymentStatus() {
 
         if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || 'Failed to fetch payment status');
+            throw new Error(formatErrorMessage(errData, 'Failed to fetch payment status'));
         }
 
         const data = await response.json();
@@ -43,7 +53,8 @@ async function fetchPaymentStatus() {
         renderPaymentUI(data);
     } catch (error) {
         console.error("Error fetching payment status:", error);
-        showAlert(error.message || "Failed to load payment details.");
+        const msg = (typeof error.message === 'object' && error.message !== null) ? JSON.stringify(error.message) : (error.message || "Failed to load payment details.");
+        showAlert(msg);
     }
 }
 
@@ -334,7 +345,7 @@ async function handlePaymentDone() {
 
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(data.error || 'Could not submit payment verification.');
+            throw new Error(formatErrorMessage(data, 'Could not submit payment verification.'));
         }
 
         closeQrModal();

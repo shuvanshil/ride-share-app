@@ -7434,7 +7434,7 @@ body.profile-editor-open {
 .payments-container {
     max-width: 540px;
     margin: 0 auto;
-    padding: 16px;
+    padding: 16px 16px 140px 16px;
 }
 
 .payments-notice-banner {

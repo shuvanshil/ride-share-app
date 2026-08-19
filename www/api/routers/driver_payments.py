@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from api.core.auth import current_user
 from api.core.admin import require_admin, write_audit_log, now_utc
 from api.core.errors import ApiError
-from api.core.firebase import get_firestore_client
+from api.core.firebase import get_firestore
 from api.core.payment_schedule import (
     get_payment_week_info,
     get_ist_now,
@@ -61,6 +61,18 @@ def _get_driver_profile(db: Any, uid: str) -> Dict[str, Any]:
     if profile.get("role") != "driver":
         raise ApiError("Only driver accounts can access weekly payment features.", 403)
     return profile
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
 
 
 def _get_pause_config(db: Any) -> Dict[str, Any]:
@@ -133,7 +145,7 @@ def get_driver_payment_status(
 ) -> Dict[str, Any]:
     """Retrieve driver's current week payment status and history."""
     uid = auth_user["uid"]
-    db = get_firestore_client()
+    db = get_firestore()
     _get_driver_profile(db, uid)
 
     pause_config = _get_pause_config(db)
@@ -205,7 +217,7 @@ def submit_weekly_payment(
 ) -> Dict[str, Any]:
     """Submit a weekly payment verification request."""
     uid = auth_user["uid"]
-    db = get_firestore_client()
+    db = get_firestore()
     profile = _get_driver_profile(db, uid)
 
     pause_config = _get_pause_config(db)
@@ -275,7 +287,7 @@ def get_payment_history(
 ) -> Dict[str, Any]:
     """Get complete payment history for driver."""
     uid = auth_user["uid"]
-    db = get_firestore_client()
+    db = get_firestore()
     _get_driver_profile(db, uid)
 
     docs = db.collection("driverPayments").where("driverId", "==", uid).stream()
@@ -295,7 +307,7 @@ def admin_list_driver_payments(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """List driver payment submissions with optional filtering."""
-    db = get_firestore_client()
+    db = get_firestore()
     query = db.collection("driverPayments")
 
     if status_filter:
@@ -334,7 +346,7 @@ def admin_get_pause_settings(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Get driver payment pause settings."""
-    db = get_firestore_client()
+    db = get_firestore()
     return {"ok": True, "pauseConfig": _get_pause_config(db)}
 
 
@@ -344,7 +356,7 @@ def admin_set_pause_settings(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Set or update driver weekly payment pause configuration."""
-    db = get_firestore_client()
+    db = get_firestore()
     admin_email = admin_user.get("email") or admin_user.get("uid", "admin")
 
     now = get_ist_now()
@@ -377,7 +389,7 @@ def admin_clear_pause_settings(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Clear/unpause driver weekly payments immediately."""
-    db = get_firestore_client()
+    db = get_firestore()
     admin_email = admin_user.get("email") or admin_user.get("uid", "admin")
 
     now = get_ist_now()
@@ -411,7 +423,7 @@ def admin_record_manual_payment(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Record an offline/manual payment on behalf of a driver."""
-    db = get_firestore_client()
+    db = get_firestore()
     driver_uid = body.driverId.strip()
     profile = _get_driver_profile(db, driver_uid)
 
@@ -489,7 +501,7 @@ def admin_approve_driver_payment(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Approve a driver's weekly payment submission."""
-    db = get_firestore_client()
+    db = get_firestore()
     doc_ref = db.collection("driverPayments").document(payment_id)
     snap = doc_ref.get()
 
@@ -536,7 +548,7 @@ def admin_decline_driver_payment(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """Decline a driver's weekly payment submission."""
-    db = get_firestore_client()
+    db = get_firestore()
     doc_ref = db.collection("driverPayments").document(payment_id)
     snap = doc_ref.get()
 

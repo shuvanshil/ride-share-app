@@ -579,6 +579,18 @@ def _validate_profile_update(body: ProfileUpdateBody, role: str) -> dict[str, An
     return updates
 
 
+def _sanitize_for_json(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
+
+
 @router.get("/profile")
 def get_profile(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """Return the authenticated user's Firestore profile."""
@@ -597,7 +609,7 @@ def get_profile(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
 
     profile = snapshot.to_dict() or {}
     profile.setdefault("uid", uid)
-    return {"ok": True, "profile": profile}
+    return {"ok": True, "profile": _sanitize_for_json(profile)}
 
 
 @router.patch("/profile")
