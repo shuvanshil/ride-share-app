@@ -28,7 +28,7 @@ const EXPERIENCES = [
     {
         key: 'poor',
         label: 'Poor',
-        icon: '/assets/icons/webicons/feedback-poor.svg',
+        icon: 'assets/icons/webicons/feedback-poor.svg',
         title: "We're sorry to hear that.",
         subtitle: 'What went wrong? (Select up to 3)',
         titleColor: '#E53E3E',
@@ -36,7 +36,7 @@ const EXPERIENCES = [
     {
         key: 'decent',
         label: 'Decent',
-        icon: '/assets/icons/webicons/feedback-decent.svg',
+        icon: 'assets/icons/webicons/feedback-decent.svg',
         title: "Thanks for the feedback!",
         subtitle: 'What could be better? (Select up to 3)',
         titleColor: '#D97706',
@@ -44,7 +44,7 @@ const EXPERIENCES = [
     {
         key: 'good',
         label: 'Good',
-        icon: '/assets/icons/webicons/feedback-good.svg',
+        icon: 'assets/icons/webicons/feedback-good.svg',
         title: "Glad you had a good ride!",
         subtitle: 'What did you like? (Select up to 3)',
         titleColor: '#16A34A',
@@ -52,7 +52,7 @@ const EXPERIENCES = [
     {
         key: 'loved',
         label: 'Loved it!',
-        icon: '/assets/icons/webicons/feedback-loved.svg',
+        icon: 'assets/icons/webicons/feedback-loved.svg',
         title: "Awesome! Thanks for the love! 💚",
         subtitle: 'What made it great? (Select up to 3)',
         titleColor: '#1A7A2E',
@@ -235,7 +235,7 @@ function _renderModal(modal, step) {
                         <button class="fb-back-btn d-invisible" type="button" aria-label="Back">&#8592;</button>
                         <button class="fb-close-btn" id="fb-close-thankyou" type="button" aria-label="Close feedback">&times;</button>
                     </div>
-                    <img src="/assets/icons/webicons/feedback-thankyou-illustration.svg"
+                    <img src="assets/icons/webicons/feedback-thankyou-illustration.svg"
                          class="fb-illustration" alt="" aria-hidden="true" width="96" height="96" style="width:96px;height:96px;margin-bottom:16px;">
                     <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">Thank you<br>for riding with us! 💚</h2>
                     <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">We hope you had a great ride.<br>Please share your experience.</p>
@@ -249,7 +249,7 @@ function _renderModal(modal, step) {
                         <button class="fb-back-btn" id="fb-back-exp" type="button" aria-label="Back">&#8592;</button>
                         <button class="fb-close-btn" id="fb-close-exp" type="button" aria-label="Close feedback">&times;</button>
                     </div>
-                    <img src="/assets/icons/webicons/feedback-loved.svg" class="fb-illustration" alt="" aria-hidden="true">
+                    <img src="assets/icons/webicons/feedback-loved.svg" class="fb-illustration" alt="" aria-hidden="true">
                     <h2 class="fb-title">How was your experience?</h2>
                     <p class="fb-subtitle">Please select one option</p>
                     <div class="fb-exp-grid" id="fb-exp-grid">
@@ -293,7 +293,7 @@ function _renderModal(modal, step) {
                         <span></span>
                     </div>
                     <div class="fb-loading-wrap">
-                        <img src="/assets/icons/webicons/feedback-submit-illustration.svg"
+                        <img src="assets/icons/webicons/feedback-submit-illustration.svg"
                              class="fb-illustration fb-illustration-spin"
                              alt="" aria-hidden="true" width="88" height="88">
                         <h2 class="fb-title">Submitting your feedback...</h2>
@@ -315,7 +315,8 @@ function _renderModal(modal, step) {
                         <span></span>
                     </div>
                     <div class="fb-success-wrap">
-                        <img src="/assets/icons/webicons/feedback-success-illustration.svg"
+                        <img src="assets/icons/webicons/feedback-success-illustration.svg"
+
                              class="fb-illustration"
                              alt="" aria-hidden="true" width="88" height="88">
                         <h2 class="fb-success-title">Thanks for your feedback! 💚</h2>
