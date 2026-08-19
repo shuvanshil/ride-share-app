@@ -2181,6 +2181,7 @@ function listenToPendingRequestUpdates(requestId) {
                 showAlert("Your waiting request has expired. No drivers became available in time.");
             }
         } else {
+            showPendingActiveCard(data.mode, data.activatesAt);
             const timeoutPrompt = document.getElementById('pending-schedule-timeout-prompt');
             const availablePrompt = document.getElementById('pending-driver-available-prompt');
 

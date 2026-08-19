@@ -1854,8 +1854,6 @@ async function handleAssignedDriverLocation(event) {
 }
 
 function startGlobalDriverPresenceListener() {
-    if (!window.mapInstance) return;
-
     if (globalDriversUnsubscribe) {
         globalDriversUnsubscribe();
         globalDriversUnsubscribe = null;
@@ -3276,3 +3274,10 @@ window.addEventListener("ride-status-updated", (event) => {
 window.addEventListener("ride-completed-clear-map", () => {
     userMarker?.stopRipple?.();
 });
+
+// Immediately listen to driver presence on module load
+try {
+    startGlobalDriverPresenceListener();
+} catch (e) {
+    console.warn("Auto start global driver listener skipped:", e);
+}

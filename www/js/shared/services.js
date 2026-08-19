@@ -355,6 +355,10 @@ async function bootstrapServices() {
 
         if (!servicesSessionStarted) {
             servicesSessionStarted = true;
+            initializeMapEngine().catch((error) => {
+                console.error("Passenger map initialization failed:", error);
+                setStatus("Could not load the map. Check location permission.", "error");
+            });
             window.dispatchEvent(new CustomEvent('user-session-ready', { detail: profile }));
         }
         hideInitialLoader();
