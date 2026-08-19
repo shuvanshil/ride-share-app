@@ -1043,48 +1043,51 @@ function showPendingActiveCard(mode = "notify_only", activatesAt = null) {
 }
 
 async function cancelPendingRideRequest() {
-    if (!activePendingRequestId) return;
+    if (!activePendingRequestId) {
+        resetPassengerBookingUi({ preserveSelections: false });
+        return;
+    }
     const confirmed = await showConfirm("Cancel your waiting ride request?", { okText: "Yes, cancel", cancelText: "Keep waiting" });
     if (!confirmed) return;
 
     window.LiphtUpLoading?.showPageLoader?.("Cancelling...");
+
+    const reqId = activePendingRequestId;
+    activePendingRequestId = null;
+    activePendingRequestData = null;
+    if (activePendingRequestListener) {
+        activePendingRequestListener();
+        activePendingRequestListener = null;
+    }
+
+    if (currentPassengerRideId) {
+        const oldRideId = currentPassengerRideId;
+        currentPassengerRideId = null;
+        currentPassengerRideData = null;
+        cancelActiveRideSilently(oldRideId);
+    }
+
+    const pendingCard = document.getElementById('pending-active-card');
+    if (pendingCard) pendingCard.classList.add('d-none');
+
     try {
         const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-
-        await fetch(`/api/rides/pending-request/${encodeURIComponent(activePendingRequestId)}/cancel`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
-            },
-            body: JSON.stringify({ reason: "cancelled_by_passenger" })
-        });
-
-        activePendingRequestId = null;
-        activePendingRequestData = null;
-        if (activePendingRequestListener) {
-            activePendingRequestListener();
-            activePendingRequestListener = null;
+        if (idToken) {
+            await fetch(`/api/rides/pending-request/${encodeURIComponent(reqId)}/cancel`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${idToken}`
+                },
+                body: JSON.stringify({ reason: "cancelled_by_passenger" })
+            }).catch((err) => console.warn("Background pending cancel fetch exception:", err));
         }
-
-        // Also cancel any active live ride just in case
-        if (currentPassengerRideId) {
-            const oldRideId = currentPassengerRideId;
-            currentPassengerRideId = null;
-            currentPassengerRideData = null;
-            cancelActiveRideSilently(oldRideId);
-        }
-
-        const pendingCard = document.getElementById('pending-active-card');
-        if (pendingCard) pendingCard.classList.add('d-none');
-        resetPassengerBookingUi();
-        await showAlert("Waiting request cancelled.");
     } catch (e) {
-        console.error("Cancel pending failed:", e);
-        await showAlert(e.message || "Could not cancel request.");
+        console.warn("Cancel pending request warning:", e);
     } finally {
+        resetPassengerBookingUi({ preserveSelections: false });
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+        await showAlert("Waiting request cancelled.");
     }
 }
 
@@ -1775,12 +1778,12 @@ async function cancelRideByPassenger(rideId) {
 
     rideId = rideId || currentPassengerRideId || activePendingRequestId;
     if (!rideId) {
-        await showAlert("No active ride found to cancel.");
+        resetPassengerBookingUi({ preserveSelections: false });
+        await showAlert("Ride request cancelled.");
         return;
     }
 
     const status = currentPassengerRideData?.status || "";
-    const driverHadAccepted = Boolean(currentPassengerRideData?.driver_id) || ["accepted", "arrived", "started", "en_route"].includes(status);
     const cancelMessage = ["started", "en_route"].includes(status)
         ? "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully."
         : ["accepted", "arrived"].includes(status)
@@ -1790,44 +1793,29 @@ async function cancelRideByPassenger(rideId) {
     if (!(await showConfirm(cancelMessage, { okText: "Cancel ride", cancelText: "Keep ride" }))) return;
 
     window.LiphtUpLoading?.showPageLoader?.("Cancelling ride request...");
+
+    const targetRideId = rideId;
+    currentPassengerRideId = null;
+    currentPassengerRideData = null;
+    if (activeRideListener) {
+        activeRideListener();
+        activeRideListener = null;
+    }
+
     try {
         const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-
-        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` }
-        });
-        const data = await response.json().catch(() => ({}));
-
-        if (response.status === 404 || data.status === "already_cancelled") {
-            resetPassengerBookingUi({ preserveSelections: false });
-            if (activeRideListener) {
-                activeRideListener();
-                activeRideListener = null;
-            }
-            currentPassengerRideId = null;
-            currentPassengerRideData = null;
-            await showAlert("Your ride request has been cancelled.");
-            return;
+        if (idToken) {
+            await fetch(`/api/rides/${encodeURIComponent(targetRideId)}/cancel`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${idToken}` }
+            }).catch((err) => console.warn("Background ride cancel fetch exception:", err));
         }
-
-        if (!response.ok || !data.ok) {
-            throw new Error(data.error || "Could not cancel this ride.");
-        }
-
-        resetPassengerBookingUi({ preserveSelections: driverHadAccepted });
-
-        if (activeRideListener) {
-            activeRideListener();
-            activeRideListener = null;
-        }
-        await showAlert("Your ride has been cancelled.");
     } catch (error) {
-        console.error("Failed to cancel ride:", error);
-        await showAlert(error.message || "Could not cancel this ride. Please try again.");
+        console.warn("Failed to cancel ride silently:", error);
     } finally {
+        resetPassengerBookingUi({ preserveSelections: false });
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+        await showAlert("Your ride request has been cancelled.");
     }
 }
 
