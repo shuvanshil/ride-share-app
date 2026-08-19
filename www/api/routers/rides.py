@@ -707,14 +707,29 @@ async def create_passenger_ride(
 
         @fb_firestore.transactional
         def create_transaction(tx):
-            active_query = (
+            # Only block if there is a ride already accepted or ongoing with an assigned driver
+            ongoing_query = (
                 db.collection("rides")
                 .where("passenger_id", "==", uid)
-                .where("status", "in", list(ACTIVE_PASSENGER_STATUSES))
+                .where("status", "in", ["accepted", "arrived", "started", "en_route"])
                 .limit(1)
             )
-            if list(active_query.stream(transaction=tx)):
-                raise ApiError("You already have an active ride request or an ongoing trip.", 409)
+            if list(ongoing_query.stream(transaction=tx)):
+                raise ApiError("You already have an ongoing trip with a driver.", 409)
+
+            # Auto-cancel any unaccepted searching/pending ride documents for this passenger
+            unaccepted_query = (
+                db.collection("rides")
+                .where("passenger_id", "==", uid)
+                .where("status", "in", ["pending", "searching", "dispatching"])
+            )
+            for old_doc in unaccepted_query.stream(transaction=tx):
+                tx.update(old_doc.reference, {
+                    "status": "cancelled_by_passenger",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+
             tx.set(ride_ref, ride_data)
 
         ride_data = {
@@ -2163,6 +2178,30 @@ def _match_pending_requests_for_driver(
         drop = data.get("drop") or data.get("dropoff") or {}
         d_lat = drop.get("lat") or p_lat
         d_lng = drop.get("lng") or p_lng
+
+        if mode in {"notify_only", "notify"}:
+            doc.reference.update({
+                "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+            _log_demand_event(db, "pending_matched_notify", {
+                "requestId": req_id,
+                "passengerId": passenger_id,
+                "driverId": driver_id,
+                "distanceKm": distance_km,
+            })
+            _send_passenger_push_and_inapp(
+                db,
+                passenger_id,
+                "Driver Available Nearby!",
+                f"An approved driver is now available near {pickup.get('name', 'your location')}. Tap to search now!",
+                {
+                    "url": f"{APP_BASE_URL}/services?restorePending={req_id}",
+                    "type": "pending_driver_available",
+                    "requestId": req_id,
+                }
+            )
+            continue
 
         if mode == "schedule":
             # Schedule mode: only search AFTER scheduled activation time
