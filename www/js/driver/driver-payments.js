@@ -107,10 +107,19 @@ function renderPaymentUI(data) {
     // Render Status Badges
     renderStatusBadge(document.getElementById('current-week-status-badge'), currentStatus);
     renderStatusBadge(document.getElementById('overall-status-badge'), currentStatus);
+    renderStatusBadge(document.getElementById('stat-status-pill'), currentStatus);
 
     // Render Stats
     const dueDateEl = document.getElementById('current-due-date');
-    if (dueDateEl) dueDateEl.innerText = isPaused ? 'Paused' : (weekInfo.deadlineFormatted || '--');
+    if (dueDateEl) {
+        if (isPaused) {
+            dueDateEl.innerText = 'Paused';
+        } else if (weekInfo.deadlineFormatted) {
+            dueDateEl.innerText = weekInfo.deadlineFormatted.replace(', ', '\n');
+        } else {
+            dueDateEl.innerText = '--';
+        }
+    }
 
     // Render Time Remaining
     if (isPaused) {
@@ -138,13 +147,14 @@ function renderPaymentUI(data) {
     } else {
         if (pauseBanner) pauseBanner.classList.add('d-none');
         if (topBanner) {
+            const titleEl = document.getElementById('payments-banner-title');
             if (currentStatus === 'overdue') {
-                topBanner.className = 'payments-notice-banner overdue';
-                document.getElementById('payments-banner-text').innerText = '⚠️ Payment Overdue: Please pay ₹20 now to avoid ride dispatch suspension.';
+                topBanner.className = 'payments-top-notice pause';
+                if (titleEl) titleEl.innerText = '⚠️ Payment Overdue: Please pay ₹20 now to avoid ride dispatch suspension.';
                 topBanner.classList.remove('d-none');
             } else if (currentStatus === 'due') {
-                topBanner.className = 'payments-notice-banner';
-                document.getElementById('payments-banner-text').innerText = `Pay your weekly fee of ₹20 by ${weekInfo.deadlineFormatted || 'Sunday 12:00 PM'} to continue receiving ride requests.`;
+                topBanner.className = 'payments-top-notice';
+                if (titleEl) titleEl.innerText = `Pay your weekly fee of ₹20 by ${weekInfo.deadlineFormatted || 'Sunday 12:00 PM'}`;
                 topBanner.classList.remove('d-none');
             } else {
                 topBanner.classList.add('d-none');
@@ -154,6 +164,7 @@ function renderPaymentUI(data) {
 
     // Render Status Info Box
     const infoBox = document.getElementById('current-status-info-box');
+    const infoTitle = document.getElementById('current-status-info-title');
     const infoText = document.getElementById('current-status-info-text');
     const overallDesc = document.getElementById('overall-status-desc');
 
@@ -161,28 +172,34 @@ function renderPaymentUI(data) {
         infoBox.className = 'payments-info-box';
         if (isPaused) {
             infoBox.classList.add('approved');
+            if (infoTitle) infoTitle.innerText = 'Weekly Payments Paused.';
             infoText.innerText = pauseMsg;
-            if (overallDesc) overallDesc.innerText = 'Weekly payments are paused by administration. No fee is due.';
+            if (overallDesc) overallDesc.innerHTML = 'Weekly payments are paused by administration.<br>No fee is due during this period.';
         } else if (currentStatus === 'submitted') {
             infoBox.classList.add('submitted');
+            if (infoTitle) infoTitle.innerText = 'Payment Under Verification.';
             infoText.innerText = 'Your payment for this week has been submitted and is currently under verification by the Ride Share Accounts team.';
-            if (overallDesc) overallDesc.innerText = 'Payment submitted — awaiting manual verification by accounts team.';
+            if (overallDesc) overallDesc.innerHTML = 'Payment submitted — awaiting verification.<br>Accounts team is reviewing your payment.';
         } else if (currentStatus === 'approved') {
             infoBox.classList.add('approved');
+            if (infoTitle) infoTitle.innerText = 'Weekly Fee Paid & Verified.';
             infoText.innerText = 'Your weekly fee payment of ₹20 has been verified and approved. You are active to receive ride requests.';
-            if (overallDesc) overallDesc.innerText = 'Your weekly payment is verified and active.';
+            if (overallDesc) overallDesc.innerHTML = 'Weekly payment is verified and active.<br>You are ready to accept ride requests.';
         } else if (currentStatus === 'declined') {
             infoBox.classList.add('declined');
             const reason = activeSub?.declineReason ? ` Reason: ${activeSub.declineReason}` : '';
+            if (infoTitle) infoTitle.innerText = 'Payment Submission Declined.';
             infoText.innerText = `Your previous payment submission was declined.${reason} Please scan the QR code and pay again.`;
-            if (overallDesc) overallDesc.innerText = 'Payment declined. Replacement payment required.';
+            if (overallDesc) overallDesc.innerHTML = 'Payment declined.<br>Replacement payment required.';
         } else if (currentStatus === 'overdue') {
             infoBox.classList.add('declined');
+            if (infoTitle) infoTitle.innerText = 'Payment Overdue!';
             infoText.innerText = 'Your payment deadline has passed. Please pay the weekly fee of ₹20 immediately to continue accepting rides.';
-            if (overallDesc) overallDesc.innerText = 'Payment overdue. Please complete payment now.';
+            if (overallDesc) overallDesc.innerHTML = 'Payment overdue.<br>Please complete payment now to continue.';
         } else {
-            infoText.innerText = 'Your payment for this week is due. Please pay before Sunday 12:00 PM to avoid any interruptions.';
-            if (overallDesc) overallDesc.innerText = 'You haven\'t paid for this week yet.';
+            if (infoTitle) infoTitle.innerText = 'Your payment for this week is due.';
+            infoText.innerText = 'Please pay before Sunday 12:00 PM to avoid any interruptions.';
+            if (overallDesc) overallDesc.innerHTML = 'You haven\'t paid for this week yet.<br>Complete the payment to keep receiving ride requests.';
         }
     }
 

@@ -375,10 +375,11 @@ def admin_set_pause_settings(
     doc_ref.set(payload, merge=True)
 
     write_audit_log(
+        admin_user=admin_user,
         action="driver_payment_pause_updated",
-        performed_by=admin_email,
-        target_id="systemSettings/driverPaymentPause",
-        details=payload,
+        target_type="systemSettings",
+        target_id="driverPaymentPause",
+        after=payload,
     )
 
     return {"ok": True, "message": "Payment pause settings updated successfully.", "pauseConfig": _get_pause_config(db)}
@@ -408,10 +409,11 @@ def admin_clear_pause_settings(
     doc_ref.set(payload, merge=True)
 
     write_audit_log(
+        admin_user=admin_user,
         action="driver_payment_pause_cleared",
-        performed_by=admin_email,
-        target_id="systemSettings/driverPaymentPause",
-        details=payload,
+        target_type="systemSettings",
+        target_id="driverPaymentPause",
+        after=payload,
     )
 
     return {"ok": True, "message": "Weekly payment pause ended. Normal payment schedule resumed.", "pauseConfig": _get_pause_config(db)}
@@ -477,11 +479,12 @@ def admin_record_manual_payment(
     doc_ref.set(payload, merge=True)
 
     write_audit_log(
+        admin_user=admin_user,
         action="driver_payment_manual_recorded",
-        performed_by=admin_email,
-        target_id=driver_uid,
-        details={
-            "paymentId": doc_ref.id,
+        target_type="driverPayments",
+        target_id=doc_ref.id,
+        after={
+            "driverId": driver_uid,
             "weekId": target_week_id,
             "amount": body.amount,
             "paymentMethod": body.paymentMethod,
@@ -523,14 +526,12 @@ def admin_approve_driver_payment(
     doc_ref.update(updates)
 
     write_audit_log(
+        admin_user=admin_user,
         action="driver_payment_approved",
-        performed_by=admin_email,
-        target_id=payment_data.get("driverId", ""),
-        details={
-            "paymentId": payment_id,
-            "weekId": payment_data.get("weekId"),
-            "amount": payment_data.get("amount"),
-        },
+        target_type="driverPayments",
+        target_id=payment_id,
+        before=payment_data,
+        after=updates,
     )
 
     updated_data = {**payment_data, **updates}
@@ -572,14 +573,13 @@ def admin_decline_driver_payment(
     doc_ref.update(updates)
 
     write_audit_log(
+        admin_user=admin_user,
         action="driver_payment_declined",
-        performed_by=admin_email,
-        target_id=payment_data.get("driverId", ""),
-        details={
-            "paymentId": payment_id,
-            "weekId": payment_data.get("weekId"),
-            "declineReason": decline_reason,
-        },
+        target_type="driverPayments",
+        target_id=payment_id,
+        before=payment_data,
+        after=updates,
+        notes=decline_reason,
     )
 
     updated_data = {**payment_data, **updates}
