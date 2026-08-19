@@ -1539,7 +1539,7 @@ def accept_driver_ride(
                 "driver_id": uid,
                 "driver_name": str(profile.get("name") or "Driver")[:80],
                 "driver_phone": str(profile.get("phone") or "")[:40],
-                "driver_profile_photo": str(profile.get("profilePhotoUrl") or "")[:1500],
+                "driver_profile_photo": str(profile.get("profilePhotoUrl") or "")[:500000],
                 "vehicle_model": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Vehicle")[:100],
                 "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
                 "vehicle_type": driver_type,

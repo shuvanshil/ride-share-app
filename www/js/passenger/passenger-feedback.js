@@ -618,8 +618,5 @@ if (document.readyState === 'loading') {
     _initMiniBannerEvents();
 }
 
-// ---------------------------------------------------------------------------
-// Expose public API
-// ---------------------------------------------------------------------------
-
 window.LiphtUpFeedback = { schedulePrompt };
+export { schedulePrompt };

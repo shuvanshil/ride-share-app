@@ -69,17 +69,29 @@ function getInitials(name) {
         .map((part) => part[0]?.toUpperCase() || "")
         .join("") || "G";
 }
-
 function renderAvatar(container, name, photoUrl) {
     container.replaceChildren();
 
-    if (!photoUrl) {
+    let validUrl = "";
+    if (typeof photoUrl === 'string') {
+        const clean = photoUrl.trim();
+        if (clean.startsWith('http://') || clean.startsWith('https://')) {
+            validUrl = clean;
+        } else if (clean.startsWith('data:image/')) {
+            const commaIdx = clean.indexOf(',');
+            if (commaIdx > 0 && (clean.length - commaIdx) > 500) {
+                validUrl = clean;
+            }
+        }
+    }
+
+    if (!validUrl) {
         container.innerText = getInitials(name);
         return;
     }
 
     const photo = document.createElement('img');
-    photo.src = photoUrl;
+    photo.src = validUrl;
     photo.alt = `${name || "LiphtUp user"} profile photo`;
     photo.addEventListener('error', () => {
         container.replaceChildren();

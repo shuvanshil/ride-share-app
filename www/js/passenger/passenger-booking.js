@@ -118,15 +118,28 @@ function setupSideDrawer(profile) {
 
     // Update profile images: prioritize the custom profilePhotoUrl from Firestore,
     // then fall back to standard Firebase auth fields.
-    const photoUrl = profile.profilePhotoUrl || profile.photoURL || profile.avatarUrl || "";
-    if (photoUrl) {
+    const rawPhotoUrl = profile.profilePhotoUrl || profile.photoURL || profile.avatarUrl || "";
+    let validPhotoUrl = "";
+    if (typeof rawPhotoUrl === 'string') {
+        const clean = rawPhotoUrl.trim();
+        if (clean.startsWith('http://') || clean.startsWith('https://')) {
+            validPhotoUrl = clean;
+        } else if (clean.startsWith('data:image/')) {
+            const commaIdx = clean.indexOf(',');
+            if (commaIdx > 0 && (clean.length - commaIdx) > 500) {
+                validPhotoUrl = clean;
+            }
+        }
+    }
+
+    if (validPhotoUrl) {
         if (headerImg) {
-            headerImg.src = photoUrl;
+            headerImg.src = validPhotoUrl;
             headerImg.style.display = 'block';
             if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'none';
         }
         if (drawerImg) {
-            drawerImg.src = photoUrl;
+            drawerImg.src = validPhotoUrl;
             drawerImg.style.display = 'block';
             if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'none';
         }

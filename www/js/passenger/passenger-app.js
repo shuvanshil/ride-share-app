@@ -13,6 +13,7 @@ import { calculateServiceFare, getServiceFarePolicy } from '../shared/fare-polic
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { share, copyToClipboard } from '../platform/share.js';
 import { getCurrentPosition } from '../platform/geolocation.js';
+import { schedulePrompt as triggerRideFeedback } from './passenger-feedback.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -563,8 +564,8 @@ function showTripProgressPanel(ride) {
 
     const driverBox = document.getElementById('trip-progress-driver');
     if (driverBox) {
-        // Use a generic SVG placeholder if no photo is available to avoid 404s
-        const avatarSrc = driverPhoto || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239CA3AF'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+        // Use sanitized avatar src or SVG placeholder to avoid net::ERR_INVALID_URL
+        const avatarSrc = sanitizeAvatarSrc(driverPhoto);
 
         driverBox.innerHTML = `
             <div class="driver-avatar-wrap">
@@ -1765,8 +1766,14 @@ function listenToRideStatusUpdates(rideId) {
             renderFareAdjustmentNote('passenger-fare-note', ride);
 
             // Directly trigger ride feedback prompt (shows Screen 1 Thank You popup)
-            if (window.LiphtUpFeedback?.schedulePrompt) {
-                window.LiphtUpFeedback.schedulePrompt(rideId, ride);
+            try {
+                if (typeof triggerRideFeedback === 'function') {
+                    triggerRideFeedback(rideId, ride);
+                } else if (window.LiphtUpFeedback?.schedulePrompt) {
+                    window.LiphtUpFeedback.schedulePrompt(rideId, ride);
+                }
+            } catch (fbErr) {
+                console.error('[feedback] Failed to schedule feedback prompt:', fbErr);
             }
             
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
