@@ -1759,13 +1759,12 @@ function listenToRideStatusUpdates(rideId) {
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
             const finalFare = ride.fare || "0.00";
-            document.getElementById('passenger-payment-view').classList.remove('d-none');
+            // Keep old receipt card hidden — replaced by the new Ride Feedback popup (Screen 1 in mockup)
+            document.getElementById('passenger-payment-view').classList.add('d-none');
             document.getElementById('passenger-final-fare').innerText = formatFareAmount(finalFare);
             renderFareAdjustmentNote('passenger-fare-note', ride);
 
-            // Trigger ride feedback prompt — injected into the payment receipt card.
-            // schedulePrompt() checks ride.feedback.submitted before showing anything,
-            // so calling it here is safe even if feedback was previously submitted.
+            // Directly trigger ride feedback prompt (shows Screen 1 Thank You popup)
             if (window.LiphtUpFeedback?.schedulePrompt) {
                 window.LiphtUpFeedback.schedulePrompt(rideId, ride);
             }

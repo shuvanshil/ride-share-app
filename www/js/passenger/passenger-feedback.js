@@ -148,61 +148,8 @@ function schedulePrompt(rideId, rideData) {
     _feedbackSubmitted = false;
     _dismissed = false;
 
-    // Inject "Rate your experience" / "Maybe later" into the receipt card
-    _injectReceiptButtons();
-}
-
-// ---------------------------------------------------------------------------
-// Receipt card injection (Step 1 — thank you)
-// ---------------------------------------------------------------------------
-
-function _injectReceiptButtons() {
-    // The payment receipt already has a "Book Again" button (#close-passenger-payment-btn).
-    // We replace it with a "Rate your experience" CTA and a "Maybe later" link.
-    const existingBtn = document.getElementById('close-passenger-payment-btn');
-    if (!existingBtn) return;
-
-    // Avoid double-injection
-    if (document.getElementById('fb-rate-now-btn')) return;
-
-    const rateBtn = document.createElement('button');
-    rateBtn.id = 'fb-rate-now-btn';
-    rateBtn.className = 'fb-rate-btn';
-    rateBtn.type = 'button';
-    rateBtn.textContent = 'Rate your experience';
-
-    const laterBtn = document.createElement('button');
-    laterBtn.id = 'fb-maybe-later-btn';
-    laterBtn.className = 'fb-maybe-later-btn';
-    laterBtn.type = 'button';
-    laterBtn.textContent = 'Maybe later';
-
-    // Insert before the existing "Book Again" button (keep it hidden)
-    existingBtn.style.display = 'none';
-    existingBtn.parentNode.insertBefore(rateBtn, existingBtn);
-    existingBtn.parentNode.insertBefore(laterBtn, existingBtn);
-
-    rateBtn.addEventListener('click', () => {
-        _closePaymentView();
-        _openFeedbackModal('step-exp');
-    });
-
-    laterBtn.addEventListener('click', () => {
-        _closePaymentViewAndMinimize();
-    });
-}
-
-function _closePaymentView() {
-    const view = document.getElementById('passenger-payment-view');
-    if (view) view.classList.add('d-none');
-    // Restore "Book Again" button so it works if they close feedback
-    const existingBtn = document.getElementById('close-passenger-payment-btn');
-    if (existingBtn) existingBtn.style.display = '';
-}
-
-function _closePaymentViewAndMinimize() {
-    _closePaymentView();
-    _showMinimizedBanner();
+    // Directly open feedback modal starting at Step 1 (Thank You popup)
+    _openFeedbackModal('step-thankyou');
 }
 
 // ---------------------------------------------------------------------------
@@ -232,11 +179,11 @@ function _initMiniBannerEvents() {
     if (!banner || banner.dataset.fbEventsInit) return;
     banner.dataset.fbEventsInit = '1';
 
-    // Clicking the banner body reopens feedback
+    // Clicking the banner body reopens feedback at experience or reasons step
     banner.addEventListener('click', (e) => {
         if (e.target.closest('.fb-minimized-close')) return; // handled below
         _hideMinimizedBanner();
-        _openFeedbackModal('step-exp');
+        _openFeedbackModal(_selectedExp ? 'step-reasons' : 'step-exp');
     });
 
     // The small × inside the banner permanently dismisses it this session
@@ -265,7 +212,7 @@ function _openFeedbackModal(startStep) {
     const modal = _getOrCreateModal();
     if (!modal) return;
 
-    _renderModal(modal, startStep || 'step-exp');
+    _renderModal(modal, startStep || 'step-thankyou');
     modal.classList.remove('d-none');
     // Trap focus inside modal for accessibility
     _trapFocus(modal);
@@ -282,10 +229,24 @@ function _renderModal(modal, step) {
         <div class="fb-card" role="dialog" aria-modal="true" aria-label="Ride feedback">
             <div class="fb-card-scroll">
 
-                <!-- Step: Choose experience -->
-                <div id="fb-step-exp" class="fb-step${step === 'step-exp' ? ' fb-active' : ''}">
+                <!-- Step 1: Thank you popup (Screen 1 in mockup) -->
+                <div id="fb-step-thankyou" class="fb-step${step === 'step-thankyou' ? ' fb-active' : ''}">
                     <div class="fb-header">
                         <button class="fb-back-btn d-invisible" type="button" aria-label="Back">&#8592;</button>
+                        <button class="fb-close-btn" id="fb-close-thankyou" type="button" aria-label="Close feedback">&times;</button>
+                    </div>
+                    <img src="/assets/icons/webicons/feedback-thankyou-illustration.svg"
+                         class="fb-illustration" alt="" aria-hidden="true" width="96" height="96" style="width:96px;height:96px;margin-bottom:16px;">
+                    <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">Thank you<br>for riding with us! 💚</h2>
+                    <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">We hope you had a great ride.<br>Please share your experience.</p>
+                    <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button">Rate your experience</button>
+                    <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button">Maybe later</button>
+                </div>
+
+                <!-- Step 2: Choose experience (Screen 2 in mockup) -->
+                <div id="fb-step-exp" class="fb-step${step === 'step-exp' ? ' fb-active' : ''}">
+                    <div class="fb-header">
+                        <button class="fb-back-btn" id="fb-back-exp" type="button" aria-label="Back">&#8592;</button>
                         <button class="fb-close-btn" id="fb-close-exp" type="button" aria-label="Close feedback">&times;</button>
                     </div>
                     <img src="/assets/icons/webicons/feedback-loved.svg" class="fb-illustration" alt="" aria-hidden="true">
@@ -384,17 +345,33 @@ function _goToStep(modal, stepId) {
 }
 
 function _bindModalEvents(modal) {
-    // Close buttons
-    modal.querySelector('#fb-close-exp')?.addEventListener('click', () => {
+    // Step 1 (Thank You) buttons
+    modal.querySelector('#fb-close-thankyou')?.addEventListener('click', () => {
         _closeFeedbackModal();
         _showMinimizedBanner();
     });
-    modal.querySelector('#fb-close-reasons')?.addEventListener('click', () => {
+    modal.querySelector('#fb-thankyou-rate-btn')?.addEventListener('click', () => {
+        _goToStep(modal, 'step-exp');
+    });
+    modal.querySelector('#fb-thankyou-later-btn')?.addEventListener('click', () => {
         _closeFeedbackModal();
         _showMinimizedBanner();
     });
 
-    // Back button (reasons → experience)
+    // Step 2 (Choose Experience) buttons
+    modal.querySelector('#fb-close-exp')?.addEventListener('click', () => {
+        _closeFeedbackModal();
+        _showMinimizedBanner();
+    });
+    modal.querySelector('#fb-back-exp')?.addEventListener('click', () => {
+        _goToStep(modal, 'step-thankyou');
+    });
+
+    // Step 3 (Select Reasons) buttons
+    modal.querySelector('#fb-close-reasons')?.addEventListener('click', () => {
+        _closeFeedbackModal();
+        _showMinimizedBanner();
+    });
     modal.querySelector('#fb-back-reasons')?.addEventListener('click', () => {
         _goToStep(modal, 'step-exp');
     });
