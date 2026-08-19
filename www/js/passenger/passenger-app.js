@@ -1760,12 +1760,15 @@ function listenToRideStatusUpdates(rideId) {
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
             const finalFare = ride.fare || "0.00";
-            // Keep old receipt card hidden — replaced by the new Ride Feedback popup (Screen 1 in mockup)
-            document.getElementById('passenger-payment-view').classList.add('d-none');
-            document.getElementById('passenger-final-fare').innerText = formatFareAmount(finalFare);
+            // Display Thank You feedback card (using the exact same trigger logic as the previous completed card)
+            const paymentView = document.getElementById('passenger-payment-view');
+            if (paymentView) paymentView.classList.remove('d-none');
+            
+            const fareEl = document.getElementById('passenger-final-fare');
+            if (fareEl) fareEl.innerText = formatFareAmount(finalFare);
             renderFareAdjustmentNote('passenger-fare-note', ride);
 
-            // Directly trigger ride feedback prompt (shows Screen 1 Thank You popup)
+            // Directly trigger ride feedback prompt (binds step events and prepares flow)
             try {
                 if (typeof triggerRideFeedback === 'function') {
                     triggerRideFeedback(rideId, ride);

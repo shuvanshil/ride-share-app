@@ -27,6 +27,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=20260813-v5">
+    <link rel="stylesheet" href="css/passenger/feedback.css">
 </head>
 <body>
     <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
@@ -479,15 +480,23 @@
             </nav>
         </main>
 
-        <div id="passenger-payment-view" class="modal-layer d-none">
-            <div class="receipt-card">
-                <button id="passenger-payment-close-btn" class="modal-close-btn" type="button" aria-label="Close ride completed popup">×</button>
-                <div class="success-mark">✓</div>
-                <h4>Ride Completed</h4>
-                <p>Your LiphtUp trip has ended safely.</p>
-                <div class="price-total" id="passenger-final-fare">₹0.00</div>
-                <div class="paid-badge">Payment confirmed ✓</div>
-                <button id="close-passenger-payment-btn" class="gy-btn gy-btn-primary w-100">Book Again</button>
+        <!-- ===== Ride Feedback Modal (Replaces old Book Again receipt card) ===== -->
+        <div id="passenger-payment-view" class="modal-layer d-none" aria-live="assertive">
+            <div class="fb-card" role="dialog" aria-modal="true" aria-label="Ride feedback">
+                <div class="fb-card-scroll">
+                    <div id="fb-step-thankyou" class="fb-step fb-active">
+                        <div class="fb-header">
+                            <button class="fb-back-btn d-invisible" type="button" aria-label="Back">&#8592;</button>
+                            <button class="fb-close-btn" id="passenger-payment-close-btn" type="button" aria-label="Close feedback">&times;</button>
+                        </div>
+                        <img src="assets/icons/webicons/feedback-thankyou-illustration.svg"
+                             class="fb-illustration" alt="" aria-hidden="true" width="96" height="96" style="width:96px;height:96px;margin-bottom:16px;">
+                        <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">Thank you<br>for riding with us! 💚</h2>
+                        <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">We hope you had a great ride.<br>Please share your experience.</p>
+                        <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button">Rate your experience</button>
+                        <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button">Maybe later</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -501,6 +510,25 @@
             </div>
         </div>
 
+        <!-- ===== Feedback Minimized Banner ===== -->
+        <div id="feedback-minimized-banner" class="fb-minimized-banner d-none" role="complementary" aria-label="Pending ride feedback">
+            <div class="fb-minimized-inner">
+                <div class="fb-minimized-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="#1A7A2E" opacity="0.2"/>
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <path d="M12 8v4M12 16h.01" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <div class="fb-minimized-text">
+                    <strong>How was your ride?</strong>
+                    <span>We'd love your feedback</span>
+                </div>
+            </div>
+            <span class="fb-minimized-chevron" aria-hidden="true">&#8964;</span>
+            <button class="fb-minimized-close" type="button" aria-label="Dismiss feedback prompt">&times;</button>
+        </div>
+
     </div>
 
     <script type="module" src="js/platform/firebase-init.js"></script>
@@ -510,6 +538,7 @@
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
     <script type="module" src="js/passenger/passenger-app.js?v=2.3.0"></script>
     <script type="module" src="js/shared/services.js?v=2.0.0"></script>
+    <script type="module" src="js/passenger/passenger-feedback.js"></script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

@@ -220,22 +220,23 @@
         </div>
     </div>
 
-    <div id="passenger-payment-view" class="modal-layer d-none">
-        <div class="receipt-card">
-            <button id="passenger-payment-close-btn" class="modal-close-btn" type="button" aria-label="Close ride completed popup">×</button>
-            <div class="success-mark">OK</div>
-            <h4>Ride Completed</h4>
-            <p>Your LiphtUp trip has ended safely.</p>
-            <div class="receipt-table">
-                <div><span>From</span><strong>Pickup location</strong></div>
-                <div><span>To</span><strong>Drop location</strong></div>
-                <div><span>Distance</span><strong>8.2 km</strong></div>
-                <div><span>Duration</span><strong>18 mins</strong></div>
+    <!-- ===== Ride Feedback Modal (Replaces old Book Again receipt card) ===== -->
+    <div id="passenger-payment-view" class="modal-layer d-none" aria-live="assertive">
+        <div class="fb-card" role="dialog" aria-modal="true" aria-label="Ride feedback">
+            <div class="fb-card-scroll">
+                <div id="fb-step-thankyou" class="fb-step fb-active">
+                    <div class="fb-header">
+                        <button class="fb-back-btn d-invisible" type="button" aria-label="Back">&#8592;</button>
+                        <button class="fb-close-btn" id="passenger-payment-close-btn" type="button" aria-label="Close feedback">&times;</button>
+                    </div>
+                    <img src="assets/icons/webicons/feedback-thankyou-illustration.svg"
+                         class="fb-illustration" alt="" aria-hidden="true" width="96" height="96" style="width:96px;height:96px;margin-bottom:16px;">
+                    <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">Thank you<br>for riding with us! 💚</h2>
+                    <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">We hope you had a great ride.<br>Please share your experience.</p>
+                    <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button">Rate your experience</button>
+                    <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button">Maybe later</button>
+                </div>
             </div>
-            <div class="price-total" id="passenger-final-fare">Rs 0.00</div>
-            <p id="passenger-fare-note" class="fare-adjustment-note d-none"></p>
-            <div class="paid-badge">Paid via UPI</div>
-            <button id="close-passenger-payment-btn" class="gy-btn gy-btn-primary w-100">Book Again</button>
         </div>
     </div>
 
@@ -266,12 +267,6 @@
     <script type="module" src="js/passenger/passenger-feedback.js"></script>
     <script src="js/shared/pwa.js" defer></script>
 
-    <!-- ===== Ride Feedback Modal ===== -->
-    <!-- The fb-card content is rendered dynamically by passenger-feedback.js.
-         This outer .modal-layer matches the existing pattern used by
-         #passenger-payment-view. It starts hidden and is shown after ride
-         completion when the passenger taps "Rate your experience". -->
-    <div id="feedback-modal-layer" class="modal-layer d-none" aria-live="assertive"></div>
 
     <!-- ===== Feedback Minimized Banner ===== -->
     <!-- Shown when passenger taps "Maybe later" or closes the receipt without

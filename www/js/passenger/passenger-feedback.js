@@ -202,8 +202,8 @@ function _initMiniBannerEvents() {
 // ---------------------------------------------------------------------------
 
 function _getOrCreateModal() {
-    if (_modalLayer) return _modalLayer;
-    _modalLayer = document.getElementById('feedback-modal-layer');
+    if (_modalLayer && document.body.contains(_modalLayer)) return _modalLayer;
+    _modalLayer = document.getElementById('passenger-payment-view') || document.getElementById('feedback-modal-layer');
     return _modalLayer;
 }
 
