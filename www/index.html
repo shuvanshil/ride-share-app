@@ -39,6 +39,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=20260809-merge-fix">
+    <link rel="stylesheet" href="css/passenger/feedback.css">
 
     <script type="application/ld+json">
     {
@@ -262,6 +263,37 @@
     <script type="module" src="js/passenger/passenger-app.js?v=2.3.0"></script>
     <script type="module" src="js/passenger/passenger-booking.js?v=2.0.0"></script>
     <script type="module" src="js/shared/auth.js?v=2.0.0"></script>
+    <script type="module" src="js/passenger/passenger-feedback.js"></script>
     <script src="js/shared/pwa.js" defer></script>
+
+    <!-- ===== Ride Feedback Modal ===== -->
+    <!-- The fb-card content is rendered dynamically by passenger-feedback.js.
+         This outer .modal-layer matches the existing pattern used by
+         #passenger-payment-view. It starts hidden and is shown after ride
+         completion when the passenger taps "Rate your experience". -->
+    <div id="feedback-modal-layer" class="modal-layer d-none" aria-live="assertive"></div>
+
+    <!-- ===== Feedback Minimized Banner ===== -->
+    <!-- Shown when passenger taps "Maybe later" or closes the receipt without
+         submitting feedback. Tapping it re-opens the modal. The small × inside
+         permanently dismisses it for the session. -->
+    <div id="feedback-minimized-banner" class="fb-minimized-banner d-none" role="complementary" aria-label="Pending ride feedback">
+        <div class="fb-minimized-inner">
+            <div class="fb-minimized-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="#1A7A2E" opacity="0.2"/>
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <path d="M12 8v4M12 16h.01" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <div class="fb-minimized-text">
+                <strong>How was your ride?</strong>
+                <span>We'd love your feedback</span>
+            </div>
+        </div>
+        <span class="fb-minimized-chevron" aria-hidden="true">&#8964;</span>
+        <button class="fb-minimized-close" type="button" aria-label="Dismiss feedback prompt">&times;</button>
+    </div>
+
 </body>
 </html>

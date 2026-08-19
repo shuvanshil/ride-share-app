@@ -203,8 +203,8 @@ function goToSection(name, filters = {}) {
 }
 
 $("driver-status-filter").addEventListener("change", () => loadDrivers(true));
-["history-status-filter", "history-vehicle-filter", "history-month-filter"].forEach((id) =>
-    $(id).addEventListener("change", () => loadHistory(true))
+["history-status-filter", "history-vehicle-filter", "history-feedback-filter", "history-month-filter"].forEach((id) =>
+    $(id)?.addEventListener("change", () => loadHistory(true))
 );
 $("history-day-filter").addEventListener("change", () => loadHistory(true));
 $("history-clear-date").addEventListener("click", () => {
@@ -666,6 +666,7 @@ function ensureHistoryTable() {
             { key: "passenger_id", label: "Passenger", sortable: false, render: (r) => (r.passenger_id || "").slice(0, 8) },
             { key: "route", label: "Route", render: (r) => `${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}` },
             { key: "fare", label: "Fare", sortable: true, render: (r) => `Rs ${r.fare || 0}` },
+            { key: "feedback", label: "Feedback", sortable: false, render: (r) => r.feedback?.submitted ? `<span class="badge bg-success" style="font-size:11px;padding:4px 7px;">Feedback &#10003;</span>` : `<span class="text-muted" style="font-size:11px;">&mdash;</span>` },
             { key: "status", label: "Status", sortable: true, render: (r) => statusChip(r.status) },
         ],
     });
@@ -696,6 +697,11 @@ async function loadHistory(reset) {
     if (reset) cursors.history = null;
     const status = $("history-status-filter").value;
     const vehicleType = $("history-vehicle-filter").value;
+    const hasFeedbackVal = $("history-feedback-filter")?.value;
+    let hasFeedback = undefined;
+    if (hasFeedbackVal === "true") hasFeedback = true;
+    else if (hasFeedbackVal === "false") hasFeedback = false;
+
     const day = $("history-day-filter").value;
     const month = $("history-month-filter").value;
     let dateFrom, dateTo;
@@ -713,6 +719,7 @@ async function loadHistory(reset) {
         const data = await adminGet("/rides/history", {
             status: status || (dateFrom ? "all" : undefined),
             vehicleType,
+            hasFeedback,
             dateFrom,
             dateTo,
             cursor: reset ? null : cursors.history,
@@ -734,7 +741,29 @@ function openRideDrawer(ride) {
     ].filter(([, ts]) => ts);
 
     const notes = Array.isArray(ride.adminNotes) ? ride.adminNotes : [];
+
+    let feedbackHtml = "";
+    if (ride.feedback && ride.feedback.submitted) {
+        const expMap = {
+            poor: "🔴 Poor",
+            decent: "🟠 Decent",
+            good: "🟢 Good",
+            loved: "🟢 Loved it!"
+        };
+        const expLabel = expMap[ride.feedback.experience] || ride.feedback.experience;
+        const reasonsList = (ride.feedback.reasons || [])
+            .map(r => r.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()))
+            .join(", ");
+        feedbackHtml = `
+            <h4 class="admin-drawer-subsection" style="color:var(--gy-green);">Ride Feedback</h4>
+            ${detailRow("Experience", expLabel)}
+            ${detailRow("What passenger mentioned", escapeHtml(reasonsList || "None selected"))}
+        `;
+    }
+
     const html = `
+        ${feedbackHtml}
+
         <h4 class="admin-drawer-subsection">Timeline</h4>
         ${timeline.length ? timeline.map(([label, ts]) => detailRow(label, formatTimestamp(ts))).join("") : `<p class="admin-empty-row">No timestamps recorded.</p>`}
 

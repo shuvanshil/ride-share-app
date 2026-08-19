@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Face circle -->
+  <circle cx="32" cy="32" r="30" fill="#EAF8ED" stroke="#1A7A2E" stroke-width="2.5"/>
+  <!-- Star eyes -->
+  <path d="M22 23 L23.2 26.4 L26.8 26.4 L24 28.6 L25.2 32 L22 29.8 L18.8 32 L20 28.6 L17.2 26.4 L20.8 26.4 Z" fill="#1A7A2E"/>
+  <path d="M42 23 L43.2 26.4 L46.8 26.4 L44 28.6 L45.2 32 L42 29.8 L38.8 32 L40 28.6 L37.2 26.4 L40.8 26.4 Z" fill="#1A7A2E"/>
+  <!-- Big open smile -->
+  <path d="M18 37 Q32 50 46 37" stroke="#1A7A2E" stroke-width="2.5" stroke-linecap="round" fill="#DCFCE7"/>
+  <!-- Rosy cheeks -->
+  <circle cx="15" cy="37" r="5" fill="#86EFAC" opacity="0.45"/>
+  <circle cx="49" cy="37" r="5" fill="#86EFAC" opacity="0.45"/>
+  <!-- Sparkle dots -->
+  <circle cx="54" cy="14" r="2" fill="#1A7A2E" opacity="0.6"/>
+  <circle cx="10" cy="12" r="1.5" fill="#22C55E" opacity="0.7"/>
+  <circle cx="58" cy="28" r="1.5" fill="#22C55E" opacity="0.6"/>
+</svg>

@@ -2642,3 +2642,136 @@ def log_client_demand_event(
         "metadata": body.metadata or {},
     })
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Ride Feedback (Feature: Passenger Feedback System)
+# ---------------------------------------------------------------------------
+
+VALID_EXPERIENCES = {"poor", "decent", "good", "loved"}
+MAX_FEEDBACK_REASONS = 3
+MAX_REASON_LENGTH = 80
+
+VALID_REASONS: dict[str, set[str]] = {
+    "poor": {
+        "driver_was_late", "driver_misbehaved", "driver_was_rude",
+        "unsafe_driving", "vehicle_issue", "bad_app_experience",
+        "app_glitches", "payment_issue", "booking_problem", "other",
+    },
+    "decent": {
+        "driver_was_late", "long_waiting_time", "vehicle_could_be_better",
+        "app_experience_could_improve", "booking_was_confusing",
+        "payment_issue", "route_destination_issue", "other",
+    },
+    "good": {
+        "friendly_driver", "smooth_ride", "quick_pickup", "easy_booking",
+        "good_vehicle", "good_app_experience", "fair_price", "easy_payment",
+    },
+    "loved": {
+        "excellent_driver", "very_smooth_ride", "quick_pickup",
+        "great_vehicle", "easy_booking", "great_app_experience",
+        "fair_price", "would_ride_again",
+    },
+}
+
+
+class RideFeedbackBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    experience: str = Field(..., description="One of: poor, decent, good, loved")
+    reasons: list[str] = Field(default_factory=list, description="Up to 3 secondary reason keys")
+
+
+@router.post("/{ride_id}/feedback")
+def submit_ride_feedback(
+    ride_id: str,
+    body: RideFeedbackBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Submit ride-level passenger feedback for a completed ride.
+
+    Feedback is stored as a nested ``feedback`` object on the ride document
+    (``rides/{rideId}.feedback``).  This is NOT a driver rating — no driver
+    profile is modified.
+
+    Rules:
+    - Ride must be in status ``completed``.
+    - Caller must be the ride's ``passenger_id``.
+    - Exactly one ``experience`` value must be supplied.
+    - Up to ``MAX_FEEDBACK_REASONS`` secondary ``reasons`` may be supplied.
+    - Reasons must be valid keys for the chosen experience level.
+    - A ride can only receive one feedback record — re-submission returns 409.
+    """
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authentication is required.", 401)
+
+    experience = str(body.experience or "").strip().lower()
+    if experience not in VALID_EXPERIENCES:
+        raise ApiError(
+            f"experience must be one of: {', '.join(sorted(VALID_EXPERIENCES))}.", 400
+        )
+
+    # Validate reasons
+    reasons: list[str] = []
+    seen: set[str] = set()
+    valid_for_exp = VALID_REASONS[experience]
+    for r in (body.reasons or []):
+        key = str(r or "").strip().lower()[:MAX_REASON_LENGTH]
+        if not key:
+            continue
+        if key not in valid_for_exp:
+            raise ApiError(f"reason '{key}' is not valid for experience '{experience}'.", 400)
+        if key in seen:
+            continue
+        seen.add(key)
+        reasons.append(key)
+        if len(reasons) >= MAX_FEEDBACK_REASONS:
+            break
+
+    clean_ride_id = str(ride_id or "").strip()
+    if not clean_ride_id:
+        raise ApiError("ride_id is required.", 400)
+
+    db = fb_firestore.client(get_admin_app())
+    ride_ref = db.collection("rides").document(clean_ride_id)
+
+    try:
+        snapshot = ride_ref.get()
+        if not snapshot.exists:
+            raise ApiError("Ride not found.", 404)
+
+        ride = snapshot.to_dict() or {}
+
+        # Authorisation: caller must be the passenger
+        if str(ride.get("passenger_id") or "") != uid:
+            raise ApiError("You are not authorised to submit feedback for this ride.", 403)
+
+        # State guard: ride must be completed
+        if ride.get("status") != "completed":
+            raise ApiError("Feedback can only be submitted for completed rides.", 409)
+
+        # Duplicate prevention
+        existing_feedback = ride.get("feedback") or {}
+        if existing_feedback.get("submitted") is True:
+            raise ApiError("Feedback has already been submitted for this ride.", 409)
+
+        # Store feedback as nested field on the ride document
+        feedback_payload: dict[str, Any] = {
+            "submitted": True,
+            "submittedAt": fb_firestore.SERVER_TIMESTAMP,
+            "experience": experience,
+            "reasons": reasons,
+            "passengerId": uid,
+            "driverId": str(ride.get("driver_id") or ""),
+            "rideId": clean_ride_id,
+        }
+
+        ride_ref.update({"feedback": feedback_payload})
+
+        return {"ok": True, "rideId": clean_ride_id}
+
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not submit feedback. Please try again.", 503)

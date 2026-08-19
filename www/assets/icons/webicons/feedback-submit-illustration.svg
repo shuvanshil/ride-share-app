@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none">
+  <!-- Clipboard background -->
+  <rect x="14" y="18" width="52" height="56" rx="6" fill="#EAF8ED" stroke="#1A7A2E" stroke-width="2"/>
+  <!-- Clipboard header -->
+  <rect x="27" y="12" width="26" height="12" rx="4" fill="#1A7A2E"/>
+  <!-- Check lines -->
+  <circle cx="26" cy="36" r="4" fill="#DCFCE7" stroke="#1A7A2E" stroke-width="1.5"/>
+  <path d="M23.5 36 L25.2 37.8 L28.5 34.2" stroke="#1A7A2E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="34" y="34" width="22" height="3" rx="1.5" fill="#1A7A2E" opacity="0.4"/>
+
+  <circle cx="26" cy="48" r="4" fill="#DCFCE7" stroke="#1A7A2E" stroke-width="1.5"/>
+  <path d="M23.5 48 L25.2 49.8 L28.5 46.2" stroke="#1A7A2E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="34" y="46" width="22" height="3" rx="1.5" fill="#1A7A2E" opacity="0.4"/>
+
+  <circle cx="26" cy="60" r="4" fill="#DCFCE7" stroke="#1A7A2E" stroke-width="1.5"/>
+  <rect x="34" y="58" width="16" height="3" rx="1.5" fill="#1A7A2E" opacity="0.25"/>
+
+  <!-- Spinner arc overlay (bottom-right) -->
+  <circle cx="64" cy="62" r="11" fill="white" stroke="#E7E7E7" stroke-width="1"/>
+  <path d="M64 53 A9 9 0 0 1 73 62" stroke="#1A7A2E" stroke-width="3" stroke-linecap="round"/>
+</svg>

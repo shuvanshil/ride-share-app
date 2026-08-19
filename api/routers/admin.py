@@ -717,6 +717,7 @@ def list_ride_history(
     passengerId: Optional[str] = Query(default=None),
     dateFrom: Optional[str] = Query(default=None, description="Inclusive, YYYY-MM-DD (UTC day)."),
     dateTo: Optional[str] = Query(default=None, description="Exclusive, YYYY-MM-DD (UTC day)."),
+    hasFeedback: Optional[bool] = Query(default=None, description="true=only rides with feedback, false=only rides without feedback"),
     cursor: Optional[str] = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
@@ -733,8 +734,19 @@ def list_ride_history(
     out entirely keeps the original default: completed/cancelled rides
     only. `dateFrom`/`dateTo` narrow to a day or a month (pass the first day
     of this month and the first day of next month) using UTC day
-    boundaries."""
+    boundaries.
+
+    `hasFeedback=true` uses a Firestore nested-field equality query
+    (``feedback.submitted == true``) which requires the composite index
+    in firestore.indexes.json. `hasFeedback=false` fetches matching rides and
+    filters in Python because Firestore cannot query for the *absence* of a
+    field -- this guarantees only rides that explicitly lack feedback are shown,
+    not rides where the field happens to be a non-True value."""
     limit = _clamp_limit(limit)
+    # When filtering by hasFeedback=false we need a larger page to account
+    # for Python-side filtering.  Cap at a safe server ceiling.
+    fetch_limit = limit if hasFeedback is not False else min(limit * 8, MAX_PAGE_SIZE * 8)
+
     base = _db().collection("rides")
     if status:
         if status in RIDE_STATUS_GROUPS:
@@ -757,9 +769,35 @@ def list_ride_history(
         base = base.where("createdAt", ">=", _day_range_utc(dateFrom, "dateFrom"))
     if dateTo:
         base = base.where("createdAt", "<", _day_range_utc(dateTo, "dateTo"))
+
+    # hasFeedback=True: Firestore nested-field filter (uses composite index)
+    if hasFeedback is True:
+        base = base.where("feedback.submitted", "==", True)
+
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
 
-    items, next_cursor = _paginate(base, cursor, limit, "rides")
+    if hasFeedback is False:
+        # Python-side filter: only rides where feedback.submitted is NOT True.
+        # This includes rides with no `feedback` field at all, or where it is
+        # False/missing — i.e. rides that genuinely have no feedback record.
+        # We fetch a larger batch and slice after filtering.
+        query = base.limit(fetch_limit)
+        if cursor:
+            cursor_snap = _db().collection("rides").document(cursor).get()
+            if cursor_snap.exists:
+                query = query.start_after(cursor_snap)
+        docs = _stream(query)
+        items = [_doc_dict(d) for d in docs]
+        items = [
+            r for r in items
+            if not ((r.get("feedback") or {}).get("submitted") is True)
+        ]
+        items = items[:limit]
+        has_more = len(items) == limit
+        next_cursor = items[-1]["id"] if has_more and items else None
+    else:
+        items, next_cursor = _paginate(base, cursor, limit, "rides")
+
     items = _backfill_driver_names(items)
     return {"ok": True, "rides": items, "nextCursor": next_cursor}
 
@@ -767,6 +805,7 @@ def list_ride_history(
 # ---------------------------------------------------------------------------
 # Analytics
 # ---------------------------------------------------------------------------
+
 
 @router.get("/analytics/rides-daily")
 def rides_daily(

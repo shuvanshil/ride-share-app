@@ -1762,9 +1762,17 @@ function listenToRideStatusUpdates(rideId) {
             document.getElementById('passenger-payment-view').classList.remove('d-none');
             document.getElementById('passenger-final-fare').innerText = formatFareAmount(finalFare);
             renderFareAdjustmentNote('passenger-fare-note', ride);
+
+            // Trigger ride feedback prompt — injected into the payment receipt card.
+            // schedulePrompt() checks ride.feedback.submitted before showing anything,
+            // so calling it here is safe even if feedback was previously submitted.
+            if (window.LiphtUpFeedback?.schedulePrompt) {
+                window.LiphtUpFeedback.schedulePrompt(rideId, ride);
+            }
             
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
         }
+
     }, (error) => {
         console.warn("Active ride listener error caught:", error);
     });
