@@ -1592,17 +1592,20 @@ function getTimestampMs(value) {
 }
 
 function isLiveDriverVisible(driver) {
-    const location = driver.driverLocation || {};
+    if (!driver) return false;
+    const location = driver.driverLocation || driver.location || {};
+    const lat = Number(location.lat);
+    const lng = Number(location.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+    if (driver.desiredAvailability === "offline" || driver.driverAvailability === "offline") return false;
+
     const lastLocationAt = getTimestampMs(driver.lastLocationAt || driver.lastSeenAt || driver.updatedAt);
     const hasFreshLocation = lastLocationAt > 0
         ? Date.now() - lastLocationAt <= DRIVER_LOCATION_VISIBLE_MS
-        : driver.isConnected === true;
+        : driver.isConnected !== false;
 
-    return driver.desiredAvailability !== "offline"
-        && driver.driverAvailability !== "offline"
-        && hasFreshLocation
-        && Number.isFinite(Number(location.lat))
-        && Number.isFinite(Number(location.lng));
+    return hasFreshLocation;
 }
 
 function upsertGlobalDriverMarker(driverId, driver) {

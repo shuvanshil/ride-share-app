@@ -341,6 +341,15 @@
                                 </p>
                                 <button id="pending-rebook-btn" class="gy-btn gy-btn-primary py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button">Yes!</button>
                             </div>
+                            <div id="pending-schedule-timeout-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
+                                <p style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 8px;">
+                                    No driver was found within 10 minutes of your scheduled time. Would you like to update your scheduled time by 15 minutes or cancel for now?
+                                </p>
+                                <div class="d-flex gap-2">
+                                    <button id="pending-extend-15min-btn" class="gy-btn gy-btn-primary py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button">+15 Min Update</button>
+                                    <button id="pending-timeout-cancel-btn" class="btn btn-outline-danger py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button">Cancel</button>
+                                </div>
+                            </div>
                         </div>
                     </section>
 

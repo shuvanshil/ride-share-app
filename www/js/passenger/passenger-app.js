@@ -1799,6 +1799,19 @@ async function cancelRideByPassenger(rideId) {
             headers: { Authorization: `Bearer ${idToken}` }
         });
         const data = await response.json().catch(() => ({}));
+
+        if (response.status === 404 || data.status === "already_cancelled") {
+            resetPassengerBookingUi({ preserveSelections: false });
+            if (activeRideListener) {
+                activeRideListener();
+                activeRideListener = null;
+            }
+            currentPassengerRideId = null;
+            currentPassengerRideData = null;
+            await showAlert("Your ride request has been cancelled.");
+            return;
+        }
+
         if (!response.ok || !data.ok) {
             throw new Error(data.error || "Could not cancel this ride.");
         }
@@ -1818,10 +1831,44 @@ async function cancelRideByPassenger(rideId) {
     }
 }
 
+async function reschedulePendingRequest15min() {
+    if (!activePendingRequestId) return;
+    window.LiphtUpLoading?.showPageLoader?.("Updating scheduled time...");
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+
+        const res = await fetch(`/api/rides/pending-request/${encodeURIComponent(activePendingRequestId)}/reschedule-15min`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+            }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            throw new Error(data.error || "Could not update scheduled time.");
+        }
+
+        const timeoutPrompt = document.getElementById('pending-schedule-timeout-prompt');
+        if (timeoutPrompt) timeoutPrompt.classList.add('d-none');
+
+        await showAlert("Scheduled time updated by +15 minutes!");
+    } catch (e) {
+        console.error("Reschedule 15min failed:", e);
+        await showAlert(e.message || "Could not update scheduled time.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
+
 
 // ==========================================
 // 4. GLOBAL UI EVENT LISTENERS
 // ==========================================
+
+addOptionalClickListener('pending-extend-15min-btn', () => reschedulePendingRequest15min());
+addOptionalClickListener('pending-timeout-cancel-btn', () => cancelPendingRideRequest());
 
 addOptionalClickListener('passenger-payment-close-btn', () => {
     document.getElementById('passenger-payment-view').classList.add('d-none');
@@ -2134,61 +2181,73 @@ function listenToPendingRequestUpdates(requestId) {
                 showAlert("Your waiting request has expired. No drivers became available in time.");
             }
         } else {
-            // Document status is still pending. Check for notify_only notification event.
-            if (data.lastNotifiedAt) {
+            const timeoutPrompt = document.getElementById('pending-schedule-timeout-prompt');
+            const availablePrompt = document.getElementById('pending-driver-available-prompt');
+
+            const isScheduledMode = data.mode === "schedule";
+            const actTimeMs = getTimestampMs(data.activatesAt);
+            const is10MinPast = isScheduledMode && actTimeMs > 0 && (Date.now() - actTimeMs >= 10 * 60 * 1000);
+            const isTimeout = isScheduledMode && (data.scheduleTimedOut === true || is10MinPast);
+
+            if (isTimeout && !data.lastNotifiedAt) {
+                const titleEl = document.getElementById('pending-mode-title');
+                const descEl = document.getElementById('pending-mode-desc');
+                if (titleEl) titleEl.innerText = "No Driver Found Near Scheduled Time";
+                if (descEl) descEl.innerText = "No driver was found within 10 minutes of your scheduled time. Would you like to update the time by 15 minutes or cancel?";
+
+                if (timeoutPrompt) timeoutPrompt.classList.remove('d-none');
+                if (availablePrompt) availablePrompt.classList.add('d-none');
+            } else if (data.lastNotifiedAt) {
                 const notifiedSec = data.lastNotifiedAt.seconds || data.lastNotifiedAt;
                 
                 if (lastKnownNotifiedAt !== undefined && notifiedSec !== lastKnownNotifiedAt) {
-                    // Play vibration and show browser notification
                     if (navigator.vibrate) {
                         try { navigator.vibrate([200, 100, 200]); } catch (e) {}
                     }
                     if (Notification.permission === "granted") {
                         try {
-                            new Notification("Driver Available Nearby", {
-                                body: "Driver availability has changed. Tap to search again!",
+                            new Notification(isScheduledMode ? "Driver Available for Scheduled Ride" : "Driver Available Nearby", {
+                                body: "A driver is available for your pickup. Tap to search now!",
                                 icon: "/assets/icons/liphtup-icon-192.png"
                             });
                         } catch (e) {
                             navigator.serviceWorker.ready.then(reg => {
-                                reg.showNotification("Driver Available Nearby", {
-                                    body: "Driver availability has changed. Tap to search again!",
+                                reg.showNotification(isScheduledMode ? "Driver Available for Scheduled Ride" : "Driver Available Nearby", {
+                                    body: "A driver is available for your pickup. Tap to search now!",
                                     icon: "/assets/icons/liphtup-icon-192.png"
                                 });
                             }).catch(() => {});
                         }
                     }
-                    showAlert("Driver availability has changed! Click 'Yes!' on the card to search for a driver.");
+                    showAlert(isScheduledMode ? "Driver available for your scheduled ride! Click 'Yes!' to confirm." : "Driver availability has changed! Click 'Yes!' to search for a driver.");
                 }
                 
                 lastKnownNotifiedAt = notifiedSec;
 
-                // Update UI text and display rebook prompt
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
-                if (titleEl) titleEl.innerText = "Driver Availability Changed";
-                if (descEl) descEl.innerText = "Driver availability has changed, some drivers got available, would you like to try again?";
+                if (titleEl) titleEl.innerText = isScheduledMode ? "Scheduled Driver Found" : "Driver Availability Changed";
+                if (descEl) descEl.innerText = "A driver is available for your pickup. Click 'Yes!' to confirm and start ride search.";
                 
-                const promptEl = document.getElementById('pending-driver-available-prompt');
-                if (promptEl) promptEl.classList.remove('d-none');
+                if (availablePrompt) availablePrompt.classList.remove('d-none');
+                if (timeoutPrompt) timeoutPrompt.classList.add('d-none');
             } else {
                 lastKnownNotifiedAt = null;
                 
-                // Set default texts depending on mode
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
-                if (data.mode === "schedule") {
+                if (isScheduledMode) {
                     const parsedDt = parseDateValue(data.activatesAt);
                     const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
                     if (titleEl) titleEl.innerText = timeStr ? `Scheduled for ${timeStr}` : "Scheduled Ride";
-                    if (descEl) descEl.innerText = "We'll dispatch this request to nearby drivers automatically at your scheduled time.";
+                    if (descEl) descEl.innerText = "We'll check for available drivers starting at your scheduled time.";
                 } else {
                     if (titleEl) titleEl.innerText = "Waiting for next available driver";
                     if (descEl) descEl.innerText = "We are actively monitoring for newly available drivers in your pickup area.";
                 }
                 
-                const promptEl = document.getElementById('pending-driver-available-prompt');
-                if (promptEl) promptEl.classList.add('d-none');
+                if (availablePrompt) availablePrompt.classList.add('d-none');
+                if (timeoutPrompt) timeoutPrompt.classList.add('d-none');
             }
         }
     }, (error) => {

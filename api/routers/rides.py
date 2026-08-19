@@ -448,6 +448,9 @@ def _build_driver_availability_updates(
         )
     }
     eff_loc = location or profile.get("driverLocation") or profile.get("location")
+    if not eff_loc or not isinstance(eff_loc, dict) or "lat" not in eff_loc or "lng" not in eff_loc:
+        eff_loc = None
+
     if eff_loc and "lat" in eff_loc and "lng" in eff_loc:
         loc_dict = {"lat": float(eff_loc["lat"]), "lng": float(eff_loc["lng"])}
         user_update["driverLocation"] = loc_dict
@@ -1416,7 +1419,8 @@ def cancel_passenger_ride(
                     return {"ok": True, "requestId": clean_ride_id, "status": "cancelled"}
                 else:
                     raise ApiError("Only the passenger can cancel this request.", 403)
-            raise ApiError("Ride not found.", 404)
+            # If neither ride document nor pending document exists, treat as already cancelled so UI resets smoothly
+            return {"ok": True, "rideId": clean_ride_id, "status": "already_cancelled"}
 
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         transaction = db.transaction()
@@ -1425,13 +1429,15 @@ def cancel_passenger_ride(
         def cancel_transaction(tx):
             snapshot = ride_ref.get(transaction=tx)
             if not snapshot.exists:
-                raise ApiError("Ride not found.", 404)
+                return {"ok": True, "rideId": clean_ride_id, "status": "already_cancelled"}
 
             ride = snapshot.to_dict() or {}
             if ride.get("passenger_id") != uid and ride.get("passengerId") != uid:
                 raise ApiError("Only the passenger can cancel this ride.", 403)
 
             status = ride.get("status")
+            if status in COMPLETED_OR_CANCELLED_STATUSES:
+                return {"ok": True, "rideId": clean_ride_id, "status": status}
             if status not in ACTIVE_PASSENGER_STATUSES:
                 raise ApiError("This ride can no longer be cancelled.", 409)
 
@@ -2183,10 +2189,33 @@ def _match_pending_requests_for_driver(
         d_lat = drop.get("lat") or p_lat
         d_lng = drop.get("lng") or p_lng
 
-        if mode == "schedule" or data.get("sourceMode") == "schedule":
-            # Promote schedule mode to auto mode if it is due (within 15 minutes of activation or after activation)
-            if act_time and now >= (act_time - timedelta(minutes=15)):
-                mode = "auto"
+        if mode == "schedule":
+            # Schedule mode: only search AFTER scheduled activation time
+            if not act_time or now < act_time:
+                continue
+
+            doc.reference.update({
+                "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+            _log_demand_event(db, "pending_matched_schedule", {
+                "requestId": req_id,
+                "passengerId": passenger_id,
+                "driverId": driver_id,
+                "distanceKm": distance_km,
+            })
+            _send_passenger_push_and_inapp(
+                db,
+                passenger_id,
+                "Driver Available for Scheduled Ride!",
+                f"A driver is now available for your scheduled pickup near {pickup.get('name', 'your location')}. Tap to confirm and search.",
+                {
+                    "url": f"{APP_BASE_URL}/services?restorePending={req_id}",
+                    "type": "pending_driver_available",
+                    "requestId": req_id,
+                }
+            )
+            continue
 
         if mode == "auto":
             # Create standard live ride document targeting this driver
@@ -2339,7 +2368,7 @@ def _match_pending_requests_for_driver(
 
 
 def activate_due_scheduled_requests(db) -> int:
-    """Converts scheduled requests reaching (activatesAt - 10m) into active auto-matching mode."""
+    """Evaluates due scheduled requests starting after their activatesAt time."""
     now = datetime.now(timezone.utc)
     try:
         docs = list(
@@ -2352,34 +2381,30 @@ def activate_due_scheduled_requests(db) -> int:
     except Exception:
         return 0
 
-    activated_count = 0
+    evaluated_count = 0
     for doc in docs:
         data = doc.to_dict() or {}
-        mode = str(data.get("mode") or "").strip().lower()
-        source_mode = str(data.get("sourceMode") or "").strip().lower()
         activates_at = data.get("activatesAt")
         if not activates_at:
             continue
         act_time = _to_utc_datetime(activates_at)
+        if not act_time:
+            continue
 
-        if act_time and now >= (act_time - timedelta(minutes=15)) and now <= (act_time + timedelta(hours=2)):
-            if mode == "schedule":
+        if now >= act_time:
+            evaluated_count += 1
+            # Check if 10 minutes pass after scheduled time with no driver match
+            if now >= (act_time + timedelta(minutes=10)) and not data.get("scheduleTimedOut"):
                 doc.reference.update({
-                    "mode": "auto",
-                    "sourceMode": "schedule",
+                    "scheduleTimedOut": True,
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                 })
-            activated_count += 1
-
-            # If past scheduled activation time and still finding driver, reassure passenger
-            if now >= act_time and not data.get("reassuranceNotified"):
-                doc.reference.update({"reassuranceNotified": True})
                 _send_passenger_push_and_inapp(
                     db,
                     str(data.get("passengerId") or ""),
-                    "Finding Your Scheduled Ride",
-                    "We are actively searching for a driver for your scheduled pickup. Your ride request is priority-queued.",
-                    {"url": f"{APP_BASE_URL}/services", "type": "schedule_priority_search"}
+                    "Scheduled Ride Update",
+                    "No driver found within 10 minutes of your scheduled time. Tap to update scheduled time by 15 minutes or cancel.",
+                    {"url": f"{APP_BASE_URL}/services", "type": "schedule_timeout_prompt", "requestId": doc.id}
                 )
 
     try:
@@ -2394,7 +2419,54 @@ def activate_due_scheduled_requests(db) -> int:
     except Exception as exc:
         print(f"Scheduled activation driver sweep error: {exc}")
 
-    return activated_count
+    return evaluated_count
+
+
+@router.post("/pending-request/{request_id}/reschedule-15min")
+def reschedule_pending_request_15min(
+    request_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Extends scheduled activatesAt time by 15 minutes for a pending scheduled ride request."""
+    uid = str(user.get("uid") or "").strip()
+    clean_id = request_id.strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    db = fb_firestore.client(get_admin_app())
+    doc_ref = db.collection("pendingRideRequests").document(clean_id)
+    doc_snap = doc_ref.get()
+    if not doc_snap.exists:
+        return {"ok": True, "status": "already_cancelled", "message": "Pending request not found."}
+
+    data = doc_snap.to_dict() or {}
+    if data.get("passengerId") != uid and data.get("passenger_id") != uid:
+        raise ApiError("Only the passenger can update this scheduled request.", 403)
+
+    now = datetime.now(timezone.utc)
+    curr_activates = data.get("activatesAt")
+    curr_dt = _to_utc_datetime(curr_activates) if curr_activates else now
+    if not curr_dt or curr_dt < now:
+        curr_dt = now
+
+    new_activates_dt = curr_dt + timedelta(minutes=15)
+    new_expires_dt = max(now + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS), new_activates_dt + timedelta(hours=2))
+
+    doc_ref.update({
+        "activatesAt": new_activates_dt,
+        "expiresAt": new_expires_dt,
+        "scheduleTimedOut": False,
+        "lastNotifiedAt": None,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    })
+
+    _log_demand_event(db, "pending_rescheduled_15min", {"requestId": clean_id, "passengerId": uid})
+    return {
+        "ok": True,
+        "requestId": clean_id,
+        "status": "pending",
+        "newActivatesAt": new_activates_dt.isoformat(),
+    }
 
 
 @router.post("/scheduled/activate-due")
