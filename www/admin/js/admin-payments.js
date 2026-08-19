@@ -1,5 +1,5 @@
 import { adminGet, adminPost, adminDelete } from './admin-api.js';
-import { showToast } from './admin-toast.js';
+import { toast as showToast } from './admin-toast.js';
 
 let cachedPayments = [];
 let cachedPauseConfig = null;
