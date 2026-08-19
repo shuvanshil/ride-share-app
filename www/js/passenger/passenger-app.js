@@ -495,6 +495,21 @@ function bindTripProgressPanel() {
     });
 }
 
+function sanitizeAvatarSrc(photoUrl) {
+    if (!photoUrl || typeof photoUrl !== 'string') {
+        return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239CA3AF'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+    }
+    const clean = photoUrl.trim();
+    if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
+    if (clean.startsWith('data:image/')) {
+        const commaIdx = clean.indexOf(',');
+        if (commaIdx > 0 && (clean.length - commaIdx) > 500) {
+            return clean;
+        }
+    }
+    return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%239CA3AF'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+}
+
 function showTripProgressPanel(ride) {
     const dashboardView = document.getElementById('dashboard-view');
     const panel = document.getElementById('trip-progress-panel');
