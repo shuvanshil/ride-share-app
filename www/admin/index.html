@@ -68,6 +68,7 @@
             <nav id="admin-sidebar" class="admin-sidebar">
                 <button class="admin-nav-item active" data-section="dashboard" type="button">Dashboard</button>
                 <button class="admin-nav-item" data-section="drivers" type="button">Drivers</button>
+                <button class="admin-nav-item" data-section="payments" type="button">Payments <span id="admin-payments-nav-badge" class="admin-nav-badge d-none">0</span></button>
                 <button class="admin-nav-item" data-section="live-rides" type="button">Live Rides</button>
                 <button class="admin-nav-item" data-section="safety" type="button">Safety <span id="admin-safety-nav-badge" class="admin-nav-badge d-none">0</span></button>
                 <button class="admin-nav-item" data-section="ride-history" type="button">Ride History</button>
@@ -197,6 +198,139 @@
                 </section>
 
             </main>
+
+                <!-- Payments -->
+                <section id="section-payments" class="admin-section d-none">
+                    <div class="admin-section-header flex-wrap gap-2">
+                        <h2 class="admin-section-title">Driver Weekly Payments</h2>
+                        <div class="d-flex gap-2 align-items-center ms-auto">
+                            <button id="admin-open-pause-modal-btn" class="gy-btn gy-btn-outline-dark btn-sm" type="button">
+                                🌴 Pause Settings
+                            </button>
+                            <button id="admin-open-manual-pay-btn" class="gy-btn gy-btn-primary btn-sm" type="button">
+                                ➕ Record Payment Manually
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Pause Status Banner -->
+                    <div id="admin-pause-status-strip" class="alert alert-info d-none d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <strong id="admin-pause-status-title">🌴 Weekly Payments Currently Paused</strong>
+                            <div id="admin-pause-status-sub" class="small text-muted">Range: --</div>
+                        </div>
+                        <button id="admin-quick-end-pause-btn" class="gy-btn gy-btn-danger-outline btn-sm" type="button">
+                            End Pause Early
+                        </button>
+                    </div>
+
+                    <div class="admin-filters mb-3">
+                        <select id="admin-payment-status-filter" class="form-select gy-input admin-filter-select">
+                            <option value="">All statuses</option>
+                            <option value="submitted" selected>Pending verification</option>
+                            <option value="approved">Approved</option>
+                            <option value="declined">Declined</option>
+                        </select>
+                        <input type="text" id="admin-payment-search" class="form-control gy-input" placeholder="Search driver name/phone..." style="max-width: 240px;">
+                    </div>
+
+                    <div class="admin-payments-kpi">
+                        <div class="admin-payments-kpi-card">
+                            <div id="admin-kpi-pending-count" class="admin-payments-kpi-val text-warning">0</div>
+                            <div class="admin-payments-kpi-label">Pending Verification</div>
+                        </div>
+                        <div class="admin-payments-kpi-card">
+                            <div id="admin-kpi-approved-count" class="admin-payments-kpi-val text-success">0</div>
+                            <div class="admin-payments-kpi-label">Approved Payments</div>
+                        </div>
+                        <div class="admin-payments-kpi-card">
+                            <div id="admin-kpi-declined-count" class="admin-payments-kpi-val text-danger">0</div>
+                            <div class="admin-payments-kpi-label">Declined Submissions</div>
+                        </div>
+                    </div>
+
+                    <div id="admin-payments-table-container">
+                        <p class="admin-empty-row">Loading payment submissions...</p>
+                    </div>
+                </section>
+
+    <!-- Modal: Record Payment Manually -->
+    <div id="admin-manual-payment-modal" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="manual-pay-modal-title">
+        <div class="qr-modal-card text-start" style="max-width: 480px;">
+            <button id="manual-pay-close-btn" type="button" class="modal-close-btn" aria-label="Close">&times;</button>
+            <h4 id="manual-pay-modal-title" class="fw-bold mb-3">Record Offline Payment</h4>
+
+            <form id="admin-manual-pay-form">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Select Driver <span class="text-danger">*</span></label>
+                    <select id="manual-pay-driver-select" class="form-select gy-input" required>
+                        <option value="">Loading drivers list...</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Payment Week ID</label>
+                    <input type="text" id="manual-pay-week-input" class="form-control gy-input" placeholder="e.g. 2026-W34 (leave blank for current week)">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label fw-bold">Amount (₹)</label>
+                        <input type="number" id="manual-pay-amount-input" class="form-control gy-input" value="20" required min="1">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label fw-bold">Method</label>
+                        <select id="manual-pay-method-select" class="form-select gy-input">
+                            <option value="cash" selected>Cash / Offline</option>
+                            <option value="upi">UPI / Online</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Payment Reference / Note</label>
+                    <input type="text" id="manual-pay-ref-input" class="form-control gy-input" value="Collected offline in cash" placeholder="Optional notes or receipt no.">
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" id="manual-pay-submit-btn" class="gy-btn gy-btn-primary w-100 py-2">Record & Approve Payment</button>
+                    <button type="button" id="manual-pay-cancel-btn" class="gy-btn gy-btn-outline-dark py-2">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Payment Pause Settings -->
+    <div id="admin-pause-modal" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="pause-modal-title">
+        <div class="qr-modal-card text-start" style="max-width: 480px;">
+            <button id="pause-modal-close-btn" type="button" class="modal-close-btn" aria-label="Close">&times;</button>
+            <h4 id="pause-modal-title" class="fw-bold mb-3">🌴 Payment Pause Settings</h4>
+
+            <form id="admin-pause-form">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="pause-enable-switch">
+                    <label class="form-check-label fw-bold" for="pause-enable-switch">Enable Driver Payment Pause</label>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label fw-bold">Start Date</label>
+                        <input type="date" id="pause-start-date" class="form-control gy-input">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label fw-bold">End Date</label>
+                        <input type="date" id="pause-end-date" class="form-control gy-input">
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Message Shown to Drivers</label>
+                    <textarea id="pause-message-input" class="form-control gy-input" rows="3" placeholder="Weekly payments are currently paused. Chill and relax — no payment is required during this period."></textarea>
+                </div>
+
+                <div class="d-flex flex-column gap-2">
+                    <button type="submit" id="pause-save-btn" class="gy-btn gy-btn-primary w-100 py-2">Save Pause Settings</button>
+                    <button type="button" id="pause-clear-btn" class="gy-btn gy-btn-danger-outline w-100 py-2">End / Clear Pause</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
             <!-- Live feed side panel -->
             <aside id="admin-feed-panel" class="admin-feed-panel">

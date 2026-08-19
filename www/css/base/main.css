@@ -46,6 +46,7 @@ select {
 
 .webicon-home { -webkit-mask-image: url("../../assets/icons/webicons/home.svg"); mask-image: url("../../assets/icons/webicons/home.svg"); }
 .webicon-history { -webkit-mask-image: url("../../assets/icons/webicons/history.svg"); mask-image: url("../../assets/icons/webicons/history.svg"); }
+.webicon-payments { -webkit-mask-image: url("../../assets/icons/webicons/payments.svg"); mask-image: url("../../assets/icons/webicons/payments.svg"); }
 .webicon-services { -webkit-mask-image: url("../../assets/icons/webicons/services.svg"); mask-image: url("../../assets/icons/webicons/services.svg"); }
 .webicon-profile { -webkit-mask-image: url("../../assets/icons/webicons/profile.svg"); mask-image: url("../../assets/icons/webicons/profile.svg"); }
 .webicon-current-location { -webkit-mask-image: url("../../assets/icons/webicons/current-location.svg"); mask-image: url("../../assets/icons/webicons/current-location.svg"); }

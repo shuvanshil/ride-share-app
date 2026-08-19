@@ -1,0 +1,423 @@
+import { adminFetch } from './admin-api.js';
+import { showToast } from './admin-toast.js';
+
+let cachedPayments = [];
+let cachedPauseConfig = null;
+let cachedDriversList = [];
+
+export async function loadAdminPayments() {
+    const container = document.getElementById('admin-payments-table-container');
+    if (!container) return;
+
+    try {
+        const response = await adminFetch('/api/admin/driver-payments');
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to load payments');
+        }
+
+        const data = await response.json();
+        cachedPayments = data.payments || [];
+        cachedPauseConfig = data.pauseConfig || null;
+
+        // Render Pause Strip
+        renderAdminPauseStrip(cachedPauseConfig);
+
+        // Update KPI strip
+        const summary = data.summary || {};
+        const pendingEl = document.getElementById('admin-kpi-pending-count');
+        const approvedEl = document.getElementById('admin-kpi-approved-count');
+        const declinedEl = document.getElementById('admin-kpi-declined-count');
+        const badgeEl = document.getElementById('admin-payments-nav-badge');
+
+        if (pendingEl) pendingEl.innerText = summary.pendingCount || 0;
+        if (approvedEl) approvedEl.innerText = summary.approvedCount || 0;
+        if (declinedEl) declinedEl.innerText = summary.declinedCount || 0;
+
+        if (badgeEl) {
+            const pending = summary.pendingCount || 0;
+            badgeEl.innerText = pending;
+            badgeEl.classList.toggle('d-none', pending === 0);
+        }
+
+        renderPaymentsTable();
+    } catch (error) {
+        console.error("Error loading admin payments:", error);
+        if (container) {
+            container.innerHTML = `<p class="admin-empty-row text-danger">Error loading payments: ${error.message}</p>`;
+        }
+    }
+}
+
+function renderAdminPauseStrip(pauseConfig) {
+    const strip = document.getElementById('admin-pause-status-strip');
+    const titleEl = document.getElementById('admin-pause-status-title');
+    const subEl = document.getElementById('admin-pause-status-sub');
+    if (!strip) return;
+
+    if (pauseConfig && pauseConfig.isPaused) {
+        const start = pauseConfig.startDate || 'Start';
+        const end = pauseConfig.endDate || 'Ongoing';
+        if (titleEl) titleEl.innerText = '🌴 Weekly Driver Payments Currently PAUSED';
+        if (subEl) subEl.innerText = `Active Date Range: ${start} → ${end} | Drivers are not asked to pay during this period.`;
+        strip.classList.remove('d-none');
+    } else {
+        strip.classList.add('d-none');
+    }
+}
+
+export function renderPaymentsTable() {
+    const container = document.getElementById('admin-payments-table-container');
+    const statusFilter = document.getElementById('admin-payment-status-filter')?.value || '';
+    const searchVal = document.getElementById('admin-payment-search')?.value?.toLowerCase().trim() || '';
+
+    if (!container) return;
+
+    let filtered = cachedPayments.filter(p => {
+        if (statusFilter && p.status !== statusFilter) return false;
+        if (searchVal) {
+            const name = (p.driverName || '').toLowerCase();
+            const phone = (p.driverPhone || '').toLowerCase();
+            const week = (p.weekLabel || p.weekId || '').toLowerCase();
+            const ref = (p.paymentReference || '').toLowerCase();
+            if (!name.includes(searchVal) && !phone.includes(searchVal) && !week.includes(searchVal) && !ref.includes(searchVal)) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    if (!filtered.length) {
+        container.innerHTML = '<p class="admin-empty-row">No payment submissions found matching the criteria.</p>';
+        return;
+    }
+
+    let rowsHtml = filtered.map(p => {
+        const subDate = p.submittedAt ? new Date(p.submittedAt).toLocaleString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        }) : '--';
+
+        const verDate = p.verifiedAt ? new Date(p.verifiedAt).toLocaleString('en-IN', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+        }) : '';
+
+        let statusBadge = `<span class="payment-status-badge due">${(p.status || '').toUpperCase()}</span>`;
+        if (p.status === 'submitted') {
+            statusBadge = '<span class="payment-status-badge submitted">UNDER VERIFICATION</span>';
+        } else if (p.status === 'approved') {
+            statusBadge = '<span class="payment-status-badge approved">APPROVED</span>';
+        } else if (p.status === 'declined') {
+            statusBadge = '<span class="payment-status-badge declined">DECLINED</span>';
+        }
+
+        const manualBadge = p.isManualRecord
+            ? `<span class="badge bg-secondary text-white ms-1" style="font-size: 0.7rem;">OFFLINE / CASH</span>`
+            : '';
+
+        let actionsHtml = '';
+        if (p.status === 'submitted') {
+            actionsHtml = `
+                <div class="d-flex gap-2">
+                    <button class="gy-btn gy-btn-primary btn-sm approve-pay-btn" data-id="${p.paymentId}" type="button">
+                        Approve
+                    </button>
+                    <button class="gy-btn gy-btn-danger-outline btn-sm decline-pay-btn" data-id="${p.paymentId}" type="button">
+                        Decline
+                    </button>
+                </div>
+            `;
+        } else if (p.status === 'approved') {
+            actionsHtml = `<small class="text-success fw-bold">Approved by ${p.verifiedByAdminEmail || 'Admin'}<br>${verDate}</small>`;
+        } else if (p.status === 'declined') {
+            actionsHtml = `<small class="text-danger fw-bold">Declined by ${p.verifiedByAdminEmail || 'Admin'}<br>${p.declineReason || ''}</small>`;
+        }
+
+        const methodLabel = (p.paymentMethod || 'upi').toUpperCase();
+        const refNote = p.paymentReference ? `<br><small class="text-muted">Ref: ${p.paymentReference}</small>` : '';
+
+        return `
+            <tr>
+                <td>
+                    <strong>${p.driverName || 'Driver'}</strong>${manualBadge}<br>
+                    <small class="text-muted">${p.driverPhone || p.driverId || ''}</small>
+                </td>
+                <td>
+                    <strong>${p.weekLabel || p.weekId}</strong><br>
+                    <small class="text-muted">Week ID: ${p.weekId}</small>
+                </td>
+                <td>
+                    <strong class="text-success">₹${p.amount || 20}</strong><br>
+                    <small class="text-muted">${methodLabel}</small>${refNote}
+                </td>
+                <td>${subDate}</td>
+                <td>${statusBadge}</td>
+                <td>${actionsHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="table-responsive">
+            <table class="table admin-table align-middle">
+                <thead>
+                    <tr>
+                        <th>Driver Details</th>
+                        <th>Payment Week</th>
+                        <th>Amount & Method</th>
+                        <th>Submitted At</th>
+                        <th>Status</th>
+                        <th>Actions / Verification</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHtml}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Bind Approve and Decline buttons
+    container.querySelectorAll('.approve-pay-btn').forEach(btn => {
+        btn.addEventListener('click', () => handleApprovePayment(btn.dataset.id));
+    });
+
+    container.querySelectorAll('.decline-pay-btn').forEach(btn => {
+        btn.addEventListener('click', () => handleDeclinePayment(btn.dataset.id));
+    });
+}
+
+async function handleApprovePayment(paymentId) {
+    if (!confirm("Are you sure you want to APPROVE this driver's weekly fee payment?")) return;
+
+    try {
+        const response = await adminFetch(`/api/admin/driver-payments/${paymentId}/approve`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to approve payment');
+        }
+
+        showToast("Payment approved successfully!", "success");
+        await loadAdminPayments();
+    } catch (error) {
+        console.error("Error approving payment:", error);
+        showToast(error.message || "Could not approve payment", "error");
+    }
+}
+
+async function handleDeclinePayment(paymentId) {
+    const reason = prompt("Enter decline reason for driver (optional):", "Payment could not be verified by accounts team.");
+    if (reason === null) return;
+
+    try {
+        const response = await adminFetch(`/api/admin/driver-payments/${paymentId}/decline`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ declineReason: reason })
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to decline payment');
+        }
+
+        showToast("Payment submission declined.", "warning");
+        await loadAdminPayments();
+    } catch (error) {
+        console.error("Error declining payment:", error);
+        showToast(error.message || "Could not decline payment", "error");
+    }
+}
+
+// ============ PAUSE SETTINGS MODAL ============
+
+function openPauseModal() {
+    const modal = document.getElementById('admin-pause-modal');
+    if (!modal) return;
+
+    const switchEl = document.getElementById('pause-enable-switch');
+    const startEl = document.getElementById('pause-start-date');
+    const endEl = document.getElementById('pause-end-date');
+    const msgEl = document.getElementById('pause-message-input');
+
+    if (cachedPauseConfig) {
+        if (switchEl) switchEl.checked = Boolean(cachedPauseConfig.configuredPaused || cachedPauseConfig.isPaused);
+        if (startEl) startEl.value = cachedPauseConfig.startDate || '';
+        if (endEl) endEl.value = cachedPauseConfig.endDate || '';
+        if (msgEl) msgEl.value = cachedPauseConfig.message || '';
+    }
+
+    modal.classList.remove('d-none');
+}
+
+function closePauseModal() {
+    const modal = document.getElementById('admin-pause-modal');
+    if (modal) modal.classList.add('d-none');
+}
+
+async function handleSavePauseSettings(e) {
+    e.preventDefault();
+    const switchEl = document.getElementById('pause-enable-switch');
+    const startEl = document.getElementById('pause-start-date');
+    const endEl = document.getElementById('pause-end-date');
+    const msgEl = document.getElementById('pause-message-input');
+
+    const payload = {
+        isPaused: switchEl ? switchEl.checked : true,
+        startDate: startEl ? startEl.value : null,
+        endDate: endEl ? endEl.value : null,
+        message: msgEl ? msgEl.value : "Weekly payments are currently paused. Chill and relax — no payment is required during this period."
+    };
+
+    try {
+        const response = await adminFetch('/api/admin/driver-payments/pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to update pause settings');
+        }
+
+        showToast("Payment pause settings updated successfully!", "success");
+        closePauseModal();
+        await loadAdminPayments();
+    } catch (error) {
+        console.error("Error saving pause settings:", error);
+        showToast(error.message || "Could not update pause settings", "error");
+    }
+}
+
+async function handleClearPauseSettings() {
+    if (!confirm("Are you sure you want to END the weekly payment pause and resume normal payment requirements?")) return;
+
+    try {
+        const response = await adminFetch('/api/admin/driver-payments/pause', {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to clear pause settings');
+        }
+
+        showToast("Payment pause ended. Normal payment schedule resumed.", "info");
+        closePauseModal();
+        await loadAdminPayments();
+    } catch (error) {
+        console.error("Error clearing pause settings:", error);
+        showToast(error.message || "Could not end payment pause", "error");
+    }
+}
+
+// ============ RECORD MANUAL PAYMENT MODAL ============
+
+async function fetchDriversList() {
+    const select = document.getElementById('manual-pay-driver-select');
+    if (!select) return;
+
+    try {
+        select.innerHTML = '<option value="">Loading drivers...</option>';
+        const response = await adminFetch('/api/admin/drivers?limit=200');
+        if (!response.ok) throw new Error('Failed to load drivers');
+
+        const data = await response.json();
+        cachedDriversList = data.drivers || data.items || [];
+
+        if (!cachedDriversList.length) {
+            select.innerHTML = '<option value="">No drivers found</option>';
+            return;
+        }
+
+        select.innerHTML = '<option value="">Select a driver...</option>' + cachedDriversList.map(d => {
+            const name = d.name || d.displayName || 'Driver';
+            const phone = d.phone || d.phoneNumber || '';
+            const uid = d.uid || d.id;
+            return `<option value="${uid}">${name} (${phone})</option>`;
+        }).join('');
+    } catch (error) {
+        console.error("Error loading drivers for manual payment:", error);
+        select.innerHTML = '<option value="">Error loading drivers list</option>';
+    }
+}
+
+function openManualPayModal() {
+    const modal = document.getElementById('admin-manual-payment-modal');
+    if (!modal) return;
+
+    fetchDriversList();
+    modal.classList.remove('d-none');
+}
+
+function closeManualPayModal() {
+    const modal = document.getElementById('admin-manual-payment-modal');
+    if (modal) modal.classList.add('d-none');
+}
+
+async function handleSaveManualPayment(e) {
+    e.preventDefault();
+    const driverSelect = document.getElementById('manual-pay-driver-select');
+    const weekInput = document.getElementById('manual-pay-week-input');
+    const amountInput = document.getElementById('manual-pay-amount-input');
+    const methodSelect = document.getElementById('manual-pay-method-select');
+    const refInput = document.getElementById('manual-pay-ref-input');
+
+    const driverId = driverSelect ? driverSelect.value : '';
+    if (!driverId) {
+        showToast("Please select a driver.", "warning");
+        return;
+    }
+
+    const payload = {
+        driverId: driverId,
+        weekId: weekInput ? weekInput.value.trim() : null,
+        amount: amountInput ? parseFloat(amountInput.value) || 20 : 20,
+        paymentMethod: methodSelect ? methodSelect.value : 'cash',
+        paymentReference: refInput ? refInput.value.trim() : 'Collected offline in cash'
+    };
+
+    try {
+        const response = await adminFetch('/api/admin/driver-payments/record-manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to record manual payment');
+        }
+
+        showToast("Offline payment recorded and approved successfully!", "success");
+        closeManualPayModal();
+        await loadAdminPayments();
+    } catch (error) {
+        console.error("Error recording manual payment:", error);
+        showToast(error.message || "Could not record manual payment", "error");
+    }
+}
+
+export function initAdminPayments() {
+    const statusFilter = document.getElementById('admin-payment-status-filter');
+    const searchInput = document.getElementById('admin-payment-search');
+
+    statusFilter?.addEventListener('change', renderPaymentsTable);
+    searchInput?.addEventListener('input', renderPaymentsTable);
+
+    // Pause Modal Triggers
+    document.getElementById('admin-open-pause-modal-btn')?.addEventListener('click', openPauseModal);
+    document.getElementById('pause-modal-close-btn')?.addEventListener('click', closePauseModal);
+    document.getElementById('admin-pause-form')?.addEventListener('submit', handleSavePauseSettings);
+    document.getElementById('pause-clear-btn')?.addEventListener('click', handleClearPauseSettings);
+    document.getElementById('admin-quick-end-pause-btn')?.addEventListener('click', handleClearPauseSettings);
+
+    // Manual Pay Modal Triggers
+    document.getElementById('admin-open-manual-pay-btn')?.addEventListener('click', openManualPayModal);
+    document.getElementById('manual-pay-close-btn')?.addEventListener('click', closeManualPayModal);
+    document.getElementById('manual-pay-cancel-btn')?.addEventListener('click', closeManualPayModal);
+    document.getElementById('admin-manual-pay-form')?.addEventListener('submit', handleSaveManualPayment);
+}

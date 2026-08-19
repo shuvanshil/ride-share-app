@@ -5,6 +5,7 @@ import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.
 import { startLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
 import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
+import { initAdminPayments, loadAdminPayments } from "./admin-payments.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -57,6 +58,7 @@ watchAdminAuth(async (user) => {
         resetToDashboard();
         loadSection("dashboard");
         refreshSafetyBadge();
+        initAdminPayments();
         startSosRealtimeAlerts();
         if (!feedStarted) {
             feedStarted = true;
@@ -177,6 +179,7 @@ function loadSection(name) {
     loadedSections.add(name);
     if (name === "dashboard") loadDashboard();
     if (name === "drivers") loadDrivers(true);
+    if (name === "payments") loadAdminPayments();
     if (name === "safety") loadSafety();
     if (name === "ride-history") loadHistory(true);
     if (name === "passengers") loadPassengers(true);

@@ -84,6 +84,8 @@ async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResp
 app.include_router(google.router, prefix="/api")
 app.include_router(otp.router, prefix="/api")
 app.include_router(account.router, prefix="/api")
+app.include_router(driver_payments.router)
+app.include_router(driver_payments.admin_router)
 app.include_router(notify.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(rides.router, prefix="/api")

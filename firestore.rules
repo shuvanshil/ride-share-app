@@ -172,11 +172,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // Ride Demand Analytics Events (Feature 3.6):
-    // Search timeouts, radius widenings, pending creations and matches.
-    // Only admins can read for analytics; writes are server-only via FastAPI.
-    match /rideDemandEvents/{eventId} {
-      allow read: if isAdmin();
+    // Driver Weekly Payments:
+    // Drivers can read their own payment verification records, admins can read all.
+    // All creation, approval, and decline mutations are server-owned via FastAPI.
+    match /driverPayments/{paymentId} {
+      allow read: if signedIn() && (resource == null || resource.data.driverId == request.auth.uid || resource.data.driver_id == request.auth.uid || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // System Settings (e.g. driver payment pause configuration):
+    // Read-only for authenticated users, writes managed via FastAPI Admin SDK.
+    match /systemSettings/{settingId} {
+      allow read: if signedIn();
       allow create, update, delete: if false;
     }
 

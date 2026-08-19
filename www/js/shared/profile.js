@@ -96,6 +96,12 @@ function renderProfileSummary(profile = {}) {
     phoneEl.innerText = phone;
     emailEl.innerText = profile.email || "";
     renderAvatar(avatarEl, displayName, profile.profilePhotoUrl || "");
+
+    const isDriver = profile.role === "driver";
+    const paymentsRow = document.getElementById('profile-menu-payments-row');
+    if (paymentsRow) {
+        paymentsRow.classList.toggle('d-none', !isDriver);
+    }
 }
 
 function cacheProfile(profile) {
@@ -792,6 +798,9 @@ async function saveProfile(event) {
 function bindProfileActions() {
     document.querySelector('[data-action="rides"]')?.addEventListener('click', () => {
         window.navigateToPage('history.html');
+    });
+    document.querySelector('[data-action="payments"]')?.addEventListener('click', () => {
+        window.navigateToPage('driver-payments.html');
     });
     document.querySelector('[data-action="contact"]')?.addEventListener('click', () => {
         window.navigateToPage('contact.html');

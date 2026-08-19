@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#16a34a">
+    <title>Driver Payments | LiphtUp</title>
+    
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="payments-page">
+    <header class="app-topbar">
+        <button id="payments-back-btn" type="button" class="icon-btn" aria-label="Go back">
+            <span class="webicon webicon-swap" style="transform: rotate(180deg);" aria-hidden="true"></span>
+        </button>
+        <span class="topbar-title">Payments</span>
+        <div style="width: 32px;"></div>
+    </header>
+
+    <main class="payments-container">
+        <!-- Top Notice Banner -->
+        <div id="payments-top-banner" class="payments-notice-banner d-none">
+            <span class="payments-notice-icon">🛡️</span>
+            <span id="payments-banner-text">Pay your weekly fee of ₹20 by Sunday, 12:00 PM to continue receiving ride requests.</span>
+        </div>
+
+        <!-- Payments Paused Friendly Banner -->
+        <div id="payments-pause-banner" class="payments-notice-banner d-none" style="background: #f0fdf4; border-color: #86efac; color: #166534; padding: 16px;">
+            <span class="payments-notice-icon" style="font-size: 1.5rem;">🌴</span>
+            <div>
+                <strong style="display: block; font-size: 1rem; margin-bottom: 2px;">Weekly Payments Paused</strong>
+                <span id="payments-pause-message">Weekly payments are currently paused. Chill and relax — no payment is required during this period.</span>
+            </div>
+        </div>
+
+        <!-- Current Week Card -->
+        <section class="payments-card">
+            <div class="payments-card-header">
+                <h2 class="payments-card-title">Current Week</h2>
+                <span id="current-week-status-badge" class="payment-status-badge due">DUE</span>
+            </div>
+
+            <div class="payments-week-range">
+                <span>📅</span>
+                <span id="current-week-label">Loading week period...</span>
+            </div>
+
+            <div class="payments-grid-stats">
+                <div class="payments-stat-item">
+                    <span class="payments-stat-label">Weekly Fee</span>
+                    <span class="payments-stat-val amount">₹20</span>
+                </div>
+                <div class="payments-stat-item">
+                    <span class="payments-stat-label">Due Date</span>
+                    <span id="current-due-date" class="payments-stat-val" style="font-size: 0.9rem;">--</span>
+                </div>
+                <div class="payments-stat-item">
+                    <span class="payments-stat-label">Time Left</span>
+                    <span id="current-time-remaining" class="payments-stat-val time-remaining">--</span>
+                </div>
+            </div>
+
+            <div id="current-status-info-box" class="payments-info-box">
+                <span>💡</span>
+                <span id="current-status-info-text">Your payment for this week is due. Please pay before the due date to avoid any interruptions.</span>
+            </div>
+
+            <button id="pay-weekly-fee-btn" type="button" class="gy-btn gy-btn-primary w-100 py-3 fw-bold" style="font-size: 1.05rem;">
+                Pay the weekly fee
+            </button>
+        </section>
+
+        <!-- Payment Status Summary Card -->
+        <section class="payments-card">
+            <div class="payments-card-header mb-2">
+                <h3 class="payments-card-title" style="font-size: 1rem;">Payment Status</h3>
+                <span id="overall-status-badge" class="payment-status-badge due">Payment Due</span>
+            </div>
+            <p id="overall-status-desc" class="mb-0 text-muted" style="font-size: 0.88rem;">
+                You haven't paid for this week yet.
+            </p>
+        </section>
+
+        <!-- Previous Payment History -->
+        <section class="payments-card">
+            <div class="payments-history-header">
+                <h3 class="payments-card-title" style="font-size: 1rem;">Payment History</h3>
+                <span id="history-count-badge" class="text-muted" style="font-size: 0.82rem;">0 records</span>
+            </div>
+            <div id="payments-history-list">
+                <p class="text-muted text-center py-3 mb-0" style="font-size: 0.9rem;">Loading payment history...</p>
+            </div>
+        </section>
+
+        <!-- How It Works Section -->
+        <section class="payments-how-it-works">
+            <div class="payments-how-header">
+                <span style="font-size: 1.2rem;">🛡️</span>
+                <span>How it works</span>
+            </div>
+            <div class="payments-step-list">
+                <div class="payments-step-item">
+                    <span class="payments-step-num">1</span>
+                    <span>Click <strong>"Pay the weekly fee"</strong></span>
+                </div>
+                <div class="payments-step-item">
+                    <span class="payments-step-num">2</span>
+                    <span>Scan the QR code using any UPI app (GPay, PhonePe, Paytm)</span>
+                </div>
+                <div class="payments-step-item">
+                    <span class="payments-step-num">3</span>
+                    <span>Pay <strong>₹20</strong> (amount auto-filled)</span>
+                </div>
+                <div class="payments-step-item">
+                    <span class="payments-step-num">4</span>
+                    <span>Click <strong>"Payment done"</strong> in the app</span>
+                </div>
+                <div class="payments-step-item">
+                    <span class="payments-step-num">5</span>
+                    <span>Wait for verification from our accounts team</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- QR Payment Dialog Modal -->
+    <div id="qr-payment-modal" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title">
+        <div class="qr-modal-card">
+            <button id="qr-modal-close-btn" type="button" class="modal-close-btn" aria-label="Close modal">×</button>
+            <h4 id="qr-modal-title" class="fw-bold mb-1">Pay Weekly Fee</h4>
+            <p class="text-muted small mb-1">Scan this QR code to pay</p>
+            <div class="qr-amount-display">₹20</div>
+
+            <div class="qr-code-frame">
+                <img id="upi-qr-image" class="qr-code-img" src="" alt="UPI Payment QR Code">
+            </div>
+
+            <div class="upi-apps-row">
+                <div class="upi-app-badge">
+                    <span style="font-size: 1.4rem;">🟢</span>
+                    <span>Google Pay</span>
+                </div>
+                <div class="upi-app-badge">
+                    <span style="font-size: 1.4rem;">🟣</span>
+                    <span>PhonePe</span>
+                </div>
+                <div class="upi-app-badge">
+                    <span style="font-size: 1.4rem;">🔵</span>
+                    <span>Paytm</span>
+                </div>
+                <div class="upi-app-badge">
+                    <span style="font-size: 1.4rem;">🟠</span>
+                    <span>BHIM</span>
+                </div>
+            </div>
+
+            <div class="qr-notice-box">
+                <span>ℹ️</span>
+                <span>Scan using any UPI app. The amount of ₹20 is auto-filled. After successful payment, click <strong>"Payment done"</strong> below.</span>
+            </div>
+
+            <button id="payment-done-btn" type="button" class="gy-btn gy-btn-primary w-100 py-3 mb-2 fw-bold" style="font-size: 1.05rem;">
+                Payment done
+            </button>
+            <button id="qr-modal-cancel-btn" type="button" class="btn btn-link text-muted w-100">
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="bottom-nav">
+        <button type="button" onclick="window.location.href='/driver.html'"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
+        <button type="button" onclick="window.location.href='/driver-service.html'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
+        <button type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
+        <button class="active" type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+    </nav>
+
+    <script type="module" src="/js/driver/driver-payments.js"></script>
+</body>
+</html>

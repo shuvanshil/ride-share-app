@@ -728,6 +728,7 @@
 
 .webicon-home { -webkit-mask-image: url("../assets/icons/webicons/home.svg"); mask-image: url("../assets/icons/webicons/home.svg"); }
 .webicon-history { -webkit-mask-image: url("../assets/icons/webicons/history.svg"); mask-image: url("../assets/icons/webicons/history.svg"); }
+.webicon-payments { -webkit-mask-image: url("../assets/icons/webicons/payments.svg"); mask-image: url("../assets/icons/webicons/payments.svg"); }
 .webicon-services { -webkit-mask-image: url("../assets/icons/webicons/services.svg"); mask-image: url("../assets/icons/webicons/services.svg"); }
 .webicon-profile { -webkit-mask-image: url("../assets/icons/webicons/profile.svg"); mask-image: url("../assets/icons/webicons/profile.svg"); }
 .webicon-current-location { -webkit-mask-image: url("../assets/icons/webicons/current-location.svg"); mask-image: url("../assets/icons/webicons/current-location.svg"); }
@@ -7419,3 +7420,392 @@ body.profile-editor-open {
     transform: translateY(-8px) scale(0.97) !important;
     pointer-events: none !important;
 }
+
+/* ==========================================================================
+   DRIVER WEEKLY PAYMENT SYSTEM STYLES
+   ========================================================================== */
+
+.payments-page {
+    background-color: var(--gy-bg-light, #f8f9fa);
+    min-height: 100vh;
+    padding-bottom: 90px;
+}
+
+.payments-container {
+    max-width: 540px;
+    margin: 0 auto;
+    padding: 16px;
+}
+
+.payments-notice-banner {
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    color: #1b5e20;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.payments-notice-banner.overdue {
+    background: #ffebee;
+    border-color: #ef9a9a;
+    color: #c62828;
+}
+
+.payments-notice-icon {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.payments-card {
+    background: #ffffff;
+    border: 1px solid var(--gy-border, #e5e7eb);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.payments-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.payments-card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+}
+
+.payments-week-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #4b5563;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.payments-grid-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 14px;
+    background: #f9fafb;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    border: 1px solid #f3f4f6;
+}
+
+.payments-stat-item {
+    display: flex;
+    flex-column: column;
+}
+
+.payments-stat-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.payments-stat-val {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #111827;
+}
+
+.payments-stat-val.amount {
+    color: #16a34a;
+}
+
+.payments-stat-val.time-remaining {
+    color: #dc2626;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.payments-info-box {
+    background: #fff8e6;
+    border: 1px solid #ffe58f;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.88rem;
+    color: #8c6b00;
+}
+
+.payments-info-box.submitted {
+    background: #e6f7ff;
+    border-color: #91caff;
+    color: #0050b3;
+}
+
+.payments-info-box.approved {
+    background: #f6ffed;
+    border-color: #b7eb8f;
+    color: #276749;
+}
+
+.payments-info-box.declined {
+    background: #fff2f0;
+    border-color: #ffccc7;
+    color: #cf1322;
+}
+
+.payment-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.payment-status-badge.due {
+    background: #fffbe6;
+    color: #d48806;
+    border: 1px solid #ffe58f;
+}
+
+.payment-status-badge.submitted {
+    background: #e6f7ff;
+    color: #0958d9;
+    border: 1px solid #91caff;
+}
+
+.payment-status-badge.approved {
+    background: #f6ffed;
+    color: #389e0d;
+    border: 1px solid #b7eb8f;
+}
+
+.payment-status-badge.declined {
+    background: #fff2f0;
+    color: #cf1322;
+    border: 1px solid #ffccc7;
+}
+
+.payment-status-badge.overdue {
+    background: #fff1f0;
+    color: #a8071a;
+    border: 1px solid #ffa39e;
+}
+
+/* History List */
+.payments-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.payments-history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    transition: background 0.15s ease;
+}
+
+.payments-history-item:hover {
+    background: #f9fafb;
+}
+
+.payments-history-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.payments-history-week {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: #111827;
+}
+
+.payments-history-amount {
+    font-size: 0.85rem;
+    color: #4b5563;
+    font-weight: 600;
+}
+
+.payments-history-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.payments-history-date {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+/* How It Works Section */
+.payments-how-it-works {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 24px;
+}
+
+.payments-how-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    font-weight: 700;
+    color: #166534;
+}
+
+.payments-step-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.payments-step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.88rem;
+    color: #1e293b;
+}
+
+.payments-step-num {
+    background: #16a34a;
+    color: #ffffff;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* QR Modal Dialog */
+.qr-modal-card {
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 24px;
+    width: 90%;
+    max-width: 420px;
+    margin: auto;
+    text-align: center;
+    position: relative;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+.qr-amount-display {
+    font-size: 2.2rem;
+    font-weight: 800;
+    color: #16a34a;
+    margin: 8px 0 16px;
+}
+
+.qr-code-frame {
+    background: #ffffff;
+    border: 2px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 16px;
+    display: inline-block;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.qr-code-img {
+    width: 180px;
+    height: 180px;
+    display: block;
+    margin: 0 auto;
+}
+
+.upi-apps-row {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin: 16px 0;
+}
+
+.upi-app-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: #4b5563;
+    font-weight: 600;
+}
+
+.upi-app-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.qr-notice-box {
+    background: #fff8e6;
+    border: 1px solid #ffe58f;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    color: #8c6b00;
+    margin-bottom: 18px;
+    text-align: left;
+    display: flex;
+    gap: 8px;
+}
+
+/* Admin Payments Styling */
+.admin-payments-kpi {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.admin-payments-kpi-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.admin-payments-kpi-val {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #111827;
+}
+
+.admin-payments-kpi-label {
+    font-size: 0.85rem;
+    color: #6b7280;
+    font-weight: 600;
+}
+
