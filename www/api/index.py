@@ -84,10 +84,31 @@ async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResp
 app.include_router(google.router, prefix="/api")
 app.include_router(otp.router, prefix="/api")
 app.include_router(account.router, prefix="/api")
+app.include_router(driver_payments.router)
+app.include_router(driver_payments.admin_router)
 app.include_router(notify.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(rides.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+
+# Continuous background thread for scheduled ride activation & matching sweep
+import threading
+import time
+
+def _bg_scheduled_ride_sweeper():
+    while True:
+        try:
+            from .core.firebase import get_admin_app
+            import firebase_admin.firestore as fb_firestore
+            from .routers.rides import activate_due_scheduled_requests
+            db = fb_firestore.client(get_admin_app())
+            activate_due_scheduled_requests(db)
+        except Exception:
+            pass
+        time.sleep(10)
+
+_sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)
+_sweeper_thread.start()
 
 @app.get("/api/health")
 async def health() -> dict[str, bool]:

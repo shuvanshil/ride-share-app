@@ -107,3 +107,37 @@ export async function adminPatch(path, body) {
     clearAdminCache(); // any write can affect dashboard/list caches
     return data;
 }
+
+export async function adminPost(path, body = {}) {
+    let response = await fetch(`/api/admin${path}`, {
+        method: "POST",
+        headers: { ...(await authHeader()), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    if (response.status === 401 || response.status === 403) {
+        response = await fetch(`/api/admin${path}`, {
+            method: "POST",
+            headers: { ...(await authHeader(true)), "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+    }
+    const data = await handleResponse(response);
+    clearAdminCache();
+    return data;
+}
+
+export async function adminDelete(path) {
+    let response = await fetch(`/api/admin${path}`, {
+        method: "DELETE",
+        headers: await authHeader(),
+    });
+    if (response.status === 401 || response.status === 403) {
+        response = await fetch(`/api/admin${path}`, {
+            method: "DELETE",
+            headers: await authHeader(true),
+        });
+    }
+    const data = await handleResponse(response);
+    clearAdminCache();
+    return data;
+}

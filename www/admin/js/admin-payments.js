@@ -1,4 +1,4 @@
-import { adminFetch } from './admin-api.js';
+import { adminGet, adminPost, adminDelete } from './admin-api.js';
 import { showToast } from './admin-toast.js';
 
 let cachedPayments = [];
@@ -10,13 +10,7 @@ export async function loadAdminPayments() {
     if (!container) return;
 
     try {
-        const response = await adminFetch('/api/admin/driver-payments');
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || 'Failed to load payments');
-        }
-
-        const data = await response.json();
+        const data = await adminGet('/driver-payments');
         cachedPayments = data.payments || [];
         cachedPauseConfig = data.pauseConfig || null;
 
@@ -190,15 +184,7 @@ async function handleApprovePayment(paymentId) {
     if (!confirm("Are you sure you want to APPROVE this driver's weekly fee payment?")) return;
 
     try {
-        const response = await adminFetch(`/api/admin/driver-payments/${paymentId}/approve`, {
-            method: 'POST'
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || 'Failed to approve payment');
-        }
-
+        await adminPost(`/driver-payments/${paymentId}/approve`);
         showToast("Payment approved successfully!", "success");
         await loadAdminPayments();
     } catch (error) {
@@ -212,17 +198,7 @@ async function handleDeclinePayment(paymentId) {
     if (reason === null) return;
 
     try {
-        const response = await adminFetch(`/api/admin/driver-payments/${paymentId}/decline`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ declineReason: reason })
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || 'Failed to decline payment');
-        }
-
+        await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
         showToast("Payment submission declined.", "warning");
         await loadAdminPayments();
     } catch (error) {
@@ -272,17 +248,7 @@ async function handleSavePauseSettings(e) {
     };
 
     try {
-        const response = await adminFetch('/api/admin/driver-payments/pause', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || 'Failed to update pause settings');
-        }
-
+        await adminPost('/driver-payments/pause', payload);
         showToast("Payment pause settings updated successfully!", "success");
         closePauseModal();
         await loadAdminPayments();
@@ -296,15 +262,7 @@ async function handleClearPauseSettings() {
     if (!confirm("Are you sure you want to END the weekly payment pause and resume normal payment requirements?")) return;
 
     try {
-        const response = await adminFetch('/api/admin/driver-payments/pause', {
-            method: 'DELETE'
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || 'Failed to clear pause settings');
-        }
-
+        await adminDelete('/driver-payments/pause');
         showToast("Payment pause ended. Normal payment schedule resumed.", "info");
         closePauseModal();
         await loadAdminPayments();
@@ -322,10 +280,7 @@ async function fetchDriversList() {
 
     try {
         select.innerHTML = '<option value="">Loading drivers...</option>';
-        const response = await adminFetch('/api/admin/drivers?limit=200');
-        if (!response.ok) throw new Error('Failed to load drivers');
-
-        const data = await response.json();
+        const data = await adminGet('/drivers', { limit: 200 });
         cachedDriversList = data.drivers || data.items || [];
 
         if (!cachedDriversList.length) {
@@ -381,17 +336,7 @@ async function handleSaveManualPayment(e) {
     };
 
     try {
-        const response = await adminFetch('/api/admin/driver-payments/record-manual', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || 'Failed to record manual payment');
-        }
-
+        await adminPost('/driver-payments/record-manual', payload);
         showToast("Offline payment recorded and approved successfully!", "success");
         closeManualPayModal();
         await loadAdminPayments();
