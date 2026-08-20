@@ -4,7 +4,7 @@ Timezone-safe calculations for the Asia/Kolkata timezone:
 - Week starts: Monday 00:00:00 IST
 - Week ends: Sunday 23:59:59 IST
 - Payment deadline: Sunday 12:00:00 PM IST (noon)
-- Weekly fee: ₹20
+- Weekly fee: ₹140
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from typing import Any, Optional, Dict
 
 # Asia/Kolkata is UTC+05:30
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
-DEFAULT_WEEKLY_FEE = 20
+DEFAULT_WEEKLY_FEE = 140
 DEFAULT_PAYEE_UPI_ID = "shuvanshil@oksbi"
 DEFAULT_PAYEE_NAME = "Ride Share Accounts"
 

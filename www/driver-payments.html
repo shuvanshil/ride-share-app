@@ -24,12 +24,20 @@
         <div class="head-spacer"></div>
     </header>
 
-    <main class="payments-container">
+    <!-- Initial Loading State Spinner -->
+    <div id="payments-loading-screen" class="d-flex flex-column align-items-center justify-content-center py-5 my-5">
+        <div class="spinner-border text-success mb-3" role="status" style="width: 2.5rem; height: 2.5rem;">
+            <span class="visually-hidden">Loading payment details...</span>
+        </div>
+        <p class="text-muted fw-semibold small mb-0">Loading your payment details...</p>
+    </div>
+
+    <main id="payments-container" class="payments-container d-none">
         <!-- Top Notice Banner -->
         <div id="payments-top-banner" class="payments-top-notice d-none">
             <div class="notice-check-badge">✓</div>
             <div class="notice-text">
-                <strong id="payments-banner-title">Pay your weekly fee of ₹20 by Sunday, 12:00 PM</strong>
+                <strong id="payments-banner-title">Pay your weekly fee of ₹140 by Sunday, 12:00 PM</strong>
                 <span id="payments-banner-sub">to continue receiving ride requests.</span>
             </div>
         </div>
@@ -58,7 +66,7 @@
             <div class="payments-grid-stats-4col">
                 <div class="payments-stat-col">
                     <span class="payments-stat-label">WEEKLY FEE</span>
-                    <span class="payments-stat-val text-success fw-bold">₹20</span>
+                    <span class="payments-stat-val text-success fw-bold">₹140</span>
                     <div class="stat-circle-icon bg-light-success">
                         <span class="webicon webicon-payments" style="display:inline-block; width:16px; height:16px; background-color:#16a34a;"></span>
                     </div>
@@ -164,7 +172,7 @@
                 <div class="guide-step-row">
                     <div class="step-left">
                         <span class="step-num">3</span>
-                        <span class="step-label">Pay <strong>₹20</strong> (amount auto-filled)</span>
+                        <span class="step-label">Pay <strong>₹140</strong> (amount auto-filled)</span>
                     </div>
                     <span class="step-icon">₹</span>
                 </div>
@@ -209,7 +217,7 @@
                 <div class="guide-step-row">
                     <div class="step-left">
                         <span class="step-num">3</span>
-                        <span class="step-label">₹২০ পেমেন্ট করুন। টাকার পরিমাণ স্বয়ংক্রিয়ভাবে পূরণ হয়ে যাবে।</span>
+                        <span class="step-label">₹১৪০ পেমেন্ট করুন। টাকার পরিমাণ স্বয়ংক্রিয়ভাবে পূরণ হয়ে যাবে।</span>
                     </div>
                     <span class="step-icon">₹</span>
                 </div>
@@ -237,7 +245,7 @@
             <button id="qr-modal-close-btn" type="button" class="modal-close-btn" aria-label="Close modal">×</button>
             <h4 id="qr-modal-title" class="fw-bold mb-1">Pay Weekly Fee</h4>
             <p class="text-muted small mb-1">Scan this QR code using any UPI app</p>
-            <div class="qr-amount-display">₹20</div>
+            <div class="qr-amount-display">₹140</div>
 
             <div class="qr-code-frame">
                 <img id="upi-qr-image" class="qr-code-img" src="" alt="UPI Payment QR Code">
@@ -245,7 +253,7 @@
 
             <div class="qr-notice-box">
                 <span>ℹ️</span>
-                <span>The amount of ₹20 is auto-filled in your UPI app. After successful payment, click <strong>"Payment done"</strong> below.</span>
+                <span>The amount of ₹140 is auto-filled in your UPI app. After successful payment, click <strong>"Payment done"</strong> below.</span>
             </div>
 
             <button id="payment-done-btn" type="button" class="gy-btn gy-btn-success w-100 py-3 mb-2 fw-bold" style="font-size: 1.05rem;">

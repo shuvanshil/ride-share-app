@@ -329,18 +329,15 @@
                     <section id="pending-active-card" class="pending-active-card d-none">
                         <div class="pending-active-header">
                             <span class="pending-badge-pill">
-                                <span class="webicon webicon-notify" style="width: 14px; height: 14px;"></span> In Background Queue
+                                <span class="webicon webicon-notify" style="width: 14px; height: 14px;"></span> Notify Alert Active
                             </span>
                             <small id="pending-expires-in" style="font-size: 11px; color: #64748B;">Expires in 25 min</small>
                         </div>
                         <div class="pending-active-body">
-                            <strong id="pending-mode-title">Waiting for next free driver</strong>
-                            <p id="pending-mode-desc">We are actively monitoring for newly available drivers in your pickup area.</p>
+                            <strong id="pending-mode-title">Looking for available drivers...</strong>
+                            <p id="pending-mode-desc">We're watching for drivers in your area and will notify you the moment one is available.</p>
                             <div id="pending-driver-available-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
-                                <p style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 8px;">
-                                    Driver availability has changed, some drivers got available, would you like to try again?
-                                </p>
-                                <button id="pending-rebook-btn" class="gy-btn gy-btn-primary py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button">Yes!</button>
+                                <button id="pending-rebook-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold" style="font-size: 13px;" type="button">Yes, start the search.</button>
                             </div>
                             <div id="pending-schedule-timeout-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
                                 <p style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 8px;">
@@ -401,7 +398,7 @@
                             <div class="custom-flow-field-group">
                                 <label for="schedule-time-input" class="custom-flow-label">Pickup Date & Time</label>
                                 <input type="datetime-local" id="schedule-time-input" class="custom-flow-input" aria-describedby="schedule-time-hint">
-                                <span id="schedule-time-hint" class="custom-flow-hint">Booking dispatch begins 5 minutes before scheduled time.</span>
+                                <span id="schedule-time-hint" class="custom-flow-hint">We will start searching for your driver 5 minutes before your scheduled time.</span>
                             </div>
                             <div class="custom-flow-actions">
                                 <button type="button" id="schedule-modal-cancel-btn" class="gy-btn gy-btn-outline">Cancel</button>
@@ -522,11 +519,16 @@
                 </div>
                 <div class="fb-minimized-text">
                     <strong>How was your ride?</strong>
-                    <span>We'd love your feedback</span>
+                    <span>Tap to rate experience</span>
                 </div>
             </div>
-            <span class="fb-minimized-chevron" aria-hidden="true">&#8964;</span>
-            <button class="fb-minimized-close" type="button" aria-label="Dismiss feedback prompt">&times;</button>
+            <div class="fb-minimized-actions">
+                <span class="fb-minimized-expand-chip">
+                    <span>Expand</span>
+                    <svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg>
+                </span>
+                <button class="fb-minimized-close" type="button" aria-label="Dismiss feedback prompt">&times;</button>
+            </div>
         </div>
 
     </div>

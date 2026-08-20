@@ -1049,7 +1049,7 @@ function showPendingActiveCard(mode = "notify_only", activatesAt = null) {
         const parsedDt = parseDateValue(activatesAt);
         const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
         if (titleEl) titleEl.innerText = timeStr ? `Scheduled for ${timeStr}` : "Scheduled Ride";
-        if (descEl) descEl.innerText = "We'll dispatch this request to nearby drivers automatically at your scheduled time.";
+        if (descEl) descEl.innerText = "We'll automatically connect you with nearby drivers at your scheduled time.";
     } else {
         if (titleEl) titleEl.innerText = "Waiting for next available driver";
         if (descEl) descEl.innerText = "We are actively monitoring for newly available drivers in your pickup area.";
@@ -2240,15 +2240,18 @@ function listenToPendingRequestUpdates(requestId) {
                             }).catch(() => {});
                         }
                     }
-                    showAlert(isScheduledMode ? "Driver available for your scheduled ride! Click 'Yes!' to confirm." : "Driver availability has changed! Click 'Yes!' to search for a driver.");
+                    showAlert(isScheduledMode ? "Drivers are now available for your scheduled ride! Tap 'Yes, start the search' to confirm." : "Drivers are now available! Tap 'Yes, start the search' to find a driver.");
                 }
                 
                 lastKnownNotifiedAt = notifiedSec;
 
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
-                if (titleEl) titleEl.innerText = isScheduledMode ? "Scheduled Driver Found" : "Driver Availability Changed";
-                if (descEl) descEl.innerText = "A driver is available for your pickup. Click 'Yes!' to confirm and start ride search.";
+                const rebookBtn = document.getElementById('pending-rebook-btn');
+
+                if (titleEl) titleEl.innerText = "Drivers are available!";
+                if (descEl) descEl.innerText = "Some drivers are now available for your ride, would you like to start the searching again?";
+                if (rebookBtn) rebookBtn.innerText = "Yes, start the search.";
                 
                 if (availablePrompt) availablePrompt.classList.remove('d-none');
                 if (timeoutPrompt) timeoutPrompt.classList.add('d-none');
@@ -2257,14 +2260,17 @@ function listenToPendingRequestUpdates(requestId) {
                 
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
+                const rebookBtn = document.getElementById('pending-rebook-btn');
+                if (rebookBtn) rebookBtn.innerText = "Yes, start the search.";
+
                 if (isScheduledMode) {
                     const parsedDt = parseDateValue(data.activatesAt);
                     const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
                     if (titleEl) titleEl.innerText = timeStr ? `Scheduled for ${timeStr}` : "Scheduled Ride";
                     if (descEl) descEl.innerText = "We'll check for available drivers starting at your scheduled time.";
                 } else {
-                    if (titleEl) titleEl.innerText = "Waiting for next available driver";
-                    if (descEl) descEl.innerText = "We are actively monitoring for newly available drivers in your pickup area.";
+                    if (titleEl) titleEl.innerText = "Looking for available drivers...";
+                    if (descEl) descEl.innerText = "We're watching for drivers in your area and will notify you the moment one is available.";
                 }
                 
                 if (availablePrompt) availablePrompt.classList.add('d-none');

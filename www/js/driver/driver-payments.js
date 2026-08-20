@@ -32,6 +32,9 @@ function formatErrorMessage(errData, fallback = 'An error occurred') {
 }
 
 async function fetchPaymentStatus() {
+    const loadingScreen = document.getElementById('payments-loading-screen');
+    const container = document.getElementById('payments-container');
+
     try {
         const token = await getAuthToken();
         if (!token) return;
@@ -55,6 +58,9 @@ async function fetchPaymentStatus() {
         console.error("Error fetching payment status:", error);
         const msg = (typeof error.message === 'object' && error.message !== null) ? JSON.stringify(error.message) : (error.message || "Failed to load payment details.");
         showAlert(msg);
+    } finally {
+        if (loadingScreen) loadingScreen.classList.add('d-none');
+        if (container) container.classList.remove('d-none');
     }
 }
 
@@ -150,11 +156,11 @@ function renderPaymentUI(data) {
             const titleEl = document.getElementById('payments-banner-title');
             if (currentStatus === 'overdue') {
                 topBanner.className = 'payments-top-notice pause';
-                if (titleEl) titleEl.innerText = '⚠️ Payment Overdue: Please pay ₹20 now to avoid ride dispatch suspension.';
+                if (titleEl) titleEl.innerText = '⚠️ Payment Overdue: Please pay ₹140 now to avoid ride request suspension.';
                 topBanner.classList.remove('d-none');
             } else if (currentStatus === 'due') {
                 topBanner.className = 'payments-top-notice';
-                if (titleEl) titleEl.innerText = `Pay your weekly fee of ₹20 by ${weekInfo.deadlineFormatted || 'Sunday 12:00 PM'}`;
+                if (titleEl) titleEl.innerText = `Pay your weekly fee of ₹140 by ${weekInfo.deadlineFormatted || 'Sunday 12:00 PM'}`;
                 topBanner.classList.remove('d-none');
             } else {
                 topBanner.classList.add('d-none');
@@ -183,7 +189,7 @@ function renderPaymentUI(data) {
         } else if (currentStatus === 'approved') {
             infoBox.classList.add('approved');
             if (infoTitle) infoTitle.innerText = 'Weekly Fee Paid & Verified.';
-            infoText.innerText = 'Your weekly fee payment of ₹20 has been verified and approved. You are active to receive ride requests.';
+            infoText.innerText = 'Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.';
             if (overallDesc) overallDesc.innerHTML = 'Weekly payment is verified and active.<br>You are ready to accept ride requests.';
         } else if (currentStatus === 'declined') {
             infoBox.classList.add('declined');
@@ -194,7 +200,7 @@ function renderPaymentUI(data) {
         } else if (currentStatus === 'overdue') {
             infoBox.classList.add('declined');
             if (infoTitle) infoTitle.innerText = 'Payment Overdue!';
-            infoText.innerText = 'Your payment deadline has passed. Please pay the weekly fee of ₹20 immediately to continue accepting rides.';
+            infoText.innerText = 'Your payment deadline has passed. Please pay the weekly fee of ₹140 immediately to continue accepting rides.';
             if (overallDesc) overallDesc.innerHTML = 'Payment overdue.<br>Please complete payment now to continue.';
         } else {
             if (infoTitle) infoTitle.innerText = 'Your payment for this week is due.';
@@ -218,7 +224,7 @@ function renderPaymentUI(data) {
             payBtn.disabled = true;
             payBtn.className = 'gy-btn gy-btn-success w-100 py-3 fw-bold';
         } else if (currentStatus === 'declined') {
-            payBtn.innerText = 'Re-pay Weekly Fee (₹20)';
+            payBtn.innerText = 'Re-pay Weekly Fee (₹140)';
             payBtn.disabled = false;
             payBtn.className = 'gy-btn gy-btn-danger w-100 py-3 fw-bold';
         } else {
@@ -280,7 +286,7 @@ function renderHistoryList(history) {
     }
 
     listEl.innerHTML = history.map(item => {
-        const amountStr = `₹${item.amount || 20}`;
+        const amountStr = `₹${item.amount || 140}`;
         const weekStr = item.weekLabel || item.weekId;
         const subDate = item.submittedAt ? new Date(item.submittedAt).toLocaleString('en-IN', {
             day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
@@ -319,7 +325,7 @@ function openQrModal() {
     if (!currentPaymentData) return;
     const weekInfo = currentPaymentData.weekInfo || {};
     const payeeUpi = weekInfo.payeeUpiId || "shuvanshil@oksbi";
-    const amount = weekInfo.amount || 20;
+    const amount = weekInfo.amount || 140;
     const payeeName = encodeURIComponent(weekInfo.payeeName || "Ride Share Accounts");
 
     const upiUri = `upi://pay?pa=${payeeUpi}&pn=${payeeName}&am=${amount}&cu=INR`;

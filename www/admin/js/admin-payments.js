@@ -140,7 +140,7 @@ export function renderPaymentsTable() {
                     <small class="text-muted">Week ID: ${p.weekId}</small>
                 </td>
                 <td>
-                    <strong class="text-success">₹${p.amount || 20}</strong><br>
+                    <strong class="text-success">₹${p.amount || 140}</strong><br>
                     <small class="text-muted">${methodLabel}</small>${refNote}
                 </td>
                 <td>${subDate}</td>
@@ -330,7 +330,7 @@ async function handleSaveManualPayment(e) {
     const payload = {
         driverId: driverId,
         weekId: weekInput ? weekInput.value.trim() : null,
-        amount: amountInput ? parseFloat(amountInput.value) || 20 : 20,
+        amount: amountInput ? parseFloat(amountInput.value) || 140 : 140,
         paymentMethod: methodSelect ? methodSelect.value : 'cash',
         paymentReference: refInput ? refInput.value.trim() : 'Collected offline in cash'
     };
