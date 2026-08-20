@@ -10,11 +10,16 @@ let countdownTimer = null;
 
 const backBtn = document.getElementById('payments-back-btn');
 const payBtn = document.getElementById('pay-weekly-fee-btn');
-const qrModal = document.getElementById('qr-modal-card')?.parentElement || document.getElementById('qr-payment-modal');
+const qrModal = document.getElementById('qr-payment-modal');
 const qrModalCloseBtn = document.getElementById('qr-modal-close-btn');
 const qrModalCancelBtn = document.getElementById('qr-modal-cancel-btn');
 const paymentDoneBtn = document.getElementById('payment-done-btn');
 const upiQrImage = document.getElementById('upi-qr-image');
+
+const seeAllTopBtn = document.getElementById('py-see-all-top-btn');
+const seeAllFullBtn = document.getElementById('py-see-all-btn');
+const historyModal = document.getElementById('py-history-modal');
+const modalCloseBtn = document.getElementById('py-modal-close-btn');
 
 async function getAuthToken() {
     if (!currentAuthUser) return null;
@@ -56,8 +61,7 @@ async function fetchPaymentStatus() {
         renderPaymentUI(data);
     } catch (error) {
         console.error("Error fetching payment status:", error);
-        const msg = (typeof error.message === 'object' && error.message !== null) ? JSON.stringify(error.message) : (error.message || "Failed to load payment details.");
-        showAlert(msg);
+        showAlert(error.message || "Failed to load payment details.");
     } finally {
         if (loadingScreen) loadingScreen.classList.add('d-none');
         if (container) container.classList.remove('d-none');
@@ -66,36 +70,36 @@ async function fetchPaymentStatus() {
 
 function renderStatusBadge(element, statusCode) {
     if (!element) return;
-    element.className = 'payment-status-badge';
+    element.className = 'py-status-badge';
     
     switch (statusCode) {
         case 'due':
             element.classList.add('due');
-            element.innerText = 'DUE';
+            element.innerHTML = '<span>DUE</span>';
             break;
         case 'submitted':
             element.classList.add('submitted');
-            element.innerText = 'UNDER VERIFICATION';
+            element.innerHTML = '<span>UNDER VERIFICATION</span>';
             break;
         case 'approved':
             element.classList.add('approved');
-            element.innerText = 'APPROVED';
+            element.innerHTML = '<span>APPROVED</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
             break;
         case 'declined':
             element.classList.add('declined');
-            element.innerText = 'DECLINED';
+            element.innerHTML = '<span>DECLINED</span>';
             break;
         case 'overdue':
             element.classList.add('overdue');
-            element.innerText = 'OVERDUE';
+            element.innerHTML = '<span>OVERDUE</span>';
             break;
         case 'paused':
             element.classList.add('approved');
-            element.innerText = 'PAUSED';
+            element.innerHTML = '<span>PAUSED</span>';
             break;
         default:
             element.classList.add('due');
-            element.innerText = statusCode.toUpperCase();
+            element.innerHTML = `<span>${statusCode.toUpperCase()}</span>`;
     }
 }
 
@@ -103,144 +107,146 @@ function renderPaymentUI(data) {
     const weekInfo = data.weekInfo || {};
     const currentStatus = data.currentStatus || 'due';
     const activeSub = data.activeSubmission;
+    const duesSummary = data.duesSummary || {};
+    const upcomingWeek = data.upcomingWeek || {};
     const isPaused = Boolean(data.isPaused);
     const pauseMsg = data.pauseMessage || "Weekly payments are currently paused. Chill and relax — no payment is required during this period.";
 
-    // Render Week Range
+    // 1) Top Current Week Card
     const weekLabelEl = document.getElementById('current-week-label');
     if (weekLabelEl) weekLabelEl.innerText = weekInfo.weekLabel || 'Current Week';
 
-    // Render Status Badges
     renderStatusBadge(document.getElementById('current-week-status-badge'), currentStatus);
-    renderStatusBadge(document.getElementById('overall-status-badge'), currentStatus);
-    renderStatusBadge(document.getElementById('stat-status-pill'), currentStatus);
+    renderStatusBadge(document.getElementById('py-current-status-badge'), currentStatus);
 
-    // Render Stats
-    const dueDateEl = document.getElementById('current-due-date');
-    if (dueDateEl) {
-        if (isPaused) {
-            dueDateEl.innerText = 'Paused';
-        } else if (weekInfo.deadlineFormatted) {
-            dueDateEl.innerText = weekInfo.deadlineFormatted.replace(', ', '\n');
+    // 2) Last/Current Week Details
+    const lastDueDateEl = document.getElementById('py-last-due-date');
+    if (lastDueDateEl) {
+        lastDueDateEl.innerText = isPaused ? 'Paused' : (weekInfo.shortWeekLabel ? weekInfo.shortWeekLabel.split('-')[1].trim() : '23 Aug 2026 (Sun)');
+    }
+
+    const lastPaidDateEl = document.getElementById('py-last-paid-date');
+    if (lastPaidDateEl) {
+        if (activeSub?.submittedAt) {
+            lastPaidDateEl.innerText = new Date(activeSub.submittedAt).toLocaleString('en-IN', {
+                day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
         } else {
-            dueDateEl.innerText = '--';
+            lastPaidDateEl.innerText = currentStatus === 'approved' ? 'Verified' : 'Not paid yet';
         }
     }
 
-    // Render Time Remaining
+    const totalAmountEl = document.getElementById('py-total-amount');
+    if (totalAmountEl) {
+        const total = duesSummary.totalAmountToBePaid !== undefined ? duesSummary.totalAmountToBePaid : (weekInfo.amount || 140);
+        totalAmountEl.innerText = `₹${total}`;
+    }
+
+    const prevDuesEl = document.getElementById('py-prev-dues-text');
+    if (prevDuesEl) {
+        prevDuesEl.innerText = duesSummary.previousDuesText || 'No previous dues';
+        prevDuesEl.className = duesSummary.previousDuesIncluded ? 'py-footer-val danger' : 'py-footer-val green';
+    }
+
+    // Timer
     if (isPaused) {
         if (countdownTimer) clearInterval(countdownTimer);
-        const timeEl = document.getElementById('current-time-remaining');
-        if (timeEl) {
-            timeEl.innerText = 'Paused';
-            timeEl.style.color = '#16a34a';
-        }
+        const timeEl = document.getElementById('py-time-left');
+        if (timeEl) timeEl.innerText = 'Paused';
     } else {
         startCountdown(weekInfo.sundayDeadline);
     }
 
-    // Render Pause Banner vs Top Warning Banner
-    const pauseBanner = document.getElementById('payments-pause-banner');
-    const pauseMsgEl = document.getElementById('payments-pause-message');
-    const topBanner = document.getElementById('payments-top-banner');
+    // 3) General Message Card
+    const noticeTitle = document.getElementById('py-notice-title');
+    const noticeDesc = document.getElementById('py-notice-desc');
+    const noticeCard = document.getElementById('py-general-notice-card');
 
-    if (isPaused) {
-        if (pauseBanner) {
-            if (pauseMsgEl) pauseMsgEl.innerText = pauseMsg;
-            pauseBanner.classList.remove('d-none');
-        }
-        if (topBanner) topBanner.classList.add('d-none');
-    } else {
-        if (pauseBanner) pauseBanner.classList.add('d-none');
-        if (topBanner) {
-            const titleEl = document.getElementById('payments-banner-title');
-            if (currentStatus === 'overdue') {
-                topBanner.className = 'payments-top-notice pause';
-                if (titleEl) titleEl.innerText = '⚠️ Payment Overdue: Please pay ₹140 now to avoid ride request suspension.';
-                topBanner.classList.remove('d-none');
-            } else if (currentStatus === 'due') {
-                topBanner.className = 'payments-top-notice';
-                if (titleEl) titleEl.innerText = `Pay your weekly fee of ₹140 by ${weekInfo.deadlineFormatted || 'Sunday 12:00 PM'}`;
-                topBanner.classList.remove('d-none');
-            } else {
-                topBanner.classList.add('d-none');
-            }
-        }
-    }
-
-    // Render Status Info Box
-    const infoBox = document.getElementById('current-status-info-box');
-    const infoTitle = document.getElementById('current-status-info-title');
-    const infoText = document.getElementById('current-status-info-text');
-    const overallDesc = document.getElementById('overall-status-desc');
-
-    if (infoBox && infoText) {
-        infoBox.className = 'payments-info-box';
+    if (noticeCard && noticeTitle && noticeDesc) {
         if (isPaused) {
-            infoBox.classList.add('approved');
-            if (infoTitle) infoTitle.innerText = 'Weekly Payments Paused.';
-            infoText.innerText = pauseMsg;
-            if (overallDesc) overallDesc.innerHTML = 'Weekly payments are paused by administration.<br>No fee is due during this period.';
+            noticeCard.className = 'py-general-notice-card approved';
+            noticeTitle.innerText = 'Weekly Payments Paused.';
+            noticeDesc.innerText = pauseMsg;
         } else if (currentStatus === 'submitted') {
-            infoBox.classList.add('submitted');
-            if (infoTitle) infoTitle.innerText = 'Payment Under Verification.';
-            infoText.innerText = 'Your payment for this week has been submitted and is currently under verification by the Ride Share Accounts team.';
-            if (overallDesc) overallDesc.innerHTML = 'Payment submitted — awaiting verification.<br>Accounts team is reviewing your payment.';
+            noticeCard.className = 'py-general-notice-card submitted';
+            noticeTitle.innerText = 'Payment under verification.';
+            noticeDesc.innerText = 'Your weekly fee payment has been submitted and is currently being verified by our accounts team.';
         } else if (currentStatus === 'approved') {
-            infoBox.classList.add('approved');
-            if (infoTitle) infoTitle.innerText = 'Weekly Fee Paid & Verified.';
-            infoText.innerText = 'Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.';
-            if (overallDesc) overallDesc.innerHTML = 'Weekly payment is verified and active.<br>You are ready to accept ride requests.';
+            noticeCard.className = 'py-general-notice-card approved';
+            noticeTitle.innerText = 'Weekly fee paid & verified.';
+            noticeDesc.innerText = 'Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.';
         } else if (currentStatus === 'declined') {
-            infoBox.classList.add('declined');
-            const reason = activeSub?.declineReason ? ` Reason: ${activeSub.declineReason}` : '';
-            if (infoTitle) infoTitle.innerText = 'Payment Submission Declined.';
-            infoText.innerText = `Your previous payment submission was declined.${reason} Please scan the QR code and pay again.`;
-            if (overallDesc) overallDesc.innerHTML = 'Payment declined.<br>Replacement payment required.';
+            noticeCard.className = 'py-general-notice-card declined';
+            const reason = activeSub?.declineReason ? ` (${activeSub.declineReason})` : '';
+            noticeTitle.innerText = 'Payment verification needed.';
+            noticeDesc.innerText = `Your previous payment submission could not be verified${reason}. Please scan the QR code and re-submit your payment.`;
         } else if (currentStatus === 'overdue') {
-            infoBox.classList.add('declined');
-            if (infoTitle) infoTitle.innerText = 'Payment Overdue!';
-            infoText.innerText = 'Your payment deadline has passed. Please pay the weekly fee of ₹140 immediately to continue accepting rides.';
-            if (overallDesc) overallDesc.innerHTML = 'Payment overdue.<br>Please complete payment now to continue.';
+            noticeCard.className = 'py-general-notice-card overdue';
+            noticeTitle.innerText = 'Payment Overdue.';
+            noticeDesc.innerText = `Your payment deadline has passed. Please complete the payment of ₹${duesSummary.totalAmountToBePaid || 140} to continue accepting ride requests cleanly.`;
         } else {
-            if (infoTitle) infoTitle.innerText = 'Your payment for this week is due.';
-            infoText.innerText = 'Please pay before Sunday 12:00 PM to avoid any interruptions.';
-            if (overallDesc) overallDesc.innerHTML = 'You haven\'t paid for this week yet.<br>Complete the payment to keep receiving ride requests.';
+            noticeCard.className = 'py-general-notice-card';
+            noticeTitle.innerText = 'Weekly payment due.';
+            noticeDesc.innerText = 'Please pay your weekly fee before Sunday 12:00 PM to keep your driver account active and accept ride requests.';
         }
     }
 
-    // Configure Primary Pay Button
+    // 4) Main Pay Button
     if (payBtn) {
+        const total = duesSummary.totalAmountToBePaid || weekInfo.amount || 140;
         if (isPaused) {
-            payBtn.innerText = 'Weekly Payments Paused (No Fee Due)';
+            payBtn.innerHTML = '<span>Weekly Payments Paused (No Fee Due)</span>';
             payBtn.disabled = true;
-            payBtn.className = 'gy-btn gy-btn-success w-100 py-3 fw-bold';
+            payBtn.className = 'py-main-pay-btn disabled';
         } else if (currentStatus === 'submitted') {
-            payBtn.innerText = 'Payment Submitted — Under Verification';
+            payBtn.innerHTML = '<span>Payment Submitted — Under Verification</span>';
             payBtn.disabled = true;
-            payBtn.className = 'gy-btn gy-btn-dark w-100 py-3 fw-bold';
+            payBtn.className = 'py-main-pay-btn disabled';
         } else if (currentStatus === 'approved') {
-            payBtn.innerText = 'Weekly Fee Paid (Verified ✓)';
+            payBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>Weekly Fee Paid (Verified ✓)</span>';
             payBtn.disabled = true;
-            payBtn.className = 'gy-btn gy-btn-success w-100 py-3 fw-bold';
+            payBtn.className = 'py-main-pay-btn verified';
         } else if (currentStatus === 'declined') {
-            payBtn.innerText = 'Re-pay Weekly Fee (₹140)';
+            payBtn.innerHTML = `<span>Re-pay Weekly Fee (₹${total})</span>`;
             payBtn.disabled = false;
-            payBtn.className = 'gy-btn gy-btn-danger w-100 py-3 fw-bold';
+            payBtn.className = 'py-main-pay-btn danger';
         } else {
-            payBtn.innerText = 'Pay the weekly fee';
+            payBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span>Pay Weekly Fee (₹${total})</span>`;
             payBtn.disabled = false;
-            payBtn.className = 'gy-btn gy-btn-primary w-100 py-3 fw-bold';
+            payBtn.className = 'py-main-pay-btn';
         }
     }
 
-    // Render History List
-    renderHistoryList(data.history || []);
+    // 5) Upcoming Week Details
+    const nextDueDateEl = document.getElementById('py-next-due-date');
+    if (nextDueDateEl) {
+        nextDueDateEl.innerText = upcomingWeek.dueDateLabel || '30 Aug 2026 (Sun)';
+    }
+    const nextAmountEl = document.getElementById('py-next-amount');
+    if (nextAmountEl) {
+        nextAmountEl.innerText = upcomingWeek.amount || 140;
+    }
+
+    // 6) History Lists
+    const history = data.history || [];
+    renderRecentHistory(history.slice(0, 3));
+    renderFullHistory(history);
+
+    // Account Hold Banner & Modal
+    const holdBanner = document.getElementById('account-hold-banner');
+    const holdOverlay = document.getElementById('account-hold-modal-overlay');
+    if (data.isAccountOnHold) {
+        if (holdBanner) holdBanner.classList.remove('d-none');
+        if (holdOverlay) holdOverlay.classList.remove('d-none');
+    } else {
+        if (holdBanner) holdBanner.classList.add('d-none');
+        if (holdOverlay) holdOverlay.classList.add('d-none');
+    }
 }
 
 function startCountdown(deadlineIso) {
     if (countdownTimer) clearInterval(countdownTimer);
-    const timeEl = document.getElementById('current-time-remaining');
+    const timeEl = document.getElementById('py-time-left');
     if (!timeEl || !deadlineIso) return;
 
     const updateTimer = () => {
@@ -249,7 +255,7 @@ function startCountdown(deadlineIso) {
         const diff = deadline - now;
 
         if (diff <= 0) {
-            timeEl.innerText = 'Passed';
+            timeEl.innerText = 'Overdue';
             timeEl.style.color = '#dc2626';
             clearInterval(countdownTimer);
             return;
@@ -258,14 +264,13 @@ function startCountdown(deadlineIso) {
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
         if (days > 0) {
             timeEl.innerText = `${days}d ${hours}h ${minutes}m`;
         } else if (hours > 0) {
-            timeEl.innerText = `${hours}h ${minutes}m ${seconds}s`;
+            timeEl.innerText = `${hours}h ${minutes}m`;
         } else {
-            timeEl.innerText = `${minutes}m ${seconds}s`;
+            timeEl.innerText = `${minutes}m`;
         }
     };
 
@@ -273,59 +278,79 @@ function startCountdown(deadlineIso) {
     countdownTimer = setInterval(updateTimer, 1000);
 }
 
-function renderHistoryList(history) {
+function renderHistoryItemHtml(item) {
+    const amountStr = `₹${item.amount || 140}`;
+    const weekStr = item.weekLabel || item.weekId;
+    const subDate = item.submittedAt ? new Date(item.submittedAt).toLocaleString('en-IN', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    }) : '--';
+
+    let badgeClass = 'due';
+    let badgeText = (item.status || 'due').toUpperCase();
+
+    if (item.status === 'submitted') {
+        badgeClass = 'submitted';
+        badgeText = 'UNDER VERIFICATION';
+    } else if (item.status === 'approved') {
+        badgeClass = 'approved';
+        badgeText = 'APPROVED';
+    } else if (item.status === 'declined') {
+        badgeClass = 'declined';
+        badgeText = 'DECLINED';
+    }
+
+    return `
+        <div class="py-history-item">
+            <div class="py-history-item-left">
+                <div class="py-history-check-circle ${item.status === 'approved' ? 'approved' : ''}">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="py-history-item-info">
+                    <strong>Week ${item.weekId || '2026-W34'}</strong>
+                    <span>${weekStr}</span>
+                    <div class="py-history-sub-status">
+                        <strong>${amountStr}</strong> • <span class="py-sub-badge ${badgeClass}">${badgeText}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="py-history-item-right">
+                <span class="py-history-date">${subDate}</span>
+                <span class="py-history-chevron">›</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderRecentHistory(recentList) {
     const listEl = document.getElementById('payments-history-list');
-    const countBadge = document.getElementById('history-count-badge');
     if (!listEl) return;
 
-    if (countBadge) countBadge.innerText = `${history.length} record${history.length === 1 ? '' : 's'}`;
-
-    if (!history.length) {
-        listEl.innerHTML = '<p class="text-muted text-center py-3 mb-0" style="font-size: 0.9rem;">No previous payment records found.</p>';
+    if (!recentList.length) {
+        listEl.innerHTML = '<p class="text-muted text-center py-3 mb-0" style="font-size: 0.88rem;">No payment history records found.</p>';
         return;
     }
 
-    listEl.innerHTML = history.map(item => {
-        const amountStr = `₹${item.amount || 140}`;
-        const weekStr = item.weekLabel || item.weekId;
-        const subDate = item.submittedAt ? new Date(item.submittedAt).toLocaleString('en-IN', {
-            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-        }) : '--';
+    listEl.innerHTML = recentList.map(renderHistoryItemHtml).join('');
+}
 
-        let badgeClass = 'due';
-        let badgeText = (item.status || 'due').toUpperCase();
+function renderFullHistory(fullList) {
+    const fullListEl = document.getElementById('py-full-history-list');
+    if (!fullListEl) return;
 
-        if (item.status === 'submitted') {
-            badgeClass = 'submitted';
-            badgeText = 'UNDER VERIFICATION';
-        } else if (item.status === 'approved') {
-            badgeClass = 'approved';
-            badgeText = 'APPROVED';
-        } else if (item.status === 'declined') {
-            badgeClass = 'declined';
-            badgeText = 'DECLINED';
-        }
+    if (!fullList.length) {
+        fullListEl.innerHTML = '<p class="text-muted text-center py-4 mb-0">No payment records found.</p>';
+        return;
+    }
 
-        return `
-            <div class="payments-history-item">
-                <div class="payments-history-left">
-                    <span class="payments-history-week">${weekStr}</span>
-                    <span class="payments-history-amount">${amountStr}</span>
-                </div>
-                <div class="payments-history-right">
-                    <span class="payment-status-badge ${badgeClass}">${badgeText}</span>
-                    <span class="payments-history-date">${subDate}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
+    fullListEl.innerHTML = fullList.map(renderHistoryItemHtml).join('');
 }
 
 function openQrModal() {
     if (!currentPaymentData) return;
     const weekInfo = currentPaymentData.weekInfo || {};
+    const duesSummary = currentPaymentData.duesSummary || {};
     const payeeUpi = weekInfo.payeeUpiId || "shuvanshil@oksbi";
-    const amount = weekInfo.amount || 140;
+    const amount = duesSummary.totalAmountToBePaid || weekInfo.amount || 140;
     const payeeName = encodeURIComponent(weekInfo.payeeName || "Ride Share Accounts");
 
     const upiUri = `upi://pay?pa=${payeeUpi}&pn=${payeeName}&am=${amount}&cu=INR`;
@@ -334,6 +359,9 @@ function openQrModal() {
     if (upiQrImage) {
         upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodedUpi}`;
     }
+
+    const qrAmountEl = document.getElementById('qr-modal-amount');
+    if (qrAmountEl) qrAmountEl.innerText = `₹${amount}`;
 
     if (qrModal) {
         qrModal.classList.remove('d-none');
@@ -393,7 +421,6 @@ function setupRealtimeListener(uid) {
         );
 
         realtimeUnsubscribe = onSnapshot(q, () => {
-            // Re-fetch status when Firestore collection changes
             fetchPaymentStatus();
         }, (err) => {
             console.warn("Realtime payment listener error:", err);
@@ -402,6 +429,14 @@ function setupRealtimeListener(uid) {
         console.warn("Could not attach Firestore realtime listener:", e);
     }
 }
+
+// History Modal Listeners
+seeAllTopBtn?.addEventListener('click', () => historyModal?.classList.remove('d-none'));
+seeAllFullBtn?.addEventListener('click', () => historyModal?.classList.remove('d-none'));
+modalCloseBtn?.addEventListener('click', () => historyModal?.classList.add('d-none'));
+historyModal?.addEventListener('click', (e) => {
+    if (e.target === historyModal) historyModal.classList.add('d-none');
+});
 
 // Event Listeners
 backBtn?.addEventListener('click', () => {

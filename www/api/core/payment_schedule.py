@@ -86,6 +86,71 @@ def get_payment_week_info(target_dt: Optional[datetime.datetime] = None) -> Dict
     }
 
 
+def calculate_dues_and_upcoming(
+    payment_history: List[Dict[str, Any]],
+    current_week_info: Dict[str, Any],
+    current_status: str = "due"
+) -> Dict[str, Any]:
+    """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status."""
+    current_week_id = current_week_info["weekId"]
+    monday_dt = datetime.datetime.fromisoformat(current_week_info["mondayStart"])
+
+    approved_weeks = set()
+    for item in payment_history:
+        w_id = item.get("weekId")
+        st = item.get("status")
+        if w_id and st in ("approved", "paused"):
+            approved_weeks.add(w_id)
+
+    current_is_approved = (current_status == "approved") or (current_week_id in approved_weeks)
+
+    previous_unpaid_weeks = []
+    consecutive_count = 0 if current_is_approved else 1
+    counting_consecutive = not current_is_approved
+
+    for i in range(1, 20):
+        prev_monday = monday_dt - datetime.timedelta(days=7 * i)
+        iso_year, iso_week, _ = prev_monday.isocalendar()
+        prev_week_id = f"{iso_year}-W{iso_week:02d}"
+
+        if prev_week_id not in approved_weeks:
+            previous_unpaid_weeks.append(prev_week_id)
+            if counting_consecutive:
+                consecutive_count += 1
+        else:
+            counting_consecutive = False
+
+    previous_dues_count = len(previous_unpaid_weeks)
+    previous_dues_amount = previous_dues_count * DEFAULT_WEEKLY_FEE
+
+    current_fee = 0 if current_is_approved else DEFAULT_WEEKLY_FEE
+    total_amount = current_fee + previous_dues_amount
+
+    # 10 continuous due weeks trigger non-closable temporary account hold
+    is_account_on_hold = (consecutive_count >= 10) and (not current_is_approved)
+
+    # Upcoming week calculation (1 week after current)
+    next_monday = monday_dt + datetime.timedelta(days=7)
+    next_sunday = next_monday + datetime.timedelta(days=6)
+    upcoming_due_label = next_sunday.strftime("%d %b %Y (Sun)")
+
+    return {
+        "previousDuesIncluded": previous_dues_count > 0,
+        "previousDuesCount": previous_dues_count,
+        "previousDuesAmount": previous_dues_amount,
+        "previousDuesText": f"₹{previous_dues_amount} ({previous_dues_count} week{'s' if previous_dues_count > 1 else ''} overdue)" if previous_dues_count > 0 else "No previous dues",
+        "totalAmountToBePaid": total_amount,
+        "consecutiveUnpaidWeeks": consecutive_count,
+        "isAccountOnHold": is_account_on_hold,
+        "holdLimitWeeks": 10,
+        "upcomingWeek": {
+            "dueDateLabel": upcoming_due_label,
+            "amount": DEFAULT_WEEKLY_FEE,
+            "currency": "INR"
+        }
+    }
+
+
 def is_date_in_pause_range(
     target_dt: Optional[datetime.datetime],
     start_date_str: Optional[str],

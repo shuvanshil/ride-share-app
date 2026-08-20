@@ -2311,6 +2311,57 @@ window.addEventListener('beforeunload', () => {
     mapShell?.destroy();
 });
 
+async function checkDriverAccountHoldStatus(user) {
+    try {
+        if (!user) return;
+        const token = await user.getIdToken();
+        const response = await fetch('/api/account/driver-payments/status', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.isAccountOnHold) {
+            renderAccountHoldModal();
+        }
+    } catch (e) {
+        console.warn("Account hold check error:", e);
+    }
+}
+
+function renderAccountHoldModal() {
+    let overlay = document.getElementById('account-hold-modal-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'account-hold-modal-overlay';
+        overlay.className = 'py-modal-overlay non-closable';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px;';
+        overlay.innerHTML = `
+            <div class="py-modal-card text-center" style="max-width: 400px; border: 2px solid #DC2626; background:#fff; border-radius:18px; box-shadow:0 20px 40px rgba(0,0,0,0.3); overflow:hidden;">
+                <div class="py-modal-body p-4">
+                    <div class="py-hold-icon-circle mb-3" style="width:64px;height:64px;border-radius:50%;background:#FEE2E2;display:flex;align-items:center;justify-content:center;margin:0 auto;">
+                        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#DC2626" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-danger fw-extrabold mb-2" style="font-size: 1.25rem;">Account Temporarily On Hold</h3>
+                    <p class="text-secondary small mb-4" style="line-height: 1.5;">
+                        Your driver account has been placed on hold because weekly fee payments for <strong>10 or more weeks</strong> have not been received. Please pay your outstanding fees to resume receiving ride requests.
+                    </p>
+                    <a href="/driver-payments.html" class="py-main-pay-btn w-100 text-decoration-none d-inline-flex justify-content-center align-items-center" style="padding: 14px; background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #fff; font-weight: 800; border-radius: 12px;">
+                        Pay Outstanding Weekly Fees
+                    </a>
+                    <p class="text-muted mt-3 mb-0" style="font-size: 0.75rem;">
+                        This non-closable dialog will be removed automatically after your payment review is completed by our accounts team.
+                    </p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+    overlay.classList.remove('d-none');
+}
+
 async function bootstrapDriverService() {
     showPageLoader("Opening trip console…");
     const user = await waitForAuth();
@@ -2354,6 +2405,7 @@ async function bootstrapDriverService() {
 
         currentUser = profile;
         cacheProfile(profile);
+        checkDriverAccountHoldStatus(user);
         registerDriverPushToken(db, currentUser.uid).catch((error) => {
             console.warn("Driver service push token registration failed:", error);
         });

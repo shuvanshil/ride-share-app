@@ -1580,3 +1580,631 @@ body {
     font-weight: 700;
     cursor: pointer;
 }
+
+/* ==========================================================================
+   DRIVER WEEKLY PAYMENT PAGE REDESIGN
+   ========================================================================== */
+
+.payments-page-redesign {
+    background-color: #F8FAFC;
+    color: #0F172A;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    padding-bottom: 40px;
+}
+
+.py-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #FFFFFF;
+    border-bottom: 1px solid #E2E8F0;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+}
+
+.py-back-btn, .py-help-btn {
+    background: transparent;
+    border: none;
+    color: #475569;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.py-topbar-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.py-page-wrap {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 1) Top Dark Card */
+.py-top-dark-card {
+    background: linear-gradient(135deg, #064E3B 0%, #022C22 100%);
+    border-radius: 16px;
+    padding: 16px 18px;
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 8px 24px rgba(6, 78, 59, 0.25);
+}
+
+.py-dark-card-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.py-dark-card-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.py-dark-card-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.py-dark-card-label {
+    font-size: 0.78rem;
+    color: #A7F3D0;
+    font-weight: 600;
+}
+
+.py-dark-card-dates {
+    font-size: 0.95rem;
+    font-weight: 800;
+    margin-top: 1px;
+}
+
+.py-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.py-status-badge.approved {
+    background: #DCFCE7;
+    color: #15803D;
+}
+
+.py-status-badge.due {
+    background: #FEF3C7;
+    color: #B45309;
+}
+
+.py-status-badge.submitted {
+    background: #DBEAFE;
+    color: #1E40AF;
+}
+
+.py-status-badge.overdue, .py-status-badge.declined {
+    background: #FEE2E2;
+    color: #B91C1C;
+}
+
+/* 2) White Card Common */
+.py-white-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.03);
+}
+
+.py-card-header {
+    display: flex;
+    align-items: center;
+}
+
+.py-card-header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+/* Details list */
+.py-details-list {
+    display: flex;
+    flex-direction: column;
+    margin-top: 14px;
+}
+
+.py-detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #F1F5F9;
+}
+
+.py-detail-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.88rem;
+    color: #475569;
+    font-weight: 500;
+}
+
+.py-row-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.py-row-icon.green-icon {
+    background: #ECFDF5;
+    color: #059669;
+}
+
+.py-row-icon.green-check-icon {
+    background: #DCFCE7;
+    color: #16A34A;
+}
+
+.py-detail-val {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #0F172A;
+}
+
+.py-detail-row.highlight-amount .py-total-amount-val {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #059669;
+}
+
+.py-details-footer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 14px;
+    background: #F8FAFC;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.py-footer-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.py-footer-label {
+    font-size: 0.75rem;
+    color: #64748B;
+    font-weight: 600;
+}
+
+.py-footer-val {
+    font-size: 0.88rem;
+    font-weight: 800;
+    margin-top: 2px;
+}
+
+.py-footer-val.green {
+    color: #059669;
+}
+
+.py-footer-val.danger {
+    color: #DC2626;
+}
+
+.py-time-left-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+/* 3) Notice Card */
+.py-general-notice-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 14px;
+}
+
+.py-general-notice-card.submitted {
+    background: #EFF6FF;
+    border-color: #BFDBFE;
+}
+
+.py-general-notice-card.declined, .py-general-notice-card.overdue {
+    background: #FEF2F2;
+    border-color: #FECACA;
+}
+
+.py-notice-icon-wrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.py-notice-content strong {
+    display: block;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #065F46;
+}
+
+.py-notice-content p {
+    font-size: 0.82rem;
+    color: #047857;
+    margin-top: 2px;
+}
+
+/* 4) Main Pay Button */
+.py-pay-action-wrap {
+    margin: 4px 0;
+}
+
+.py-main-pay-btn {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    color: #FFFFFF;
+    font-size: 1.05rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-shadow: 0 6px 20px rgba(5, 150, 105, 0.3);
+    cursor: pointer;
+    transition: transform 150ms ease;
+}
+
+.py-main-pay-btn:active {
+    transform: scale(0.98);
+}
+
+.py-main-pay-btn.disabled, .py-main-pay-btn.verified {
+    background: #0F172A;
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 0.9;
+}
+
+.py-main-pay-btn.danger {
+    background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%);
+}
+
+/* 5) Upcoming Week Details Card */
+.py-upcoming-card {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: 16px;
+    padding: 16px;
+}
+
+.py-upcoming-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #92400E;
+}
+
+.py-upcoming-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+}
+
+.py-upcoming-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.py-upcoming-label {
+    font-size: 0.75rem;
+    color: #B45309;
+    font-weight: 600;
+}
+
+.py-upcoming-val {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #78350F;
+    margin-top: 2px;
+}
+
+.py-upcoming-amount-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #FEF3C7;
+    border-radius: 20px;
+    color: #92400E;
+}
+
+.py-rupee-symbol {
+    font-weight: 800;
+    font-size: 0.9rem;
+}
+
+/* 6) Payment History Items */
+.py-see-all-top-link {
+    background: none;
+    border: none;
+    color: #6D28D9;
+    font-size: 0.85rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.py-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.py-history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background: #F8FAFC;
+    border: 1px solid #F1F5F9;
+    border-radius: 12px;
+}
+
+.py-history-item-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.py-history-check-circle {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #E2E8F0;
+    color: #64748B;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.py-history-check-circle.approved {
+    background: #DCFCE7;
+    color: #16A34A;
+}
+
+.py-history-item-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.py-history-item-info strong {
+    font-size: 0.88rem;
+    color: #0F172A;
+}
+
+.py-history-item-info span {
+    font-size: 0.75rem;
+    color: #64748B;
+}
+
+.py-history-sub-status {
+    font-size: 0.78rem;
+    margin-top: 2px;
+}
+
+.py-sub-badge {
+    font-weight: 700;
+    font-size: 0.72rem;
+}
+
+.py-sub-badge.approved { color: #16A34A; }
+.py-sub-badge.submitted { color: #2563EB; }
+.py-sub-badge.declined, .py-sub-badge.overdue { color: #DC2626; }
+
+.py-history-item-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.py-history-date {
+    font-size: 0.75rem;
+    color: #64748B;
+}
+
+.py-history-chevron {
+    color: #94A3B8;
+    font-size: 1.1rem;
+}
+
+.py-see-all-full-btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    background: #F8FAFC;
+    color: #6D28D9;
+    font-size: 0.88rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+/* 7) Instructions (How it works) */
+.py-instructions-card {
+    background: #EEF2FF;
+    border-color: #C7D2FE;
+}
+
+.py-step-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.py-step-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #FFFFFF;
+    border-radius: 12px;
+    border: 1px solid #E0E7FF;
+}
+
+.py-step-num {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #4338CA;
+    color: #FFFFFF;
+    font-size: 0.8rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.py-step-text {
+    flex: 1;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1E1B4B;
+}
+
+.py-step-icon {
+    flex-shrink: 0;
+}
+
+.py-bn-section-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #3730A3;
+}
+
+/* Modals Overlay */
+.py-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.py-modal-card {
+    width: 100%;
+    max-width: 440px;
+    background: #FFFFFF;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+.py-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.py-modal-header h3 {
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin: 0;
+}
+
+.py-modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #64748B;
+    cursor: pointer;
+}
+
+.py-modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+/* Top Alert Banner for Account Hold */
+.py-alert-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+    background: #FEF2F2;
+    border: 1px solid #FCA5A5;
+    border-radius: 14px;
+    color: #991B1B;
+}
+
+.py-alert-icon {
+    font-size: 1.25rem;
+}
+
+.py-alert-text strong {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+
+.py-alert-text p {
+    margin: 2px 0 0;
+    font-size: 0.8rem;
+}

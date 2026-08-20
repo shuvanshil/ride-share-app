@@ -20,6 +20,7 @@ from api.core.payment_schedule import (
     get_payment_week_info,
     get_ist_now,
     is_date_in_pause_range,
+    calculate_dues_and_upcoming,
     DEFAULT_WEEKLY_FEE,
     DEFAULT_PAYEE_UPI_ID,
 )
@@ -197,6 +198,8 @@ def get_driver_payment_status(
             status_code = "due"
             status_label = "Payment Due"
 
+    dues_info = calculate_dues_and_upcoming(payment_history, week_info, status_code)
+
     return {
         "ok": True,
         "isPaused": pause_config["isPaused"],
@@ -206,6 +209,9 @@ def get_driver_payment_status(
         "currentStatus": status_code,
         "currentStatusLabel": status_label,
         "activeSubmission": active_submission,
+        "duesSummary": dues_info,
+        "upcomingWeek": dues_info["upcomingWeek"],
+        "isAccountOnHold": dues_info["isAccountOnHold"],
         "history": payment_history,
     }
 

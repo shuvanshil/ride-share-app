@@ -4,277 +4,396 @@
     <script src="js/platform/native-bridge.js"></script>
     <script src="js/platform/routes.js"></script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#16a34a">
-    <title>Driver Payments | LiphtUp</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#064E3B">
+    <title>Weekly Payment | LiphtUp</title>
     
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/style.css?v=2.1.0">
+    <link rel="stylesheet" href="/css/driver/driver.css?v=2.1.0">
+    <link rel="stylesheet" href="/css/driver-service.css?v=2.1.0">
 </head>
-<body class="payments-page">
-    <header class="app-topbar">
-        <button id="payments-back-btn" type="button" class="head-back-btn" aria-label="Go back">
-            <span class="webicon webicon-view-more back-chevron" aria-hidden="true"></span>
+<body class="payments-page-redesign">
+    <!-- Navigation Topbar -->
+    <header class="py-topbar">
+        <button id="payments-back-btn" type="button" class="py-back-btn" aria-label="Go back">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
         </button>
-        <span class="topbar-title">Payments</span>
-        <div class="head-spacer"></div>
+        <div class="py-topbar-title">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            <span>Weekly Payment</span>
+        </div>
+        <button id="payments-help-btn" type="button" class="py-help-btn" aria-label="Help">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+        </button>
     </header>
 
-    <!-- Initial Loading State Spinner -->
+    <!-- Initial Loading State Screen -->
     <div id="payments-loading-screen" class="d-flex flex-column align-items-center justify-content-center py-5 my-5">
         <div class="spinner-border text-success mb-3" role="status" style="width: 2.5rem; height: 2.5rem;">
-            <span class="visually-hidden">Loading payment details...</span>
+            <span class="visually-hidden">Loading weekly payment details...</span>
         </div>
-        <p class="text-muted fw-semibold small mb-0">Loading your payment details...</p>
+        <p class="text-muted fw-semibold small mb-0">Loading your weekly payment details...</p>
     </div>
 
-    <main id="payments-container" class="payments-container d-none">
-        <!-- Top Notice Banner -->
-        <div id="payments-top-banner" class="payments-top-notice d-none">
-            <div class="notice-check-badge">✓</div>
-            <div class="notice-text">
-                <strong id="payments-banner-title">Pay your weekly fee of ₹140 by Sunday, 12:00 PM</strong>
-                <span id="payments-banner-sub">to continue receiving ride requests.</span>
+    <!-- Main Content Container -->
+    <main id="payments-container" class="py-page-wrap d-none">
+        <!-- 1) TOP DARK CARD: CURRENT WEEK -->
+        <section class="py-top-dark-card">
+            <div class="py-dark-card-left">
+                <div class="py-dark-card-icon">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
+                </div>
+                <div class="py-dark-card-info">
+                    <span class="py-dark-card-label">Current Week</span>
+                    <strong id="current-week-label" class="py-dark-card-dates">17 Aug 2026 (Mon) – 23 Aug 2026 (Sun)</strong>
+                </div>
+            </div>
+            <div id="current-week-status-badge" class="py-status-badge approved">
+                <span>APPROVED</span>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+            </div>
+        </section>
+
+        <!-- Account Hold Top Alert (if 10+ weeks unpaid) -->
+        <div id="account-hold-banner" class="py-alert-banner hold d-none">
+            <div class="py-alert-icon">⚠️</div>
+            <div class="py-alert-text">
+                <strong>Account Temporarily On Hold (10+ Unpaid Weeks)</strong>
+                <p>Your driver account is temporarily on hold because weekly fees have not been paid for 10 or more weeks. Please pay your outstanding fees below to restore your account.</p>
             </div>
         </div>
 
-        <!-- Payments Paused Friendly Banner -->
-        <div id="payments-pause-banner" class="payments-top-notice pause d-none">
-            <div class="notice-check-badge pause">🌴</div>
-            <div class="notice-text">
-                <strong>Weekly Payments Paused</strong>
-                <span id="payments-pause-message">Weekly payments are currently paused. Chill and relax — no payment is required during this period.</span>
-            </div>
-        </div>
-
-        <!-- Current Week Card -->
-        <section class="payments-card">
-            <div class="payments-card-header mb-2">
-                <h2 class="payments-card-title">Current Week</h2>
-                <span id="current-week-status-badge" class="payment-status-badge due">! DUE</span>
-            </div>
-
-            <div class="payments-week-range mb-3">
-                <span class="range-icon">📅</span>
-                <span id="current-week-label">17 Aug 2026 (Mon) – 23 Aug 2026 (Sun)</span>
+        <!-- 2) LAST / CURRENT WEEK DETAILS CARD -->
+        <section class="py-white-card">
+            <div class="py-card-header">
+                <div class="py-card-header-title">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <span>Last/Current Week Details</span>
+                </div>
             </div>
 
-            <div class="payments-grid-stats-4col">
-                <div class="payments-stat-col">
-                    <span class="payments-stat-label">WEEKLY FEE</span>
-                    <span class="payments-stat-val text-success fw-bold">₹140</span>
-                    <div class="stat-circle-icon bg-light-success">
-                        <span class="webicon webicon-payments" style="display:inline-block; width:16px; height:16px; background-color:#16a34a;"></span>
+            <div class="py-details-list">
+                <div class="py-detail-row">
+                    <div class="py-detail-left">
+                        <span class="py-row-icon green-icon">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        </span>
+                        <span>Last Payment Due Date</span>
+                    </div>
+                    <strong id="py-last-due-date" class="py-detail-val">23 Aug 2026 (Sun)</strong>
+                </div>
+
+                <div class="py-detail-row">
+                    <div class="py-detail-left">
+                        <span class="py-row-icon green-check-icon">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        </span>
+                        <span>Last Payment Date</span>
+                    </div>
+                    <strong id="py-last-paid-date" class="py-detail-val">19 Aug 2026, 12:48 PM</strong>
+                </div>
+
+                <div class="py-detail-row">
+                    <div class="py-detail-left">
+                        <span class="py-row-icon green-icon">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        </span>
+                        <span>Status</span>
+                    </div>
+                    <span id="py-current-status-badge" class="py-status-badge approved">APPROVED</span>
+                </div>
+
+                <div class="py-detail-row highlight-amount">
+                    <div class="py-detail-left">
+                        <span class="py-row-icon green-icon">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                        </span>
+                        <span>Total Amount to be Paid</span>
+                    </div>
+                    <strong id="py-total-amount" class="py-total-amount-val">₹140</strong>
+                </div>
+            </div>
+
+            <!-- Bottom 2-Column Grid -->
+            <div class="py-details-footer-grid">
+                <div class="py-footer-col">
+                    <span class="py-footer-label">Previous Dues Included?</span>
+                    <strong id="py-prev-dues-text" class="py-footer-val green">No previous dues</strong>
+                </div>
+                <div class="py-footer-col">
+                    <span class="py-footer-label">Time Left to Pay</span>
+                    <div class="py-time-left-wrap">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#D97706" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <strong id="py-time-left" class="py-footer-val">2d 15h 59m</strong>
                     </div>
                 </div>
-                <div class="payments-stat-col">
-                    <span class="payments-stat-label">DUE DATE</span>
-                    <span id="current-due-date" class="payments-stat-val text-dark fw-bold" style="font-size: 0.88rem;">23 Aug 2026<br>12:00 PM</span>
-                    <div class="stat-circle-icon bg-light-success">
-                        <span>📅</span>
-                    </div>
-                </div>
-                <div class="payments-stat-col">
-                    <span class="payments-stat-label">TIME LEFT</span>
-                    <span id="current-time-remaining" class="payments-stat-val text-danger fw-bold" style="font-size: 0.88rem;">3d 15h<br>19m</span>
-                    <div class="stat-circle-icon bg-light-danger">
-                        <span>🕒</span>
-                    </div>
-                </div>
-                <div class="payments-stat-col">
-                    <span class="payments-stat-label">STATUS</span>
-                    <span id="stat-status-pill" class="payment-status-badge due-small">DUE</span>
-                    <div class="stat-circle-icon bg-light-warning">
-                        <span>⚠️</span>
-                    </div>
-                </div>
             </div>
+        </section>
 
-            <div id="current-status-info-box" class="payments-info-box">
-                <span class="info-bulb">💡</span>
-                <div class="info-text-group">
-                    <strong id="current-status-info-title">Your payment for this week is due.</strong>
-                    <span id="current-status-info-text">Please pay before Sunday 12:00 PM to avoid any interruptions.</span>
-                </div>
+        <!-- 3) ENCOURAGING GENERAL MESSAGE CARD -->
+        <section id="py-general-notice-card" class="py-general-notice-card">
+            <div class="py-notice-icon-wrap">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
+            <div class="py-notice-content">
+                <strong id="py-notice-title">Weekly fee paid & verified.</strong>
+                <p id="py-notice-desc" class="mb-0">Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.</p>
+            </div>
+        </section>
 
-            <button id="pay-weekly-fee-btn" type="button" class="gy-btn gy-btn-success w-100 py-3 fw-bold flex-center-gap" style="font-size: 1.05rem;">
-                <span class="btn-shield-icon">🛡️</span>
-                <span>Pay the weekly fee</span>
+        <!-- 4) PAYMENT BUTTON -->
+        <section class="py-pay-action-wrap">
+            <button id="pay-weekly-fee-btn" type="button" class="py-main-pay-btn">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                    <line x1="2" y1="10" x2="22" y2="10"></line>
+                </svg>
+                <span>Pay Weekly Fee</span>
             </button>
         </section>
 
-        <!-- Payment Status Section Card -->
-        <section class="payments-card">
-            <div class="d-flex align-items-center justify-content-between">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="card-icon-box bg-yellow-light">
-                        <span>📋</span>
-                    </div>
-                    <div>
-                        <h3 class="payments-card-title mb-1" style="font-size: 1rem;">Payment Status</h3>
-                        <p id="overall-status-desc" class="mb-0 text-muted small">
-                            You haven't paid for this week yet.<br>Complete the payment to keep receiving ride requests.
-                        </p>
-                    </div>
+        <!-- 5) UPCOMING WEEK DETAILS CARD -->
+        <section class="py-upcoming-card">
+            <div class="py-upcoming-header">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#D97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span>Upcoming Week Details</span>
+            </div>
+            <div class="py-upcoming-body">
+                <div class="py-upcoming-col">
+                    <span class="py-upcoming-label">Next Due Date</span>
+                    <strong id="py-next-due-date" class="py-upcoming-val">30 Aug 2026 (Sun)</strong>
                 </div>
-                <div class="d-flex align-items-center gap-2">
-                    <span id="overall-status-badge" class="payment-status-badge due">DUE</span>
-                    <span class="text-muted chevron-right">›</span>
+                <div class="py-upcoming-col text-end">
+                    <span class="py-upcoming-label">Amount</span>
+                    <div class="py-upcoming-amount-badge">
+                        <span class="py-rupee-symbol">₹</span>
+                        <strong id="py-next-amount">140</strong>
+                    </div>
                 </div>
             </div>
         </section>
 
-        <!-- Payment History Card -->
-        <section class="payments-card">
-            <div class="payments-history-header mb-3">
-                <h3 class="payments-card-title" style="font-size: 1rem;">Payment History</h3>
-                <span id="history-count-badge" class="text-muted small">0 records</span>
+        <!-- 6) PAYMENT HISTORY SECTION (LAST 3 + SEE ALL) -->
+        <section class="py-white-card">
+            <div class="py-card-header justify-content-between mb-3">
+                <div class="py-card-header-title">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#6D28D9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                    <span>Payment History</span>
+                </div>
+                <button id="py-see-all-top-btn" type="button" class="py-see-all-top-link">See All</button>
             </div>
-            <div id="payments-history-list">
-                <div class="d-flex align-items-center justify-content-between py-2">
-                    <div class="d-flex align-items-center gap-3">
-                        <div class="card-icon-box bg-green-light">
-                            <span>📄</span>
-                        </div>
-                        <span class="text-muted small">No previous payment records found.</span>
-                    </div>
-                    <span class="text-muted chevron-right">›</span>
+
+            <div id="payments-history-list" class="py-history-list">
+                <!-- Dynamically rendered recent items -->
+            </div>
+
+            <button id="py-see-all-btn" type="button" class="py-see-all-full-btn">
+                <span>See All History</span>
+            </button>
+        </section>
+
+        <!-- 7) INSTRUCTIONS SECTION (HOW IT WORKS: ENGLISH & BENGALI) -->
+        <section class="py-white-card py-instructions-card">
+            <div class="py-card-header mb-3">
+                <div class="py-card-header-title">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4338CA" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <span>How it works</span>
+                </div>
+            </div>
+
+            <!-- English Steps -->
+            <div class="py-step-list mb-4">
+                <div class="py-step-item">
+                    <span class="py-step-num">1</span>
+                    <span class="py-step-text">Click "Pay the weekly fee"</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6M10 10.5V2a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8M18 8a2 2 0 0 1 2 2v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-3"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">2</span>
+                    <span class="py-step-text">Scan the QR code using any UPI app (GPay, PhonePe, Paytm)</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">3</span>
+                    <span class="py-step-text">Pay ₹140 (amount auto-filled)</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 6v12"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">4</span>
+                    <span class="py-step-text">Click "Payment done" in the app</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">5</span>
+                    <span class="py-step-text">Wait for verification from our accounts team</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Bengali Steps -->
+            <div class="py-bn-section-title mb-3">কীভাবে পেমেন্ট করবেন</div>
+            <div class="py-step-list">
+                <div class="py-step-item">
+                    <span class="py-step-num">1</span>
+                    <span class="py-step-text">"সাপ্তাহিক ফি পরিশোধ করুন" এ ক্লিক করুন।</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6M10 10.5V2a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8M18 8a2 2 0 0 1 2 2v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-3"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">2</span>
+                    <span class="py-step-text">যেকোনো UPI অ্যাপ (GPay, PhonePe, Paytm) ব্যবহার করে QR কোড স্ক্যান করুন।</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">3</span>
+                    <span class="py-step-text">₹140 পরিশোধ করুন (পরিমাণ স্বয়ংক্রিয়ভাবে সেট করা থাকবে)।</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 6v12"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">4</span>
+                    <span class="py-step-text">অ্যাপে "Payment done" এ ক্লিক করুন।</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                </div>
+                <div class="py-step-item">
+                    <span class="py-step-num">5</span>
+                    <span class="py-step-text">আমাদের অ্যাকাউন্টস টিম থেকে ভেরিফিকেশন আসার অপেক্ষা করুন।</span>
+                    <span class="py-step-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </span>
                 </div>
             </div>
         </section>
 
-        <!-- How It Works Section (English) -->
-        <section class="payments-guide-card">
-            <div class="guide-header">
-                <div class="guide-check-circle">✓</div>
-                <h3 class="guide-title">How it works</h3>
+        <!-- Footer Safety Assurance -->
+        <section class="py-general-notice-card">
+            <div class="py-notice-icon-wrap">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#059669" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
             </div>
-            <div class="guide-step-list">
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">1</span>
-                        <span class="step-label">Click <strong>"Pay the weekly fee"</strong></span>
-                    </div>
-                    <span class="step-icon">👆</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">2</span>
-                        <span class="step-label">Scan the QR code using any UPI app (GPay, PhonePe, Paytm)</span>
-                    </div>
-                    <span class="step-icon">🔲</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">3</span>
-                        <span class="step-label">Pay <strong>₹140</strong> (amount auto-filled)</span>
-                    </div>
-                    <span class="step-icon">₹</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">4</span>
-                        <span class="step-label">Click <strong>"Payment done"</strong> in the app</span>
-                    </div>
-                    <span class="step-icon">✓</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">5</span>
-                        <span class="step-label">Wait for verification from our accounts team</span>
-                    </div>
-                    <span class="step-icon">🛡️</span>
-                </div>
-            </div>
-        </section>
-
-        <!-- Bengali Instructions Section (বাংলায় নির্দেশনা) -->
-        <section class="payments-guide-card">
-            <div class="guide-header">
-                <div class="guide-check-circle">✓</div>
-                <h3 class="guide-title">বাংলায় নির্দেশনা</h3>
-            </div>
-            <div class="guide-step-list">
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">1</span>
-                        <span class="step-label">“Pay the weekly fee” বাটনে ক্লিক করুন।</span>
-                    </div>
-                    <span class="step-icon">👆</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">2</span>
-                        <span class="step-label">যেকোনো UPI অ্যাপ যেমন GPay, PhonePe বা Paytm ব্যবহার করে QR Code স্ক্যান করুন।</span>
-                    </div>
-                    <span class="step-icon">🔲</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">3</span>
-                        <span class="step-label">₹১৪০ পেমেন্ট করুন। টাকার পরিমাণ স্বয়ংক্রিয়ভাবে পূরণ হয়ে যাবে।</span>
-                    </div>
-                    <span class="step-icon">₹</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">4</span>
-                        <span class="step-label">পেমেন্ট সম্পন্ন করার পর অ্যাপে “Payment done” বাটনে ক্লিক করুন।</span>
-                    </div>
-                    <span class="step-icon">✓</span>
-                </div>
-                <div class="guide-step-row">
-                    <div class="step-left">
-                        <span class="step-num">5</span>
-                        <span class="step-label">আমাদের Accounts Team পেমেন্ট যাচাই করা পর্যন্ত অপেক্ষা করুন।</span>
-                    </div>
-                    <span class="step-icon">🛡️</span>
-                </div>
+            <div class="py-notice-content">
+                <p class="mb-0 text-dark fw-semibold" style="font-size: 0.88rem;">Once verified, your status will be updated and you will continue to receive ride requests.</p>
             </div>
         </section>
     </main>
 
-    <!-- QR Payment Dialog Modal -->
-    <div id="qr-payment-modal" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title">
-        <div class="qr-modal-card">
-            <button id="qr-modal-close-btn" type="button" class="modal-close-btn" aria-label="Close modal">×</button>
-            <h4 id="qr-modal-title" class="fw-bold mb-1">Pay Weekly Fee</h4>
-            <p class="text-muted small mb-1">Scan this QR code using any UPI app</p>
-            <div class="qr-amount-display">₹140</div>
-
-            <div class="qr-code-frame">
-                <img id="upi-qr-image" class="qr-code-img" src="" alt="UPI Payment QR Code">
+    <!-- SEE ALL PAYMENT HISTORY MODAL -->
+    <div id="py-history-modal" class="py-modal-overlay d-none">
+        <div class="py-modal-card">
+            <div class="py-modal-header">
+                <h3>All Payment Histories</h3>
+                <button id="py-modal-close-btn" class="py-modal-close" type="button">×</button>
             </div>
-
-            <div class="qr-notice-box">
-                <span>ℹ️</span>
-                <span>The amount of ₹140 is auto-filled in your UPI app. After successful payment, click <strong>"Payment done"</strong> below.</span>
+            <div class="py-modal-body" id="py-full-history-list">
+                <!-- Full history list items -->
             </div>
-
-            <button id="payment-done-btn" type="button" class="gy-btn gy-btn-success w-100 py-3 mb-2 fw-bold" style="font-size: 1.05rem;">
-                Payment done
-            </button>
-            <button id="qr-modal-cancel-btn" type="button" class="btn btn-link text-muted w-100">
-                Cancel
-            </button>
         </div>
     </div>
 
-    <!-- Bottom Navigation Bar -->
-    <nav class="bottom-nav">
-        <button type="button" onclick="window.location.href='/driver.html'"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
-        <button type="button" onclick="window.location.href='/driver-service.html'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
-        <button type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-        <button type="button" class="active" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
-    </nav>
+    <!-- UPI QR PAYMENT MODAL -->
+    <div id="qr-payment-modal" class="py-modal-overlay d-none">
+        <div class="py-modal-card text-center" style="max-width: 380px;">
+            <div class="py-modal-header">
+                <h3>Pay Weekly Fee</h3>
+                <button id="qr-modal-close-btn" class="py-modal-close" type="button">×</button>
+            </div>
+            <div class="py-modal-body p-4">
+                <p class="text-muted small mb-3">Scan this QR code with GPay, PhonePe, Paytm or any UPI app to complete your payment.</p>
+                <div class="d-flex justify-content-center mb-3">
+                    <img id="upi-qr-image" src="" alt="UPI QR Code" style="width: 220px; height: 220px; border-radius: 12px; border: 1px solid #E2E8F0; padding: 8px;">
+                </div>
+                <div class="py-qr-amount-box mb-4">
+                    <span>Total Payable:</span>
+                    <strong id="qr-modal-amount" class="text-success fs-4 ms-2">₹140</strong>
+                </div>
+                <button id="payment-done-btn" type="button" class="py-main-pay-btn w-100 mb-2">Payment done</button>
+                <button id="qr-modal-cancel-btn" type="button" class="btn btn-link text-muted text-decoration-none">Cancel</button>
+            </div>
+        </div>
+    </div>
 
-    <!-- App Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script type="module" src="/js/driver/driver-payments.js"></script>
+    <!-- NON-CLOSABLE ACCOUNT HOLD MODAL OVERLAY (10+ UNPAID WEEKS) -->
+    <div id="account-hold-modal-overlay" class="py-modal-overlay non-closable d-none">
+        <div class="py-modal-card text-center" style="max-width: 400px; border: 2px solid #DC2626;">
+            <div class="py-modal-body p-4">
+                <div class="py-hold-icon-circle mb-3">
+                    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#DC2626" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                </div>
+                <h3 class="text-danger fw-extrabold mb-2" style="font-size: 1.25rem;">Account Temporarily On Hold</h3>
+                <p class="text-secondary small mb-4" style="line-height: 1.5;">
+                    Your driver account has been placed on hold because weekly fee payments for <strong>10 or more weeks</strong> have not been received. Please complete your payment below to request account reactivation.
+                </p>
+                <a href="/driver-payments.html" id="hold-pay-now-btn" class="py-main-pay-btn w-100 text-decoration-none d-inline-flex justify-content-center align-items-center">
+                    Pay Outstanding Weekly Fees
+                </a>
+                <p class="text-muted mt-3 mb-0" style="font-size: 0.75rem;">
+                    This dialog will be automatically removed once your payment submission is reviewed and approved by our accounts team.
+                </p>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
