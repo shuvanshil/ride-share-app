@@ -22,6 +22,15 @@ public class MainActivity extends BridgeActivity {
             }
 
             @JavascriptInterface
+            public String getGoogleMapsKey() {
+                int keyResId = getResources().getIdentifier("google_maps_browser_key", "string", getPackageName());
+                if (keyResId != 0) {
+                    return getString(keyResId);
+                }
+                return "";
+            }
+
+            @JavascriptInterface
             public void setUserRole(String role) {
                 if (role == null) role = "";
                 getSharedPreferences("liphtup_prefs", MODE_PRIVATE)

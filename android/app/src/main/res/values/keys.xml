@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Google Maps Browser Key - Should be restricted to Android app in Google Cloud Console -->
+    <string name="google_maps_browser_key">AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU</string>
+</resources>

@@ -5,12 +5,19 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep JavaScript interface methods
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# Keep the MainActivity and its bridge
+-keep class in.liphtup.app.MainActivity { *; }
+-keep class com.getcapacitor.** { *; }
+
+# Prevent shrinking of the native bridge objects
+-keepattributes JavascriptInterface
+-keepattributes *Annotation*
+
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
