@@ -330,13 +330,11 @@ async function getGoogleBrowserKey() {
                            googleBrowserKey.length < 20;
 
         if (suspicious) {
-            console.warn('[map] Backend key invalid or restricted, using mobile fallback.');
             googleBrowserKey = LIPHTUP_FALLBACK_GOOGLE_KEY;
         }
 
         return googleBrowserKey;
     } catch (error) {
-        console.error('[map] Config fetch failed, using mobile fallback:', error);
         googleBrowserKey = LIPHTUP_FALLBACK_GOOGLE_KEY;
         return googleBrowserKey;
     }
@@ -369,7 +367,7 @@ async function loadGoogleMaps() {
             script.id = GOOGLE_MAP_SCRIPT_ID;
             script.async = true;
             script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&loading=async`;
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
@@ -1097,21 +1095,68 @@ function ensurePassengerNavToggleButton(hostElement) {
     setPassengerNavigationMode(passengerNavigationModeEnabled);
 }
 
-function setGlobalDriverMarkerVisibility(driverId, existing) {
-    if (!existing?.marker?.setMap) return;
-
-    const shouldShow = !assignedDriverTrackingDriverId;
-    existing.marker.setMap(shouldShow ? window.mapInstance : null);
-}
-
 function syncGlobalDriverMarkerVisibility() {
+    if (!window.mapInstance) return;
+
+    if (assignedDriverTrackingDriverId) {
+        globalDriverMarkers.forEach((existing, driverId) => {
+            const shouldShow = (driverId === assignedDriverTrackingDriverId);
+            existing.marker?.setMap?.(shouldShow ? window.mapInstance : null);
+        });
+        if (vehicleLegendElement) {
+            vehicleLegendElement.classList.add("d-none");
+        }
+        return;
+    }
+
+    const center = { lat: Number(userLatitude || 23.8315), lng: Number(userLongitude || 91.2868) };
+    const markerList = [];
+
     globalDriverMarkers.forEach((existing, driverId) => {
-        setGlobalDriverMarkerVisibility(driverId, existing);
+        const pos = existing.marker?.getPosition?.();
+        let dist = 999999;
+        if (pos) {
+            dist = calculateDistanceMeters(center, { lat: pos.lat(), lng: pos.lng() });
+        }
+        markerList.push({
+            driverId,
+            existing,
+            dist,
+            vehicleType: (existing.vehicleType || "auto").toLowerCase()
+        });
+    });
+
+    // Sort available drivers by proximity to user location
+    markerList.sort((a, b) => a.dist - b.dist);
+
+    let autoCount = 0;
+    let bikeCount = 0;
+    const MAX_AUTOS = 4;
+    const MAX_BIKES = 3;
+
+    markerList.forEach(({ existing, vehicleType }) => {
+        let shouldShow = false;
+        if (vehicleType.includes("auto") || vehicleType.includes("rickshaw") || vehicleType.includes("tuk")) {
+            if (autoCount < MAX_AUTOS) {
+                shouldShow = true;
+                autoCount++;
+            }
+        } else {
+            if (bikeCount < MAX_BIKES) {
+                shouldShow = true;
+                bikeCount++;
+            }
+        }
+        existing.marker?.setMap?.(shouldShow ? window.mapInstance : null);
     });
 
     if (vehicleLegendElement) {
-        vehicleLegendElement.classList.toggle("d-none", Boolean(assignedDriverTrackingDriverId));
+        vehicleLegendElement.classList.remove("d-none");
     }
+}
+
+function setGlobalDriverMarkerVisibility(driverId, existing) {
+    syncGlobalDriverMarkerVisibility();
 }
 
 function clearPickupMarker() {
@@ -1404,38 +1449,102 @@ function getDriverDocumentHeading(driver) {
     );
 }
 
+function adjustForMarkerOverlap(position, heading) {
+    if (!position) return position;
+
+    const passengerPos = userMarker?.getPosition?.()
+        ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() }
+        : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null);
+
+    const destPos = destinationMarker?.getPosition?.()
+        ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() }
+        : null;
+
+    const checkPoints = [passengerPos, destPos].filter(Boolean);
+    const OVERLAP_MIN_METERS = 25; // 25 meters threshold for overlapping icons
+
+    for (const targetPt of checkPoints) {
+        const dist = calculateDistanceMeters(position, targetPt);
+        if (dist < OVERLAP_MIN_METERS) {
+            const offsetBearing = ((heading != null ? heading : 90) + 90) % 360;
+            const offsetRad = (offsetBearing * Math.PI) / 180;
+            const earthRadius = 6371000;
+            const shiftMeters = 30 - dist;
+            const deltaLat = (shiftMeters * Math.cos(offsetRad)) / earthRadius * (180 / Math.PI);
+            const deltaLng = (shiftMeters * Math.sin(offsetRad)) / (earthRadius * Math.cos(position.lat * Math.PI / 180)) * (180 / Math.PI);
+            return {
+                lat: position.lat + deltaLat,
+                lng: position.lng + deltaLng
+            };
+        }
+    }
+
+    return position;
+}
+
 function resolveDriverRenderState(existing, rawPosition, driver, routePath = []) {
     if (existing && existing.lastRoutePathRef !== routePath) {
         existing.routeMatchIndex = -1;
         existing.lastRoutePathRef = routePath;
     }
+
+    let position = rawPosition;
+    let heading = getDriverDocumentHeading(driver);
+
     const lastIndex = Number.isInteger(existing?.routeMatchIndex) ? existing.routeMatchIndex : -1;
     const match = matchPositionToRoute(rawPosition, routePath, lastIndex);
 
     if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
         if (existing) existing.routeMatchIndex = match.index;
-        return {
-            position: match.point,
-            heading: match.heading != null ? smoothHeading(existing?.heading, match.heading, 0.45) : normalizeHeading(existing?.heading)
-        };
-    }
-
-    if (existing) existing.routeMatchIndex = -1;
-
-    const documentHeading = getDriverDocumentHeading(driver);
-    if (documentHeading != null) {
-        return { position: rawPosition, heading: smoothHeading(existing?.heading, documentHeading, 0.4) };
+        position = match.point;
+        if (match.heading != null) {
+            heading = match.heading;
+        }
+    } else if (existing) {
+        existing.routeMatchIndex = -1;
     }
 
     const previousPosition = existing?.marker?.getPosition?.();
     if (previousPosition) {
         const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
-        if (calculateDistanceMeters(previous, rawPosition) >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
-            return { position: rawPosition, heading: smoothHeading(existing?.heading, calculateBearing(previous, rawPosition), 0.35) };
+        const moveDist = calculateDistanceMeters(previous, rawPosition);
+        if (moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
+            const motionBearing = calculateBearing(previous, rawPosition);
+            if (motionBearing != null) {
+                if (heading != null) {
+                    const diff = Math.abs(shortestHeadingDelta(heading, motionBearing));
+                    if (diff > 110) {
+                        heading = motionBearing;
+                    } else {
+                        heading = smoothHeading(existing?.heading, motionBearing, 0.4);
+                    }
+                } else {
+                    heading = motionBearing;
+                }
+            }
         }
     }
 
-    return { position: rawPosition, heading: normalizeHeading(existing?.heading) };
+    // Determine target pointing (Passenger pickup vs Destination)
+    const isAssigned = (driver?.driverId && driver.driverId === assignedDriverTrackingDriverId) || (existing?.isAssigned);
+    if (isAssigned || assignedDriverTrackingDriverId) {
+        const isTripStarted = Boolean(driver?.status === "in_trip" || driver?.rideStatus === "in_trip" || driver?.status === "completed_payment");
+        const targetPt = isTripStarted
+            ? (destinationMarker?.getPosition?.() ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() } : null)
+            : (userMarker?.getPosition?.() ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() } : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null));
+
+        if (targetPt && calculateDistanceMeters(position, targetPt) > 5) {
+            const targetBearing = calculateBearing(position, targetPt);
+            if (targetBearing != null && heading == null) {
+                heading = targetBearing;
+            }
+        }
+    }
+
+    const finalHeading = smoothHeading(existing?.heading, heading, 0.45);
+    const finalPosition = adjustForMarkerOverlap(position, finalHeading);
+
+    return { position: finalPosition, heading: finalHeading };
 }
 
 function updateVehicleMarkerLegend() {
@@ -1472,39 +1581,8 @@ function stopDriverMarkerCoast(existing) {
 
 function beginDriverMarkerCoast(existing) {
     stopDriverMarkerCoast(existing);
-
-    // Only coast if the driver was moving reasonably fast and we have a heading.
-    if (!existing.speedMetersPerSecond || existing.speedMetersPerSecond < 1.0) return;
-    if (!existing.lastMoveDistanceMeters || existing.lastMoveDistanceMeters < DRIVER_MARKER_COAST_MIN_DISTANCE_METERS) return;
-    if (existing.heading == null) return;
-
-    const headingRad = (existing.heading * Math.PI) / 180;
-    const origin = existing.marker.getPosition?.();
-    if (!origin) return;
-
-    const startPosition = { lat: origin.lat(), lng: origin.lng() };
-    const startedAt = performance.now();
-    const earthRadius = 6371000;
-
-    const step = (now) => {
-        const elapsedMs = now - startedAt;
-        if (elapsedMs > DRIVER_MARKER_COAST_MAX_MS) {
-            existing.coastFrame = null;
-            return;
-        }
-
-        const distanceMeters = existing.speedMetersPerSecond * (elapsedMs / 1000) * DRIVER_MARKER_COAST_DAMPING;
-        const deltaLat = (distanceMeters * Math.cos(headingRad)) / earthRadius * (180 / Math.PI);
-        const deltaLng = (distanceMeters * Math.sin(headingRad))
-            / (earthRadius * Math.cos(startPosition.lat * Math.PI / 180)) * (180 / Math.PI);
-
-        existing.marker.setPosition({
-            lat: startPosition.lat + deltaLat,
-            lng: startPosition.lng + deltaLng
-        });
-        existing.coastFrame = requestAnimationFrame(step);
-    };
-    existing.coastFrame = requestAnimationFrame(step);
+    // Disabled dead-reckoning coasting extrapolation to prevent vehicle icons from drifting off-road into non-route areas
+    return;
 }
 
 function animateGlobalDriverMarker(existing, targetPosition, targetHeading = null) {
@@ -2664,8 +2742,10 @@ function searchLegacyGoogleAutocomplete(query, maps, places) {
     return new Promise((resolve) => {
         googleAutocompleteService.getPlacePredictions({
             input: query.trim(),
-            location,
-            radius: 50000,
+            locationBias: {
+                center: location,
+                radius: 50000
+            },
             componentRestrictions: { country: "in" }
         }, (predictions, status) => {
             if (status !== places.PlacesServiceStatus.OK && status !== "OK") {
