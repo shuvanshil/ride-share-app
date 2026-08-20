@@ -1102,3 +1102,481 @@ body {
         width: min(460px, calc(100% - 28px));
     }
 }
+
+/* ==========================================================================
+   ACTIVE TRIP LIFECYCLE REDESIGN (DRIVING CONSOLE)
+   ========================================================================== */
+
+.active-trip-card-container {
+    background: #FAFAFA;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    display: grid;
+    gap: 14px;
+}
+
+.active-trip-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #F1F5F9;
+}
+
+.active-trip-header-title {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.active-trip-header-badge {
+    padding: 4px 10px;
+    background: #DCFCE7;
+    color: #15803D;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.active-trip-header-badge.waiting {
+    background: #FEF3C7;
+    color: #B45309;
+}
+
+/* Passenger Header Card */
+.at-passenger-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: #FFFFFF;
+    border: 1px solid #F1F5F9;
+    border-radius: 14px;
+}
+
+.at-passenger-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.at-passenger-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #059669;
+    color: #FFFFFF;
+    font-size: 1.25rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(5, 150, 105, 0.25);
+}
+
+.at-passenger-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.at-passenger-name {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.at-passenger-role {
+    font-size: 0.8rem;
+    color: #64748B;
+}
+
+.at-passenger-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.at-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 58px;
+    height: 52px;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    background: #FFFFFF;
+    color: #0F172A;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background 150ms ease, transform 150ms ease;
+    cursor: pointer;
+}
+
+.at-action-btn:active {
+    transform: scale(0.95);
+    background: #F8FAFC;
+}
+
+/* Status Alert Banner */
+.at-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px;
+    border-radius: 12px;
+}
+
+.at-status-waiting {
+    background: #FFFBEB;
+    border: 1px solid #FCD34D;
+}
+
+.at-status-progress {
+    background: #ECFDF5;
+    border: 1px solid #6EE7B7;
+}
+
+.at-status-icon-wrap {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.at-status-text strong {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+}
+
+.at-status-waiting .at-status-text strong {
+    color: #D97706;
+}
+
+.at-status-progress .at-status-text strong {
+    color: #059669;
+}
+
+.at-status-text p {
+    margin: 2px 0 0;
+    font-size: 0.8rem;
+    color: #475569;
+}
+
+/* Cards Common */
+.at-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    padding: 14px;
+}
+
+.at-card-section-label {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #64748B;
+    letter-spacing: 0.6px;
+    margin-bottom: 12px;
+}
+
+/* Route Timeline */
+.at-route-timeline {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.at-route-stop {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.at-stop-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.at-stop-pickup {
+    background: #DCFCE7;
+    border: 2px solid #059669;
+}
+
+.at-stop-pickup .at-dot-inner {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #059669;
+}
+
+.at-stop-dest {
+    background: #FEE2E2;
+    border: 2px solid #DC2626;
+}
+
+.at-stop-dest .at-dot-pin {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #DC2626;
+}
+
+.at-stop-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.at-stop-tag {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+.at-tag-pickup {
+    color: #059669;
+}
+
+.at-tag-dest {
+    color: #DC2626;
+}
+
+.at-stop-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0F172A;
+    margin-top: 1px;
+}
+
+.at-stop-sub {
+    font-size: 0.78rem;
+    color: #64748B;
+}
+
+.at-route-connector-line {
+    width: 2px;
+    height: 24px;
+    border-left: 2px dashed #CBD5E1;
+    margin-left: 10px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+.at-route-footer-metrics {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding-top: 12px;
+    margin-top: 12px;
+    border-top: 1px solid #F1F5F9;
+}
+
+.at-metric-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: #334155;
+}
+
+/* PASSENGER TRIP PIN CARD */
+.at-pin-boxes-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 12px 0 8px;
+}
+
+.at-pin-digit-box {
+    width: 54px;
+    height: 56px;
+    border: 2px solid #CBD5E1;
+    border-radius: 12px;
+    background: #FFFFFF;
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #0F172A;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+    caret-color: #059669;
+}
+
+.at-pin-digit-box:focus {
+    border-color: #059669;
+    box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.15);
+}
+
+.at-pin-hint {
+    text-align: center;
+    font-size: 0.78rem;
+    color: #64748B;
+    margin: 4px 0 14px;
+}
+
+.at-start-trip-btn {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    color: #FFFFFF;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    box-shadow: 0 6px 18px rgba(5, 150, 105, 0.3);
+    cursor: pointer;
+    transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.at-start-trip-btn:active {
+    transform: scale(0.98);
+}
+
+.at-start-btn-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.at-start-btn-sub {
+    font-size: 0.72rem;
+    opacity: 0.9;
+}
+
+/* DROP OFF PASSENGER BUTTON (REQUEST #2) */
+.at-dropoff-btn {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
+    cursor: pointer;
+    transition: transform 150ms ease, background 150ms ease;
+}
+
+.at-dropoff-btn:active {
+    transform: scale(0.98);
+}
+
+.at-dropoff-btn-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: #059669;
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4);
+}
+
+.at-dropoff-btn-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+}
+
+.at-dropoff-btn-text strong {
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.at-dropoff-btn-text span {
+    font-size: 0.75rem;
+    color: #94A3B8;
+    margin-top: 2px;
+}
+
+/* Cancel Ride Card Button */
+.at-cancel-ride-card-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: #FFFFFF;
+    border: 1px solid #F1F5F9;
+    border-radius: 12px;
+    color: #DC2626;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.at-cancel-ride-card-btn:active {
+    background: #FEF2F2;
+}
+
+.at-chevron-right {
+    font-size: 1.2rem;
+    color: #94A3B8;
+}
+
+/* Bottom Actions Row */
+.at-bottom-actions-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.at-sos-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 18px;
+    border: none;
+    border-radius: 24px;
+    background: #DC2626;
+    color: #FFFFFF;
+    font-size: 0.9rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.3);
+}
+
+.at-console-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border: none;
+    border-radius: 12px;
+    background: #0F172A;
+    color: #FFFFFF;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+}
