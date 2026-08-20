@@ -440,7 +440,11 @@ historyModal?.addEventListener('click', (e) => {
 
 // Event Listeners
 backBtn?.addEventListener('click', () => {
-    window.location.href = '/profile.html';
+    if (window.history.length > 1 && document.referrer) {
+        window.history.back();
+    } else {
+        window.location.href = '/driver-service.html';
+    }
 });
 
 payBtn?.addEventListener('click', openQrModal);
