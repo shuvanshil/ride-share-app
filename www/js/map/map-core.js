@@ -355,21 +355,72 @@ async function loadGoogleMaps() {
                     resolve();
                     return;
                 }
-                existingScript.addEventListener("load", resolve, { once: true });
-                existingScript.addEventListener("error", reject, { once: true });
+                let checkTimer = setInterval(() => {
+                    if (getGoogleMaps()?.Map) {
+                        clearInterval(checkTimer);
+                        resolve();
+                    }
+                }, 50);
+                existingScript.addEventListener("load", () => {
+                    setTimeout(() => {
+                        clearInterval(checkTimer);
+                        resolve();
+                    }, 100);
+                }, { once: true });
+                existingScript.addEventListener("error", (err) => {
+                    clearInterval(checkTimer);
+                    reject(err);
+                }, { once: true });
             });
             return getGoogleMaps();
         }
 
         const browserKey = await getGoogleBrowserKey();
         await new Promise((resolve, reject) => {
+            const callbackName = `__googleMapsInit_${Date.now()}`;
+            let resolved = false;
+
+            const cleanup = () => {
+                delete window[callbackName];
+            };
+
+            window[callbackName] = () => {
+                if (resolved) return;
+                resolved = true;
+                cleanup();
+                resolve();
+            };
+
             const script = document.createElement("script");
             script.id = GOOGLE_MAP_SCRIPT_ID;
             script.async = true;
             script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&loading=async`;
-            script.onload = resolve;
-            script.onerror = reject;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&callback=${callbackName}&loading=async`;
+            
+            script.onload = () => {
+                // If callback didn't fire immediately, poll briefly for google.maps.Map
+                if (!resolved) {
+                    let attempts = 0;
+                    const poll = setInterval(() => {
+                        attempts++;
+                        if (getGoogleMaps()?.Map || attempts > 30) {
+                            clearInterval(poll);
+                            if (!resolved) {
+                                resolved = true;
+                                cleanup();
+                                resolve();
+                            }
+                        }
+                    }, 50);
+                }
+            };
+            script.onerror = (err) => {
+                if (!resolved) {
+                    resolved = true;
+                    cleanup();
+                    reject(err);
+                }
+            };
             document.head.appendChild(script);
         });
 
