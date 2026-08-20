@@ -174,8 +174,8 @@ def calculate_dues_and_upcoming(
     previous_dues_count = len(previous_unpaid_weeks)
     previous_dues_amount = previous_dues_count * DEFAULT_WEEKLY_FEE
 
-    current_fee = 0 if current_is_approved else DEFAULT_WEEKLY_FEE
-    total_amount = current_fee + previous_dues_amount
+    # Total Amount to be Paid for the week cycle is 140 + previous pending dues (minimum ₹140)
+    total_amount = DEFAULT_WEEKLY_FEE + previous_dues_amount
 
     # 10 continuous due weeks trigger non-closable temporary account hold
     is_account_on_hold = (consecutive_count >= 10) and (not current_is_approved)
