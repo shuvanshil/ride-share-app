@@ -2231,12 +2231,12 @@ retryButton.addEventListener('click', () => {
     startLocationTracking();
 });
 
-openConsoleButton.addEventListener('click', () => {
+openConsoleButton?.addEventListener('click', () => {
     window.location.href = '/driver.html';
 });
 
-completeButton.addEventListener('click', completeRideJob);
-cancelButton.addEventListener('click', cancelRideByDriver);
+completeButton?.addEventListener('click', completeRideJob);
+cancelButton?.addEventListener('click', cancelRideByDriver);
 ridesContainer?.addEventListener('click', (event) => {
     const ignoreButton = event.target.closest('.driver-service-ignore-btn');
     if (ignoreButton) {
