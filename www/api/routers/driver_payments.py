@@ -147,7 +147,8 @@ def get_driver_payment_status(
     """Retrieve driver's current week payment status and history."""
     uid = auth_user["uid"]
     db = get_firestore()
-    _get_driver_profile(db, uid)
+    profile = _get_driver_profile(db, uid)
+    driver_created_at = profile.get("createdAt") or profile.get("approvedAt") or profile.get("registrationDate")
 
     pause_config = _get_pause_config(db)
     week_info = get_payment_week_info()
@@ -198,7 +199,9 @@ def get_driver_payment_status(
             status_code = "due"
             status_label = "Payment Due"
 
-    dues_info = calculate_dues_and_upcoming(payment_history, week_info, status_code)
+    dues_info = calculate_dues_and_upcoming(
+        payment_history, week_info, status_code, driver_created_at=driver_created_at
+    )
 
     return {
         "ok": True,

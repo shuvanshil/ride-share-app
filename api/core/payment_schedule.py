@@ -89,27 +89,78 @@ def get_payment_week_info(target_dt: Optional[datetime.datetime] = None) -> Dict
 def calculate_dues_and_upcoming(
     payment_history: List[Dict[str, Any]],
     current_week_info: Dict[str, Any],
-    current_status: str = "due"
+    current_status: str = "due",
+    driver_created_at: Optional[Any] = None
 ) -> Dict[str, Any]:
-    """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status."""
+    """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status.
+    
+    Dues start counting ONLY AFTER the driver's first approved payment week or account registration week.
+    No dues are calculated before the driver's first payment / registration week.
+    """
     current_week_id = current_week_info["weekId"]
     monday_dt = datetime.datetime.fromisoformat(current_week_info["mondayStart"])
 
     approved_weeks = set()
+    earliest_approved_dt = None
+
     for item in payment_history:
         w_id = item.get("weekId")
         st = item.get("status")
         if w_id and st in ("approved", "paused"):
             approved_weeks.add(w_id)
+            sub_at = item.get("submittedAt") or item.get("verifiedAt")
+            if sub_at:
+                try:
+                    if hasattr(sub_at, "astimezone"):
+                        dt = sub_at.astimezone(IST)
+                    elif isinstance(sub_at, str):
+                        dt = datetime.datetime.fromisoformat(sub_at.replace("Z", "+00:00")).astimezone(IST)
+                    elif isinstance(sub_at, (int, float)):
+                        dt = datetime.datetime.fromtimestamp(sub_at / 1000.0, IST)
+                    else:
+                        dt = None
+                    if dt and (not earliest_approved_dt or dt < earliest_approved_dt):
+                        earliest_approved_dt = dt
+                except Exception:
+                    pass
 
     current_is_approved = (current_status == "approved") or (current_week_id in approved_weeks)
+
+    # Determine earliest anchor date:
+    # 1. Earliest approved payment date if available.
+    # 2. Driver account creation / approval date if available.
+    # 3. Current week (if driver has no payments and no creation date).
+    anchor_dt = earliest_approved_dt
+    if not anchor_dt and driver_created_at:
+        try:
+            if hasattr(driver_created_at, "astimezone"):
+                anchor_dt = driver_created_at.astimezone(IST)
+            elif isinstance(driver_created_at, str):
+                anchor_dt = datetime.datetime.fromisoformat(driver_created_at.replace("Z", "+00:00")).astimezone(IST)
+            elif isinstance(driver_created_at, (int, float)):
+                anchor_dt = datetime.datetime.fromtimestamp(driver_created_at / 1000.0, IST)
+        except Exception:
+            pass
+
+    if not anchor_dt:
+        anchor_dt = monday_dt
+
+    # Monday start of anchor week
+    anchor_weekday = anchor_dt.weekday()
+    anchor_monday = (anchor_dt - datetime.timedelta(days=anchor_weekday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
 
     previous_unpaid_weeks = []
     consecutive_count = 0 if current_is_approved else 1
     counting_consecutive = not current_is_approved
 
-    for i in range(1, 20):
+    max_weeks_back = max(0, int((monday_dt - anchor_monday).days // 7))
+
+    for i in range(1, max_weeks_back + 1):
         prev_monday = monday_dt - datetime.timedelta(days=7 * i)
+        if prev_monday < anchor_monday:
+            break
         iso_year, iso_week, _ = prev_monday.isocalendar()
         prev_week_id = f"{iso_year}-W{iso_week:02d}"
 
