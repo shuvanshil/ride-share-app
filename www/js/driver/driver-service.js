@@ -979,106 +979,253 @@ function distanceMeters(pointA, pointB) {
     return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
-function renderActivePassengerContact(ride = {}) {
-    const rawPassengerName = String(ride.passenger_name || "Passenger").trim() || "Passenger";
-    const passengerName = escapeHtml(rawPassengerName);
-    const passengerInitial = escapeHtml(rawPassengerName.charAt(0).toUpperCase() || "P");
-    const passengerPhone = String(ride.passenger_phone || "").trim();
-    const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
-
-    return `
-        <div class="active-passenger-contact">
-            <div class="active-passenger-avatar" aria-hidden="true">${passengerInitial}</div>
-            <div class="active-passenger-copy">
-                <span>Passenger</span>
-                <strong>${passengerName}</strong>
-            </div>
-            ${callablePhone ? `
-                <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
-                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
-                    <small>Call</small>
-                </a>
-            ` : `
-                <button class="active-passenger-call" type="button" disabled aria-label="Passenger phone unavailable">
-                    <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
-                    <small>Call</small>
-                </button>
-            `}
-        </div>
-    `;
+function getEnteredPin() {
+    const boxes = document.querySelectorAll('.at-pin-digit-box');
+    if (boxes.length === 4) {
+        return Array.from(boxes).map(b => b.value).join('');
+    }
+    const singleInput = document.getElementById('driver-service-verification-pin-input');
+    return singleInput ? singleInput.value.trim() : '';
 }
 
-function renderActiveTripRoute(ride = {}) {
-    const pickup = escapeHtml(getRideDisplayAddress(ride, "pickup"));
-    const destination = escapeHtml(getRideDisplayAddress(ride, "drop"));
-    const distanceLabel = formatRideDistance(ride.distance_km);
-    const durationLabel = formatRideDuration(ride.duration_minutes);
+function setupPinDigitBoxes() {
+    const boxes = document.querySelectorAll('.at-pin-digit-box');
+    if (!boxes.length) return;
 
-    return `
-        <div class="active-trip-route" aria-label="Active trip route">
-            <div class="active-trip-place">
-                <span class="active-route-dot pickup" aria-hidden="true"></span>
-                <div>
-                    <small>Pickup</small>
-                    <strong>${pickup}</strong>
-                </div>
-            </div>
-            <div class="active-route-line" aria-hidden="true"></div>
-            <div class="active-trip-place">
-                <span class="active-route-dot destination" aria-hidden="true"></span>
-                <div>
-                    <small>Destination</small>
-                    <strong>${destination}</strong>
-                </div>
-            </div>
-            <div class="active-trip-metrics">
-                <div><small>Distance</small><strong>${distanceLabel}</strong></div>
-                <div><small>Estimated time</small><strong>${durationLabel}</strong></div>
-            </div>
-        </div>
-    `;
-}
+    boxes.forEach((box, index) => {
+        box.addEventListener('input', (e) => {
+            const val = box.value.replace(/[^\d]/g, '');
+            box.value = val ? val.charAt(val.length - 1) : '';
 
-function resetLifecycleButtons(status = "accepted") {
-    completeButton.classList.toggle('d-none', !["started", "en_route"].includes(status));
-    completeButton.disabled = !["started", "en_route"].includes(status);
+            if (box.value && index < boxes.length - 1) {
+                boxes[index + 1].focus();
+            }
+
+            const pin = getEnteredPin();
+            if (/^\d{4}$/.test(pin)) {
+                verifyAndStartTrip(currentRideId);
+            }
+        });
+
+        box.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !box.value && index > 0) {
+                boxes[index - 1].focus();
+                boxes[index - 1].value = '';
+                e.preventDefault();
+            }
+        });
+
+        box.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pastedData = (e.clipboardData || window.clipboardData).getData('text').replace(/[^\d]/g, '');
+            if (pastedData.length >= 4) {
+                boxes.forEach((b, i) => {
+                    b.value = pastedData.charAt(i) || '';
+                });
+                boxes[3].focus();
+                const pin = getEnteredPin();
+                if (/^\d{4}$/.test(pin)) {
+                    verifyAndStartTrip(currentRideId);
+                }
+            }
+        });
+    });
 }
 
 function renderLifecycleState(status, rideData = currentRide) {
     currentRideStatus = status;
     currentRide = { ...(currentRide || {}), ...(rideData || {}), status };
 
-    const labels = {
-        accepted: "Passenger PIN verification required",
-        arrived: "Passenger PIN verification required",
-        started: "Trip started - continue to destination",
-        en_route: "Trip in progress"
-    };
-
+    const headerBadge = document.getElementById('active-trip-header-badge');
     const showPinVerification = ["accepted", "arrived"].includes(status);
-    const pinVerificationHtml = showPinVerification ? `
-        <div id="driver-service-verification-panel" class="mt-3">
-            <label for="driver-service-verification-pin-input" class="form-label fw-semibold mb-1">Passenger PIN</label>
-            <input id="driver-service-verification-pin-input" type="tel" maxlength="4" inputmode="numeric" class="form-control text-center fw-bold mb-2" placeholder="Enter 4-digit PIN">
-            <button id="driver-service-verify-pin-btn" class="btn btn-success w-100 fw-bold" type="button">
-                Verify & Start Trip
-            </button>
-        </div>
-    ` : "";
 
-    lifecycleDetails.innerHTML = `
-        ${renderActivePassengerContact(currentRide)}
-        ${renderActiveTripRoute(currentRide)}
-        <p class="mb-1"><strong>Status:</strong> ${labels[status] || escapeHtml(status)}</p>
-        <p class="mb-0 text-secondary" id="driver-service-gps-status">${escapeHtml(lifecycleGpsText)}</p>
-        ${pinVerificationHtml}
+    if (headerBadge) {
+        headerBadge.innerText = showPinVerification ? "Waiting to Start" : "Active";
+        headerBadge.className = `active-trip-header-badge ${showPinVerification ? 'waiting' : ''}`;
+    }
+
+    const rawPassengerName = String(currentRide.passenger_name || "Passenger").trim() || "Passenger";
+    const passengerName = escapeHtml(rawPassengerName);
+    const passengerInitial = escapeHtml(rawPassengerName.charAt(0).toUpperCase() || "P");
+    const passengerPhone = String(currentRide.passenger_phone || "").trim();
+    const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
+
+    const pickupName = escapeHtml(getRideDisplayAddress(currentRide, "pickup"));
+    const destName = escapeHtml(getRideDisplayAddress(currentRide, "drop"));
+    const distanceLabel = formatRideDistance(currentRide.distance_km);
+    const durationLabel = formatRideDuration(currentRide.duration_minutes);
+
+    // If PIN verification panel is already rendered and driver is typing,
+    // preserve the input DOM elements so focus is never lost and virtual keyboard stays open!
+    const existingPinContainer = document.getElementById('at-pin-card-wrap');
+    if (showPinVerification && existingPinContainer) {
+        const statusBanner = document.getElementById('at-status-banner-el');
+        if (statusBanner) {
+            statusBanner.className = "at-status-banner at-status-waiting";
+            statusBanner.innerHTML = `
+                <div class="at-status-icon-wrap">
+                    <span class="webicon webicon-schedule" style="width:20px;height:20px;background-color:#D97706;"></span>
+                </div>
+                <div class="at-status-text">
+                    <strong>WAITING TO START TRIP</strong>
+                    <p>Ask the passenger for their 4-digit trip PIN</p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    const passengerCardHtml = `
+        <div class="at-passenger-card">
+            <div class="at-passenger-left">
+                <div class="at-passenger-avatar">${passengerInitial}</div>
+                <div class="at-passenger-info">
+                    <strong class="at-passenger-name">${passengerName}</strong>
+                    <span class="at-passenger-role">Passenger</span>
+                </div>
+            </div>
+            <div class="at-passenger-actions">
+                ${callablePhone ? `
+                    <a class="at-action-btn" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
+                        <span class="webicon webicon-call" aria-hidden="true" style="width:16px;height:16px;"></span>
+                        <span>Call</span>
+                    </a>
+                ` : `
+                    <button class="at-action-btn" type="button" disabled aria-label="Passenger phone unavailable">
+                        <span class="webicon webicon-call" aria-hidden="true" style="width:16px;height:16px;"></span>
+                        <span>Call</span>
+                    </button>
+                `}
+            </div>
+        </div>
     `;
 
-    resetLifecycleButtons(status);
+    const statusBannerHtml = showPinVerification ? `
+        <div id="at-status-banner-el" class="at-status-banner at-status-waiting">
+            <div class="at-status-icon-wrap">
+                <span class="webicon webicon-schedule" style="width:20px;height:20px;background-color:#D97706;"></span>
+            </div>
+            <div class="at-status-text">
+                <strong>WAITING TO START TRIP</strong>
+                <p>Ask the passenger for their 4-digit trip PIN</p>
+            </div>
+        </div>
+    ` : `
+        <div id="at-status-banner-el" class="at-status-banner at-status-progress">
+            <div class="at-status-icon-wrap">
+                <span class="webicon webicon-notify" style="width:20px;height:20px;background-color:#059669;"></span>
+            </div>
+            <div class="at-status-text">
+                <strong>TRIP IN PROGRESS</strong>
+                <p>Driving passenger safely to destination</p>
+            </div>
+        </div>
+    `;
 
-    const verifyPinButton = document.getElementById('driver-service-verify-pin-btn');
-    if (verifyPinButton) {
-        verifyPinButton.addEventListener('click', () => verifyAndStartTrip(currentRideId));
+    const routeCardHtml = `
+        <div class="at-card at-route-card">
+            <div class="at-card-section-label">ROUTE DETAILS</div>
+            <div class="at-route-timeline">
+                <div class="at-route-stop">
+                    <span class="at-stop-dot at-stop-pickup">
+                        <span class="at-dot-inner"></span>
+                    </span>
+                    <div class="at-stop-content">
+                        <span class="at-stop-tag at-tag-pickup">PICKUP</span>
+                        <strong class="at-stop-title">${pickupName}</strong>
+                    </div>
+                </div>
+                <div class="at-route-connector-line"></div>
+                <div class="at-route-stop">
+                    <span class="at-stop-dot at-stop-dest">
+                        <span class="at-dot-pin"></span>
+                    </span>
+                    <div class="at-stop-content">
+                        <span class="at-stop-tag at-tag-dest">DESTINATION</span>
+                        <strong class="at-stop-title">${destName}</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="at-route-footer-metrics">
+                <div class="at-metric-item">
+                    <span class="webicon webicon-notify" style="width:16px;height:16px;background-color:#64748B;"></span>
+                    <strong>${distanceLabel}</strong>
+                </div>
+                <div class="at-metric-item">
+                    <span class="webicon webicon-schedule" style="width:16px;height:16px;background-color:#64748B;"></span>
+                    <strong>~${durationLabel}</strong>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const pinVerificationCardHtml = showPinVerification ? `
+        <div class="at-card at-pin-card" id="at-pin-card-wrap">
+            <div class="at-card-section-label">PASSENGER TRIP PIN</div>
+            <div class="at-pin-boxes-wrap" id="at-pin-boxes-container">
+                <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="0" autocomplete="off">
+                <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="1" autocomplete="off">
+                <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="2" autocomplete="off">
+                <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="3" autocomplete="off">
+            </div>
+            <p class="at-pin-hint">Enter 4-digit PIN provided by the passenger</p>
+            <button type="button" id="driver-service-verify-pin-btn" class="at-start-trip-btn">
+                <div class="at-start-btn-content">
+                    <span class="at-play-icon">►</span>
+                    <span>Start Trip</span>
+                </div>
+                <small class="at-start-btn-sub">PIN will be verified automatically</small>
+            </button>
+        </div>
+    ` : `
+        <div class="at-card at-complete-card">
+            <button type="button" id="driver-service-complete-btn" class="at-dropoff-btn">
+                <div class="at-dropoff-btn-icon">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 6L9 17l-5-5"/>
+                    </svg>
+                </div>
+                <div class="at-dropoff-btn-text">
+                    <strong>Drop Off Passenger & Complete Trip</strong>
+                    <span>Tap when passenger has safely arrived at destination</span>
+                </div>
+            </button>
+        </div>
+    `;
+
+    const cancelCardHtml = `
+        <div class="at-cancel-card-wrap">
+            <button type="button" id="driver-service-cancel-btn" class="at-cancel-ride-card-btn">
+                <span>Cancel this ride</span>
+                <span class="at-chevron-right">›</span>
+            </button>
+        </div>
+    `;
+
+    lifecycleDetails.innerHTML = `
+        ${passengerCardHtml}
+        ${statusBannerHtml}
+        ${routeCardHtml}
+        ${pinVerificationCardHtml}
+        ${cancelCardHtml}
+    `;
+
+    if (showPinVerification) {
+        setupPinDigitBoxes();
+        const verifyPinButton = document.getElementById('driver-service-verify-pin-btn');
+        if (verifyPinButton) {
+            verifyPinButton.addEventListener('click', () => verifyAndStartTrip(currentRideId));
+        }
+    } else {
+        const completeBtn = document.getElementById('driver-service-complete-btn');
+        if (completeBtn) {
+            completeBtn.addEventListener('click', () => completeRideJob());
+        }
+    }
+
+    const cancelBtn = document.getElementById('driver-service-cancel-btn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => cancelActiveTrip());
     }
 }
 
@@ -1897,8 +2044,7 @@ async function verifyAndStartTrip(rideId) {
         return;
     }
 
-    const pinInput = document.getElementById('driver-service-verification-pin-input');
-    const typedPin = pinInput ? pinInput.value.trim() : "";
+    const typedPin = getEnteredPin();
 
     if (!/^\d{4}$/.test(typedPin)) {
         await showAlert("Please enter the 4-digit passenger PIN.");
