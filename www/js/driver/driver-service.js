@@ -1195,9 +1195,8 @@ function renderLifecycleState(status, rideData = currentRide) {
 
     const cancelCardHtml = `
         <div class="at-cancel-card-wrap">
-            <button type="button" id="driver-service-cancel-btn" class="at-cancel-ride-card-btn">
-                <span>Cancel this ride</span>
-                <span class="at-chevron-right">›</span>
+            <button type="button" id="driver-service-cancel-btn" class="gy-btn gy-btn-danger-outline w-100 py-2.5 fw-bold" style="border-radius: 12px; font-size: 14px;">
+                Cancel this ride
             </button>
         </div>
     `;
@@ -1225,7 +1224,12 @@ function renderLifecycleState(status, rideData = currentRide) {
 
     const cancelBtn = document.getElementById('driver-service-cancel-btn');
     if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => cancelActiveTrip());
+        cancelBtn.addEventListener('click', () => cancelRideByDriver());
+    }
+
+    const sosBtn = document.getElementById('driver-service-sos-btn');
+    if (sosBtn) {
+        sosBtn.addEventListener('click', () => sendDriverSos());
     }
 }
 
@@ -2136,6 +2140,41 @@ async function cancelRideByDriver() {
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
         await showAlert("Could not cancel the active trip.");
+    }
+}
+
+async function sendDriverSos() {
+    if (!currentRideId) {
+        await showAlert("No active ride found to trigger SOS emergency.");
+        return;
+    }
+
+    const confirmSos = await showConfirm(
+        "Send Emergency SOS Alert?",
+        "This will immediately dispatch an emergency safety alert to our 24/7 safety team with your live GPS location."
+    );
+    if (!confirmSos) return;
+
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+
+        window.LiphtUpLoading?.showPageLoader?.("Sending Emergency SOS...");
+        const response = await fetch(`/api/rides/${encodeURIComponent(currentRideId)}/sos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ role: "driver" })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || "Could not send emergency alert.");
+        }
+        await showAlert("Emergency SOS Alert Sent! Our safety team has received your live location and is responding.");
+    } catch (error) {
+        console.error("Driver SOS alert failed:", error);
+        await showAlert("Could not send SOS alert. Please call emergency services (112) directly if in immediate danger.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
 
