@@ -1598,11 +1598,11 @@ body {
     z-index: 100;
     background: #FFFFFF;
     border-bottom: 1px solid #E2E8F0;
-    height: 56px;
+    min-height: 56px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
 }
 
 .py-back-btn, .py-help-btn {

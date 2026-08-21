@@ -96,10 +96,10 @@ export function renderPaymentsTable() {
         }) : '';
 
         let statusBadge = `<span class="payment-status-badge due">${(p.status || '').toUpperCase()}</span>`;
-        if (p.status === 'submitted') {
-            statusBadge = '<span class="payment-status-badge submitted">UNDER VERIFICATION</span>';
-        } else if (p.status === 'approved') {
-            statusBadge = '<span class="payment-status-badge approved">APPROVED</span>';
+        if (p.status === 'submitted' || p.status === 'under_review') {
+            statusBadge = '<span class="payment-status-badge submitted">UNDER REVIEW</span>';
+        } else if (p.status === 'approved' || p.status === 'verified') {
+            statusBadge = '<span class="payment-status-badge approved">VERIFIED</span>';
         } else if (p.status === 'declined') {
             statusBadge = '<span class="payment-status-badge declined">DECLINED</span>';
         }
@@ -346,12 +346,27 @@ async function handleSaveManualPayment(e) {
     }
 }
 
+async function handleResetAllPayments() {
+    if (!confirm("⚠️ WARNING: Are you sure you want to RESET ALL DRIVER PAYMENTS?\n\nThis will remove all existing payment records and restart everyone from zeroth week with NO due amount.")) return;
+
+    try {
+        const res = await adminPost('/driver-payments/reset-all');
+        showToast(res.message || "All driver payments reset successfully!", "success");
+        await loadAdminPayments();
+    } catch (error) {
+        console.error("Error resetting all driver payments:", error);
+        showToast(error.message || "Could not reset driver payments", "error");
+    }
+}
+
 export function initAdminPayments() {
     const statusFilter = document.getElementById('admin-payment-status-filter');
     const searchInput = document.getElementById('admin-payment-search');
 
     statusFilter?.addEventListener('change', renderPaymentsTable);
     searchInput?.addEventListener('input', renderPaymentsTable);
+
+    document.getElementById('admin-reset-all-payments-btn')?.addEventListener('click', handleResetAllPayments);
 
     // Pause Modal Triggers
     document.getElementById('admin-open-pause-modal-btn')?.addEventListener('click', openPauseModal);

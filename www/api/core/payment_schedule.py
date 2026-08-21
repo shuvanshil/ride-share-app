@@ -94,8 +94,8 @@ def calculate_dues_and_upcoming(
 ) -> Dict[str, Any]:
     """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status.
     
-    Dues start counting ONLY AFTER the driver's first approved payment week or account registration week.
-    No dues are calculated before the driver's first payment / registration week.
+    Dues start counting ONLY AFTER the driver's first approved/verified payment week.
+    If the driver has no approved payments yet, there are NO previous due weeks.
     """
     current_week_id = current_week_info["weekId"]
     monday_dt = datetime.datetime.fromisoformat(current_week_info["mondayStart"])
@@ -106,7 +106,7 @@ def calculate_dues_and_upcoming(
     for item in payment_history:
         w_id = item.get("weekId")
         st = item.get("status")
-        if w_id and st in ("approved", "paused"):
+        if w_id and st in ("approved", "verified", "paused"):
             approved_weeks.add(w_id)
             sub_at = item.get("submittedAt") or item.get("verifiedAt")
             if sub_at:
@@ -124,28 +124,38 @@ def calculate_dues_and_upcoming(
                 except Exception:
                     pass
 
-    current_is_approved = (current_status == "approved") or (current_week_id in approved_weeks)
+    current_is_approved = (current_status in ("approved", "verified")) or (current_week_id in approved_weeks)
 
-    # Determine earliest anchor date:
-    # 1. Earliest approved payment date if available.
-    # 2. Driver account creation / approval date if available.
-    # 3. Current week (if driver has no payments and no creation date).
+    # Requisition: The due date calculation MUST, and always, start AFTER the very first payment of the driver.
+    # Means if a driver has not made any first payment yet, there shall be no due amount pending.
+    if not approved_weeks:
+        next_monday = monday_dt + datetime.timedelta(days=7)
+        next_sunday = next_monday + datetime.timedelta(days=6)
+        return {
+            "previousDuesIncluded": False,
+            "previousDuesCount": 0,
+            "previousDuesAmount": 0,
+            "previousDuesText": "No previous dues",
+            "totalAmountToBePaid": DEFAULT_WEEKLY_FEE,
+            "consecutiveUnpaidWeeks": 0,
+            "isAccountOnHold": False,
+            "holdLimitWeeks": 10,
+            "upcomingWeek": {
+                "dueDateLabel": next_sunday.strftime("%d %b %Y (Sun)"),
+                "amount": DEFAULT_WEEKLY_FEE,
+                "currency": "INR"
+            }
+        }
+
     anchor_dt = earliest_approved_dt
-    if not anchor_dt and driver_created_at:
-        try:
-            if hasattr(driver_created_at, "astimezone"):
-                anchor_dt = driver_created_at.astimezone(IST)
-            elif isinstance(driver_created_at, str):
-                anchor_dt = datetime.datetime.fromisoformat(driver_created_at.replace("Z", "+00:00")).astimezone(IST)
-            elif isinstance(driver_created_at, (int, float)):
-                anchor_dt = datetime.datetime.fromtimestamp(driver_created_at / 1000.0, IST)
-        except Exception:
-            pass
-
     if not anchor_dt:
-        anchor_dt = monday_dt
+        earliest_w = sorted(list(approved_weeks))[0]
+        try:
+            year, week_num = map(int, earliest_w.split("-W"))
+            anchor_dt = datetime.datetime.fromisocalendar(year, week_num, 1).replace(tzinfo=IST)
+        except Exception:
+            anchor_dt = monday_dt
 
-    # Monday start of anchor week
     anchor_weekday = anchor_dt.weekday()
     anchor_monday = (anchor_dt - datetime.timedelta(days=anchor_weekday)).replace(
         hour=0, minute=0, second=0, microsecond=0
@@ -174,13 +184,9 @@ def calculate_dues_and_upcoming(
     previous_dues_count = len(previous_unpaid_weeks)
     previous_dues_amount = previous_dues_count * DEFAULT_WEEKLY_FEE
 
-    # Total Amount to be Paid for the week cycle is 140 + previous pending dues (minimum ₹140)
     total_amount = DEFAULT_WEEKLY_FEE + previous_dues_amount
-
-    # 10 continuous due weeks trigger non-closable temporary account hold
     is_account_on_hold = (consecutive_count >= 10) and (not current_is_approved)
 
-    # Upcoming week calculation (1 week after current)
     next_monday = monday_dt + datetime.timedelta(days=7)
     next_sunday = next_monday + datetime.timedelta(days=6)
     upcoming_due_label = next_sunday.strftime("%d %b %Y (Sun)")

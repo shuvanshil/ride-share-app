@@ -74,16 +74,19 @@ function renderStatusBadge(element, statusCode) {
     
     switch (statusCode) {
         case 'due':
+        case 'pending':
             element.classList.add('due');
-            element.innerHTML = '<span>DUE</span>';
+            element.innerHTML = '<span>PENDING</span>';
             break;
         case 'submitted':
+        case 'under_review':
             element.classList.add('submitted');
-            element.innerHTML = '<span>UNDER VERIFICATION</span>';
+            element.innerHTML = '<span>UNDER REVIEW</span>';
             break;
         case 'approved':
+        case 'verified':
             element.classList.add('approved');
-            element.innerHTML = '<span>APPROVED</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            element.innerHTML = '<span>VERIFIED</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
             break;
         case 'declined':
             element.classList.add('declined');
@@ -91,7 +94,7 @@ function renderStatusBadge(element, statusCode) {
             break;
         case 'overdue':
             element.classList.add('overdue');
-            element.innerHTML = '<span>OVERDUE</span>';
+            element.innerHTML = '<span>PENDING</span>';
             break;
         case 'paused':
             element.classList.add('approved');
@@ -169,8 +172,8 @@ function renderPaymentUI(data) {
             noticeDesc.innerText = pauseMsg;
         } else if (currentStatus === 'submitted') {
             noticeCard.className = 'py-general-notice-card submitted';
-            noticeTitle.innerText = 'Payment under verification.';
-            noticeDesc.innerText = 'Your weekly fee payment has been submitted and is currently being verified by our accounts team.';
+            noticeTitle.innerText = 'Payment under review.';
+            noticeDesc.innerText = 'Your weekly fee payment has been submitted and is currently under review by our accounts team.';
         } else if (currentStatus === 'approved') {
             noticeCard.className = 'py-general-notice-card approved';
             noticeTitle.innerText = 'Weekly fee paid & verified.';
@@ -178,15 +181,11 @@ function renderPaymentUI(data) {
         } else if (currentStatus === 'declined') {
             noticeCard.className = 'py-general-notice-card declined';
             const reason = activeSub?.declineReason ? ` (${activeSub.declineReason})` : '';
-            noticeTitle.innerText = 'Payment verification needed.';
-            noticeDesc.innerText = `Your previous payment submission could not be verified${reason}. Please scan the QR code and re-submit your payment.`;
-        } else if (currentStatus === 'overdue') {
-            noticeCard.className = 'py-general-notice-card overdue';
-            noticeTitle.innerText = 'Payment Overdue.';
-            noticeDesc.innerText = `Your payment deadline has passed. Please complete the payment of ₹${duesSummary.totalAmountToBePaid || 140} to continue accepting ride requests cleanly.`;
+            noticeTitle.innerText = 'Payment declined.';
+            noticeDesc.innerText = `Your previous payment submission was declined${reason}. Please scan the QR code and re-submit your payment.`;
         } else {
             noticeCard.className = 'py-general-notice-card';
-            noticeTitle.innerText = 'Weekly payment due.';
+            noticeTitle.innerText = 'Weekly payment pending.';
             noticeDesc.innerText = 'Please pay your weekly fee before Sunday 12:00 PM to keep your driver account active and accept ride requests.';
         }
     }
@@ -199,7 +198,7 @@ function renderPaymentUI(data) {
             payBtn.disabled = true;
             payBtn.className = 'py-main-pay-btn disabled';
         } else if (currentStatus === 'submitted') {
-            payBtn.innerHTML = '<span>Payment Submitted — Under Verification</span>';
+            payBtn.innerHTML = '<span>Payment Submitted — Under Review</span>';
             payBtn.disabled = true;
             payBtn.className = 'py-main-pay-btn disabled';
         } else if (currentStatus === 'approved') {

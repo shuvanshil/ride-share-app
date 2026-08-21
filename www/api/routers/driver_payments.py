@@ -159,45 +159,46 @@ def get_driver_payment_status(
     docs = list(payments_ref.stream())
 
     payment_history: List[Dict[str, Any]] = []
-    active_submission: Optional[Dict[str, Any]] = None
+    current_week_submissions: List[Dict[str, Any]] = []
 
     for doc_snap in docs:
         p_data = _format_payment_doc(doc_snap.id, doc_snap.to_dict() or {})
         payment_history.append(p_data)
         if p_data["weekId"] == current_week_id:
-            if not active_submission or p_data["status"] in ("submitted", "approved"):
-                active_submission = p_data
+            current_week_submissions.append(p_data)
 
     # Sort history by submittedAt descending
     payment_history.sort(
         key=lambda x: str(x.get("submittedAt") or ""), reverse=True
     )
 
-    # Determine overall current week payment status
+    current_week_submissions.sort(
+        key=lambda x: str(x.get("submittedAt") or ""), reverse=True
+    )
+
+    active_submission: Optional[Dict[str, Any]] = current_week_submissions[0] if current_week_submissions else None
+
+    # Determine overall current week payment status (4 states: pending, submitted/under_review, approved/verified, declined)
     if pause_config["isPaused"]:
         status_code = "paused"
         status_label = "Weekly Payments Paused"
     elif active_submission:
         current_status = active_submission["status"]
-        if current_status == "submitted":
+        if current_status in ("submitted", "under_review"):
             status_code = "submitted"
-            status_label = "Payment submitted — awaiting verification"
-        elif current_status == "approved":
+            status_label = "Under Review"
+        elif current_status in ("approved", "verified"):
             status_code = "approved"
-            status_label = "Payment Verified & Approved"
+            status_label = "Verified"
         elif current_status == "declined":
             status_code = "declined"
-            status_label = "Payment Declined — Please Pay Again"
+            status_label = "Declined"
         else:
             status_code = "due"
-            status_label = "Payment Due"
+            status_label = "Pending"
     else:
-        if week_info["isPastDeadline"]:
-            status_code = "overdue"
-            status_label = "Payment Overdue"
-        else:
-            status_code = "due"
-            status_label = "Payment Due"
+        status_code = "due"
+        status_label = "Pending"
 
     dues_info = calculate_dues_and_upcoming(
         payment_history, week_info, status_code, driver_created_at=driver_created_at
@@ -246,21 +247,25 @@ def submit_weekly_payment(
         .stream()
     )
 
+    target_doc_ref = None
     for doc_snap in existing_docs:
         data = doc_snap.to_dict() or {}
         st = data.get("status")
-        if st == "submitted":
+        if st in ("submitted", "under_review"):
             raise ApiError(
-                "You already have a payment for this week awaiting verification.", 409
+                "You already have a payment for this week awaiting verification (Under Review).", 409
             )
-        if st == "approved":
+        if st in ("approved", "verified"):
             raise ApiError(
                 "Your weekly payment for this period has already been verified and approved.", 409
             )
+        if st == "declined":
+            # Reuse/update the existing declined document
+            target_doc_ref = doc_snap.reference
 
-    # Create new submission record
-    doc_id = f"pymt_{uid}_{current_week_id}_{int(datetime.datetime.now().timestamp())}"
-    doc_ref = db.collection("driverPayments").document(doc_id)
+    if not target_doc_ref:
+        doc_id = f"pymt_{uid}_{current_week_id}_{int(datetime.datetime.now().timestamp())}"
+        target_doc_ref = db.collection("driverPayments").document(doc_id)
 
     payload = {
         "driverId": uid,
@@ -281,12 +286,12 @@ def submit_weekly_payment(
         "declineReason": None,
     }
 
-    doc_ref.set(payload)
+    target_doc_ref.set(payload, merge=True)
 
     return {
         "ok": True,
         "message": "Payment submitted for verification successfully.",
-        "payment": _format_payment_doc(doc_id, payload),
+        "payment": _format_payment_doc(target_doc_ref.id, payload),
     }
 
 
@@ -596,4 +601,31 @@ def admin_decline_driver_payment(
         "ok": True,
         "message": "Payment submission declined.",
         "payment": _format_payment_doc(payment_id, updated_data),
+    }
+
+
+@admin_router.post("/reset-all")
+def admin_reset_all_driver_payments(
+    admin_user: Dict[str, Any] = Depends(require_admin),
+) -> Dict[str, Any]:
+    """Wipe/reset all driver payment records so every driver starts fresh from zeroth week with no dues."""
+    db = get_firestore()
+    docs = list(db.collection("driverPayments").stream())
+    deleted_count = 0
+    for doc in docs:
+        doc.reference.delete()
+        deleted_count += 1
+
+    write_audit_log(
+        admin_user=admin_user,
+        action="driver_payments_reset_all",
+        target_type="driverPayments",
+        target_id="ALL",
+        notes=f"Deleted {deleted_count} payment records. Reset all drivers to zeroth week.",
+    )
+
+    return {
+        "ok": True,
+        "message": f"Successfully reset all driver payments. Deleted {deleted_count} records.",
+        "deletedCount": deleted_count,
     }
