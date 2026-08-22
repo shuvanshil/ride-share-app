@@ -27,6 +27,19 @@ let liveErrorShown = false;
 window.addEventListener("error", (e) => toast(`Something went wrong: ${e.message}`, "error"));
 window.addEventListener("unhandledrejection", (e) => toast(`Something went wrong: ${e.reason?.message || e.reason}`, "error"));
 
+async function withButtonSpinner(btn, actionFn) {
+    if (!btn) return actionFn();
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing...`;
+    try {
+        await actionFn();
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
 // ---------------------------------------------------------------------
 // Auth gate
 // ---------------------------------------------------------------------
@@ -72,22 +85,25 @@ watchAdminAuth(async (user) => {
 });
 
 async function handleAdminLogin() {
-    const email = $("admin-email").value.trim();
-    const password = $("admin-password").value;
-    const errorEl = $("admin-login-error");
-    const errorTextEl = $("admin-login-error-text");
-    errorEl.classList.add("d-none");
-    if (!email || !password) {
-        errorTextEl.textContent = "Enter your email and password.";
-        errorEl.classList.remove("d-none");
-        return;
-    }
-    try {
-        await loginAdmin(email, password);
-    } catch (error) {
-        errorTextEl.textContent = "Sign in failed. Check your email and password.";
-        errorEl.classList.remove("d-none");
-    }
+    const loginBtn = $("admin-login-btn");
+    await withButtonSpinner(loginBtn, async () => {
+        const email = $("admin-email").value.trim();
+        const password = $("admin-password").value;
+        const errorEl = $("admin-login-error");
+        const errorTextEl = $("admin-login-error-text");
+        errorEl.classList.add("d-none");
+        if (!email || !password) {
+            errorTextEl.textContent = "Enter your email and password.";
+            errorEl.classList.remove("d-none");
+            return;
+        }
+        try {
+            await loginAdmin(email, password);
+        } catch (error) {
+            errorTextEl.textContent = "Sign in failed. Check your email and password.";
+            errorEl.classList.remove("d-none");
+        }
+    });
 }
 
 $("admin-login-btn")?.addEventListener("click", handleAdminLogin);
@@ -142,7 +158,7 @@ $("admin-feed-toggle")?.addEventListener("click", () => {
 $("admin-feed-close")?.addEventListener("click", () => $("admin-feed-panel").classList.remove("is-open"));
 
 // ---------------------------------------------------------------------
-// Sidebar navigation
+// Sidebar navigation & toggle
 // ---------------------------------------------------------------------
 
 document.querySelectorAll(".admin-nav-item").forEach((btn) => {
@@ -151,13 +167,20 @@ document.querySelectorAll(".admin-nav-item").forEach((btn) => {
         btn.classList.add("active");
         document.querySelectorAll(".admin-section").forEach((s) => s.classList.add("d-none"));
         $(`section-${btn.dataset.section}`).classList.remove("d-none");
-        $("admin-sidebar").classList.remove("is-open");
+        if (window.innerWidth < 992) {
+            $("admin-sidebar").classList.remove("is-open");
+        }
         loadSection(btn.dataset.section);
     });
 });
 
 $("admin-sidebar-toggle")?.addEventListener("click", () => {
-    $("admin-sidebar").classList.toggle("is-open");
+    const sidebar = $("admin-sidebar");
+    if (window.innerWidth < 992) {
+        sidebar.classList.toggle("is-open");
+    } else {
+        sidebar.classList.toggle("is-collapsed");
+    }
 });
 
 const loadedSections = new Set();
@@ -638,14 +661,16 @@ async function openDriverDrawer(uid) {
                     variant: action === "block" || action === "suspend" || action === "reject" ? "danger" : "primary"
                 });
                 if (!confirmed) return;
-                try {
-                    await adminPatch(`/drivers/${uid}`, { action });
-                    toast(`Driver ${action}d.`);
-                    closeDrawer(true);
-                    loadDrivers(true);
-                } catch (error) {
-                    toast(error.message, "error");
-                }
+                await withButtonSpinner(btn, async () => {
+                    try {
+                        await adminPatch(`/drivers/${uid}`, { action });
+                        toast(`Driver ${action}d.`);
+                        closeDrawer(true);
+                        loadDrivers(true);
+                    } catch (error) {
+                        toast(error.message, "error");
+                    }
+                });
             });
         });
     } catch (error) {
@@ -701,13 +726,15 @@ async function loadLiveRides() {
                     confirmText: "Cancel Ride"
                 });
                 if (!confirmed) return;
-                try {
-                    await adminPatch(`/rides/${btn.dataset.cancel}`, { action: "cancel" });
-                    toast("Ride cancelled.");
-                    loadLiveRides();
-                } catch (error) {
-                    toast(error.message, "error");
-                }
+                await withButtonSpinner(btn, async () => {
+                    try {
+                        await adminPatch(`/rides/${btn.dataset.cancel}`, { action: "cancel" });
+                        toast("Ride cancelled.");
+                        loadLiveRides();
+                    } catch (error) {
+                        toast(error.message, "error");
+                    }
+                });
             });
         });
         list.querySelectorAll("[data-track]").forEach((btn) => {
@@ -885,27 +912,34 @@ function openRideDrawer(ride) {
 
     showReadOnlyDrawer("Ride Details", html);
 
-    document.getElementById("ride-fare-save")?.addEventListener("click", async () => {
+    const saveFareBtn = document.getElementById("ride-fare-save");
+    saveFareBtn?.addEventListener("click", async () => {
         const fare = Number(document.getElementById("ride-fare-input").value);
         if (!(fare >= 0)) return toast("Enter a valid fare.", "error");
-        try {
-            await adminPatch(`/rides/${ride.id}`, { action: "update_fare", fare });
-            toast("Fare updated.");
-            loadHistory(true);
-        } catch (error) {
-            toast(error.message, "error");
-        }
+        await withButtonSpinner(saveFareBtn, async () => {
+            try {
+                await adminPatch(`/rides/${ride.id}`, { action: "update_fare", fare });
+                toast("Fare updated.");
+                loadHistory(true);
+            } catch (error) {
+                toast(error.message, "error");
+            }
+        });
     });
-    document.getElementById("ride-note-save")?.addEventListener("click", async () => {
+
+    const saveNoteBtn = document.getElementById("ride-note-save");
+    saveNoteBtn?.addEventListener("click", async () => {
         const notesText = document.getElementById("ride-note-input").value.trim();
         if (!notesText) return;
-        try {
-            const result = await adminPatch(`/rides/${ride.id}`, { action: "add_note", notes: notesText });
-            toast("Note added.");
-            openRideDrawer(result.ride);
-        } catch (error) {
-            toast(error.message, "error");
-        }
+        await withButtonSpinner(saveNoteBtn, async () => {
+            try {
+                const result = await adminPatch(`/rides/${ride.id}`, { action: "add_note", notes: notesText });
+                toast("Note added.");
+                openRideDrawer(result.ride);
+            } catch (error) {
+                toast(error.message, "error");
+            }
+        });
     });
 }
 

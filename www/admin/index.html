@@ -81,15 +81,14 @@
     <!-- ============ DASHBOARD SHELL ============ -->
     <div id="admin-shell" class="page admin-shell d-none">
         <!-- Top Navbar Header -->
-        <header class="navbar navbar-expand-md navbar-light d-print-none sticky-top bg-white border-bottom shadow-xs">
-            <div class="container-fluid">
-                <button id="admin-sidebar-toggle" class="navbar-toggler" type="button" aria-label="Toggle menu">
-                    <span class="navbar-toggler-icon"></span>
+        <header class="navbar navbar-expand-md navbar-light d-print-none sticky-top bg-white border-bottom shadow-xs" style="z-index: 1030;">
+            <div class="container-fluid px-3">
+                <button id="admin-sidebar-toggle" class="btn btn-ghost-secondary me-2 p-1" type="button" title="Toggle sidebar">
+                    <i class="ti ti-menu-2 fs-2 text-dark"></i>
                 </button>
-                <a href="#" class="navbar-brand me-3 text-primary fw-bold d-flex align-items-center">
-                    <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="rounded me-2" style="height: 30px; width: auto; object-fit: contain; background: #fff; padding: 2px;">
-                    <span>LiphtUp <span class="badge bg-blue-lt text-blue ms-1">Admin</span></span>
-                </a>
+                <span class="navbar-brand text-primary fw-bold fs-3 m-0">
+                    LiphtUp <span class="badge bg-blue-lt text-blue ms-1">Admin</span>
+                </span>
                 <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
                     <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button">
                         <i class="ti ti-activity me-1 text-primary"></i> Live Feed 
@@ -105,24 +104,44 @@
             </div>
         </header>
 
-        <div class="page-main d-flex flex-row flex-fill">
+        <div class="page-main d-flex flex-row flex-fill" style="min-height: calc(100vh - 57px);">
             <!-- Sidebar Navigation -->
-            <aside id="admin-sidebar" class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end">
+            <aside id="admin-sidebar" class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end shadow-xs">
                 <div class="container-fluid px-2">
                     <div class="navbar-collapse collapse show" id="sidebar-menu">
                         <ul class="navbar-nav pt-lg-3 w-100 gap-1">
+                            <!-- 1. Dashboard -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link active w-100 text-start" data-section="dashboard" type="button">
                                     <i class="ti ti-layout-dashboard me-2"></i>
                                     <span class="nav-link-title">Dashboard</span>
                                 </button>
                             </li>
+                            <!-- 2. Drivers -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="drivers" type="button">
                                     <i class="ti ti-users me-2"></i>
                                     <span class="nav-link-title">Drivers</span>
                                 </button>
                             </li>
+                            <!-- 3. Passengers -->
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="passengers" type="button">
+                                    <i class="ti ti-user-check me-2"></i>
+                                    <span class="nav-link-title">Passengers</span>
+                                </button>
+                            </li>
+                            <!-- 4. Live Rides -->
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 d-flex align-items-center justify-content-between" data-section="live-rides" type="button">
+                                    <span>
+                                        <i class="ti ti-car-side me-2 text-primary"></i>
+                                        <span class="nav-link-title">Live Rides</span>
+                                    </span>
+                                    <span class="badge bg-green-lt text-green small"><span class="status-dot status-dot-animated bg-green"></span> Live</span>
+                                </button>
+                            </li>
+                            <!-- 5. Payments -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 d-flex align-items-center justify-content-between" data-section="payments" type="button">
                                     <span>
@@ -132,39 +151,31 @@
                                     <span id="admin-payments-nav-badge" class="badge bg-red text-white d-none">0</span>
                                 </button>
                             </li>
-                            <li class="nav-item">
-                                <button class="admin-nav-item nav-link w-100 text-start" data-section="live-rides" type="button">
-                                    <i class="ti ti-car-side me-2"></i>
-                                    <span class="nav-link-title">Live Rides</span>
-                                </button>
-                            </li>
-                            <li class="nav-item">
-                                <button class="admin-nav-item nav-link w-100 d-flex align-items-center justify-content-between" data-section="safety" type="button">
-                                    <span>
-                                        <i class="ti ti-shield-alert me-2"></i>
-                                        <span class="nav-link-title">Safety</span>
-                                    </span>
-                                    <span id="admin-safety-nav-badge" class="badge bg-red text-white d-none">0</span>
-                                </button>
-                            </li>
+                            <!-- 6. Ride History -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="ride-history" type="button">
                                     <i class="ti ti-history me-2"></i>
                                     <span class="nav-link-title">Ride History</span>
                                 </button>
                             </li>
+                            <!-- 7. Safety -->
                             <li class="nav-item">
-                                <button class="admin-nav-item nav-link w-100 text-start" data-section="passengers" type="button">
-                                    <i class="ti ti-user-check me-2"></i>
-                                    <span class="nav-link-title">Passengers</span>
+                                <button class="admin-nav-item nav-link w-100 d-flex align-items-center justify-content-between" data-section="safety" type="button">
+                                    <span>
+                                        <i class="ti ti-shield-alert me-2 text-danger"></i>
+                                        <span class="nav-link-title">Safety</span>
+                                    </span>
+                                    <span id="admin-safety-nav-badge" class="badge bg-red text-white d-none">0</span>
                                 </button>
                             </li>
+                            <!-- 8. Analytics -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="analytics" type="button">
                                     <i class="ti ti-chart-bar me-2"></i>
                                     <span class="nav-link-title">Analytics</span>
                                 </button>
                             </li>
+                            <!-- 9. Audit Log -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="audit-log" type="button">
                                     <i class="ti ti-file-text me-2"></i>

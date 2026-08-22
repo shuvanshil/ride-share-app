@@ -19,13 +19,36 @@ body {
 .admin-sidebar {
     width: 240px;
     flex-shrink: 0;
+    transition: width 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+
+.admin-sidebar.is-collapsed {
+    width: 64px;
+}
+
+.admin-sidebar.is-collapsed .nav-link-title,
+.admin-sidebar.is-collapsed .badge,
+.admin-sidebar.is-collapsed .status-dot {
+    display: none !important;
+}
+
+.admin-sidebar.is-collapsed .admin-nav-item {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    text-align: center !important;
+}
+
+.admin-sidebar.is-collapsed .admin-nav-item i {
+    margin-right: 0 !important;
+    font-size: 1.25rem;
 }
 
 @media (max-width: 991.98px) {
     .admin-sidebar {
         position: fixed;
         left: 0;
-        top: 56px;
+        top: 57px;
         bottom: 0;
         z-index: 1040;
         transform: translateX(-100%);
@@ -51,7 +74,7 @@ body {
 .admin-feed-panel {
     width: 340px;
     position: fixed;
-    top: 56px;
+    top: 57px;
     right: 0;
     bottom: 0;
     z-index: 1050;
@@ -276,30 +299,6 @@ body {
 
 .dt-has-row-click tbody tr:hover {
     background-color: var(--tblr-primary-lt, rgba(32, 107, 196, 0.04)) !important;
-}
-
-/* ---------- Skeleton Loading Shimmer ---------- */
-.admin-skeleton {
-    position: relative;
-    overflow: hidden;
-    background: var(--tblr-gray-200, #eef1f4);
-    color: transparent !important;
-    pointer-events: none;
-    min-height: 80px;
-    border-radius: 8px;
-}
-
-.admin-skeleton::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
-    animation: admin-skeleton-shimmer 1.2s infinite;
-}
-
-@keyframes admin-skeleton-shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
 }
 
 /* ---------- Toast Notifications ---------- */

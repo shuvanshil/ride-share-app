@@ -28,6 +28,19 @@ function mapLink(location) {
     return `https://www.google.com/maps?q=${location.lat},${location.lng}`;
 }
 
+async function withButtonSpinner(btn, actionFn) {
+    if (!btn) return actionFn();
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing...`;
+    try {
+        await actionFn();
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
 // ---------------------------------------------------------------------
 // SOS Alerts
 // ---------------------------------------------------------------------
@@ -99,26 +112,30 @@ function renderSosAlerts(alerts) {
                 confirmText: "Mark Resolved"
             });
             if (!confirmed) return;
-            try {
-                await adminPatch(`/safety/sos-alerts/${btn.dataset.resolveSos}`, { action: "resolve" });
-                toast("SOS alert resolved.");
-                loadSosAlerts();
-                refreshSafetyBadge();
-            } catch (error) {
-                toast(error.message, "error");
-            }
+            await withButtonSpinner(btn, async () => {
+                try {
+                    await adminPatch(`/safety/sos-alerts/${btn.dataset.resolveSos}`, { action: "resolve" });
+                    toast("SOS alert resolved.");
+                    loadSosAlerts();
+                    refreshSafetyBadge();
+                } catch (error) {
+                    toast(error.message, "error");
+                }
+            });
         });
     });
     list.querySelectorAll("[data-reopen-sos]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-            try {
-                await adminPatch(`/safety/sos-alerts/${btn.dataset.reopenSos}`, { action: "reopen" });
-                toast("SOS alert reopened.");
-                loadSosAlerts();
-                refreshSafetyBadge();
-            } catch (error) {
-                toast(error.message, "error");
-            }
+            await withButtonSpinner(btn, async () => {
+                try {
+                    await adminPatch(`/safety/sos-alerts/${btn.dataset.reopenSos}`, { action: "reopen" });
+                    toast("SOS alert reopened.");
+                    loadSosAlerts();
+                    refreshSafetyBadge();
+                } catch (error) {
+                    toast(error.message, "error");
+                }
+            });
         });
     });
 }
@@ -184,13 +201,13 @@ function renderSafetyReports(reports) {
         .join("");
 
     list.querySelectorAll("[data-resolve-report]").forEach((btn) => {
-        btn.addEventListener("click", () => actOnReport(btn.dataset.resolveReport, "resolve"));
+        btn.addEventListener("click", () => withButtonSpinner(btn, () => actOnReport(btn.dataset.resolveReport, "resolve")));
     });
     list.querySelectorAll("[data-dismiss-report]").forEach((btn) => {
-        btn.addEventListener("click", () => actOnReport(btn.dataset.dismissReport, "dismiss"));
+        btn.addEventListener("click", () => withButtonSpinner(btn, () => actOnReport(btn.dataset.dismissReport, "dismiss")));
     });
     list.querySelectorAll("[data-reopen-report]").forEach((btn) => {
-        btn.addEventListener("click", () => actOnReport(btn.dataset.reopenReport, "reopen"));
+        btn.addEventListener("click", () => withButtonSpinner(btn, () => actOnReport(btn.dataset.reopenReport, "reopen")));
     });
 }
 

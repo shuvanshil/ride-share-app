@@ -6,6 +6,19 @@ let cachedPayments = [];
 let cachedPauseConfig = null;
 let cachedDriversList = [];
 
+async function withButtonSpinner(btn, actionFn) {
+    if (!btn) return actionFn();
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing...`;
+    try {
+        await actionFn();
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
 export async function loadAdminPayments() {
     const container = document.getElementById('admin-payments-table-container');
     if (!container) return;
@@ -187,11 +200,11 @@ export function renderPaymentsTable() {
 
     // Bind Approve and Decline buttons
     container.querySelectorAll('.approve-pay-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleApprovePayment(btn.dataset.id));
+        btn.addEventListener('click', () => withButtonSpinner(btn, () => handleApprovePayment(btn.dataset.id)));
     });
 
     container.querySelectorAll('.decline-pay-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleDeclinePayment(btn.dataset.id));
+        btn.addEventListener('click', () => withButtonSpinner(btn, () => handleDeclinePayment(btn.dataset.id)));
     });
 }
 
@@ -255,30 +268,33 @@ function closePauseModal() {
 
 async function handleSavePauseSettings(e) {
     e.preventDefault();
-    const switchEl = document.getElementById('pause-enable-switch');
-    const startEl = document.getElementById('pause-start-date');
-    const endEl = document.getElementById('pause-end-date');
-    const msgEl = document.getElementById('pause-message-input');
+    const saveBtn = document.getElementById('pause-save-btn');
+    await withButtonSpinner(saveBtn, async () => {
+        const switchEl = document.getElementById('pause-enable-switch');
+        const startEl = document.getElementById('pause-start-date');
+        const endEl = document.getElementById('pause-end-date');
+        const msgEl = document.getElementById('pause-message-input');
 
-    const payload = {
-        isPaused: switchEl ? switchEl.checked : true,
-        startDate: startEl ? startEl.value : null,
-        endDate: endEl ? endEl.value : null,
-        message: msgEl ? msgEl.value : "Weekly payments are currently paused. Chill and relax — no payment is required during this period."
-    };
+        const payload = {
+            isPaused: switchEl ? switchEl.checked : true,
+            startDate: startEl ? startEl.value : null,
+            endDate: endEl ? endEl.value : null,
+            message: msgEl ? msgEl.value : "Weekly payments are currently paused. Chill and relax — no payment is required during this period."
+        };
 
-    try {
-        await adminPost('/driver-payments/pause', payload);
-        showToast("Payment pause settings updated successfully!", "success");
-        closePauseModal();
-        await loadAdminPayments();
-    } catch (error) {
-        console.error("Error saving pause settings:", error);
-        showToast(error.message || "Could not update pause settings", "error");
-    }
+        try {
+            await adminPost('/driver-payments/pause', payload);
+            showToast("Payment pause settings updated successfully!", "success");
+            closePauseModal();
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error saving pause settings:", error);
+            showToast(error.message || "Could not update pause settings", "error");
+        }
+    });
 }
 
-async function handleClearPauseSettings() {
+async function handleClearPauseSettings(btn) {
     const confirmed = await showTablerConfirm("Are you sure you want to END the weekly payment pause and resume normal payment requirements?", {
         title: "End Payment Pause",
         variant: "warning",
@@ -286,15 +302,17 @@ async function handleClearPauseSettings() {
     });
     if (!confirmed) return;
 
-    try {
-        await adminDelete('/driver-payments/pause');
-        showToast("Payment pause ended. Normal payment schedule resumed.", "info");
-        closePauseModal();
-        await loadAdminPayments();
-    } catch (error) {
-        console.error("Error clearing pause settings:", error);
-        showToast(error.message || "Could not end payment pause", "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminDelete('/driver-payments/pause');
+            showToast("Payment pause ended. Normal payment schedule resumed.", "info");
+            closePauseModal();
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error clearing pause settings:", error);
+            showToast(error.message || "Could not end payment pause", "error");
+        }
+    });
 }
 
 // ============ RECORD MANUAL PAYMENT MODAL ============
@@ -340,38 +358,41 @@ function closeManualPayModal() {
 
 async function handleSaveManualPayment(e) {
     e.preventDefault();
-    const driverSelect = document.getElementById('manual-pay-driver-select');
-    const weekInput = document.getElementById('manual-pay-week-input');
-    const amountInput = document.getElementById('manual-pay-amount-input');
-    const methodSelect = document.getElementById('manual-pay-method-select');
-    const refInput = document.getElementById('manual-pay-ref-input');
+    const submitBtn = document.getElementById('manual-pay-submit-btn');
+    await withButtonSpinner(submitBtn, async () => {
+        const driverSelect = document.getElementById('manual-pay-driver-select');
+        const weekInput = document.getElementById('manual-pay-week-input');
+        const amountInput = document.getElementById('manual-pay-amount-input');
+        const methodSelect = document.getElementById('manual-pay-method-select');
+        const refInput = document.getElementById('manual-pay-ref-input');
 
-    const driverId = driverSelect ? driverSelect.value : '';
-    if (!driverId) {
-        showToast("Please select a driver.", "warning");
-        return;
-    }
+        const driverId = driverSelect ? driverSelect.value : '';
+        if (!driverId) {
+            showToast("Please select a driver.", "warning");
+            return;
+        }
 
-    const payload = {
-        driverId: driverId,
-        weekId: weekInput ? weekInput.value.trim() : null,
-        amount: amountInput ? parseFloat(amountInput.value) || 140 : 140,
-        paymentMethod: methodSelect ? methodSelect.value : 'cash',
-        paymentReference: refInput ? refInput.value.trim() : 'Collected offline in cash'
-    };
+        const payload = {
+            driverId: driverId,
+            weekId: weekInput ? weekInput.value.trim() : null,
+            amount: amountInput ? parseFloat(amountInput.value) || 140 : 140,
+            paymentMethod: methodSelect ? methodSelect.value : 'cash',
+            paymentReference: refInput ? refInput.value.trim() : 'Collected offline in cash'
+        };
 
-    try {
-        await adminPost('/driver-payments/record-manual', payload);
-        showToast("Offline payment recorded and approved successfully!", "success");
-        closeManualPayModal();
-        await loadAdminPayments();
-    } catch (error) {
-        console.error("Error recording manual payment:", error);
-        showToast(error.message || "Could not record manual payment", "error");
-    }
+        try {
+            await adminPost('/driver-payments/record-manual', payload);
+            showToast("Offline payment recorded and approved successfully!", "success");
+            closeManualPayModal();
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error recording manual payment:", error);
+            showToast(error.message || "Could not record manual payment", "error");
+        }
+    });
 }
 
-async function handleResetAllPayments() {
+async function handleResetAllPayments(btn) {
     const confirmed = await showTablerConfirm("⚠️ WARNING: Are you sure you want to RESET ALL DRIVER PAYMENTS?\n\nThis will remove all existing payment records and restart everyone from zeroth week with NO due amount.", {
         title: "Reset All Driver Payments",
         variant: "danger",
@@ -379,14 +400,16 @@ async function handleResetAllPayments() {
     });
     if (!confirmed) return;
 
-    try {
-        const res = await adminPost('/driver-payments/reset-all');
-        showToast(res.message || "All driver payments reset successfully!", "success");
-        await loadAdminPayments();
-    } catch (error) {
-        console.error("Error resetting all driver payments:", error);
-        showToast(error.message || "Could not reset driver payments", "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminPost('/driver-payments/reset-all');
+            showToast(res.message || "All driver payments reset successfully!", "success");
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error resetting all driver payments:", error);
+            showToast(error.message || "Could not reset driver payments", "error");
+        }
+    });
 }
 
 export function initAdminPayments() {
@@ -396,14 +419,19 @@ export function initAdminPayments() {
     statusFilter?.addEventListener('change', renderPaymentsTable);
     searchInput?.addEventListener('input', renderPaymentsTable);
 
-    document.getElementById('admin-reset-all-payments-btn')?.addEventListener('click', handleResetAllPayments);
+    const resetBtn = document.getElementById('admin-reset-all-payments-btn');
+    resetBtn?.addEventListener('click', () => handleResetAllPayments(resetBtn));
 
     // Pause Modal Triggers
     document.getElementById('admin-open-pause-modal-btn')?.addEventListener('click', openPauseModal);
     document.getElementById('pause-modal-close-btn')?.addEventListener('click', closePauseModal);
     document.getElementById('admin-pause-form')?.addEventListener('submit', handleSavePauseSettings);
-    document.getElementById('pause-clear-btn')?.addEventListener('click', handleClearPauseSettings);
-    document.getElementById('admin-quick-end-pause-btn')?.addEventListener('click', handleClearPauseSettings);
+    
+    const pauseClearBtn = document.getElementById('pause-clear-btn');
+    pauseClearBtn?.addEventListener('click', () => handleClearPauseSettings(pauseClearBtn));
+    
+    const quickClearBtn = document.getElementById('admin-quick-end-pause-btn');
+    quickClearBtn?.addEventListener('click', () => handleClearPauseSettings(quickClearBtn));
 
     // Manual Pay Modal Triggers
     document.getElementById('admin-open-manual-pay-btn')?.addEventListener('click', openManualPayModal);
