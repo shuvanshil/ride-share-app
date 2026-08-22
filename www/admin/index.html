@@ -87,7 +87,7 @@
                     <i class="ti ti-menu-2 fs-2 text-dark"></i>
                 </button>
                 <span class="navbar-brand text-primary fw-bold fs-3 m-0">
-                    LiphtUp <span class="badge bg-blue-lt text-blue ms-1">Admin</span>
+                    LiphtUp <span id="admin-header-role-badge" class="badge bg-blue-lt text-blue ms-1">Admin</span>
                 </span>
                 <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
                     <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button">
@@ -111,35 +111,35 @@
                     <div class="navbar-collapse collapse show" id="sidebar-menu">
                         <ul class="navbar-nav pt-lg-3 w-100 gap-1">
                             <!-- 1. Dashboard -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-dashboard">
                                 <button class="admin-nav-item nav-link active w-100 text-start" data-section="dashboard" type="button">
                                     <i class="ti ti-layout-dashboard nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Dashboard</span>
                                 </button>
                             </li>
                             <!-- 2. Drivers -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-drivers">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="drivers" type="button">
                                     <i class="ti ti-users nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Drivers</span>
                                 </button>
                             </li>
                             <!-- 3. Passengers -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-passengers">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="passengers" type="button">
                                     <i class="ti ti-user-check nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Passengers</span>
                                 </button>
                             </li>
                             <!-- 4. Live Rides -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-live-rides">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="live-rides" type="button">
                                     <i class="ti ti-car nav-link-icon text-primary me-2"></i>
                                     <span class="nav-link-title">Live Rides</span>
                                 </button>
                             </li>
                             <!-- 5. Payments -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-payments">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="payments" type="button">
                                     <i class="ti ti-currency-rupee nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Payments</span>
@@ -147,14 +147,14 @@
                                 </button>
                             </li>
                             <!-- 6. Ride History -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-ride-history">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="ride-history" type="button">
                                     <i class="ti ti-history nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Ride History</span>
                                 </button>
                             </li>
                             <!-- 7. Safety -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-safety">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="safety" type="button">
                                     <i class="ti ti-shield nav-link-icon text-danger me-2"></i>
                                     <span class="nav-link-title">Safety</span>
@@ -162,17 +162,24 @@
                                 </button>
                             </li>
                             <!-- 8. Analytics -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-analytics">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="analytics" type="button">
                                     <i class="ti ti-chart-bar nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Analytics</span>
                                 </button>
                             </li>
                             <!-- 9. Audit Log -->
-                            <li class="nav-item">
+                            <li class="nav-item" id="nav-item-audit-log">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="audit-log" type="button">
                                     <i class="ti ti-file-text nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Audit Log</span>
+                                </button>
+                            </li>
+                            <!-- 10. Permissions (Super Admin only) -->
+                            <li class="nav-item" id="nav-item-permissions">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="permissions" type="button">
+                                    <i class="ti ti-shield-lock nav-link-icon text-purple me-2"></i>
+                                    <span class="nav-link-title">Permissions</span>
                                 </button>
                             </li>
                         </ul>
@@ -386,9 +393,76 @@
                                     <div class="page-pretitle">Security</div>
                                     <h2 class="page-title h2 fw-bold">Audit Log</h2>
                                 </div>
+                                <div class="col-auto ms-auto">
+                                    <select id="audit-role-filter" class="form-select form-select-sm w-auto">
+                                        <option value="">All Admin Roles</option>
+                                        <option value="super_admin">Super Admin</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="manager">Manager</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div id="audit-log-table-wrap"></div>
+                    </section>
+
+                    <!-- Permissions (Super Admin only) -->
+                    <section id="section-permissions" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Access Control</div>
+                                    <h2 class="page-title h2 fw-bold">Permissions &amp; Roles</h2>
+                                </div>
+                                <div class="col-auto ms-auto">
+                                    <button type="button" id="admin-open-assign-role-btn" class="btn btn-primary btn-sm d-flex align-items-center gap-1">
+                                        <i class="ti ti-user-plus"></i> Assign Role
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Role Info Cards -->
+                        <div class="row row-cards mb-3">
+                            <div class="col-sm-4">
+                                <div class="card card-sm border-0 shadow-xs border-start border-3 border-purple">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge bg-purple-lt text-purple fw-bold"><i class="ti ti-shield-check me-1"></i>Super Admin</span>
+                                        </div>
+                                        <div class="text-secondary small">Full access to all sections including Permissions &amp; role management.</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="card card-sm border-0 shadow-xs border-start border-3 border-blue">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge bg-blue-lt text-blue fw-bold"><i class="ti ti-user-check me-1"></i>Admin</span>
+                                        </div>
+                                        <div class="text-secondary small">Full operational access across console sections. Cannot manage permissions.</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="card card-sm border-0 shadow-xs border-start border-3 border-warning">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center gap-2 mb-1">
+                                            <span class="badge bg-warning-lt text-warning fw-bold"><i class="ti ti-user me-1"></i>Manager</span>
+                                        </div>
+                                        <div class="text-secondary small">Restricted access (Dashboard, Drivers, Payments, Safety). Cannot view history/analytics.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Permissions Table -->
+                        <div id="admin-permissions-table-wrap">
+                            <div class="card shadow-xs border-0 text-center py-5">
+                                <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+                                <div class="text-secondary small">Loading administrative roles...</div>
+                            </div>
+                        </div>
                     </section>
 
                     <!-- Payments -->
@@ -540,6 +614,42 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Assign Admin / Manager Role -->
+    <div id="admin-assign-role-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">
+                        <i class="ti ti-user-plus me-2 text-primary"></i>Assign Administrative Role
+                    </h5>
+                    <button id="assign-role-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <form id="admin-assign-role-form">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Select User Account</label>
+                            <select id="assign-role-user-select" class="form-select" required>
+                                <option value="">Loading eligible users...</option>
+                            </select>
+                            <div class="form-text">Choose a Firebase user account to grant administrative access.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Role to Assign</label>
+                            <select id="assign-role-select" class="form-select" required>
+                                <option value="admin" selected>Admin (Full Operational Access)</option>
+                                <option value="manager">Manager (Restricted Access)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer d-flex gap-2">
+                        <button type="button" id="assign-role-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
+                        <button type="submit" id="assign-role-submit-btn" class="btn btn-primary flex-fill">Grant Role</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

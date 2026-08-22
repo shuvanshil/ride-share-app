@@ -6,6 +6,7 @@ import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking } from "./adm
 import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
 import { initAdminPayments, loadAdminPayments } from "./admin-payments.js";
+import { loadPermissions, initPermissionsModal } from "./admin-permissions.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,6 +14,7 @@ const loginScreen = $("admin-login-screen");
 const deniedScreen = $("admin-denied-screen");
 const shell = $("admin-shell");
 
+let currentAdminRole = "admin"; // "super_admin", "admin", or "manager"
 let liveRidesTimer = null;
 const cursors = { drivers: null, history: null, passengers: null, audit: null };
 let driversTable = null;
@@ -41,13 +43,55 @@ async function withButtonSpinner(btn, actionFn) {
 }
 
 // ---------------------------------------------------------------------
-// Auth gate
+// Auth gate & Role Enforcement
 // ---------------------------------------------------------------------
 
 function showOnly(el) {
     [loginScreen, deniedScreen, shell].forEach((node) => {
         node.classList.toggle("d-none", node !== el);
     });
+}
+
+function applyRolePermissions(role) {
+    currentAdminRole = String(role || "admin").toLowerCase();
+    
+    // Update Header Badge
+    const badge = $("admin-header-role-badge");
+    if (badge) {
+        if (currentAdminRole === "super_admin") {
+            badge.className = "badge bg-purple-lt text-purple ms-1 fw-bold";
+            badge.textContent = "Super Admin";
+        } else if (currentAdminRole === "manager") {
+            badge.className = "badge bg-warning-lt text-warning ms-1 fw-bold";
+            badge.textContent = "Manager";
+        } else {
+            badge.className = "badge bg-blue-lt text-blue ms-1 fw-bold";
+            badge.textContent = "Admin";
+        }
+    }
+
+    // Sidebar items visibility
+    const hidePermissions = currentAdminRole !== "super_admin";
+    const hideManagerRestricted = currentAdminRole === "manager";
+
+    $("nav-item-permissions")?.classList.toggle("d-none", hidePermissions);
+    $("nav-item-passengers")?.classList.toggle("d-none", hideManagerRestricted);
+    $("nav-item-ride-history")?.classList.toggle("d-none", hideManagerRestricted);
+    $("nav-item-analytics")?.classList.toggle("d-none", hideManagerRestricted);
+    $("nav-item-audit-log")?.classList.toggle("d-none", hideManagerRestricted);
+    $("nav-item-live-rides")?.classList.toggle("d-none", hideManagerRestricted);
+}
+
+function isSectionAllowed(section) {
+    if (currentAdminRole === "super_admin") return true;
+    if (currentAdminRole === "admin") {
+        return section !== "permissions";
+    }
+    if (currentAdminRole === "manager") {
+        const allowed = new Set(["dashboard", "drivers", "payments", "safety"]);
+        return allowed.has(section);
+    }
+    return false;
 }
 
 function resetToDashboard() {
@@ -64,11 +108,14 @@ watchAdminAuth(async (user) => {
     try {
         const result = await adminGet("/verify");
         $("admin-user-label").textContent = result.name || result.email || "";
+        applyRolePermissions(result.role);
+        
         showOnly(shell);
         resetToDashboard();
         loadSection("dashboard");
         refreshSafetyBadge();
         initAdminPayments();
+        initPermissionsModal();
         startSosRealtimeAlerts();
         if (!feedStarted) {
             feedStarted = true;
@@ -166,14 +213,21 @@ $("admin-feed-close")?.addEventListener("click", () => $("admin-feed-panel").cla
 
 document.querySelectorAll(".admin-nav-item").forEach((btn) => {
     btn.addEventListener("click", () => {
+        const targetSection = btn.dataset.section;
+
+        if (!isSectionAllowed(targetSection)) {
+            toast(`Access Denied: Your ${currentAdminRole.toUpperCase()} role cannot access this section.`, "error");
+            return;
+        }
+
         document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         document.querySelectorAll(".admin-section").forEach((s) => s.classList.add("d-none"));
-        $(`section-${btn.dataset.section}`).classList.remove("d-none");
+        $(`section-${targetSection}`).classList.remove("d-none");
         if (window.innerWidth < 992) {
             $("admin-sidebar").classList.remove("is-open");
         }
-        loadSection(btn.dataset.section);
+        loadSection(targetSection);
     });
 });
 
@@ -190,6 +244,13 @@ const loadedSections = new Set();
 
 function loadSection(name) {
     clearInterval(liveRidesTimer);
+
+    if (!isSectionAllowed(name)) {
+        toast(`Access Denied: Your ${currentAdminRole.toUpperCase()} role cannot access this section.`, "error");
+        goToSection("dashboard");
+        return;
+    }
+
     if (name === "live-rides") {
         loadLiveRides();
         liveRidesTimer = setInterval(loadLiveRides, 8000);
@@ -205,9 +266,15 @@ function loadSection(name) {
     if (name === "passengers") loadPassengers(true);
     if (name === "analytics") loadAnalytics();
     if (name === "audit-log") loadAuditLog(true);
+    if (name === "permissions") loadPermissions();
 }
 
 function goToSection(name, filters = {}) {
+    if (!isSectionAllowed(name)) {
+        toast(`Access Denied: Your ${currentAdminRole.toUpperCase()} role cannot access this section.`, "error");
+        name = "dashboard";
+    }
+
     Object.entries(filters).forEach(([id, value]) => {
         const el = $(id);
         if (el) el.value = value;
@@ -233,6 +300,7 @@ $("drivers-pending-chip")?.addEventListener("click", () => {
     $("driver-status-filter").value = "pending_review";
     loadDrivers(true);
 });
+$("audit-role-filter")?.addEventListener("change", () => loadAuditLog(true));
 
 // ---------------------------------------------------------------------
 // Dashboard
@@ -259,7 +327,7 @@ function renderGreeting() {
                     <i class="ti ti-sun text-info alert-icon" style="font-size: 2rem;"></i>
                     <div>
                         <h4 class="alert-title fw-bold mb-1 h3">Good ${timeOfDay}!</h4>
-                        <div class="text-secondary small">Welcome back to LiphtUp Administrative Console.</div>
+                        <div class="text-secondary small">Logged in as <strong>${currentAdminRole.replace("_", " ").toUpperCase()}</strong>. Welcome back to LiphtUp Console.</div>
                     </div>
                 </div>
                 <div class="badge bg-blue text-white d-flex align-items-center gap-1 p-2">
@@ -454,6 +522,9 @@ function summaryTable(rows, columns, emptyText) {
 }
 
 async function openRidesDrillDown(title, { status, dateFrom, dateTo }) {
+    if (currentAdminRole === "manager") {
+        return toast("Access Denied: Ride details are restricted for Manager role.", "error");
+    }
     showReadOnlyDrawer(title, `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading rides...</div></div>`);
     try {
         const data = await adminGet("/rides/history", { status, dateFrom, dateTo, limit: 50 });
@@ -500,6 +571,9 @@ async function openDriversDrillDown(title, { availability, status } = {}) {
 }
 
 async function openLiveDrillDown(title, { passengersOnly = false } = {}) {
+    if (currentAdminRole === "manager") {
+        return toast("Access Denied: Live rides view is restricted for Manager role.", "error");
+    }
     showReadOnlyDrawer(title, `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading live rides...</div></div>`);
     try {
         const data = await adminGet("/rides/live");
@@ -1086,10 +1160,29 @@ function ensureAuditTable() {
         getRowId: (r) => r.id,
         onLoadMore: () => loadAuditLog(false),
         columns: [
-            { key: "adminEmail", label: "Admin", sortable: true },
-            { key: "action", label: "Action", sortable: true },
-            { key: "targetType", label: "Target type", sortable: true },
-            { key: "targetId", label: "Target ID", render: (r) => (r.targetId || "").slice(0, 12) },
+            {
+                key: "adminEmail",
+                label: "Admin & Role",
+                sortable: true,
+                render: (r) => {
+                    const role = String(r.adminRole || "super_admin").toLowerCase();
+                    const badgeClass = {
+                        super_admin: "bg-purple-lt text-purple",
+                        manager: "bg-warning-lt text-warning",
+                        admin: "bg-blue-lt text-blue"
+                    }[role] || "bg-secondary-lt text-secondary";
+                    const roleLabel = {
+                        super_admin: "Super Admin",
+                        manager: "Manager",
+                        admin: "Admin"
+                    }[role] || "Admin";
+                    return `<div><strong>${escapeHtml(r.adminEmail || "System")}</strong></div>
+                            <span class="badge ${badgeClass} small ms-0 mt-1">${roleLabel}</span>`;
+                }
+            },
+            { key: "action", label: "Action", sortable: true, render: (r) => `<span class="badge bg-secondary-lt text-dark font-monospace">${escapeHtml(r.action || "")}</span>` },
+            { key: "targetType", label: "Target Type", sortable: true, render: (r) => escapeHtml(r.targetType || "") },
+            { key: "notes", label: "Details / Notes", render: (r) => escapeHtml(r.notes || r.targetId || "") },
             { key: "createdAt", label: "When", sortable: true, render: (r) => formatTimestamp(r.createdAt) },
         ],
     });
@@ -1098,9 +1191,10 @@ function ensureAuditTable() {
 
 async function loadAuditLog(reset) {
     if (reset) cursors.audit = null;
+    const roleFilter = $("audit-role-filter")?.value || "";
     const table = ensureAuditTable();
     try {
-        const data = await adminGet("/audit-logs", { cursor: reset ? null : cursors.audit });
+        const data = await adminGet("/audit-logs", { role: roleFilter, cursor: reset ? null : cursors.audit });
         cursors.audit = data.nextCursor;
         table.setRows(data.logs, { append: !reset, hasMore: !!data.nextCursor });
     } catch (error) {
@@ -1117,12 +1211,9 @@ function detailRow(label, value) {
 }
 
 const STATUS_TONES = {
-    // rides
     pending: "amber", accepted: "blue", arrived: "blue", started: "blue", en_route: "blue",
     completed: "green", cancelled_by_passenger: "red", cancelled_by_driver: "red",
-    // drivers
     pending_review: "amber", approved: "green", rejected: "red", suspended: "red", blocked: "red",
-    // passengers
     active: "green", restricted: "amber",
 };
 

@@ -11,14 +11,11 @@ router touches, including the new `auditLogs` collection -- so no rules
 changes were needed. Every mutation is authenticated with `require_admin`
 (Firebase ID token + `admin` custom claim) and recorded to `auditLogs` via
 `write_audit_log`.
-
-New collection introduced here: `auditLogs/{logId}` (server-only writes,
-never readable by clients directly).
 """
 from __future__ import annotations
 
 import hmac
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -27,7 +24,13 @@ from firebase_admin import firestore as fb_firestore
 from google.api_core import exceptions as gcloud_exceptions
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.core.admin import now_utc, require_admin, write_audit_log
+from api.core.admin import (
+    now_utc,
+    require_admin,
+    require_super_admin,
+    require_admin_or_super_admin,
+    write_audit_log,
+)
 from api.core.config import get_env
 from api.core.errors import ApiError
 from api.core.firebase import get_admin_app
@@ -38,9 +41,6 @@ DRIVER_STATUSES = {"pending_review", "approved", "rejected", "suspended", "block
 PASSENGER_STATUSES = {"active", "restricted", "blocked"}
 ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"]
 TERMINAL_RIDE_STATUSES = ["completed", "cancelled_by_passenger", "cancelled_by_driver"]
-# Grouped status values the console's drill-downs and filters accept, in
-# addition to one exact Firestore status string. "all" skips the status
-# filter entirely (date-only browsing of every ride, any status).
 RIDE_STATUS_GROUPS: dict[str, Optional[list[str]]] = {
     "all": None,
     "active": ACTIVE_RIDE_STATUSES,
@@ -52,49 +52,33 @@ DRIVER_AVAILABILITY_GROUPS: dict[str, list[str]] = {
     "busy": ["busy"],
     "offline": ["offline"],
 }
-MAX_PAGE_SIZE = 100
 DEFAULT_PAGE_SIZE = 25
+MAX_PAGE_SIZE = 100
 
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
 
 def _db():
     return fb_firestore.client(get_admin_app())
 
 
 def _clamp_limit(limit: int) -> int:
-    return max(1, min(MAX_PAGE_SIZE, limit))
+    return max(1, min(limit, MAX_PAGE_SIZE))
 
 
-def _count(query) -> int:
-    """Server-side count aggregation, with a bounded fallback for older
-    google-cloud-firestore versions that don't expose `.count()`."""
+def _safe_count(base_query) -> int:
     try:
-        result = query.count().get()
-        return int(result[0][0].value)
-    except AttributeError:
-        return len(query.limit(1000).get())
-    except Exception:  # noqa: BLE001
+        return base_query.count().get()[0][0].value
+    except Exception:
         return 0
 
 
 def _stream(query) -> list:
-    """Runs `.stream()` and turns a missing-composite-index failure into a
-    clear, actionable 503 instead of an opaque 500. `FailedPrecondition` is
-    exactly what Firestore raises when a query (usually a `.where(...)`
-    combined with `.order_by(...)`) needs a composite index that hasn't been
-    created yet -- see docs/firestore-indexes.md / firestore.indexes.json for
-    the exact indexes this console needs."""
     try:
         return list(query.stream())
     except gcloud_exceptions.FailedPrecondition as exc:
         raise ApiError(
             "This view needs a Firestore index that hasn't been created yet. "
             "Ask whoever manages the Firebase project to deploy the indexes "
-            "in firestore.indexes.json (or open the Firebase console link "
-            "from the server logs for this exact query).",
+            "in firestore.indexes.json.",
             503,
             {"firestoreIndexError": str(exc)[:300]},
         ) from exc
@@ -107,8 +91,6 @@ def _doc_dict(snapshot) -> dict[str, Any]:
 
 
 def _paginate(base_query, cursor: Optional[str], limit: int, id_field_collection: str):
-    """Apply an opaque document-id cursor to an already `.order_by(...)`
-    query. `cursor` is the `id` of the last row the client already has."""
     query = base_query.limit(limit + 1)
     if cursor:
         cursor_snap = _db().collection(id_field_collection).document(cursor).get()
@@ -123,12 +105,6 @@ def _paginate(base_query, cursor: Optional[str], limit: int, id_field_collection
 
 
 def _backfill_driver_names(rides: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Some rides -- typically ones accepted before `driver_name` was
-    reliably written, or where the profile's `name` was blank at accept
-    time -- have a `driver_id` but no usable `driver_name`. Rather than show
-    a blank cell in the admin console, look the current name up from
-    `users/{driver_id}` once per distinct driver and patch it in for
-    display only (this never writes back to the ride document)."""
     missing_ids = {
         r.get("driver_id")
         for r in rides
@@ -159,19 +135,11 @@ def _parse_day(value: str, field_name: str) -> date:
 
 
 def _day_range_utc(day_str: str, field_name: str) -> datetime:
-    """UTC-midnight boundary for a YYYY-MM-DD string. Buckets are UTC days,
-    not Asia/Kolkata days -- close enough for admin filtering/reporting, and
-    documented here so it isn't mistaken for IST-exact."""
     d = _parse_day(day_str, field_name)
     return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
 
 def _apply_search(items: list[dict[str, Any]], q: str, fields: list[str]) -> list[dict[str, Any]]:
-    """Firestore has no native substring search; for the moderate row counts
-    an admin page fetches at once, filtering the fetched page in Python is
-    simpler and cheaper than maintaining a search index. This only filters
-    within the current page -- see the docstring on the drivers/passengers
-    list endpoints for the tradeoff this implies."""
     if not q:
         return items
     needle = q.strip().lower()
@@ -186,18 +154,17 @@ def _apply_search(items: list[dict[str, Any]], q: str, fields: list[str]) -> lis
 
 
 # ---------------------------------------------------------------------------
-# Session check
+# Session check & Bootstrap
 # ---------------------------------------------------------------------------
 
 @router.get("/verify")
 def verify_admin(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
-    """The dashboard calls this right after Firebase sign-in to confirm the
-    admin claim is present before rendering anything else."""
     return {
         "ok": True,
         "uid": admin_user.get("uid"),
         "email": admin_user.get("email"),
         "name": admin_user.get("name") or admin_user.get("email"),
+        "role": admin_user.get("adminRole") or "super_admin"
     }
 
 
@@ -210,161 +177,211 @@ class BootstrapAdminBody(BaseModel):
 
 @router.post("/bootstrap")
 def bootstrap_admin(body: BootstrapAdminBody) -> dict[str, Any]:
-    """Grants the admin custom claim to an existing Firebase Auth user,
-    without needing an existing admin session or a locally-run script.
-
-    Gated by ADMIN_BOOTSTRAP_SECRET -- a Vercel env var you make up
-    yourself (NOT a Firebase credential). Set it once, call this endpoint
-    for each person you want to make an admin, then optionally remove the
-    env var again. This intentionally does not require an existing admin,
-    so the first admin can be created with nothing more than a Firebase
-    Auth account and this one secret.
-    """
-    configured_secret = get_env("ADMIN_BOOTSTRAP_SECRET")
-    if not configured_secret:
-        raise ApiError("Admin bootstrap is not configured on this deployment.", 503)
-    if not hmac.compare_digest(body.secret, configured_secret):
-        raise ApiError("Invalid bootstrap secret.", 403)
+    expected_secret = get_env("ADMIN_BOOTSTRAP_SECRET", "")
+    if not expected_secret:
+        raise ApiError("Bootstrap endpoint disabled.", 403)
+    if not hmac.compare_digest(body.secret, expected_secret):
+        raise ApiError("Invalid secret.", 403)
 
     try:
-        user = fb_auth.get_user_by_email(body.email.strip().lower(), app=get_admin_app())
-    except fb_auth.UserNotFoundError:
-        raise ApiError("No Firebase Auth user exists with that email yet. Create it first.", 404)
+        user = fb_auth.get_user_by_email(body.email.strip().lower())
+    except Exception as exc:
+        raise ApiError(f"User '{body.email}' not found.", 404) from exc
 
-    claims = dict(user.custom_claims or {})
-    claims["admin"] = True
-    fb_auth.set_custom_user_claims(user.uid, claims, app=get_admin_app())
-    # Force any already-open session to re-mint its ID token with the claim.
-    fb_auth.revoke_refresh_tokens(user.uid, app=get_admin_app())
-
-    write_audit_log(
-        {"uid": user.uid, "email": user.email},
-        "admin.bootstrap_grant",
-        "user",
-        user.uid,
-        None,
-        {"admin": True},
-        "Granted via /api/admin/bootstrap",
-    )
-    return {"ok": True, "uid": user.uid, "email": user.email, "message": "Admin access granted. Sign in at /admin."}
+    fb_auth.set_custom_user_claims(user.uid, {"admin": True})
+    return {"ok": True, "message": f"Admin claim granted to {user.email} (uid: {user.uid})."}
 
 
 # ---------------------------------------------------------------------------
-# Dashboard overview
+# Permissions Management (Super Admin Only)
+# ---------------------------------------------------------------------------
+
+@router.get("/permissions")
+def list_permissions(admin_user: dict[str, Any] = Depends(require_super_admin)) -> dict[str, Any]:
+    db = _db()
+    roles_docs = [_doc_dict(d) for d in db.collection("adminRoles").stream()]
+    users_query = db.collection("users").limit(150)
+    all_users = [_doc_dict(u) for u in users_query.stream()]
+    
+    return {
+        "ok": True,
+        "adminRoles": roles_docs,
+        "eligibleUsers": [
+            {
+                "uid": u.get("id"),
+                "name": u.get("name") or "Unnamed User",
+                "email": u.get("email") or "",
+                "phone": u.get("phone") or "",
+                "userRole": u.get("role") or "user"
+            }
+            for u in all_users if u.get("email") or u.get("id")
+        ]
+    }
+
+
+class AssignRoleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    uid: str = Field(min_length=1, max_length=128)
+    email: Optional[str] = Field(default="", max_length=320)
+    role: str = Field(min_length=1, max_length=30)  # "admin" or "manager"
+
+
+@router.post("/permissions/assign")
+def assign_permission_role(body: AssignRoleBody, admin_user: dict[str, Any] = Depends(require_super_admin)) -> dict[str, Any]:
+    if body.role not in {"admin", "manager"}:
+        raise ApiError("Only Admin or Manager roles can be assigned.", 400)
+    
+    db = _db()
+    user_snap = db.collection("users").document(body.uid).get()
+    user_data = user_snap.to_dict() if user_snap.exists else {}
+    email = body.email or user_data.get("email") or ""
+    name = user_data.get("name") or email or "Admin User"
+    
+    try:
+        fb_auth.set_custom_user_claims(body.uid, {"admin": True})
+    except Exception as err:
+        raise ApiError(f"Could not set admin custom claim: {str(err)}", 500)
+    
+    ref = db.collection("adminRoles").document(body.uid)
+    snap = ref.get()
+    before = snap.to_dict() if snap.exists else None
+    
+    after = {
+        "uid": body.uid,
+        "email": email,
+        "name": name,
+        "role": body.role,
+        "assignedByUid": admin_user.get("uid"),
+        "assignedByEmail": admin_user.get("email") or admin_user.get("uid"),
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    if not before:
+        after["createdAt"] = fb_firestore.SERVER_TIMESTAMP
+        after["assignedAt"] = fb_firestore.SERVER_TIMESTAMP
+
+    ref.set(after, merge=True)
+    
+    action_type = "permissions.change_role" if before else "permissions.assign_role"
+    notes = f"Changed role from {before.get('role', 'none')} to {body.role}" if before else f"Assigned {body.role} role to user {email}"
+    write_audit_log(admin_user, action_type, "user_permission", body.uid, before, after, notes)
+    return {"ok": True, "message": f"Assigned {body.role.upper()} role to {email}."}
+
+
+@router.delete("/permissions/{target_uid}")
+def revoke_permission_role(target_uid: str, admin_user: dict[str, Any] = Depends(require_super_admin)) -> dict[str, Any]:
+    if target_uid == admin_user.get("uid"):
+        raise ApiError("Super Admin cannot revoke their own permission.", 400)
+    
+    db = _db()
+    ref = db.collection("adminRoles").document(target_uid)
+    snap = ref.get()
+    if snap.exists and snap.to_dict().get("role") == "super_admin":
+        raise ApiError("Super Admin access cannot be revoked.", 400)
+    
+    before = snap.to_dict() if snap.exists else None
+    
+    try:
+        fb_auth.set_custom_user_claims(target_uid, {"admin": False})
+    except Exception:
+        pass
+    
+    if snap.exists:
+        ref.delete()
+    
+    write_audit_log(admin_user, "permissions.revoke_role", "user_permission", target_uid, before, None, f"Revoked administrative access for user {before.get('email') if before else target_uid}")
+    return {"ok": True, "message": "Administrative access revoked."}
+
+
+# ---------------------------------------------------------------------------
+# Dashboard Overview
 # ---------------------------------------------------------------------------
 
 @router.get("/overview")
 def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
     db = _db()
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    now = now_utc()
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
-    users = db.collection("users")
-    drivers = users.where("role", "==", "driver")
-    passengers = users.where("role", "==", "passenger")
+    drivers_coll = db.collection("users").where("role", "==", "driver")
+    total_drivers = _safe_count(drivers_coll)
+    pending_drivers = _safe_count(drivers_coll.where("verificationStatus", "==", "pending_review"))
+    suspended_drivers = _safe_count(drivers_coll.where("verificationStatus", "==", "suspended"))
+    blocked_drivers = _safe_count(drivers_coll.where("verificationStatus", "==", "blocked"))
+    active_online_drivers = _safe_count(drivers_coll.where("driverAvailability", "in", ["online", "searching"]))
+    busy_drivers = _safe_count(drivers_coll.where("driverAvailability", "==", "busy"))
 
-    driver_counts = {
-        status: _count(drivers.where("verificationStatus", "==", status))
-        for status in DRIVER_STATUSES
-    }
-    online_count = _count(drivers.where("driverAvailability", "in", ["online", "searching"]))
-    busy_count = _count(drivers.where("driverAvailability", "==", "busy"))
-    offline_count = _count(drivers.where("driverAvailability", "==", "offline"))
+    passengers_coll = db.collection("users").where("role", "==", "passenger")
+    total_passengers = _safe_count(passengers_coll)
+    new_passengers_today = _safe_count(passengers_coll.where("createdAt", ">=", today_start))
 
-    rides = db.collection("rides")
-    today_rides_query = rides.where("createdAt", ">=", today_start)
-    active_ride_docs = _stream(rides.where("status", "in", ACTIVE_RIDE_STATUSES).limit(500))
-    active_rides_count = len(active_ride_docs)
-    active_ride_passenger_ids = sorted(
-        {d.to_dict().get("passenger_id") for d in active_ride_docs if d.to_dict().get("passenger_id")}
-    )
+    total_registered = _safe_count(db.collection("users"))
+    new_users_today = _safe_count(db.collection("users").where("createdAt", ">=", today_start))
+    new_drivers_today = _safe_count(drivers_coll.where("createdAt", ">=", today_start))
 
-    today_docs = list(today_rides_query.stream())
+    rides_coll = db.collection("rides")
+    total_completed_rides = _safe_count(rides_coll.where("status", "==", "completed"))
+
+    today_rides_query = rides_coll.where("createdAt", ">=", today_start)
+    today_docs = [_doc_dict(d) for d in _stream(today_rides_query)]
+
     today_total = len(today_docs)
-    today_completed = sum(1 for d in today_docs if d.to_dict().get("status") == "completed")
-    today_cancelled = sum(
-        1 for d in today_docs if str(d.to_dict().get("status", "")).startswith("cancelled")
-    )
-    today_fare_collected = sum(
-        float(d.to_dict().get("fare") or 0)
-        for d in today_docs
-        if d.to_dict().get("status") == "completed"
-    )
-    today_distance = sum(float(d.to_dict().get("distance_km") or 0) for d in today_docs)
-    completed_today_count = max(today_completed, 1) if today_completed else 0
+    today_completed_docs = [r for r in today_docs if r.get("status") == "completed"]
+    today_completed = len(today_completed_docs)
+    today_cancelled = len([r for r in today_docs if str(r.get("status") or "").startswith("cancelled")])
+    today_active_docs = [r for r in today_docs if r.get("status") in ACTIVE_RIDE_STATUSES]
+    today_active = len(today_active_docs)
+    today_fare = round(sum(float(r.get("fare") or 0) for r in today_completed_docs), 2)
+    today_km = round(sum(float(r.get("estimated_distance_km") or r.get("distance_km") or 0) for r in today_completed_docs), 2)
+    avg_km = round(today_km / today_completed, 2) if today_completed > 0 else 0.0
 
-    new_users_today = _count(users.where("createdAt", ">=", today_start))
-    new_drivers_today = _count(drivers.where("createdAt", ">=", today_start))
-
-    # A lightweight, best-effort health signal for the dashboard's "system
-    # health" card -- not a real uptime monitor, just enough for an admin to
-    # notice "nothing has happened in a while" at a glance. Never raises:
-    # a failure here degrades to "unknown" rather than breaking the whole
-    # overview response.
-    system_health: dict[str, Any] = {"status": "ok", "notes": []}
-    try:
-        last_audit = list(
-            db.collection("auditLogs").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(1).stream()
-        )
-        system_health["lastAdminActionAt"] = _doc_dict(last_audit[0]).get("createdAt") if last_audit else None
-    except Exception:  # noqa: BLE001
-        system_health["status"] = "unknown"
-        system_health["notes"].append("Could not read the audit log.")
-    if active_rides_count > 0 and online_count == 0:
-        system_health["status"] = "attention"
-        system_health["notes"].append("There are active rides but no drivers currently online.")
-    if driver_counts.get("pending_review", 0) > 0:
-        system_health["notes"].append(
-            f"{driver_counts.get('pending_review', 0)} driver(s) waiting for approval."
-        )
-
-    open_sos_count = _count(db.collection("sosAlerts").where("status", "==", "open"))
-    open_reports_count = _count(db.collection("safetyReports").where("status", "==", "open"))
-    if open_sos_count > 0:
-        system_health["status"] = "attention"
-        system_health["notes"].append(f"{open_sos_count} open SOS alert(s) need attention.")
+    open_sos = _safe_count(db.collection("sosAlerts").where("status", "==", "open"))
+    open_reports = _safe_count(db.collection("safetyReports").where("status", "==", "open"))
 
     return {
         "ok": True,
-        "systemHealth": system_health,
+        "generatedAt": now.isoformat(),
         "today": {
             "totalRides": today_total,
             "completedRides": today_completed,
             "cancelledRides": today_cancelled,
-            "activeRides": active_rides_count,
-            "activeRidePassengerIds": active_ride_passenger_ids,
-            "totalDistanceKm": round(today_distance, 1),
-            "totalFareCollected": round(today_fare_collected, 2),
-            "averageRideDistanceKm": round(today_distance / today_total, 2) if today_total else 0,
+            "activeRides": today_active,
+            "totalFareCollected": today_fare,
+            "totalDistanceKm": today_km,
+            "averageRideDistanceKm": avg_km,
             "newUsersToday": new_users_today,
             "newDriversToday": new_drivers_today,
+            "activeRidePassengerIds": list({r.get("passenger_id") for r in today_active_docs if r.get("passenger_id")}),
         },
         "drivers": {
-            "total": sum(driver_counts.values()),
-            "activeOnline": online_count,
-            "busy": busy_count,
-            "offline": offline_count,
-            "pendingApproval": driver_counts.get("pending_review", 0),
-            "suspended": driver_counts.get("suspended", 0),
-            "blocked": driver_counts.get("blocked", 0),
-            "approved": driver_counts.get("approved", 0),
+            "total": total_drivers,
+            "pendingApproval": pending_drivers,
+            "suspended": suspended_drivers,
+            "blocked": blocked_drivers,
+            "activeOnline": active_online_drivers,
+            "busy": busy_drivers,
         },
         "passengers": {
-            "total": _count(passengers),
-            "newRegistrationsToday": _count(passengers.where("createdAt", ">=", today_start)),
+            "total": total_passengers,
+            "newRegistrationsToday": new_passengers_today,
         },
         "platform": {
-            "totalRegisteredUsers": _count(users),
-            "totalCompletedRides": _count(rides.where("status", "==", "completed")),
+            "totalRegisteredUsers": total_registered,
+            "totalCompletedRides": total_completed_rides,
         },
         "safety": {
-            "openSosAlerts": open_sos_count,
-            "openSafetyReports": open_reports_count,
+            "openSosAlerts": open_sos,
+            "openSafetyReports": open_reports,
+        },
+        "systemHealth": {
+            "status": "attention" if (open_sos > 0 or open_reports > 0 or pending_drivers > 5) else "ok",
+            "openSosAlerts": open_sos,
+            "pendingDriversCount": pending_drivers,
         },
     }
 
 
 # ---------------------------------------------------------------------------
-# Driver management
+# Drivers
 # ---------------------------------------------------------------------------
 
 @router.get("/drivers")
@@ -372,16 +389,10 @@ def list_drivers(
     admin_user: dict[str, Any] = Depends(require_admin),
     status: Optional[str] = Query(default=None),
     availability: Optional[str] = Query(default=None),
-    q: str = Query(default=""),
+    q: Optional[str] = Query(default=None),
     cursor: Optional[str] = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
-    """List drivers. `status` filters by verificationStatus (use
-    `pending_review` for the "waiting for approval" quick filter).
-    `availability` filters by current online/busy/offline state (`online`
-    also matches `searching`). `q` searches name/phone/vehicle number
-    *within the fetched page* -- combine with the other filters to narrow
-    the page for a useful search on larger driver lists."""
     limit = _clamp_limit(limit)
     base = _db().collection("users").where("role", "==", "driver")
     if status:
@@ -445,28 +456,9 @@ def get_driver(uid: str, admin_user: dict[str, Any] = Depends(require_admin)) ->
 
 class DriverActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     action: str = Field(min_length=1, max_length=30)
     notes: str = Field(default="", max_length=500)
     fields: Optional[dict[str, Any]] = None
-
-
-_DRIVER_ACTION_STATUS = {
-    "approve": "approved",
-    "reject": "rejected",
-    "suspend": "suspended",
-    "block": "blocked",
-    "unblock": "approved",
-}
-_EDITABLE_DRIVER_FIELDS = {
-    "name",
-    "email",
-    "vehicleType",
-    "vehicleNumber",
-    "vehicleModel",
-    "drivingLicenseNumber",
-    "upiId",
-}
 
 
 @router.patch("/drivers/{uid}")
@@ -475,84 +467,61 @@ def update_driver(
     body: DriverActionBody,
     admin_user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
+    valid_actions = {"approve", "reject", "suspend", "block", "unblock", "update"}
+    if body.action not in valid_actions:
+        raise ApiError(f"Unknown action '{body.action}'.", 400)
+
     db = _db()
-    user_ref = db.collection("users").document(uid)
-    snap = user_ref.get()
+    ref = db.collection("users").document(uid)
+    snap = ref.get()
     if not snap.exists:
         raise ApiError("Driver not found.", 404)
     before = _doc_dict(snap)
-    if before.get("role") != "driver":
-        raise ApiError("This account is not a driver.", 400)
 
-    if body.action in _DRIVER_ACTION_STATUS:
-        new_status = _DRIVER_ACTION_STATUS[body.action]
-        updates: dict[str, Any] = {
-            "verificationStatus": new_status,
-            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        user_ref.set(updates, merge=True)
-
-        # Blocking/suspending a driver also takes them off the road immediately
-        # and disables Firebase Auth sign-in for block (not for suspend, which
-        # is meant to be a temporary, reversible hold).
-        if body.action in {"block", "suspend"}:
-            db.collection("driverPresence").document(uid).set(
-                {"driverAvailability": "offline", "isConnected": False,
-                 "updatedAt": fb_firestore.SERVER_TIMESTAMP},
-                merge=True,
-            )
-            db.collection("driverMapPresence").document(uid).set(
-                {"driverAvailability": "offline", "updatedAt": fb_firestore.SERVER_TIMESTAMP},
-                merge=True,
-            )
-        try:
-            if body.action == "block":
-                fb_auth.update_user(uid, disabled=True, app=get_admin_app())
-            elif body.action == "unblock":
-                fb_auth.update_user(uid, disabled=False, app=get_admin_app())
-        except Exception:  # noqa: BLE001
-            pass
-
+    updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
+    if body.action == "approve":
+        updates["verificationStatus"] = "approved"
+    elif body.action == "reject":
+        updates["verificationStatus"] = "rejected"
+    elif body.action == "suspend":
+        updates["verificationStatus"] = "suspended"
+    elif body.action == "block":
+        updates["verificationStatus"] = "blocked"
+    elif body.action == "unblock":
+        updates["verificationStatus"] = "approved"
     elif body.action == "update":
         if not body.fields:
-            raise ApiError("No fields to update were provided.", 400)
-        disallowed = set(body.fields) - _EDITABLE_DRIVER_FIELDS
-        if disallowed:
-            raise ApiError(f"These fields cannot be edited here: {', '.join(sorted(disallowed))}.", 400)
-        updates = {**body.fields, "updatedAt": fb_firestore.SERVER_TIMESTAMP}
-        if "vehicleType" in updates:
-            updates["vehicle_type"] = updates["vehicleType"]
-        if "vehicleNumber" in updates:
-            updates["vehicle_number"] = updates["vehicleNumber"]
-        if "vehicleModel" in updates:
-            updates["vehicle_model"] = updates["vehicleModel"]
-        user_ref.set(updates, merge=True)
-    else:
-        raise ApiError("Unknown driver action.", 400)
+            raise ApiError("No fields provided for update.", 400)
+        allowed = {"name", "email", "vehicleType", "vehicleNumber", "vehicleModel", "drivingLicenseNumber", "upiId"}
+        for k, v in body.fields.items():
+            if k in allowed and v is not None:
+                updates[k] = str(v).strip()
 
-    write_audit_log(admin_user, f"driver.{body.action}", "driver", uid, before, body.fields, body.notes)
-    updated = _sanitize_driver(_doc_dict(user_ref.get()))
-    return {"ok": True, "driver": updated}
+    ref.set(updates, merge=True)
+    write_audit_log(admin_user, f"driver.{body.action}", "driver", uid, before, updates, body.notes)
+    return {"ok": True, "driver": _sanitize_driver(_doc_dict(ref.get()))}
 
 
 # ---------------------------------------------------------------------------
-# Passenger management
+# Passengers (Restricted for Managers)
 # ---------------------------------------------------------------------------
 
 @router.get("/passengers")
 def list_passengers(
-    admin_user: dict[str, Any] = Depends(require_admin),
-    q: str = Query(default=""),
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+    status: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None),
     cursor: Optional[str] = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
     limit = _clamp_limit(limit)
-    base = (
-        _db()
-        .collection("users")
-        .where("role", "==", "passenger")
-        .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
-    )
+    base = _db().collection("users").where("role", "==", "passenger")
+    if status:
+        if status not in PASSENGER_STATUSES:
+            raise ApiError("Unknown passenger status filter.", 400)
+        base = base.where("accountStatus", "==", status)
+    base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+
     items, next_cursor = _paginate(base, cursor, limit, "users")
     items = _apply_search(items, q, ["name", "phone", "email"])
     return {"ok": True, "passengers": [_sanitize_passenger(i) for i in items], "nextCursor": next_cursor}
@@ -571,76 +540,99 @@ def _sanitize_passenger(profile: dict[str, Any]) -> dict[str, Any]:
 
 class PassengerActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     action: str = Field(min_length=1, max_length=30)
     notes: str = Field(default="", max_length=500)
-
-
-_PASSENGER_ACTION_STATUS = {
-    "restrict": "restricted",
-    "unrestrict": "active",
-    "block": "blocked",
-    "unblock": "active",
-}
 
 
 @router.patch("/passengers/{uid}")
 def update_passenger(
     uid: str,
     body: PassengerActionBody,
-    admin_user: dict[str, Any] = Depends(require_admin),
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
 ) -> dict[str, Any]:
-    if body.action not in _PASSENGER_ACTION_STATUS:
+    valid = {"restrict", "unrestrict", "block", "unblock"}
+    if body.action not in valid:
         raise ApiError("Unknown passenger action.", 400)
 
     db = _db()
-    user_ref = db.collection("users").document(uid)
-    snap = user_ref.get()
+    ref = db.collection("users").document(uid)
+    snap = ref.get()
     if not snap.exists:
         raise ApiError("Passenger not found.", 404)
     before = _doc_dict(snap)
-    if before.get("role") != "passenger":
-        raise ApiError("This account is not a passenger.", 400)
 
-    new_status = _PASSENGER_ACTION_STATUS[body.action]
-    user_ref.set(
-        {"accountStatus": new_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True
-    )
-    try:
-        fb_auth.update_user(uid, disabled=(body.action == "block"), app=get_admin_app())
-    except Exception:  # noqa: BLE001
-        pass
+    target_status = {
+        "restrict": "restricted",
+        "unrestrict": "active",
+        "block": "blocked",
+        "unblock": "active",
+    }[body.action]
 
-    write_audit_log(admin_user, f"passenger.{body.action}", "passenger", uid, before, None, body.notes)
-    return {"ok": True, "passenger": _sanitize_passenger(_doc_dict(user_ref.get()))}
+    updates = {"accountStatus": target_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}
+    ref.set(updates, merge=True)
+    write_audit_log(admin_user, f"passenger.{body.action}", "passenger", uid, before, updates, body.notes)
+    return {"ok": True, "passenger": _sanitize_passenger(_doc_dict(ref.get()))}
 
 
 # ---------------------------------------------------------------------------
-# Live ride monitoring
+# Rides (Live + History restricted for Managers)
 # ---------------------------------------------------------------------------
 
 @router.get("/rides/live")
-def list_live_rides(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+def list_live_rides(admin_user: dict[str, Any] = Depends(require_admin_or_super_admin)) -> dict[str, Any]:
     db = _db()
     query = (
         db.collection("rides")
         .where("status", "in", ACTIVE_RIDE_STATUSES)
-        .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
-        .limit(200)
+        .order_by("updatedAt", direction=fb_firestore.Query.DESCENDING)
+        .limit(100)
     )
-    items = [_doc_dict(d) for d in _stream(query)]
-    items = _backfill_driver_names(items)
-    return {"ok": True, "rides": items}
+    docs = [_doc_dict(d) for d in _stream(query)]
+    return {"ok": True, "rides": _backfill_driver_names(docs)}
+
+
+@router.get("/rides/history")
+def list_ride_history(
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+    status: Optional[str] = Query(default=None),
+    vehicleType: Optional[str] = Query(default=None),
+    hasFeedback: Optional[bool] = Query(default=None),
+    dateFrom: Optional[str] = Query(default=None),
+    dateTo: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None),
+    cursor: Optional[str] = Query(default=None),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE),
+) -> dict[str, Any]:
+    limit = _clamp_limit(limit)
+    base = _db().collection("rides")
+
+    if status:
+        allowed = RIDE_STATUS_GROUPS.get(status, [status])
+        if allowed:
+            base = base.where("status", "in", allowed)
+    if vehicleType:
+        base = base.where("vehicle_type", "==", vehicleType)
+    if hasFeedback is not None:
+        base = base.where("feedback.submitted", "==", hasFeedback)
+
+    if dateFrom and dateTo:
+        base = base.where("createdAt", ">=", _day_range_utc(dateFrom, "dateFrom")).where(
+            "createdAt", "<", _day_range_utc(dateTo, "dateTo")
+        )
+    elif dateFrom:
+        base = base.where("createdAt", ">=", _day_range_utc(dateFrom, "dateFrom"))
+
+    base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+    items, next_cursor = _paginate(base, cursor, limit, "rides")
+    items = _apply_search(items, q, ["driver_name", "pickup_name", "drop_name", "passenger_id", "driver_id"])
+    return {"ok": True, "rides": _backfill_driver_names(items), "nextCursor": next_cursor}
 
 
 class RideActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     action: str = Field(min_length=1, max_length=30)
-    notes: str = Field(default="", max_length=500)
     fare: Optional[float] = None
-    pickupName: Optional[str] = Field(default=None, max_length=200)
-    dropName: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = Field(default=None, max_length=500)
 
 
 @router.patch("/rides/{ride_id}")
@@ -649,184 +641,70 @@ def update_ride(
     body: RideActionBody,
     admin_user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
-    """Administrative overrides to an in-flight or just-finished ride.
-    Passenger/driver-facing transitions (accept/arrive/start/complete) stay
-    owned by routers/rides.py; this endpoint only covers the admin-specific
-    actions the console needs: cancelling a stuck ride, correcting a fare
-    or address after the fact, and appending an internal admin note."""
     db = _db()
-    ride_ref = db.collection("rides").document(ride_id)
-    snap = ride_ref.get()
+    ref = db.collection("rides").document(ride_id)
+    snap = ref.get()
     if not snap.exists:
         raise ApiError("Ride not found.", 404)
     before = _doc_dict(snap)
 
     updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
+
     if body.action == "cancel":
-        if before.get("status") not in ACTIVE_RIDE_STATUSES:
-            raise ApiError("Only an active ride can be cancelled.", 409)
+        if before.get("status") in TERMINAL_RIDE_STATUSES:
+            raise ApiError("Ride is already in a terminal state.", 400)
         updates["status"] = "cancelled_by_passenger"
+        updates["cancellationReason"] = "Cancelled by administrator"
         updates["cancelledAt"] = fb_firestore.SERVER_TIMESTAMP
-        updates["adminCancelled"] = True
-        if body.notes:
-            updates["cancellationReason"] = body.notes[:300]
     elif body.action == "update_fare":
         if body.fare is None or body.fare < 0:
-            raise ApiError("A valid fare amount is required.", 400)
+            raise ApiError("Valid fare amount required.", 400)
         updates["fare"] = round(body.fare, 2)
         updates["fareAdjustedByAdmin"] = True
-    elif body.action == "edit_addresses":
-        if body.pickupName:
-            updates["pickupName"] = body.pickupName[:200]
-        if body.dropName:
-            updates["dropName"] = body.dropName[:200]
-        if "pickupName" not in updates and "dropName" not in updates:
-            raise ApiError("Provide at least one address to update.", 400)
     elif body.action == "add_note":
-        if not body.notes.strip():
-            raise ApiError("Note text is required.", 400)
-        existing = before.get("adminNotes") or []
-        existing = existing if isinstance(existing, list) else []
-        existing.append(
-            {
-                "text": body.notes.strip()[:500],
-                "byEmail": admin_user.get("email") or "",
-                "at": now_utc().isoformat(),
-            }
-        )
-        updates["adminNotes"] = existing[-50:]  # bounded, newest 50 notes
+        if not body.notes:
+            raise ApiError("Notes cannot be empty.", 400)
+        existing_notes = before.get("adminNotes") or []
+        if not isinstance(existing_notes, list):
+            existing_notes = []
+        new_note = {
+            "byUid": admin_user.get("uid"),
+            "byEmail": admin_user.get("email"),
+            "text": body.notes[:500],
+            "at": now_utc().isoformat(),
+        }
+        updates["adminNotes"] = [new_note] + existing_notes
     else:
         raise ApiError("Unknown ride action.", 400)
 
-    ride_ref.set(updates, merge=True)
-
-    write_audit_log(admin_user, f"ride.{body.action}", "ride", ride_id, before, updates, body.notes)
-    return {"ok": True, "ride": _doc_dict(ride_ref.get())}
-
-
-# ---------------------------------------------------------------------------
-# Ride history
-# ---------------------------------------------------------------------------
-
-@router.get("/rides/history")
-def list_ride_history(
-    admin_user: dict[str, Any] = Depends(require_admin),
-    status: Optional[str] = Query(default=None),
-    vehicleType: Optional[str] = Query(default=None),
-    driverId: Optional[str] = Query(default=None),
-    passengerId: Optional[str] = Query(default=None),
-    dateFrom: Optional[str] = Query(default=None, description="Inclusive, YYYY-MM-DD (UTC day)."),
-    dateTo: Optional[str] = Query(default=None, description="Exclusive, YYYY-MM-DD (UTC day)."),
-    hasFeedback: Optional[bool] = Query(default=None, description="true=only rides with feedback, false=only rides without feedback"),
-    cursor: Optional[str] = Query(default=None),
-    limit: int = Query(default=DEFAULT_PAGE_SIZE),
-) -> dict[str, Any]:
-    """Reads rides straight from `rides` (not `tripHistory`, which uses a
-    different field schema -- pickup_location/fare_amount/trip_status --
-    built for passenger/driver receipts). Keeping the admin console on one
-    schema means a fare correction here is immediately reflected with no
-    risk of the two collections drifting out of sync.
-
-    `status` accepts either one exact Firestore status (e.g.
-    `cancelled_by_driver`, for the Ride History page's dropdown) or one of
-    the grouped values in RIDE_STATUS_GROUPS (`all`, `active`, `completed`,
-    `cancelled` -- used by the dashboard's clickable KPI cards). Leaving it
-    out entirely keeps the original default: completed/cancelled rides
-    only. `dateFrom`/`dateTo` narrow to a day or a month (pass the first day
-    of this month and the first day of next month) using UTC day
-    boundaries.
-
-    `hasFeedback=true` uses a Firestore nested-field equality query
-    (``feedback.submitted == true``) which requires the composite index
-    in firestore.indexes.json. `hasFeedback=false` fetches matching rides and
-    filters in Python because Firestore cannot query for the *absence* of a
-    field -- this guarantees only rides that explicitly lack feedback are shown,
-    not rides where the field happens to be a non-True value."""
-    limit = _clamp_limit(limit)
-    # When filtering by hasFeedback=false we need a larger page to account
-    # for Python-side filtering.  Cap at a safe server ceiling.
-    fetch_limit = limit if hasFeedback is not False else min(limit * 8, MAX_PAGE_SIZE * 8)
-
-    base = _db().collection("rides")
-    if status:
-        if status in RIDE_STATUS_GROUPS:
-            values = RIDE_STATUS_GROUPS[status]
-            if values is not None:
-                base = base.where("status", "in", values)
-        elif status in ACTIVE_RIDE_STATUSES or status in TERMINAL_RIDE_STATUSES:
-            base = base.where("status", "==", status)
-        else:
-            raise ApiError("Unknown ride status filter.", 400)
-    elif not dateFrom and not dateTo:
-        base = base.where("status", "in", TERMINAL_RIDE_STATUSES)
-    if vehicleType:
-        base = base.where("vehicle_type", "==", vehicleType)
-    if driverId:
-        base = base.where("driver_id", "==", driverId)
-    if passengerId:
-        base = base.where("passenger_id", "==", passengerId)
-    if dateFrom:
-        base = base.where("createdAt", ">=", _day_range_utc(dateFrom, "dateFrom"))
-    if dateTo:
-        base = base.where("createdAt", "<", _day_range_utc(dateTo, "dateTo"))
-
-    # hasFeedback=True: Firestore nested-field filter (uses composite index)
-    if hasFeedback is True:
-        base = base.where("feedback.submitted", "==", True)
-
-    base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
-
-    if hasFeedback is False:
-        # Python-side filter: only rides where feedback.submitted is NOT True.
-        # This includes rides with no `feedback` field at all, or where it is
-        # False/missing — i.e. rides that genuinely have no feedback record.
-        # We fetch a larger batch and slice after filtering.
-        query = base.limit(fetch_limit)
-        if cursor:
-            cursor_snap = _db().collection("rides").document(cursor).get()
-            if cursor_snap.exists:
-                query = query.start_after(cursor_snap)
-        docs = _stream(query)
-        items = [_doc_dict(d) for d in docs]
-        items = [
-            r for r in items
-            if not ((r.get("feedback") or {}).get("submitted") is True)
-        ]
-        items = items[:limit]
-        has_more = len(items) == limit
-        next_cursor = items[-1]["id"] if has_more and items else None
-    else:
-        items, next_cursor = _paginate(base, cursor, limit, "rides")
-
-    items = _backfill_driver_names(items)
-    return {"ok": True, "rides": items, "nextCursor": next_cursor}
+    ref.set(updates, merge=True)
+    write_audit_log(admin_user, f"ride.{body.action}", "ride", ride_id, before, updates, body.notes or "")
+    return {"ok": True, "ride": _doc_dict(ref.get())}
 
 
 # ---------------------------------------------------------------------------
-# Analytics
+# Analytics (Restricted for Managers)
 # ---------------------------------------------------------------------------
-
 
 @router.get("/analytics/rides-daily")
-def rides_daily(
-    admin_user: dict[str, Any] = Depends(require_admin),
-    days: int = Query(default=14, ge=1, le=90),
+def rides_daily_analytics(
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+    days: int = Query(default=14),
 ) -> dict[str, Any]:
-    """Buckets ride counts/fare per calendar day (Asia/Kolkata-agnostic UTC
-    buckets) over a bounded recent window. Fetches the window once and
-    buckets in Python -- fine up to a few thousand rides; if ride volume
-    grows well beyond that, replace this with precomputed daily rollup
-    documents written by a scheduled job instead of scanning `rides`."""
-    since = now_utc() - timedelta(days=days)
-    docs = (
-        _db()
-        .collection("rides")
-        .where("createdAt", ">=", since)
-        .stream()
-    )
+    days = max(1, min(days, 90))
+    now = now_utc()
+    start_bound = datetime(now.year, now.month, now.day, tzinfo=timezone.utc) - timedelta(days=days - 1)
+
+    db = _db()
+    rides_query = db.collection("rides").where("createdAt", ">=", start_bound)
+    docs = [_doc_dict(d) for d in _stream(rides_query)]
+
     buckets: dict[str, dict[str, Any]] = {}
-    for d in docs:
-        data = d.to_dict() or {}
+    for i in range(days):
+        d = (start_bound + timedelta(days=i)).strftime("%Y-%m-%d")
+        buckets[d] = {"date": d, "rides": 0, "completed": 0, "cancelled": 0, "fare": 0.0}
+
+    for data in docs:
         created = data.get("createdAt")
         if not isinstance(created, datetime):
             continue
@@ -847,17 +725,21 @@ def rides_daily(
 
 
 # ---------------------------------------------------------------------------
-# Audit log
+# Audit log (Restricted for Managers)
 # ---------------------------------------------------------------------------
 
 @router.get("/audit-logs")
 def list_audit_logs(
-    admin_user: dict[str, Any] = Depends(require_admin),
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+    role: Optional[str] = Query(default=None),
     cursor: Optional[str] = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
     limit = _clamp_limit(limit)
-    base = _db().collection("auditLogs").order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+    base = _db().collection("auditLogs")
+    if role:
+        base = base.where("adminRole", "==", role)
+    base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
     items, next_cursor = _paginate(base, cursor, limit, "auditLogs")
     return {"ok": True, "logs": items, "nextCursor": next_cursor}
 
@@ -880,8 +762,6 @@ def list_sos_alerts(
     cursor: Optional[str] = Query(default=None),
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
-    """`status` defaults to `open` (the actionable queue). Pass `all` or
-    `resolved` to browse history."""
     limit = _clamp_limit(limit)
     base = _db().collection("sosAlerts")
     values = SAFETY_STATUS_GROUPS.get(status, ["open"]) if status else None
@@ -894,7 +774,6 @@ def list_sos_alerts(
 
 class SafetyActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     action: str = Field(min_length=1, max_length=30)
     notes: str = Field(default="", max_length=500)
 
