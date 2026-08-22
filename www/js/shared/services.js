@@ -395,23 +395,13 @@ function updateQuickChipsUI() {
     const workPlace = savedPlacesCache?.work;
 
     if (homeBtn) {
-        if (homePlace?.address) {
-            homeBtn.classList.remove('is-disabled');
-            homeBtn.title = `Home: ${homePlace.address}`;
-        } else {
-            homeBtn.classList.add('is-disabled');
-            homeBtn.title = "Home address not saved yet";
-        }
+        homeBtn.classList.remove('is-disabled');
+        homeBtn.title = homePlace?.address ? `Home: ${homePlace.address}` : "Tap to save Home address";
     }
 
     if (workBtn) {
-        if (workPlace?.address) {
-            workBtn.classList.remove('is-disabled');
-            workBtn.title = `Work: ${workPlace.address}`;
-        } else {
-            workBtn.classList.add('is-disabled');
-            workBtn.title = "Work address not saved yet";
-        }
+        workBtn.classList.remove('is-disabled');
+        workBtn.title = workPlace?.address ? `Work: ${workPlace.address}` : "Tap to save Work address";
     }
 }
 
@@ -655,12 +645,20 @@ window.deleteSavedPlace = (targetKey, index = null) => {
 document.getElementById('chip-home-btn')?.addEventListener('click', () => {
     if (savedPlacesCache?.home?.address) {
         selectDestinationAddress(savedPlacesCache.home.address);
+    } else if (!isAuthenticatedPassenger) {
+        openBookingLoginGate();
+    } else {
+        openSavedPlacesModal();
     }
 });
 
 document.getElementById('chip-work-btn')?.addEventListener('click', () => {
     if (savedPlacesCache?.work?.address) {
         selectDestinationAddress(savedPlacesCache.work.address);
+    } else if (!isAuthenticatedPassenger) {
+        openBookingLoginGate();
+    } else {
+        openSavedPlacesModal();
     }
 });
 

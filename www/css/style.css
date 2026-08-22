@@ -8156,24 +8156,23 @@ body.profile-editor-open {
     font-weight: 600;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.quick-chip-btn:hover:not(.is-disabled) {
+.quick-chip-btn:hover {
     background: #F9FAFB;
     border-color: #D1D5DB;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
 }
 
-.quick-chip-btn.is-disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
+.quick-chip-btn:active {
+    transform: scale(0.97);
+}
+
+.services-section-divider {
+    height: 1px;
     background: #F3F4F6;
-    border-color: #E5E7EB;
-    color: #9CA3AF;
-}
-
-.quick-chip-btn.is-disabled .webicon {
-    opacity: 0.4;
+    margin: 18px 0 16px;
 }
 
 .map-title-row {
@@ -8183,12 +8182,13 @@ body.profile-editor-open {
 }
 
 .map-target-badge {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     background: #E8F5E9;
     display: grid;
     place-items: center;
+    flex-shrink: 0;
 }
 
 .services-live-signal-badge {
@@ -8219,14 +8219,21 @@ body.profile-editor-open {
     height: 420px;
 }
 
-/* Wobble Animation for "You are here" pickup pin */
+/* Hide extra map controls (compass/rotate & legend) when map is in minimized state */
+#services-map-card:not(.is-expanded) #passenger-nav-toggle-btn,
+#services-map-card:not(.is-expanded) .passenger-nav-toggle-btn,
+#services-map-card:not(.is-expanded) .vehicle-marker-legend {
+    display: none !important;
+}
+
+/* Wobble Animation for "You are here" pickup pin (Centered over green pin) */
 @keyframes wobblePickupPin {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-7px); }
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-7px); }
 }
 
 .user-location-wobble {
-    animation: wobblePickupPin 1.8s ease-in-out infinite;
+    animation: wobblePickupPin 1.8s ease-in-out infinite !important;
 }
 
 /* Saved Places Modal (Matching Screenshot Reference Design) */
