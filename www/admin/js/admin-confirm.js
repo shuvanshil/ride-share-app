@@ -12,7 +12,6 @@ export function showTablerConfirm(message, { title = "Are you sure?", variant = 
         const closeBtn = document.getElementById("admin-confirm-close-btn");
 
         if (!modal) {
-            // Fallback to native confirm if modal element is absent
             resolve(window.confirm(message));
             return;
         }
@@ -35,6 +34,7 @@ export function showTablerConfirm(message, { title = "Are you sure?", variant = 
         proceedBtn.className = `btn ${style.btn} w-100`;
 
         function cleanup() {
+            modal.style.display = "none";
             modal.classList.add("d-none");
             proceedBtn.removeEventListener("click", onProceed);
             cancelBtn.removeEventListener("click", onCancel);
@@ -53,8 +53,9 @@ export function showTablerConfirm(message, { title = "Are you sure?", variant = 
 
         proceedBtn.addEventListener("click", onProceed);
         cancelBtn.addEventListener("click", onCancel);
-        closeBtn?.addEventListener("click", onCancel);
+        closeBtn?.removeEventListener("click", onCancel);
 
+        modal.style.display = "block";
         modal.classList.remove("d-none");
     });
 }

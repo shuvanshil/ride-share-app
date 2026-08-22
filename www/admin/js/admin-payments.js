@@ -12,7 +12,7 @@ async function withButtonSpinner(btn, actionFn) {
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing...`;
     try {
-        await actionFn();
+        return await actionFn();
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
@@ -51,7 +51,7 @@ export async function loadAdminPayments() {
 
         if (badgeEl) {
             const pending = summary.pendingCount || 0;
-            badgeEl.innerText = pending;
+            badgeEl.innerText = `(${pending})`;
             badgeEl.classList.toggle('d-none', pending === 0);
         }
 
@@ -200,15 +200,15 @@ export function renderPaymentsTable() {
 
     // Bind Approve and Decline buttons
     container.querySelectorAll('.approve-pay-btn').forEach(btn => {
-        btn.addEventListener('click', () => withButtonSpinner(btn, () => handleApprovePayment(btn.dataset.id)));
+        btn.addEventListener('click', () => handleApprovePayment(btn.dataset.id, btn));
     });
 
     container.querySelectorAll('.decline-pay-btn').forEach(btn => {
-        btn.addEventListener('click', () => withButtonSpinner(btn, () => handleDeclinePayment(btn.dataset.id)));
+        btn.addEventListener('click', () => handleDeclinePayment(btn.dataset.id, btn));
     });
 }
 
-async function handleApprovePayment(paymentId) {
+async function handleApprovePayment(paymentId, btn) {
     const confirmed = await showTablerConfirm("Are you sure you want to APPROVE this driver's weekly fee payment?", {
         title: "Approve Payment",
         variant: "success",
@@ -216,28 +216,32 @@ async function handleApprovePayment(paymentId) {
     });
     if (!confirmed) return;
 
-    try {
-        await adminPost(`/driver-payments/${paymentId}/approve`);
-        showToast("Payment approved successfully!", "success");
-        await loadAdminPayments();
-    } catch (error) {
-        console.error("Error approving payment:", error);
-        showToast(error.message || "Could not approve payment", "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost(`/driver-payments/${paymentId}/approve`);
+            showToast("Payment approved successfully!", "success");
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error approving payment:", error);
+            showToast(error.message || "Could not approve payment", "error");
+        }
+    });
 }
 
-async function handleDeclinePayment(paymentId) {
+async function handleDeclinePayment(paymentId, btn) {
     const reason = prompt("Enter decline reason for driver (optional):", "Payment could not be verified by accounts team.");
     if (reason === null) return;
 
-    try {
-        await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
-        showToast("Payment submission declined.", "warning");
-        await loadAdminPayments();
-    } catch (error) {
-        console.error("Error declining payment:", error);
-        showToast(error.message || "Could not decline payment", "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
+            showToast("Payment submission declined.", "warning");
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error declining payment:", error);
+            showToast(error.message || "Could not decline payment", "error");
+        }
+    });
 }
 
 // ============ PAUSE SETTINGS MODAL ============
@@ -258,12 +262,16 @@ function openPauseModal() {
         if (msgEl) msgEl.value = cachedPauseConfig.message || '';
     }
 
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
 }
 
 function closePauseModal() {
     const modal = document.getElementById('admin-pause-modal');
-    if (modal) modal.classList.add('d-none');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+    }
 }
 
 async function handleSavePauseSettings(e) {
@@ -348,12 +356,16 @@ function openManualPayModal() {
     if (!modal) return;
 
     fetchDriversList();
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
 }
 
 function closeManualPayModal() {
     const modal = document.getElementById('admin-manual-payment-modal');
-    if (modal) modal.classList.add('d-none');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+    }
 }
 
 async function handleSaveManualPayment(e) {
