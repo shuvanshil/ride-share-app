@@ -1,5 +1,6 @@
 import { adminGet, adminPost, adminDelete } from './admin-api.js';
 import { toast as showToast } from './admin-toast.js';
+import { showTablerConfirm } from './admin-confirm.js';
 
 let cachedPayments = [];
 let cachedPauseConfig = null;
@@ -8,6 +9,13 @@ let cachedDriversList = [];
 export async function loadAdminPayments() {
     const container = document.getElementById('admin-payments-table-container');
     if (!container) return;
+
+    container.innerHTML = `
+        <div class="card shadow-xs border-0 text-center py-5">
+            <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+            <div class="text-secondary small">Loading payment submissions...</div>
+        </div>
+    `;
 
     try {
         const data = await adminGet('/driver-payments');
@@ -38,7 +46,7 @@ export async function loadAdminPayments() {
     } catch (error) {
         console.error("Error loading admin payments:", error);
         if (container) {
-            container.innerHTML = `<p class="text-danger text-center py-4 my-0">Error loading payments: ${error.message}</p>`;
+            container.innerHTML = `<div class="card shadow-xs border-0 text-center py-4 text-danger">Error loading payments: ${error.message}</div>`;
         }
     }
 }
@@ -82,7 +90,12 @@ export function renderPaymentsTable() {
     });
 
     if (!filtered.length) {
-        container.innerHTML = '<p class="text-muted text-center py-4 my-0">No payment submissions found matching the criteria.</p>';
+        container.innerHTML = `
+            <div class="card shadow-xs border-0 text-center py-5 text-secondary">
+                <i class="ti ti-inbox text-muted mb-2" style="font-size: 2.5rem; display: block;"></i>
+                No payment submissions found matching the criteria.
+            </div>
+        `;
         return;
     }
 
@@ -151,22 +164,24 @@ export function renderPaymentsTable() {
     }).join('');
 
     container.innerHTML = `
-        <div class="table-responsive">
-            <table class="table table-vcenter card-table table-striped table-hover m-0">
-                <thead>
-                    <tr>
-                        <th>Driver Details</th>
-                        <th>Payment Week</th>
-                        <th>Amount &amp; Method</th>
-                        <th>Submitted At</th>
-                        <th>Status</th>
-                        <th>Actions / Verification</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rowsHtml}
-                </tbody>
-            </table>
+        <div class="card shadow-xs border-0">
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table table-striped table-hover m-0">
+                    <thead>
+                        <tr>
+                            <th>Driver Details</th>
+                            <th>Payment Week</th>
+                            <th>Amount &amp; Method</th>
+                            <th>Submitted At</th>
+                            <th>Status</th>
+                            <th>Actions / Verification</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
         </div>
     `;
 
@@ -181,7 +196,12 @@ export function renderPaymentsTable() {
 }
 
 async function handleApprovePayment(paymentId) {
-    if (!confirm("Are you sure you want to APPROVE this driver's weekly fee payment?")) return;
+    const confirmed = await showTablerConfirm("Are you sure you want to APPROVE this driver's weekly fee payment?", {
+        title: "Approve Payment",
+        variant: "success",
+        confirmText: "Approve Payment"
+    });
+    if (!confirmed) return;
 
     try {
         await adminPost(`/driver-payments/${paymentId}/approve`);
@@ -259,7 +279,12 @@ async function handleSavePauseSettings(e) {
 }
 
 async function handleClearPauseSettings() {
-    if (!confirm("Are you sure you want to END the weekly payment pause and resume normal payment requirements?")) return;
+    const confirmed = await showTablerConfirm("Are you sure you want to END the weekly payment pause and resume normal payment requirements?", {
+        title: "End Payment Pause",
+        variant: "warning",
+        confirmText: "End Pause"
+    });
+    if (!confirmed) return;
 
     try {
         await adminDelete('/driver-payments/pause');
@@ -279,7 +304,7 @@ async function fetchDriversList() {
     if (!select) return;
 
     try {
-        select.innerHTML = '<option value="">Loading drivers...</option>';
+        select.innerHTML = '<option value="">Loading drivers list...</option>';
         const data = await adminGet('/drivers', { limit: 200 });
         cachedDriversList = data.drivers || data.items || [];
 
@@ -347,7 +372,12 @@ async function handleSaveManualPayment(e) {
 }
 
 async function handleResetAllPayments() {
-    if (!confirm("⚠️ WARNING: Are you sure you want to RESET ALL DRIVER PAYMENTS?\n\nThis will remove all existing payment records and restart everyone from zeroth week with NO due amount.")) return;
+    const confirmed = await showTablerConfirm("⚠️ WARNING: Are you sure you want to RESET ALL DRIVER PAYMENTS?\n\nThis will remove all existing payment records and restart everyone from zeroth week with NO due amount.", {
+        title: "Reset All Driver Payments",
+        variant: "danger",
+        confirmText: "Reset All Payments"
+    });
+    if (!confirmed) return;
 
     try {
         const res = await adminPost('/driver-payments/reset-all');

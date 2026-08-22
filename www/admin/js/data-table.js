@@ -1,5 +1,5 @@
-// A dependency-light table component shared by every admin list view,
-// styled with Tabler UI components and icons.
+// A table component built following Tabler UI component guidelines:
+// https://docs.tabler.io/ui/components/tables
 
 export class DataTable {
     /**
@@ -49,25 +49,25 @@ export class DataTable {
     // -------------------------------------------------------------
     _buildShell() {
         this.container.innerHTML = "";
-        this.container.classList.add("dt-root");
+        this.container.className = "card shadow-xs border-0 dt-root";
         this.container.classList.toggle("dt-has-row-click", !!this.onRowClick);
 
         if (this.onRowClick) {
             const hint = document.createElement("div");
-            hint.className = "dt-row-click-hint text-secondary";
-            hint.innerHTML = `<i class="ti ti-info-circle me-1"></i>Click a row to view full details`;
+            hint.className = "dt-row-click-hint text-secondary border-bottom bg-light px-3 py-2 small";
+            hint.innerHTML = `<i class="ti ti-info-circle me-1 text-primary"></i>Click a row to view full details`;
             this.container.appendChild(hint);
         }
 
         const toolbar = document.createElement("div");
-        toolbar.className = "dt-toolbar gap-2";
+        toolbar.className = "card-header d-flex flex-wrap align-items-center gap-2 p-3 bg-white border-bottom";
 
-        // Search input with Tabler icon
+        // Search input
         const searchWrap = document.createElement("div");
         searchWrap.className = "input-icon flex-fill";
-        searchWrap.style.maxWidth = "260px";
+        searchWrap.style.maxWidth = "280px";
         searchWrap.innerHTML = `
-            <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+            <span class="input-icon-addon"><i class="ti ti-search text-secondary"></i></span>
             <input type="text" class="form-control form-control-sm dt-search" placeholder="Filter loaded rows...">
         `;
         this.searchInput = searchWrap.querySelector("input");
@@ -112,7 +112,7 @@ export class DataTable {
         const exportCsvBtn = document.createElement("button");
         exportCsvBtn.type = "button";
         exportCsvBtn.className = "btn btn-outline-secondary btn-sm";
-        exportCsvBtn.innerHTML = `<i class="ti ti-file-text me-1"></i>CSV`;
+        exportCsvBtn.innerHTML = `<i class="ti ti-file-text me-1 text-secondary"></i>CSV`;
         exportCsvBtn.addEventListener("click", () => this._exportCsv());
         toolbar.appendChild(exportCsvBtn);
 
@@ -120,7 +120,7 @@ export class DataTable {
         const exportXlsxBtn = document.createElement("button");
         exportXlsxBtn.type = "button";
         exportXlsxBtn.className = "btn btn-outline-secondary btn-sm";
-        exportXlsxBtn.innerHTML = `<i class="ti ti-file-spreadsheet me-1"></i>Excel`;
+        exportXlsxBtn.innerHTML = `<i class="ti ti-file-spreadsheet me-1 text-success"></i>Excel`;
         exportXlsxBtn.addEventListener("click", () => this._exportXlsx());
         toolbar.appendChild(exportXlsxBtn);
 
@@ -132,9 +132,9 @@ export class DataTable {
         this.container.appendChild(toolbar);
 
         const scrollWrap = document.createElement("div");
-        scrollWrap.className = "dt-scroll-wrap table-responsive";
+        scrollWrap.className = "table-responsive dt-scroll-wrap";
         this.table = document.createElement("table");
-        this.table.className = "table table-vcenter card-table table-striped table-hover dt-table m-0";
+        this.table.className = "table table-vcenter card-table table-striped table-hover m-0 dt-table";
         this.thead = document.createElement("thead");
         this.tbody = document.createElement("tbody");
         this.table.appendChild(this.thead);
@@ -142,7 +142,8 @@ export class DataTable {
         scrollWrap.appendChild(this.table);
 
         this.sentinel = document.createElement("div");
-        this.sentinel.className = "dt-sentinel";
+        this.sentinel.className = "dt-sentinel p-3 text-center d-none";
+        this.sentinel.innerHTML = `<div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div><span class="text-secondary small">Loading more...</span>`;
         scrollWrap.appendChild(this.sentinel);
 
         this.container.appendChild(scrollWrap);
@@ -152,6 +153,7 @@ export class DataTable {
             this._observer = new IntersectionObserver((entries) => {
                 if (entries[0].isIntersecting && this.hasMore && !this.loadingMore) {
                     this.loadingMore = true;
+                    this.sentinel.classList.remove("d-none");
                     this.onLoadMore();
                 }
             });
@@ -167,7 +169,7 @@ export class DataTable {
             .map(
                 (col) => `<th data-col="${col.key}" class="${col.sortable ? "dt-sortable" : ""}" style="${col.width ? `width:${col.width}px;` : ""}">
                     <span class="dt-th-label">${col.label}</span>
-                    ${col.sortable ? `<span class="dt-sort-arrow ms-1 text-muted"></span>` : ""}
+                    ${col.sortable ? `<span class="dt-sort-arrow ms-1 text-secondary"></span>` : ""}
                     <span class="dt-resizer"></span>
                 </th>`
             )
@@ -196,7 +198,7 @@ export class DataTable {
                 });
             });
 
-        // Column resize drag handling
+        // Column resize handling
         this.thead.querySelectorAll(".dt-resizer").forEach((handle) => {
             handle.addEventListener("mousedown", (e) => {
                 e.preventDefault();
@@ -236,10 +238,14 @@ export class DataTable {
     }
 
     _renderBody() {
+        this.sentinel.classList.add("d-none");
         const visible = this._visibleRows();
         if (visible.length === 0) {
             const colspan = this.columns.length + (this.bulkActions.length ? 1 : 0);
-            this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-muted py-4">No matching rows.</td></tr>`;
+            this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-secondary py-5">
+                <i class="ti ti-inbox text-muted mb-2" style="font-size: 2.5rem; display: block;"></i>
+                No matching rows found.
+            </td></tr>`;
         } else {
             this.tbody.innerHTML = visible
                 .map((row) => {
@@ -289,7 +295,7 @@ export class DataTable {
         }
         this.bulkBar.classList.remove("d-none");
         this.bulkBar.innerHTML =
-            `<span class="badge bg-secondary-lt me-2">${this.selected.size} selected</span>` +
+            `<span class="badge bg-blue-lt text-blue me-2">${this.selected.size} selected</span>` +
             this.bulkActions
                 .map((a, i) => `<button type="button" class="btn btn-outline-secondary btn-sm" data-bulk="${i}">${a.label}</button>`)
                 .join("");
@@ -314,7 +320,7 @@ export class DataTable {
         this.thead.querySelectorAll("th.dt-sortable .dt-sort-arrow").forEach((el) => (el.innerHTML = ""));
         if (!this.sortKey) return;
         const th = this.thead.querySelector(`th[data-col="${this.sortKey}"] .dt-sort-arrow`);
-        if (th) th.innerHTML = this.sortDir === 1 ? `<i class="ti ti-chevron-up"></i>` : `<i class="ti ti-chevron-down"></i>`;
+        if (th) th.innerHTML = this.sortDir === 1 ? `<i class="ti ti-chevron-up text-primary"></i>` : `<i class="ti ti-chevron-down text-primary"></i>`;
     }
 
     _exportCsv() {

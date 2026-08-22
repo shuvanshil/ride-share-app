@@ -1,5 +1,5 @@
 import { adminGet, adminPatch } from "./admin-api.js";
-import { showConfirm } from "../../js/shared/dialog.js";
+import { showTablerConfirm } from "./admin-confirm.js";
 import { toast } from "./admin-toast.js";
 import { db } from "../../js/platform/firebase-init.js";
 import { collection, onSnapshot, orderBy, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -35,19 +35,29 @@ function mapLink(location) {
 async function loadSosAlerts() {
     const list = $("safety-sos-list");
     const status = $("safety-sos-status-filter")?.value || "open";
-    list.innerHTML = `<div class="text-center text-muted py-4">Loading SOS alerts...</div>`;
+    list.innerHTML = `
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-danger mx-auto mb-2" role="status"></div>
+            <div class="text-secondary small">Loading SOS alerts...</div>
+        </div>
+    `;
     try {
         const data = await adminGet("/safety/sos-alerts", { status });
         renderSosAlerts(data.alerts || []);
     } catch (error) {
-        list.innerHTML = `<div class="text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
+        list.innerHTML = `<div class="col-12 text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
     }
 }
 
 function renderSosAlerts(alerts) {
     const list = $("safety-sos-list");
     if (!alerts.length) {
-        list.innerHTML = `<div class="text-center text-muted py-4">No SOS alerts in this view.</div>`;
+        list.innerHTML = `
+            <div class="col-12 text-center py-5 text-secondary">
+                <i class="ti ti-shield-check text-success mb-2" style="font-size: 2.5rem; display: block;"></i>
+                No SOS alerts in this view.
+            </div>
+        `;
         return;
     }
     list.innerHTML = alerts
@@ -67,7 +77,7 @@ function renderSosAlerts(alerts) {
                                 <small class="text-secondary">${escapeHtml(alert.pickup_name || "")} &rarr; ${escapeHtml(alert.drop_name || "")}</small>
                             </div>
                         </div>
-                        ${alert.note ? `<div class="text-muted small fst-italic">"${escapeHtml(alert.note)}"</div>` : ""}
+                        ${alert.note ? `<div class="text-secondary small fst-italic">"${escapeHtml(alert.note)}"</div>` : ""}
                         <div class="text-secondary small ms-auto me-3">${formatWhen(alert.createdAt)}</div>
                         <div class="d-flex align-items-center gap-2">
                             ${link ? `<a class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" href="${link}" target="_blank" rel="noopener"><i class="ti ti-map-pin"></i> Open Location</a>` : ""}
@@ -83,7 +93,12 @@ function renderSosAlerts(alerts) {
 
     list.querySelectorAll("[data-resolve-sos]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-            if (!(await showConfirm("Mark this SOS alert as resolved?"))) return;
+            const confirmed = await showTablerConfirm("Mark this SOS alert as resolved?", {
+                title: "Resolve SOS Alert",
+                variant: "success",
+                confirmText: "Mark Resolved"
+            });
+            if (!confirmed) return;
             try {
                 await adminPatch(`/safety/sos-alerts/${btn.dataset.resolveSos}`, { action: "resolve" });
                 toast("SOS alert resolved.");
@@ -115,19 +130,29 @@ function renderSosAlerts(alerts) {
 async function loadSafetyReports() {
     const list = $("safety-reports-list");
     const status = $("safety-reports-status-filter")?.value || "open";
-    list.innerHTML = `<div class="text-center text-muted py-4">Loading reports...</div>`;
+    list.innerHTML = `
+        <div class="col-12 text-center py-5">
+            <div class="spinner-border text-warning mx-auto mb-2" role="status"></div>
+            <div class="text-secondary small">Loading safety reports...</div>
+        </div>
+    `;
     try {
         const data = await adminGet("/safety/reports", { status });
         renderSafetyReports(data.reports || []);
     } catch (error) {
-        list.innerHTML = `<div class="text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
+        list.innerHTML = `<div class="col-12 text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
     }
 }
 
 function renderSafetyReports(reports) {
     const list = $("safety-reports-list");
     if (!reports.length) {
-        list.innerHTML = `<div class="text-center text-muted py-4">No safety reports in this view.</div>`;
+        list.innerHTML = `
+            <div class="col-12 text-center py-5 text-secondary">
+                <i class="ti ti-file-check text-muted mb-2" style="font-size: 2.5rem; display: block;"></i>
+                No safety reports in this view.
+            </div>
+        `;
         return;
     }
     list.innerHTML = reports

@@ -30,8 +30,10 @@
     <main id="admin-login-screen" class="page page-center admin-login-screen">
         <div class="container container-tight py-4">
             <div class="text-center mb-4">
-                <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="navbar-brand-image rounded-3 shadow-sm mb-2" style="height: 56px; width: 56px; object-fit: cover;">
-                <h1 class="h2 fw-bold mt-2">Admin Console</h1>
+                <div class="d-inline-block bg-white p-2 rounded-3 shadow-xs mb-2">
+                    <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp Logo" class="rounded" style="max-height: 75px; width: auto; max-width: 220px; object-fit: contain; display: block;">
+                </div>
+                <h1 class="h2 fw-bold mt-2 mb-1">Admin Console</h1>
                 <p class="text-secondary small">Authorized personnel only</p>
             </div>
             <div class="card card-md shadow-sm border-0">
@@ -47,7 +49,12 @@
                     <button id="admin-login-btn" class="btn btn-primary w-100" type="button">
                         <i class="ti ti-login me-2"></i>Sign in
                     </button>
-                    <div id="admin-login-error" class="alert alert-danger mt-3 mb-0 d-none text-center" role="alert"></div>
+                    <div id="admin-login-error" class="alert alert-danger mt-3 mb-0 d-none" role="alert">
+                        <div class="d-flex align-items-center">
+                            <i class="ti ti-alert-triangle alert-icon me-2"></i>
+                            <div id="admin-login-error-text">Sign in failed. Check your email and password.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -59,7 +66,7 @@
             <div class="card card-md text-center shadow-sm border-0">
                 <div class="card-body">
                     <div class="text-danger mb-3">
-                        <i class="ti ti-shield-x" style="font-size: 3rem;"></i>
+                        <i class="ti ti-shield-x" style="font-size: 3.5rem;"></i>
                     </div>
                     <h1 class="h2 fw-bold">Access Denied</h1>
                     <p class="text-secondary">This account does not have admin privileges for LiphtUp.</p>
@@ -80,12 +87,12 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <a href="#" class="navbar-brand me-3 text-primary fw-bold d-flex align-items-center">
-                    <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="rounded me-2" style="height: 28px; width: 28px; object-fit: cover;">
+                    <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="rounded me-2" style="height: 30px; width: auto; object-fit: contain; background: #fff; padding: 2px;">
                     <span>LiphtUp <span class="badge bg-blue-lt text-blue ms-1">Admin</span></span>
                 </a>
                 <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
                     <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button">
-                        <i class="ti ti-activity me-1"></i> Live Feed 
+                        <i class="ti ti-activity me-1 text-primary"></i> Live Feed 
                         <span id="admin-feed-badge" class="badge bg-red text-white ms-2 d-none">0</span>
                     </button>
                     <div class="nav-item d-none d-sm-inline-block">
@@ -212,7 +219,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="drivers-table-wrap" class="card shadow-xs border-0"></div>
+                        <div id="drivers-table-wrap"></div>
                     </section>
 
                     <!-- Live rides -->
@@ -327,7 +334,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="history-table-wrap" class="card shadow-xs border-0"></div>
+                        <div id="history-table-wrap"></div>
                     </section>
 
                     <!-- Passengers -->
@@ -340,7 +347,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="passengers-table-wrap" class="card shadow-xs border-0"></div>
+                        <div id="passengers-table-wrap"></div>
                     </section>
 
                     <!-- Analytics -->
@@ -375,7 +382,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="audit-log-table-wrap" class="card shadow-xs border-0"></div>
+                        <div id="audit-log-table-wrap"></div>
                     </section>
 
                     <!-- Payments -->
@@ -401,17 +408,17 @@
                         </div>
 
                         <!-- Pause Status Banner -->
-                        <div id="admin-pause-status-strip" class="alert alert-info d-none d-flex justify-content-between align-items-center mb-3 shadow-xs border-info">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="ti ti-sun text-info" style="font-size: 1.5rem;"></i>
-                                <div>
-                                    <strong id="admin-pause-status-title">Weekly Payments Currently Paused</strong>
-                                    <div id="admin-pause-status-sub" class="small text-secondary">Range: --</div>
+                        <div id="admin-pause-status-strip" class="alert alert-info alert-dismissible d-none shadow-xs border-info mb-3" role="alert">
+                            <div class="d-flex align-items-center">
+                                <i class="ti ti-sun alert-icon text-info me-3" style="font-size: 1.8rem;"></i>
+                                <div class="flex-fill">
+                                    <h4 id="admin-pause-status-title" class="alert-title fw-bold mb-1">Weekly Driver Payments Currently PAUSED</h4>
+                                    <div id="admin-pause-status-sub" class="text-secondary small">Range: --</div>
                                 </div>
+                                <button id="admin-quick-end-pause-btn" class="btn btn-outline-danger btn-sm ms-3" type="button">
+                                    End Pause Early
+                                </button>
                             </div>
-                            <button id="admin-quick-end-pause-btn" class="btn btn-outline-danger btn-sm" type="button">
-                                End Pause Early
-                            </button>
                         </div>
 
                         <div class="card mb-3 border-0 shadow-xs">
@@ -489,13 +496,45 @@
                             </div>
                         </div>
 
-                        <div id="admin-payments-table-container" class="card shadow-xs border-0">
-                            <p class="text-muted text-center py-4 my-0">Loading payment submissions...</p>
+                        <div id="admin-payments-table-container">
+                            <div class="card shadow-xs border-0 text-center py-5">
+                                <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+                                <div class="text-secondary small">Loading payment submissions...</div>
+                            </div>
                         </div>
                     </section>
 
                 </div>
             </main>
+        </div>
+    </div>
+
+    <!-- Modal: Tabler Confirmation Dialog -->
+    <div id="admin-confirm-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
+        <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+            <div class="modal-content shadow-lg border-0">
+                <button id="admin-confirm-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                <div id="admin-confirm-status" class="modal-status bg-primary"></div>
+                <div class="modal-body text-center py-4">
+                    <div id="admin-confirm-icon" class="mb-3">
+                        <i class="ti ti-help-circle text-primary" style="font-size: 3.5rem;"></i>
+                    </div>
+                    <h3 id="admin-confirm-title" class="fw-bold h3 mb-2">Are you sure?</h3>
+                    <div id="admin-confirm-text" class="text-secondary small">Do you really want to proceed with this action?</div>
+                </div>
+                <div class="modal-footer border-0 p-3">
+                    <div class="w-100">
+                        <div class="row g-2">
+                            <div class="col">
+                                <button id="admin-confirm-cancel-btn" type="button" class="btn btn-outline-secondary w-100">Cancel</button>
+                            </div>
+                            <div class="col">
+                                <button id="admin-confirm-proceed-btn" type="button" class="btn btn-primary w-100">Confirm</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -598,7 +637,10 @@
             <button id="admin-feed-close" class="btn-close text-reset" type="button" aria-label="Close"></button>
         </div>
         <div id="admin-feed-list" class="offcanvas-body p-3">
-            <p class="text-muted text-center py-4 my-0">Watching for activity...</p>
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary spinner-border-sm mb-2" role="status"></div>
+                <div class="text-secondary small">Watching for activity...</div>
+            </div>
         </div>
     </aside>
 

@@ -1,5 +1,5 @@
 import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, refreshAdminToken } from "./admin-api.js";
-import { showAlert, showConfirm } from "../../js/shared/dialog.js";
+import { showTablerConfirm } from "./admin-confirm.js";
 import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
 import { startLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
@@ -23,7 +23,7 @@ let feedUnreadCount = 0;
 let feedStarted = false;
 let liveErrorShown = false;
 
-// Global error boundary: surface unexpected errors as a toast
+// Global error boundary
 window.addEventListener("error", (e) => toast(`Something went wrong: ${e.message}`, "error"));
 window.addEventListener("unhandledrejection", (e) => toast(`Something went wrong: ${e.reason?.message || e.reason}`, "error"));
 
@@ -75,16 +75,17 @@ async function handleAdminLogin() {
     const email = $("admin-email").value.trim();
     const password = $("admin-password").value;
     const errorEl = $("admin-login-error");
+    const errorTextEl = $("admin-login-error-text");
     errorEl.classList.add("d-none");
     if (!email || !password) {
-        errorEl.textContent = "Enter your email and password.";
+        errorTextEl.textContent = "Enter your email and password.";
         errorEl.classList.remove("d-none");
         return;
     }
     try {
         await loginAdmin(email, password);
     } catch (error) {
-        errorEl.textContent = "Sign in failed. Check your email and password.";
+        errorTextEl.textContent = "Sign in failed. Check your email and password.";
         errorEl.classList.remove("d-none");
     }
 }
@@ -109,7 +110,7 @@ $("admin-logout-btn")?.addEventListener("click", async () => {
 
 function onFeedEvent(event) {
     const list = $("admin-feed-list");
-    if (list.querySelector(".text-muted")) list.innerHTML = "";
+    if (list.querySelector(".spinner-border") || list.querySelector(".text-muted")) list.innerHTML = "";
     const item = document.createElement("div");
     item.className = "admin-feed-item";
     item.innerHTML = `<span class="admin-feed-dot admin-feed-dot-${eventColor(event.type)}"></span>
@@ -226,13 +227,13 @@ function renderGreeting() {
     const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
     const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     el.innerHTML = `
-        <div class="card border-0 shadow-xs bg-blue-lt text-blue p-3 mb-3">
+        <div class="alert alert-info border-info shadow-xs mb-3" role="alert">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="ti ti-sun text-primary" style="font-size: 1.8rem;"></i>
+                <div class="d-flex align-items-center gap-3">
+                    <i class="ti ti-sun text-info alert-icon" style="font-size: 2rem;"></i>
                     <div>
-                        <h3 class="h3 fw-bold mb-0">Good ${timeOfDay}!</h3>
-                        <div class="small opacity-75">Welcome back to LiphtUp Administrative Dashboard.</div>
+                        <h4 class="alert-title fw-bold mb-1 h3">Good ${timeOfDay}!</h4>
+                        <div class="text-secondary small">Welcome back to LiphtUp Administrative Console.</div>
                     </div>
                 </div>
                 <div class="badge bg-blue text-white d-flex align-items-center gap-1 p-2">
@@ -245,7 +246,14 @@ function renderGreeting() {
 }
 
 function skeletonCards(count) {
-    return Array.from({ length: count }, () => `<div class="col-sm-6 col-lg-3 mb-3"><div class="card card-sm admin-skeleton border-0 shadow-xs"></div></div>`).join("");
+    return Array.from({ length: count }, () => `
+        <div class="col-sm-6 col-lg-3 mb-3">
+            <div class="card card-sm border-0 shadow-xs p-4 text-center">
+                <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+                <div class="text-secondary small">Loading...</div>
+            </div>
+        </div>
+    `).join("");
 }
 
 async function loadDashboard() {
@@ -402,18 +410,25 @@ function openHealthDrawer(health) {
         `${detailRow("Status", health?.status || "unknown")}
          ${detailRow("Last admin action", formatTimestamp(health?.lastAdminActionAt))}
          <h4 class="admin-drawer-subsection">Notes</h4>
-         ${notes.length ? notes.map((n) => `<p class="admin-detail-row"><span>${escapeHtml(n)}</span></p>`).join("") : `<p class="text-muted text-center py-3">Nothing needs attention.</p>`}`
+         ${notes.length ? notes.map((n) => `<p class="admin-detail-row"><span>${escapeHtml(n)}</span></p>`).join("") : `<p class="text-secondary text-center py-3">Nothing needs attention.</p>`}`
     );
 }
 
 function summaryTable(rows, columns, emptyText) {
-    if (!rows.length) return `<p class="text-muted text-center py-4 my-0">${emptyText}</p>`;
-    return `<div class="table-responsive"><table class="table table-vcenter card-table table-striped table-hover m-0"><thead><tr>${columns.map((c) => `<th>${c.label}</th>`).join("")}</tr></thead>
-        <tbody>${rows.map((r) => `<tr class="dt-clickable-row" data-row-open>${columns.map((c) => `<td>${c.render(r)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    if (!rows.length) return `<p class="text-secondary text-center py-4 my-0">${emptyText}</p>`;
+    return `
+        <div class="card border-0 shadow-xs mb-2">
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table table-striped table-hover m-0">
+                    <thead><tr>${columns.map((c) => `<th>${c.label}</th>`).join("")}</tr></thead>
+                    <tbody>${rows.map((r) => `<tr class="dt-clickable-row" data-row-open>${columns.map((c) => `<td>${c.render(r)}</td>`).join("")}</tr>`).join("")}</tbody>
+                </table>
+            </div>
+        </div>`;
 }
 
 async function openRidesDrillDown(title, { status, dateFrom, dateTo }) {
-    showReadOnlyDrawer(title, `<p class="text-muted text-center py-4 my-0">Loading...</p>`);
+    showReadOnlyDrawer(title, `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading rides...</div></div>`);
     try {
         const data = await adminGet("/rides/history", { status, dateFrom, dateTo, limit: 50 });
         const html = summaryTable(
@@ -438,7 +453,7 @@ async function openRidesDrillDown(title, { status, dateFrom, dateTo }) {
 }
 
 async function openDriversDrillDown(title, { availability, status } = {}) {
-    showReadOnlyDrawer(title, `<p class="text-muted text-center py-4 my-0">Loading...</p>`);
+    showReadOnlyDrawer(title, `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading drivers...</div></div>`);
     try {
         const data = await adminGet("/drivers", { availability, status, limit: 50 });
         const html = summaryTable(
@@ -459,7 +474,7 @@ async function openDriversDrillDown(title, { availability, status } = {}) {
 }
 
 async function openLiveDrillDown(title, { passengersOnly = false } = {}) {
-    showReadOnlyDrawer(title, `<p class="text-muted text-center py-4 my-0">Loading...</p>`);
+    showReadOnlyDrawer(title, `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading live rides...</div></div>`);
     try {
         const data = await adminGet("/rides/live");
         let rows = data.rides;
@@ -518,7 +533,10 @@ function ensureDriversTable() {
 }
 
 async function bulkDriverAction(ids, action) {
-    const confirmed = await showConfirm(`${action} ${ids.length} selected driver(s)?`);
+    const confirmed = await showTablerConfirm(`Are you sure you want to ${action} ${ids.length} selected driver(s)?`, {
+        title: `${action.toUpperCase()} Drivers`,
+        variant: action === "suspend" || action === "block" ? "danger" : "primary"
+    });
     if (!confirmed) return;
     let ok = 0;
     for (const uid of ids) {
@@ -547,15 +565,15 @@ async function loadDrivers(reset) {
 }
 
 async function openDriverDrawer(uid) {
-    showReadOnlyDrawer("Driver Profile", `<p class="text-muted text-center py-4 my-0">Loading profile...</p>`);
+    showReadOnlyDrawer("Driver Profile", `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading profile...</div></div>`);
     try {
         const data = await adminGet(`/drivers/${uid}`);
         const d = data.driver;
         const recentRidesHtml = data.recentRides.length
-            ? `<div class="table-responsive"><table class="table table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Fare</th><th>Status</th></tr></thead><tbody>${data.recentRides
+            ? `<div class="card border-0 shadow-xs mb-2"><div class="table-responsive"><table class="table table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Fare</th><th>Status</th></tr></thead><tbody>${data.recentRides
                   .map((r) => `<tr><td>${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}</td><td>Rs ${r.fare || 0}</td><td>${statusChip(r.status)}</td></tr>`)
-                  .join("")}</tbody></table></div>`
-            : `<p class="text-muted text-center py-3">No rides yet.</p>`;
+                  .join("")}</tbody></table></div></div>`
+            : `<p class="text-secondary text-center py-3">No rides yet.</p>`;
 
         const summary = `
             <div class="admin-drawer-photo-row">
@@ -614,11 +632,15 @@ async function openDriverDrawer(uid) {
 
         document.querySelectorAll("#admin-drawer-body [data-action]").forEach((btn) => {
             btn.addEventListener("click", async () => {
-                const confirmed = await showConfirm(`${btn.textContent} this driver?`);
+                const action = btn.dataset.action;
+                const confirmed = await showTablerConfirm(`Are you sure you want to ${btn.textContent} this driver?`, {
+                    title: `${btn.textContent} Driver`,
+                    variant: action === "block" || action === "suspend" || action === "reject" ? "danger" : "primary"
+                });
                 if (!confirmed) return;
                 try {
-                    await adminPatch(`/drivers/${uid}`, { action: btn.dataset.action });
-                    toast(`Driver ${btn.dataset.action}d.`);
+                    await adminPatch(`/drivers/${uid}`, { action });
+                    toast(`Driver ${action}d.`);
                     closeDrawer(true);
                     loadDrivers(true);
                 } catch (error) {
@@ -640,7 +662,7 @@ async function loadLiveRides() {
     try {
         const data = await adminGet("/rides/live");
         if (data.rides.length === 0) {
-            list.innerHTML = `<div class="col-12 text-center text-muted py-4">No active rides right now.</div>`;
+            list.innerHTML = `<div class="col-12 text-center text-secondary py-5"><i class="ti ti-car text-muted mb-2" style="font-size: 2.5rem; display: block;"></i>No active rides right now.</div>`;
             return;
         }
         list.innerHTML = data.rides
@@ -673,7 +695,11 @@ async function loadLiveRides() {
             .join("");
         list.querySelectorAll("[data-cancel]").forEach((btn) => {
             btn.addEventListener("click", async () => {
-                const confirmed = await showConfirm("Cancel this ride?");
+                const confirmed = await showTablerConfirm("Are you sure you want to cancel this live ride?", {
+                    title: "Cancel Live Ride",
+                    variant: "danger",
+                    confirmText: "Cancel Ride"
+                });
                 if (!confirmed) return;
                 try {
                     await adminPatch(`/rides/${btn.dataset.cancel}`, { action: "cancel" });
@@ -694,7 +720,9 @@ async function loadLiveRides() {
 
 function openLiveTrackingDrawer(rideId) {
     const html = `
-        <div id="live-track-readout" class="admin-track-readout text-primary">Connecting live map...</div>
+        <div id="live-track-readout" class="admin-track-readout text-primary mb-2">
+            <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>Connecting live map...
+        </div>
         <div id="live-track-map" class="admin-track-map mb-2"></div>
         <p class="admin-drawer-hint">Route line is a straight approximation between pickup, driver's last GPS ping, and drop.</p>
     `;
@@ -820,7 +848,7 @@ function openRideDrawer(ride) {
         ${feedbackHtml}
 
         <h4 class="admin-drawer-subsection">Timeline</h4>
-        ${timeline.length ? timeline.map(([label, ts]) => detailRow(label, formatTimestamp(ts))).join("") : `<p class="text-muted text-center py-2">No timestamps recorded.</p>`}
+        ${timeline.length ? timeline.map(([label, ts]) => detailRow(label, formatTimestamp(ts))).join("") : `<p class="text-secondary text-center py-2">No timestamps recorded.</p>`}
 
         <h4 class="admin-drawer-subsection">Route</h4>
         ${detailRow("Pickup", ride.pickup_name || ride.pickupName || "")}
@@ -847,7 +875,7 @@ function openRideDrawer(ride) {
 
         <h4 class="admin-drawer-subsection">Admin Notes</h4>
         <div class="admin-notes-list mb-3">
-            ${notes.length ? notes.map((n) => `<div class="admin-note"><div>${escapeHtml(n.text)}</div><div class="admin-note-meta">${escapeHtml(n.byEmail || "")} \u00b7 ${formatTimestamp(n.at)}</div></div>`).join("") : `<p class="text-muted text-center py-2">No notes yet.</p>`}
+            ${notes.length ? notes.map((n) => `<div class="admin-note"><div>${escapeHtml(n.text)}</div><div class="admin-note-meta">${escapeHtml(n.byEmail || "")} \u00b7 ${formatTimestamp(n.at)}</div></div>`).join("") : `<p class="text-secondary text-center py-2">No notes yet.</p>`}
         </div>
         <div class="input-group mb-3">
             <input type="text" id="ride-note-input" class="form-control" placeholder="Add an internal note...">
@@ -918,7 +946,10 @@ function ensurePassengersTable() {
 }
 
 async function bulkPassengerAction(ids, action) {
-    const confirmed = await showConfirm(`${action} ${ids.length} selected passenger(s)?`);
+    const confirmed = await showTablerConfirm(`Are you sure you want to ${action} ${ids.length} selected passenger(s)?`, {
+        title: `${action.toUpperCase()} Passengers`,
+        variant: action === "block" || action === "restrict" ? "warning" : "primary"
+    });
     if (!confirmed) return;
     let ok = 0;
     for (const uid of ids) {
@@ -946,7 +977,10 @@ async function loadPassengers(reset) {
                 const action = select.value;
                 const uid = select.dataset.passengerAction;
                 if (!action) return;
-                const confirmed = await showConfirm(`${action} this passenger's account?`);
+                const confirmed = await showTablerConfirm(`Are you sure you want to ${action} this passenger's account?`, {
+                    title: `${action.toUpperCase()} Passenger`,
+                    variant: action === "block" || action === "restrict" ? "warning" : "primary"
+                });
                 if (!confirmed) {
                     select.value = "";
                     return;
