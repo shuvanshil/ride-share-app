@@ -16,6 +16,18 @@ body {
     flex-direction: column;
 }
 
+/* Sidebar positioning: Force sticky below header on desktop so header is never covered */
+@media (min-width: 992px) {
+    .admin-sidebar,
+    .navbar-vertical.navbar-expand-lg {
+        position: sticky !important;
+        top: 57px !important;
+        height: calc(100vh - 57px) !important;
+        z-index: 1000 !important;
+        overflow-y: auto;
+    }
+}
+
 .admin-sidebar {
     width: 240px;
     flex-shrink: 0;
@@ -27,8 +39,8 @@ body {
 }
 
 .admin-sidebar.is-collapsed .nav-link-title,
-.admin-sidebar.is-collapsed .badge,
-.admin-sidebar.is-collapsed .status-dot {
+.admin-sidebar.is-collapsed #admin-safety-nav-badge,
+.admin-sidebar.is-collapsed #admin-payments-nav-badge {
     display: none !important;
 }
 
@@ -41,7 +53,7 @@ body {
 
 .admin-sidebar.is-collapsed .admin-nav-item i {
     margin-right: 0 !important;
-    font-size: 1.25rem;
+    font-size: 1.3rem;
 }
 
 @media (max-width: 991.98px) {
