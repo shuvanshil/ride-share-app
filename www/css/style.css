@@ -4354,7 +4354,6 @@ body.profile-editor-open {
 }
 
 .passenger-nav-toggle-btn {
-    display: none !important;
     position: absolute;
     /* Sits below Google Maps' native expand/fullscreen control (top-right)
        so the two buttons never overlap. */
@@ -8220,11 +8219,19 @@ body.profile-editor-open {
     height: 420px;
 }
 
-/* Hide extra map controls (compass/rotate & legend) when map is in minimized state */
+/* Hide navigation toggle & vehicle legend when map is in minimized state */
 #services-map-card:not(.is-expanded) #passenger-nav-toggle-btn,
 #services-map-card:not(.is-expanded) .passenger-nav-toggle-btn,
 #services-map-card:not(.is-expanded) .vehicle-marker-legend {
     display: none !important;
+}
+
+/* Show Navigation Mode Toggle Icon once destination is selected & map is expanded */
+#services-map-card.is-expanded #passenger-nav-toggle-btn,
+#services-map-card.is-expanded .passenger-nav-toggle-btn {
+    display: grid !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 /* Wobble Animation for "You are here" pickup pin (Centered over green pin) */
