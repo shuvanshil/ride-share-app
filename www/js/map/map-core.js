@@ -1221,6 +1221,43 @@ function clearPickupMarker() {
     }
 }
 
+const CLEAN_MAP_POI_STYLES = [
+    {
+        featureType: "poi",
+        elementType: "labels",
+        stylers: [{ visibility: "off" }]
+    },
+    {
+        featureType: "poi.business",
+        stylers: [{ visibility: "off" }]
+    },
+    {
+        featureType: "poi.attraction",
+        stylers: [{ visibility: "off" }]
+    },
+    {
+        featureType: "poi.medical",
+        stylers: [{ visibility: "off" }]
+    },
+    {
+        featureType: "poi.place_of_worship",
+        stylers: [{ visibility: "off" }]
+    },
+    {
+        featureType: "poi.school",
+        stylers: [{ visibility: "off" }]
+    },
+    {
+        featureType: "poi.sports_complex",
+        stylers: [{ visibility: "off" }]
+    },
+    {
+        featureType: "transit",
+        elementType: "labels.icon",
+        stylers: [{ visibility: "off" }]
+    }
+];
+
 export async function createRideMapSurface(hostElementOrId, options = {}) {
     const maps = await loadGoogleMaps();
     addGoogleMapStyles();
@@ -1249,6 +1286,7 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
         fullscreenControl: options.fullscreenControl ?? true,
         streetViewControl: false,
         mapTypeControl: false,
+        styles: CLEAN_MAP_POI_STYLES,
         gestureHandling: options.gestureHandling || "greedy",
         clickableIcons: true,
         ...(wantsRotatableCamera ? {
@@ -1369,24 +1407,22 @@ class UserLocationMarkerOverlay {
         this.pinImg.title = title;
         this.element.appendChild(this.pinImg);
 
-        // Floating Pointed "This is you!" Tag
+        // Floating Pointed "You are here" Tag
         this.bubbleCard = document.createElement("div");
-        this.bubbleCard.className = "user-location-bubble-card";
+        this.bubbleCard.className = "user-location-bubble-card user-location-wobble";
         this.bubbleCard.innerHTML = `
-            <span class="user-location-bubble-text">This is you!</span>
+            <span class="user-location-bubble-text">You are here</span>
             <div class="user-location-bubble-arrow"></div>
         `;
         this.element.appendChild(this.bubbleCard);
 
-        // Automatically fade out the "This is you!" bubble after 4.5 seconds
-        this.fadeTimer = setTimeout(() => {
-            if (this.bubbleCard) {
-                this.bubbleCard.classList.add("is-faded");
-                setTimeout(() => {
-                    if (this.bubbleCard) this.bubbleCard.remove();
-                }, 600);
-            }
-        }, 4500);
+        const dropInput = document.getElementById("drop-input");
+        if (dropInput && dropInput.value.trim()) {
+            this.bubbleCard.classList.remove("user-location-wobble");
+        }
+
+        // Keep bubble visible and wobble until destination is set
+        this.fadeTimer = null;
 
         this.overlay.onAdd = () => {
             const panes = this.overlay.getPanes();

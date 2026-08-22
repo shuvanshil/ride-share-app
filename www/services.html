@@ -41,57 +41,95 @@
                     <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
                 </div>
                 <div class="app-bar-actions">
-                    <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
+                    <div class="safe-badge-pill">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                        <span>Safe • Secure • Reliable</span>
+                    </div>
+                    <button class="guest-login-btn d-none ms-2" type="button" onclick="window.location.href='/login.html'">Login</button>
                 </div>
             </header>
 
             <section class="services-title-block">
-                <h1>Book a Ride</h1>
-                <p>Find nearby LiphtUp drivers from your exact pickup location.</p>
+                <div class="title-with-car-icon">
+                    <div class="car-graphic-badge">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="#1A7A2E"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4h14v4z"/><circle cx="7.5" cy="14.5" r="1.5" fill="#fff"/><circle cx="16.5" cy="14.5" r="1.5" fill="#fff"/></svg>
+                    </div>
+                    <div class="title-text-group">
+                        <h1 class="book-ride-title">Book a Ride</h1>
+                        <p class="book-ride-subtitle">Fast, safe and reliable rides to your destination</p>
+                    </div>
+                </div>
             </section>
 
             <section id="bottom-sheet" class="services-booking-shell">
                 <div class="container p-0">
                     <div class="services-location-card" aria-label="Ride locations">
-                        <div class="location-card-connector"></div>
+                        <div class="location-card-connector-dotted"></div>
                         <div class="location-field services-location-field">
-                            <div class="location-dot-wrap">
-                                <span class="pickup-dot webicon webicon-current-location" aria-hidden="true" style="color: #1A7A2E;"></span>
+                            <div class="location-badge-icon pickup-badge">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#1A7A2E"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                             </div>
                             <div class="location-input-wrap">
                                 <label for="pickup-input">Pickup location</label>
                                 <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
                             </div>
-                            <button id="refresh-location-btn" class="field-action services-field-btn" type="button" aria-label="Use current location for pickup" title="Use current location">
-                                <span class="webicon webicon-use-current-location" aria-hidden="true"></span>
-                            </button>
+                            <button id="refresh-location-btn" class="d-none" type="button" aria-label="Use current location"></button>
+                            <span class="field-chevron">&rsaquo;</span>
                         </div>
+
+                        <!-- Floating Swap Button -->
+                        <button id="swap-locations-btn" class="floating-swap-btn" type="button" aria-label="Swap pickup and destination" title="Swap locations">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16V4M7 4L3 8M7 4L11 8M17 8V20M17 20L21 16M17 20L13 16"/></svg>
+                        </button>
+
                         <div class="location-field-divider"></div>
+
                         <div class="location-field services-location-field">
-                            <div class="location-dot-wrap">
-                                <span class="drop-pin webicon webicon-destination" aria-hidden="true" style="color: #E53935;"></span>
+                            <div class="location-badge-icon drop-badge">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="#E53935"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z"/></svg>
                             </div>
                             <div class="location-input-wrap">
                                 <label for="drop-input">Where to?</label>
                                 <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination (village, street, town or landmark)" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
                             </div>
-                            <button id="swap-locations-btn" class="field-action services-field-btn" type="button" aria-label="Swap pickup and destination" title="Swap locations">
-                                <span class="webicon webicon-swap"></span>
-                            </button>
+                            <span class="field-chevron">&rsaquo;</span>
                         </div>
+                    </div>
+
+                    <!-- Quick Location Chips Row (Home, Work, Other Saved Places) -->
+                    <div class="quick-location-chips-row" id="quick-location-chips-row">
+                        <button type="button" id="chip-home-btn" class="quick-chip-btn is-disabled" title="Saved Home address">
+                            <span class="webicon webicon-home" style="color: #1A7A2E;"></span>
+                            <span>Home</span>
+                        </button>
+                        <button type="button" id="chip-work-btn" class="quick-chip-btn is-disabled" title="Saved Work address">
+                            <span class="webicon webicon-work" style="color: #1A7A2E;"></span>
+                            <span>Work</span>
+                        </button>
+                        <button type="button" id="chip-saved-places-btn" class="quick-chip-btn" title="View all saved places">
+                            <span class="webicon webicon-favorite" style="color: #1A7A2E;"></span>
+                            <span>Other Saved Places</span>
+                        </button>
                     </div>
 
 
                     <section id="services-map-card" class="services-map-card" aria-label="Passenger live location map">
                         <div class="services-map-head">
                             <div class="map-head-copy">
-                                <h2>Live pickup map</h2>
+                                <div class="map-title-row">
+                                    <div class="map-target-badge">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+                                    </div>
+                                    <h2>Live pickup map</h2>
+                                </div>
                                 <div class="location-status-wrap">
                                     <span class="status-dot"></span>
                                     <p id="services-location-status">Locking your exact location...</p>
                                 </div>
                             </div>
-                            <span id="services-gps-pill" class="services-gps-pill">GPS</span>
+                            <span id="services-gps-pill" class="services-live-signal-badge">
+                                <span class="signal-icon">((•))</span> Live
+                            </span>
                         </div>
                         <div id="map-container" class="services-map-frame">
                             <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Loading Map...</span></div>
@@ -528,6 +566,76 @@
                     <svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg>
                 </span>
                 <button class="fb-minimized-close" type="button" aria-label="Dismiss feedback prompt">&times;</button>
+            </div>
+        </div>
+
+        <!-- ===== Saved Places Modal (Matching Reference Design) ===== -->
+        <div id="saved-places-modal" class="saved-places-modal-shell d-none" role="dialog" aria-modal="true" aria-labelledby="saved-places-modal-title">
+            <div class="saved-places-modal-backdrop" id="saved-places-modal-backdrop"></div>
+            <div class="saved-places-modal-card">
+                <div class="modal-handle-bar"></div>
+                <button type="button" class="saved-places-close-btn" id="saved-places-modal-close" aria-label="Close dialog">&times;</button>
+                
+                <div class="saved-places-modal-header">
+                    <h2 id="saved-places-modal-title">Saved Places</h2>
+                    <p>Quickly choose from your saved addresses</p>
+                </div>
+
+                <div class="saved-places-modal-body">
+                    <div class="saved-places-subheader">Your saved places (max 3)</div>
+                    
+                    <div id="saved-places-list-container" class="saved-places-list">
+                        <!-- Populated dynamically via JS -->
+                    </div>
+
+                    <button type="button" id="add-new-saved-place-btn" class="add-new-address-card-btn">
+                        <div class="add-address-icon-badge">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                        </div>
+                        <div class="add-address-copy">
+                            <strong>Add a new address</strong>
+                            <small>Save a new place for faster booking</small>
+                        </div>
+                        <span class="chevron-right">&rsaquo;</span>
+                    </button>
+
+                    <div class="saved-places-security-banner">
+                        <div class="security-badge-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                        </div>
+                        <div class="security-banner-text">
+                            <strong>Your places are private and safe</strong>
+                            <span>Only you can see and manage your saved places.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Save Address Editor Dialog Sub-Modal ===== -->
+        <div id="save-address-editor-modal" class="saved-places-modal-shell d-none" role="dialog" aria-modal="true" style="z-index: 10500;">
+            <div class="saved-places-modal-backdrop" id="save-address-editor-backdrop"></div>
+            <div class="saved-places-modal-card editor-card">
+                <button type="button" class="saved-places-close-btn" id="save-address-editor-close">&times;</button>
+                <div class="saved-places-modal-header">
+                    <h3 id="save-address-editor-title">Save Address</h3>
+                    <p id="save-address-editor-subtitle">Choose a location to save for fast booking</p>
+                </div>
+                <form id="save-address-editor-form" class="mt-3">
+                    <div class="mb-3">
+                        <label for="save-address-type-input" class="form-label text-muted small fw-bold mb-1">Place Label / Name</label>
+                        <input type="text" id="save-address-type-input" class="form-control gy-input" placeholder="e.g. Home, Work, Gym, School" required>
+                    </div>
+                    <div class="mb-3 position-relative">
+                        <label for="save-address-location-input" class="form-label text-muted small fw-bold mb-1">Address</label>
+                        <input type="text" id="save-address-location-input" class="form-control gy-input" placeholder="Enter landmark, street or town" autocomplete="off" required>
+                        <div id="save-address-suggestions" class="destination-suggestions mt-1"></div>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end mt-4">
+                        <button type="button" id="save-address-cancel-btn" class="gy-btn gy-btn-outline px-4">Cancel</button>
+                        <button type="submit" id="save-address-submit-btn" class="gy-btn gy-btn-primary px-4">Save Address</button>
+                    </div>
+                </form>
             </div>
         </div>
 

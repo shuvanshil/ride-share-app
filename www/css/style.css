@@ -8013,3 +8013,481 @@ body.profile-editor-open {
     font-weight: 600;
 }
 
+/* ==========================================================================
+   Passenger Services UI Redesign & Saved Places Modal
+   ========================================================================== */
+
+.safe-badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #E8F5E9;
+    color: #1A7A2E;
+    font-size: 12.5px;
+    font-weight: 700;
+    border-radius: 20px;
+    box-shadow: 0 1px 3px rgba(26, 122, 46, 0.08);
+}
+
+.title-with-car-icon {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 4px;
+}
+
+.car-graphic-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #E8F5E9;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.book-ride-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.book-ride-subtitle {
+    font-size: 13px;
+    color: #6B7280;
+    margin: 2px 0 0;
+    font-weight: 500;
+}
+
+.services-location-card {
+    position: relative;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid #E5E7EB;
+    background: #fff;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+}
+
+.location-card-connector-dotted {
+    position: absolute;
+    left: 29px;
+    top: 36px;
+    bottom: 36px;
+    width: 2px;
+    border-left: 2px dotted #1A7A2E;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.floating-swap-btn {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid #E5E7EB;
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.09);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.floating-swap-btn:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
+    transform: translateY(-50%) scale(1.04);
+}
+
+.floating-swap-btn:active {
+    transform: translateY(-50%) scale(0.92);
+}
+
+.location-badge-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    z-index: 2;
+    flex-shrink: 0;
+}
+
+.location-badge-icon.pickup-badge {
+    background: #E8F5E9;
+}
+
+.location-badge-icon.drop-badge {
+    background: #FFEBEE;
+}
+
+.field-chevron {
+    font-size: 20px;
+    color: #9CA3AF;
+    font-weight: 600;
+    margin-right: 44px;
+}
+
+.quick-location-chips-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.quick-chip-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 10px 12px;
+    border-radius: 24px;
+    border: 1px solid #E5E7EB;
+    background: #fff;
+    color: #111827;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.quick-chip-btn:hover:not(.is-disabled) {
+    background: #F9FAFB;
+    border-color: #D1D5DB;
+}
+
+.quick-chip-btn.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: #F3F4F6;
+    border-color: #E5E7EB;
+    color: #9CA3AF;
+}
+
+.quick-chip-btn.is-disabled .webicon {
+    opacity: 0.4;
+}
+
+.map-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.map-target-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #E8F5E9;
+    display: grid;
+    place-items: center;
+}
+
+.services-live-signal-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: #E8F5E9;
+    color: #1A7A2E;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+.services-live-signal-badge .signal-icon {
+    font-size: 11px;
+    letter-spacing: -1px;
+}
+
+#services-map-card #map-container {
+    height: 220px;
+    border-radius: 16px;
+    overflow: hidden;
+    transition: height 0.35s ease;
+}
+
+#services-map-card.is-expanded #map-container {
+    height: 420px;
+}
+
+/* Wobble Animation for "You are here" pickup pin */
+@keyframes wobblePickupPin {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-7px); }
+}
+
+.user-location-wobble {
+    animation: wobblePickupPin 1.8s ease-in-out infinite;
+}
+
+/* Saved Places Modal (Matching Screenshot Reference Design) */
+.saved-places-modal-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.saved-places-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+}
+
+.saved-places-modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    background: #fff;
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    padding: 20px 24px 28px;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.15);
+    animation: modal-slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: 88vh;
+    overflow-y: auto;
+}
+
+.saved-places-modal-card.editor-card {
+    border-radius: 24px;
+    margin: auto;
+    max-height: 90vh;
+    animation: modal-fade-in 0.25s ease-out;
+}
+
+@keyframes modal-slide-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+@keyframes modal-fade-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.modal-handle-bar {
+    width: 42px;
+    height: 4px;
+    background: #E5E7EB;
+    border-radius: 2px;
+    margin: 0 auto 16px;
+}
+
+.saved-places-close-btn {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 0;
+    background: #F3F4F6;
+    color: #4B5563;
+    font-size: 20px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+}
+
+.saved-places-modal-header h2 {
+    font-size: 22px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0 0 2px;
+}
+
+.saved-places-modal-header p {
+    font-size: 13.5px;
+    color: #6B7280;
+    margin: 0;
+}
+
+.saved-places-subheader {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4B5563;
+    margin: 20px 0 10px;
+}
+
+.saved-places-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.saved-place-item-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid #F3F4F6;
+    background: #FAFAFA;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.saved-place-item-card:hover {
+    background: #fff;
+    border-color: #E5E7EB;
+}
+
+.saved-place-icon-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #E8F5E9;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.saved-place-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.saved-place-details strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.2;
+}
+
+.saved-place-details small {
+    display: block;
+    font-size: 13px;
+    color: #6B7280;
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.saved-place-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.saved-item-action-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 0;
+    background: transparent;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    color: #4B5563;
+    transition: background 0.15s ease;
+}
+
+.saved-item-action-btn:hover {
+    background: #F3F4F6;
+}
+
+.saved-item-action-btn.delete-btn {
+    color: #EF4444;
+}
+
+.saved-item-action-btn.delete-btn:hover {
+    background: #FEE2E2;
+}
+
+.add-new-address-card-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    margin-top: 12px;
+    border-radius: 16px;
+    border: 1.5px dashed #1A7A2E;
+    background: #fff;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease;
+}
+
+.add-new-address-card-btn:hover {
+    background: #F0FDF4;
+}
+
+.add-address-icon-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #E8F5E9;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.add-address-copy strong {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: #1A7A2E;
+}
+
+.add-address-copy small {
+    display: block;
+    font-size: 12.5px;
+    color: #6B7280;
+    margin-top: 2px;
+}
+
+.chevron-right {
+    font-size: 22px;
+    color: #9CA3AF;
+    margin-left: auto;
+}
+
+.saved-places-security-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-top: 20px;
+    border-radius: 14px;
+    background: #F0FDF4;
+    border: 1px solid #DCFCE7;
+}
+
+.security-badge-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #DCFCE7;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.security-banner-text strong {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #166534;
+}
+
+.security-banner-text span {
+    display: block;
+    font-size: 12px;
+    color: #15803D;
+}
+
+
