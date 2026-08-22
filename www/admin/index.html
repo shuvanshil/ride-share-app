@@ -113,35 +113,35 @@
                             <!-- 1. Dashboard -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link active w-100 text-start" data-section="dashboard" type="button">
-                                    <i class="ti ti-layout-dashboard me-2"></i>
+                                    <i class="ti ti-layout-dashboard nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Dashboard</span>
                                 </button>
                             </li>
                             <!-- 2. Drivers -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="drivers" type="button">
-                                    <i class="ti ti-users me-2"></i>
+                                    <i class="ti ti-users nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Drivers</span>
                                 </button>
                             </li>
                             <!-- 3. Passengers -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="passengers" type="button">
-                                    <i class="ti ti-user-check me-2"></i>
+                                    <i class="ti ti-user-check nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Passengers</span>
                                 </button>
                             </li>
                             <!-- 4. Live Rides -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="live-rides" type="button">
-                                    <i class="ti ti-car-side me-2 text-primary"></i>
+                                    <i class="ti ti-car nav-link-icon text-primary me-2"></i>
                                     <span class="nav-link-title">Live Rides</span>
                                 </button>
                             </li>
                             <!-- 5. Payments -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="payments" type="button">
-                                    <i class="ti ti-currency-rupee me-2"></i>
+                                    <i class="ti ti-currency-rupee nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Payments</span>
                                     <span id="admin-payments-nav-badge" class="text-danger fw-bold ms-1 d-none">(0)</span>
                                 </button>
@@ -149,14 +149,14 @@
                             <!-- 6. Ride History -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="ride-history" type="button">
-                                    <i class="ti ti-history me-2"></i>
+                                    <i class="ti ti-history nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Ride History</span>
                                 </button>
                             </li>
                             <!-- 7. Safety -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="safety" type="button">
-                                    <i class="ti ti-shield-alert me-2 text-danger"></i>
+                                    <i class="ti ti-shield nav-link-icon text-danger me-2"></i>
                                     <span class="nav-link-title">Safety</span>
                                     <span id="admin-safety-nav-badge" class="text-danger fw-bold ms-1 d-none">(0)</span>
                                 </button>
@@ -164,14 +164,14 @@
                             <!-- 8. Analytics -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="analytics" type="button">
-                                    <i class="ti ti-chart-bar me-2"></i>
+                                    <i class="ti ti-chart-bar nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Analytics</span>
                                 </button>
                             </li>
                             <!-- 9. Audit Log -->
                             <li class="nav-item">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="audit-log" type="button">
-                                    <i class="ti ti-file-text me-2"></i>
+                                    <i class="ti ti-file-text nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Audit Log</span>
                                 </button>
                             </li>
@@ -371,7 +371,9 @@
                                 </h3>
                             </div>
                             <div class="card-body">
-                                <canvas id="rides-daily-chart" height="90"></canvas>
+                                <div style="position: relative; height: 340px; width: 100%;">
+                                    <canvas id="rides-daily-chart"></canvas>
+                                </div>
                             </div>
                         </div>
                     </section>

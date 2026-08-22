@@ -2,7 +2,7 @@ import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, refreshA
 import { showTablerConfirm } from "./admin-confirm.js";
 import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
-import { startLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
+import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
 import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
 import { initAdminPayments, loadAdminPayments } from "./admin-payments.js";
@@ -33,7 +33,7 @@ async function withButtonSpinner(btn, actionFn) {
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing...`;
     try {
-        await actionFn();
+        return await actionFn();
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
@@ -57,6 +57,7 @@ function resetToDashboard() {
 
 watchAdminAuth(async (user) => {
     if (!user) {
+        stopLiveFeed();
         showOnly(loginScreen);
         return;
     }
@@ -79,6 +80,7 @@ watchAdminAuth(async (user) => {
             });
         }
     } catch (error) {
+        stopLiveFeed();
         await logoutAdmin();
         showOnly(deniedScreen);
     }
@@ -117,6 +119,7 @@ $("admin-email")?.addEventListener("keydown", (e) => {
 $("admin-denied-back-btn")?.addEventListener("click", () => showOnly(loginScreen));
 $("admin-logout-btn")?.addEventListener("click", async () => {
     clearInterval(liveRidesTimer);
+    stopLiveFeed();
     await logoutAdmin();
 });
 
@@ -1059,6 +1062,7 @@ async function loadAnalytics() {
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 scales: {
                     y: { position: "left", beginAtZero: true },
                     y1: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false } },

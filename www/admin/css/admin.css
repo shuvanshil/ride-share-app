@@ -34,8 +34,10 @@ body {
     transition: width 0.2s ease-in-out, transform 0.2s ease-in-out;
 }
 
-.admin-sidebar.is-collapsed {
-    width: 64px;
+.admin-sidebar.is-collapsed,
+.navbar-vertical.navbar-expand-lg.is-collapsed {
+    width: 64px !important;
+    min-width: 64px !important;
 }
 
 .admin-sidebar.is-collapsed .nav-link-title,

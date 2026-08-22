@@ -1,4 +1,4 @@
-import { db } from "../../js/platform/firebase-init.js";
+import { db, auth } from "../../js/platform/firebase-init.js";
 import {
     collection,
     doc,
@@ -19,26 +19,18 @@ let firstDriverSnapshot = true;
 let firstRidesSnapshot = true;
 let deniedRetried = false;
 
+let unsubs = [];
+
 function emit(event) {
     if (feedSink) feedSink({ ...event, at: Date.now() });
 }
 
-/**
- * A `permission-denied` here almost always means one of two things: the
- * signed-in admin's ID token was cached before the `admin` custom claim was
- * granted (fixed by a forced token refresh -- retried once, automatically),
- * or the firestore.rules containing the `isAdmin()` read grant were edited
- * locally but never deployed to the live Firebase project (that one needs a
- * human to run `firebase deploy --only firestore:rules`). Surface it once
- * instead of letting three near-identical console errors speak for us.
- */
 async function handleListenerError(label, error) {
-    console.error(`[admin-live] ${label} listener error:`, error);
+    if (!auth.currentUser) return; // User logged out intentionally -- ignore expected permission loss
     if (error?.code !== "permission-denied" || !errorSink) return;
     if (!deniedRetried) {
         deniedRetried = true;
         try {
-            const { auth } = await import("../../js/platform/firebase-init.js");
             if (auth.currentUser) await auth.currentUser.getIdToken(true);
         } catch {
             /* fall through to the user-facing message below */
@@ -51,18 +43,20 @@ async function handleListenerError(label, error) {
     );
 }
 
-/**
- * Starts all realtime listeners once. Safe to call exactly once per page
- * load. `onError(message)` is optional and is called (at most once per
- * kind of failure) with a human-readable string suitable for a toast.
- */
+export function stopLiveFeed() {
+    unsubs.forEach((unsub) => {
+        try { unsub(); } catch {}
+    });
+    unsubs = [];
+}
+
 export function startLiveFeed(onEvent, onError) {
+    stopLiveFeed();
     feedSink = onEvent;
     errorSink = onError || null;
 
-    // Driver online/offline, straight from the public driverMapPresence
-    // collection -- no rules change was needed for this one.
-    onSnapshot(collection(db, "driverMapPresence"), (snap) => {
+    // Driver online/offline
+    const u1 = onSnapshot(collection(db, "driverMapPresence"), (snap) => {
         snap.docChanges().forEach((change) => {
             const data = change.doc.data();
             const uid = change.doc.id;
@@ -78,11 +72,11 @@ export function startLiveFeed(onEvent, onError) {
         });
         firstDriverSnapshot = false;
     }, (error) => handleListenerError("driverMapPresence", error));
+    unsubs.push(u1);
 
-    // Ride lifecycle: accepted / cancelled / completed / payment, from the
-    // admin-only read grant added to firestore.rules.
+    // Ride lifecycle
     const recentRidesQuery = query(collection(db, "rides"), orderBy("updatedAt", "desc"), fsLimit(50));
-    onSnapshot(recentRidesQuery, (snap) => {
+    const u2 = onSnapshot(recentRidesQuery, (snap) => {
         snap.docChanges().forEach((change) => {
             const data = change.doc.data();
             const rideId = change.doc.id;
@@ -105,10 +99,10 @@ export function startLiveFeed(onEvent, onError) {
         });
         firstRidesSnapshot = false;
     }, (error) => handleListenerError("rides", error));
+    unsubs.push(u2);
 
-    // New passenger registrations + driver status changes (approved/
-    // suspended/blocked), from the admin-only read grant on `users`.
-    onSnapshot(collection(db, "users"), (snap) => {
+    // New registrations & status updates
+    const u3 = onSnapshot(collection(db, "users"), (snap) => {
         snap.docChanges().forEach((change) => {
             const data = change.doc.data();
             const uid = change.doc.id;
@@ -129,6 +123,7 @@ export function startLiveFeed(onEvent, onError) {
         });
         firstUsersSnapshot = false;
     }, (error) => handleListenerError("users", error));
+    unsubs.push(u3);
 }
 
 // ---------------------------------------------------------------------
@@ -174,11 +169,6 @@ async function ensureGoogleMaps() {
     });
 }
 
-/**
- * Renders a live, auto-updating map for one active ride into `container`,
- * plus a text readout element updated with speed/progress.
- * Returns a stop() function -- call it when the panel closes.
- */
 export async function trackRideOnMap(container, readoutEl, rideId) {
     stopTracking();
     await ensureGoogleMaps();
@@ -240,6 +230,9 @@ export async function trackRideOnMap(container, readoutEl, rideId) {
                 }`;
             }
         }
+    }, (error) => {
+        if (!auth.currentUser) return;
+        console.warn("[admin-live] trackRideOnMap error:", error);
     });
 
     return stopTracking;
