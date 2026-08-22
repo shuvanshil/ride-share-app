@@ -184,11 +184,11 @@ def bootstrap_admin(body: BootstrapAdminBody) -> dict[str, Any]:
         raise ApiError("Invalid secret.", 403)
 
     try:
-        user = fb_auth.get_user_by_email(body.email.strip().lower())
+        user = fb_auth.get_user_by_email(body.email.strip().lower(), app=get_admin_app())
     except Exception as exc:
         raise ApiError(f"User '{body.email}' not found.", 404) from exc
 
-    fb_auth.set_custom_user_claims(user.uid, {"admin": True})
+    fb_auth.set_custom_user_claims(user.uid, {"admin": True}, app=get_admin_app())
     return {"ok": True, "message": f"Admin claim granted to {user.email} (uid: {user.uid})."}
 
 
@@ -238,7 +238,7 @@ def assign_permission_role(body: AssignRoleBody, admin_user: dict[str, Any] = De
     name = user_data.get("name") or email or "Admin User"
     
     try:
-        fb_auth.set_custom_user_claims(body.uid, {"admin": True})
+        fb_auth.set_custom_user_claims(body.uid, {"admin": True}, app=get_admin_app())
     except Exception as err:
         raise ApiError(f"Could not set admin custom claim: {str(err)}", 500)
     
@@ -281,7 +281,7 @@ def revoke_permission_role(target_uid: str, admin_user: dict[str, Any] = Depends
     before = snap.to_dict() if snap.exists else None
     
     try:
-        fb_auth.set_custom_user_claims(target_uid, {"admin": False})
+        fb_auth.set_custom_user_claims(target_uid, {"admin": False}, app=get_admin_app())
     except Exception:
         pass
     

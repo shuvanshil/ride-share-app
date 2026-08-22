@@ -184,11 +184,11 @@ def bootstrap_admin(body: BootstrapAdminBody) -> dict[str, Any]:
         raise ApiError("Invalid secret.", 403)
 
     try:
-        user = fb_auth.get_user_by_email(body.email.strip().lower())
+        user = fb_auth.get_user_by_email(body.email.strip().lower(), app=get_admin_app())
     except Exception as exc:
         raise ApiError(f"User '{body.email}' not found.", 404) from exc
 
-    fb_auth.set_custom_user_claims(user.uid, {"admin": True})
+    fb_auth.set_custom_user_claims(user.uid, {"admin": True}, app=get_admin_app())
     return {"ok": True, "message": f"Admin claim granted to {user.email} (uid: {user.uid})."}
 
 
@@ -238,7 +238,7 @@ def assign_permission_role(body: AssignRoleBody, admin_user: dict[str, Any] = De
     name = user_data.get("name") or email or "Admin User"
     
     try:
-        fb_auth.set_custom_user_claims(body.uid, {"admin": True})
+        fb_auth.set_custom_user_claims(body.uid, {"admin": True}, app=get_admin_app())
     except Exception as err:
         raise ApiError(f"Could not set admin custom claim: {str(err)}", 500)
     
@@ -276,12 +276,12 @@ def revoke_permission_role(target_uid: str, admin_user: dict[str, Any] = Depends
     ref = db.collection("adminRoles").document(target_uid)
     snap = ref.get()
     if snap.exists and snap.to_dict().get("role") == "super_admin":
-        raise ApiError("Super Admin access cannot be revoked.", 400)
+        raise ApiError("Super Admin roles cannot be revoked.", 400)
     
     before = snap.to_dict() if snap.exists else None
     
     try:
-        fb_auth.set_custom_user_claims(target_uid, {"admin": False})
+        fb_auth.set_custom_user_claims(target_uid, {"admin": False}, app=get_admin_app())
     except Exception:
         pass
     
