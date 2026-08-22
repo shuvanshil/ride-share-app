@@ -1,8 +1,5 @@
-// A single reusable drawer shell used for the driver profile, ride detail,
-// and any future detail view. Two modes:
-//   - readOnlyHtml(title, html)               -> plain detail view
-//   - form(title, {fields, initialValues, onSave}) -> editable form with
-//     dirty-tracking and Save / Save & Close / Discard
+// Reusable drawer shell for driver profile, ride detail, and editable forms,
+// styled with Tabler UI components and icons.
 
 const root = document.getElementById("admin-drawer-root");
 const panel = document.getElementById("admin-drawer-panel");
@@ -13,7 +10,6 @@ const footerEl = document.getElementById("admin-drawer-footer");
 const closeBtn = document.getElementById("admin-drawer-close");
 
 let dirty = false;
-let closeGuard = null;
 
 function open() {
     root.classList.remove("d-none");
@@ -25,13 +21,12 @@ export function closeDrawer(force = false) {
         if (!confirm("Discard unsaved changes?")) return;
     }
     dirty = false;
-    closeGuard = null;
     panel.classList.remove("is-open");
     setTimeout(() => root.classList.add("d-none"), 200);
 }
 
-closeBtn.addEventListener("click", () => closeDrawer());
-backdrop.addEventListener("click", () => closeDrawer());
+closeBtn?.addEventListener("click", () => closeDrawer());
+backdrop?.addEventListener("click", () => closeDrawer());
 
 export function showReadOnlyDrawer(title, html) {
     dirty = false;
@@ -48,7 +43,7 @@ export function showReadOnlyDrawer(title, html) {
  * @param {Array<{key:string, label:string, type?:string, options?:Array<{value:string,label:string}>, required?:boolean, readOnly?:boolean}>} opts.fields
  * @param {Object} opts.initialValues
  * @param {(values:Object)=>Promise<void>} opts.onSave
- * @param {string} [opts.extraHtml] - rendered above the form (read-only summary block)
+ * @param {string} [opts.extraHtml] - rendered above the form
  */
 export function showFormDrawer(title, { fields, initialValues, onSave, extraHtml = "" }) {
     dirty = false;
@@ -66,22 +61,22 @@ export function showFormDrawer(title, { fields, initialValues, onSave, extraHtml
                     .join("");
                 return `<div class="mb-3">
                     <label class="form-label">${f.label}${f.required ? " *" : ""}</label>
-                    <select class="form-select gy-input" data-field="${f.key}">${opts}</select>
+                    <select class="form-select" data-field="${f.key}">${opts}</select>
                 </div>`;
             }
             return `<div class="mb-3">
                 <label class="form-label">${f.label}${f.required ? " *" : ""}</label>
-                <input type="${f.type || "text"}" class="form-control gy-input" data-field="${f.key}" value="${escapeAttr(value)}">
-                <div class="dt-field-error d-none" data-error-for="${f.key}"></div>
+                <input type="${f.type || "text"}" class="form-control" data-field="${f.key}" value="${escapeAttr(value)}">
+                <div class="invalid-feedback text-danger small mt-1 d-none" data-error-for="${f.key}"></div>
             </div>`;
         })
         .join("");
 
     bodyEl.innerHTML = `${extraHtml}<form id="drawer-form" novalidate>${fieldsHtml}</form>`;
     footerEl.innerHTML = `
-        <button type="button" class="admin-btn-outline" data-drawer-action="discard">Discard</button>
-        <button type="button" class="gy-btn admin-btn-outline" data-drawer-action="save">Save</button>
-        <button type="button" class="gy-btn gy-btn-primary" data-drawer-action="save-close">Save &amp; Close</button>
+        <button type="button" class="btn btn-outline-secondary" data-drawer-action="discard">Discard</button>
+        <button type="button" class="btn btn-outline-primary" data-drawer-action="save">Save</button>
+        <button type="button" class="btn btn-primary" data-drawer-action="save-close">Save &amp; Close</button>
     `;
 
     const inputs = bodyEl.querySelectorAll("[data-field]");
@@ -101,7 +96,7 @@ export function showFormDrawer(title, { fields, initialValues, onSave, extraHtml
 
     function validate(values) {
         let ok = true;
-        bodyEl.querySelectorAll(".dt-field-error").forEach((el) => el.classList.add("d-none"));
+        bodyEl.querySelectorAll(".invalid-feedback").forEach((el) => el.classList.add("d-none"));
         fields
             .filter((f) => f.required && !f.readOnly)
             .forEach((f) => {

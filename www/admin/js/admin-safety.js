@@ -35,35 +35,47 @@ function mapLink(location) {
 async function loadSosAlerts() {
     const list = $("safety-sos-list");
     const status = $("safety-sos-status-filter")?.value || "open";
-    list.innerHTML = `<div class="admin-empty-row">Loading...</div>`;
+    list.innerHTML = `<div class="text-center text-muted py-4">Loading SOS alerts...</div>`;
     try {
         const data = await adminGet("/safety/sos-alerts", { status });
         renderSosAlerts(data.alerts || []);
     } catch (error) {
-        list.innerHTML = `<p class="admin-empty-row">${escapeHtml(error.message)}</p>`;
+        list.innerHTML = `<div class="text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
     }
 }
 
 function renderSosAlerts(alerts) {
     const list = $("safety-sos-list");
     if (!alerts.length) {
-        list.innerHTML = `<p class="admin-empty-row">No SOS alerts in this view.</p>`;
+        list.innerHTML = `<div class="text-center text-muted py-4">No SOS alerts in this view.</div>`;
         return;
     }
     list.innerHTML = alerts
         .map((alert) => {
             const link = mapLink(alert.location);
-            return `<div class="admin-ride-card admin-safety-card ${alert.status === "open" ? "is-urgent" : ""}">
-                <span class="status-pill status-pill-${alert.status === "open" ? "red" : "grey"}">${escapeHtml(alert.status || "open")}</span>
-                <span><strong>${escapeHtml(alert.reporter_name || "Reporter")}</strong> (${escapeHtml(alert.reporter_role || "unknown")})</span>
-                <span>${escapeHtml(alert.pickup_name || "")} &rarr; ${escapeHtml(alert.drop_name || "")}</span>
-                ${alert.note ? `<span>"${escapeHtml(alert.note)}"</span>` : ""}
-                <span class="admin-muted-line">${formatWhen(alert.createdAt)}</span>
-                <div class="admin-ride-card-actions">
-                    ${link ? `<a class="admin-btn-outline" href="${link}" target="_blank" rel="noopener">Open Location</a>` : ""}
-                    ${alert.status === "open"
-                        ? `<button class="admin-btn-primary" data-resolve-sos="${alert.id}" type="button">Mark Resolved</button>`
-                        : `<button class="admin-btn-outline" data-reopen-sos="${alert.id}" type="button">Reopen</button>`}
+            const isUrgent = alert.status === "open";
+            return `
+            <div class="col-12">
+                <div class="card card-sm border-0 shadow-xs ${isUrgent ? 'border-start border-3 border-danger' : ''}">
+                    <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge ${isUrgent ? 'bg-danger-lt text-danger' : 'bg-secondary-lt text-secondary'}">
+                                ${isUrgent ? '<i class="ti ti-alert-triangle me-1"></i>' : ''}${escapeHtml(alert.status || "open")}
+                            </span>
+                            <div>
+                                <strong class="d-block">${escapeHtml(alert.reporter_name || "Reporter")} <span class="text-muted font-weight-normal">(${escapeHtml(alert.reporter_role || "unknown")})</span></strong>
+                                <small class="text-secondary">${escapeHtml(alert.pickup_name || "")} &rarr; ${escapeHtml(alert.drop_name || "")}</small>
+                            </div>
+                        </div>
+                        ${alert.note ? `<div class="text-muted small fst-italic">"${escapeHtml(alert.note)}"</div>` : ""}
+                        <div class="text-secondary small ms-auto me-3">${formatWhen(alert.createdAt)}</div>
+                        <div class="d-flex align-items-center gap-2">
+                            ${link ? `<a class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" href="${link}" target="_blank" rel="noopener"><i class="ti ti-map-pin"></i> Open Location</a>` : ""}
+                            ${alert.status === "open"
+                                ? `<button class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1" data-resolve-sos="${alert.id}" type="button"><i class="ti ti-check"></i> Mark Resolved</button>`
+                                : `<button class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" data-reopen-sos="${alert.id}" type="button"><i class="ti ti-rotate-clockwise"></i> Reopen</button>`}
+                        </div>
+                    </div>
                 </div>
             </div>`;
         })
@@ -103,33 +115,45 @@ function renderSosAlerts(alerts) {
 async function loadSafetyReports() {
     const list = $("safety-reports-list");
     const status = $("safety-reports-status-filter")?.value || "open";
-    list.innerHTML = `<div class="admin-empty-row">Loading...</div>`;
+    list.innerHTML = `<div class="text-center text-muted py-4">Loading reports...</div>`;
     try {
         const data = await adminGet("/safety/reports", { status });
         renderSafetyReports(data.reports || []);
     } catch (error) {
-        list.innerHTML = `<p class="admin-empty-row">${escapeHtml(error.message)}</p>`;
+        list.innerHTML = `<div class="text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
     }
 }
 
 function renderSafetyReports(reports) {
     const list = $("safety-reports-list");
     if (!reports.length) {
-        list.innerHTML = `<p class="admin-empty-row">No safety reports in this view.</p>`;
+        list.innerHTML = `<div class="text-center text-muted py-4">No safety reports in this view.</div>`;
         return;
     }
     list.innerHTML = reports
-        .map((report) => `<div class="admin-ride-card admin-safety-card">
-            <span class="status-pill status-pill-${report.status === "open" ? "red" : "grey"}">${escapeHtml(report.status || "open")}</span>
-            <span><strong>${escapeHtml(report.category || "other").replace(/_/g, " ")}</strong> by ${escapeHtml(report.reporter_name || report.reporter_role || "user")}</span>
-            ${report.description ? `<span>${escapeHtml(report.description)}</span>` : ""}
-            ${report.ride_id ? `<span class="admin-muted-line">Ride: ${escapeHtml(report.ride_id)}</span>` : ""}
-            <span class="admin-muted-line">${formatWhen(report.createdAt)}</span>
-            <div class="admin-ride-card-actions">
-                ${report.status === "open"
-                    ? `<button class="admin-btn-primary" data-resolve-report="${report.id}" type="button">Resolve</button>
-                       <button class="admin-btn-outline" data-dismiss-report="${report.id}" type="button">Dismiss</button>`
-                    : `<button class="admin-btn-outline" data-reopen-report="${report.id}" type="button">Reopen</button>`}
+        .map((report) => `
+        <div class="col-12">
+            <div class="card card-sm border-0 shadow-xs">
+                <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge ${report.status === "open" ? 'bg-warning-lt text-warning' : 'bg-secondary-lt text-secondary'}">
+                            ${escapeHtml(report.status || "open")}
+                        </span>
+                        <div>
+                            <strong>${escapeHtml(report.category || "other").replace(/_/g, " ")}</strong>
+                            <small class="text-secondary ms-1">by ${escapeHtml(report.reporter_name || report.reporter_role || "user")}</small>
+                        </div>
+                    </div>
+                    ${report.description ? `<div class="text-secondary small">${escapeHtml(report.description)}</div>` : ""}
+                    ${report.ride_id ? `<div class="text-muted small">Ride: ${escapeHtml(report.ride_id)}</div>` : ""}
+                    <div class="text-secondary small ms-auto me-3">${formatWhen(report.createdAt)}</div>
+                    <div class="d-flex align-items-center gap-2">
+                        ${report.status === "open"
+                            ? `<button class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1" data-resolve-report="${report.id}" type="button"><i class="ti ti-check"></i> Resolve</button>
+                               <button class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" data-dismiss-report="${report.id}" type="button"><i class="ti ti-x"></i> Dismiss</button>`
+                            : `<button class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" data-reopen-report="${report.id}" type="button"><i class="ti ti-rotate-clockwise"></i> Reopen</button>`}
+                    </div>
+                </div>
             </div>
         </div>`)
         .join("");
@@ -179,10 +203,6 @@ export async function refreshSafetyBadge() {
     }
 }
 
-// Real-time: an SOS is an emergency, so this listens directly on Firestore
-// (permitted by firestore.rules' isAdmin() read grant on sosAlerts) instead
-// of waiting for the next poll -- a new open alert instantly bumps the nav
-// badge and pops a toast, even if the admin is on another section.
 let sosListenerStarted = false;
 let knownOpenSosIds = new Set();
 let firstSosSnapshot = true;

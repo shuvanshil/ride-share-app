@@ -1,16 +1,5 @@
-// A dependency-light (Chart.js and SheetJS are the only externals, both
-// already CDN-loaded in index.html) table component shared by every admin
-// list view. It owns rendering, sorting, search, column visibility, export,
-// bulk selection, and infinite scroll; the caller only supplies rows and
-// column definitions.
-//
-// Deliberate scope limit: sort/search operate on the rows currently loaded
-// in the browser, not the full server-side dataset. Real cross-dataset
-// sorting would need Firestore composite indexes per sort column and a
-// rewritten pagination contract -- worth doing if a table regularly grows
-// past a few thousand rows, not before. Infinite scroll (via
-// IntersectionObserver) plus a generous page size keeps this practical for
-// LiphtUp's current and near-term scale.
+// A dependency-light table component shared by every admin list view,
+// styled with Tabler UI components and icons.
 
 export class DataTable {
     /**
@@ -65,33 +54,45 @@ export class DataTable {
 
         if (this.onRowClick) {
             const hint = document.createElement("div");
-            hint.className = "dt-row-click-hint";
-            hint.textContent = "Click a row to view full details";
+            hint.className = "dt-row-click-hint text-secondary";
+            hint.innerHTML = `<i class="ti ti-info-circle me-1"></i>Click a row to view full details`;
             this.container.appendChild(hint);
         }
 
         const toolbar = document.createElement("div");
-        toolbar.className = "dt-toolbar";
+        toolbar.className = "dt-toolbar gap-2";
 
-        this.searchInput = document.createElement("input");
-        this.searchInput.className = "form-control gy-input dt-search";
-        this.searchInput.placeholder = "Filter loaded rows...";
+        // Search input with Tabler icon
+        const searchWrap = document.createElement("div");
+        searchWrap.className = "input-icon flex-fill";
+        searchWrap.style.maxWidth = "260px";
+        searchWrap.innerHTML = `
+            <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+            <input type="text" class="form-control form-control-sm dt-search" placeholder="Filter loaded rows...">
+        `;
+        this.searchInput = searchWrap.querySelector("input");
         this.searchInput.addEventListener("input", () => {
             this.searchTerm = this.searchInput.value.trim().toLowerCase();
             this._renderBody();
         });
-        toolbar.appendChild(this.searchInput);
+        toolbar.appendChild(searchWrap);
 
+        // Columns dropdown
         const colBtn = document.createElement("div");
-        colBtn.className = "dt-dropdown";
-        colBtn.innerHTML = `<button type="button" class="admin-btn-outline dt-dropdown-btn">Columns</button>`;
+        colBtn.className = "dropdown";
+        colBtn.innerHTML = `
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="ti ti-columns me-1"></i>Columns
+            </button>
+        `;
         const colMenu = document.createElement("div");
-        colMenu.className = "dt-dropdown-menu d-none";
+        colMenu.className = "dropdown-menu p-2 shadow-sm d-none";
+        colMenu.style.minWidth = "180px";
         this.columns.forEach((col) => {
             const id = `dt-col-${col.key}`;
             const row = document.createElement("label");
-            row.className = "dt-dropdown-item";
-            row.innerHTML = `<input type="checkbox" id="${id}" checked> ${col.label}`;
+            row.className = "dropdown-item form-check m-0 px-2 py-1";
+            row.innerHTML = `<input type="checkbox" class="form-check-input me-2" id="${id}" checked> <span class="form-check-label">${col.label}</span>`;
             row.querySelector("input").addEventListener("change", (e) => {
                 if (e.target.checked) this.hiddenCols.delete(col.key);
                 else this.hiddenCols.add(col.key);
@@ -100,36 +101,40 @@ export class DataTable {
             colMenu.appendChild(row);
         });
         colBtn.appendChild(colMenu);
-        colBtn.querySelector(".dt-dropdown-btn").addEventListener("click", () => colMenu.classList.toggle("d-none"));
+        const toggleBtn = colBtn.querySelector("button");
+        toggleBtn.addEventListener("click", () => colMenu.classList.toggle("d-none"));
         document.addEventListener("click", (e) => {
             if (!colBtn.contains(e.target)) colMenu.classList.add("d-none");
         });
         toolbar.appendChild(colBtn);
 
+        // Export CSV button
         const exportCsvBtn = document.createElement("button");
         exportCsvBtn.type = "button";
-        exportCsvBtn.className = "admin-btn-outline";
-        exportCsvBtn.textContent = "Export CSV";
+        exportCsvBtn.className = "btn btn-outline-secondary btn-sm";
+        exportCsvBtn.innerHTML = `<i class="ti ti-file-text me-1"></i>CSV`;
         exportCsvBtn.addEventListener("click", () => this._exportCsv());
         toolbar.appendChild(exportCsvBtn);
 
+        // Export Excel button
         const exportXlsxBtn = document.createElement("button");
         exportXlsxBtn.type = "button";
-        exportXlsxBtn.className = "admin-btn-outline";
-        exportXlsxBtn.textContent = "Export Excel";
+        exportXlsxBtn.className = "btn btn-outline-secondary btn-sm";
+        exportXlsxBtn.innerHTML = `<i class="ti ti-file-spreadsheet me-1"></i>Excel`;
         exportXlsxBtn.addEventListener("click", () => this._exportXlsx());
         toolbar.appendChild(exportXlsxBtn);
 
+        // Bulk Actions Bar
         this.bulkBar = document.createElement("div");
-        this.bulkBar.className = "dt-bulk-bar d-none";
+        this.bulkBar.className = "dt-bulk-bar d-none ms-auto d-flex align-items-center gap-2";
         toolbar.appendChild(this.bulkBar);
 
         this.container.appendChild(toolbar);
 
         const scrollWrap = document.createElement("div");
-        scrollWrap.className = "dt-scroll-wrap";
+        scrollWrap.className = "dt-scroll-wrap table-responsive";
         this.table = document.createElement("table");
-        this.table.className = "admin-table dt-table";
+        this.table.className = "table table-vcenter card-table table-striped table-hover dt-table m-0";
         this.thead = document.createElement("thead");
         this.tbody = document.createElement("tbody");
         this.table.appendChild(this.thead);
@@ -156,13 +161,13 @@ export class DataTable {
 
     _renderHead() {
         const bulkTh = this.bulkActions.length
-            ? `<th class="dt-col-select"><input type="checkbox" id="dt-select-all"></th>`
+            ? `<th class="w-1"><input type="checkbox" class="form-check-input" id="dt-select-all"></th>`
             : "";
         const ths = this.columns
             .map(
                 (col) => `<th data-col="${col.key}" class="${col.sortable ? "dt-sortable" : ""}" style="${col.width ? `width:${col.width}px;` : ""}">
                     <span class="dt-th-label">${col.label}</span>
-                    ${col.sortable ? `<span class="dt-sort-arrow"></span>` : ""}
+                    ${col.sortable ? `<span class="dt-sort-arrow ms-1 text-muted"></span>` : ""}
                     <span class="dt-resizer"></span>
                 </th>`
             )
@@ -191,7 +196,7 @@ export class DataTable {
                 });
             });
 
-        // Column resize: drag the handle at the right edge of a header.
+        // Column resize drag handling
         this.thead.querySelectorAll(".dt-resizer").forEach((handle) => {
             handle.addEventListener("mousedown", (e) => {
                 e.preventDefault();
@@ -234,14 +239,14 @@ export class DataTable {
         const visible = this._visibleRows();
         if (visible.length === 0) {
             const colspan = this.columns.length + (this.bulkActions.length ? 1 : 0);
-            this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="admin-empty-row">No matching rows.</td></tr>`;
+            this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-muted py-4">No matching rows.</td></tr>`;
         } else {
             this.tbody.innerHTML = visible
                 .map((row) => {
                     const id = this.getRowId(row);
                     const checked = this.selected.has(id);
                     const bulkTd = this.bulkActions.length
-                        ? `<td class="dt-col-select"><input type="checkbox" data-row-select="${id}" ${checked ? "checked" : ""}></td>`
+                        ? `<td class="w-1"><input type="checkbox" class="form-check-input" data-row-select="${id}" ${checked ? "checked" : ""}></td>`
                         : "";
                     const tds = this.columns
                         .map((c) => `<td data-col="${c.key}">${c.render ? c.render(row) : escapeHtml(row[c.key])}</td>`)
@@ -284,9 +289,9 @@ export class DataTable {
         }
         this.bulkBar.classList.remove("d-none");
         this.bulkBar.innerHTML =
-            `<span class="dt-bulk-count">${this.selected.size} selected</span>` +
+            `<span class="badge bg-secondary-lt me-2">${this.selected.size} selected</span>` +
             this.bulkActions
-                .map((a, i) => `<button type="button" class="admin-btn-outline" data-bulk="${i}">${a.label}</button>`)
+                .map((a, i) => `<button type="button" class="btn btn-outline-secondary btn-sm" data-bulk="${i}">${a.label}</button>`)
                 .join("");
         this.bulkBar.querySelectorAll("[data-bulk]").forEach((btn) => {
             btn.addEventListener("click", () => {
@@ -306,10 +311,10 @@ export class DataTable {
     }
 
     _updateSortArrows() {
-        this.thead.querySelectorAll("th.dt-sortable .dt-sort-arrow").forEach((el) => (el.textContent = ""));
+        this.thead.querySelectorAll("th.dt-sortable .dt-sort-arrow").forEach((el) => (el.innerHTML = ""));
         if (!this.sortKey) return;
         const th = this.thead.querySelector(`th[data-col="${this.sortKey}"] .dt-sort-arrow`);
-        if (th) th.textContent = this.sortDir === 1 ? " \u25B2" : " \u25BC";
+        if (th) th.innerHTML = this.sortDir === 1 ? `<i class="ti ti-chevron-up"></i>` : `<i class="ti ti-chevron-down"></i>`;
     }
 
     _exportCsv() {
@@ -351,7 +356,6 @@ function downloadBlob(blob, filename) {
 }
 
 function downloadFallbackNotice() {
-    // eslint-disable-next-line no-alert
     alert("Excel export library did not load. Try again in a moment, or use Export CSV.");
 }
 

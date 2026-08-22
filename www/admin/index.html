@@ -5,8 +5,8 @@
     <script src="/js/platform/routes.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#1A7A2E">
-    <title>LiphtUp Admin</title>
+    <meta name="theme-color" content="#206bc4">
+    <title>LiphtUp Admin Console</title>
 
     <!-- This page must never be indexed or linked from the public site. -->
     <meta name="robots" content="noindex,nofollow">
@@ -14,365 +14,613 @@
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Shared brand tokens (--gy-green, --gy-border, etc.) and .gy-input come
-         from the existing stylesheet -- admin.css only adds console-specific
-         layout on top of it. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tabler UI Core CSS and Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+    
+    <!-- Shared brand styles & Admin custom overrides -->
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="/admin/css/admin.css">
 </head>
-<body>
+<body class="antialiased">
 
     <!-- ============ LOGIN SCREEN ============ -->
-    <main id="admin-login-screen" class="admin-login-screen d-flex flex-column align-items-center justify-content-center p-4">
-        <section class="admin-login-card w-100">
+    <main id="admin-login-screen" class="page page-center admin-login-screen">
+        <div class="container container-tight py-4">
             <div class="text-center mb-4">
-                <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="admin-login-logo">
-                <h1 class="admin-login-title mt-3">Admin Console</h1>
-                <p class="admin-login-subtitle">Authorized personnel only</p>
+                <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="navbar-brand-image rounded-3 shadow-sm mb-2" style="height: 56px; width: 56px; object-fit: cover;">
+                <h1 class="h2 fw-bold mt-2">Admin Console</h1>
+                <p class="text-secondary small">Authorized personnel only</p>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Admin email</label>
-                <input type="email" id="admin-email" class="form-control gy-input" autocomplete="username">
+            <div class="card card-md shadow-sm border-0">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label required">Admin email</label>
+                        <input type="email" id="admin-email" class="form-control" placeholder="admin@liphtup.com" autocomplete="username">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label required">Password</label>
+                        <input type="password" id="admin-password" class="form-control" placeholder="••••••••" autocomplete="current-password">
+                    </div>
+                    <button id="admin-login-btn" class="btn btn-primary w-100" type="button">
+                        <i class="ti ti-login me-2"></i>Sign in
+                    </button>
+                    <div id="admin-login-error" class="alert alert-danger mt-3 mb-0 d-none text-center" role="alert"></div>
+                </div>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Password</label>
-                <input type="password" id="admin-password" class="form-control gy-input" autocomplete="current-password">
-            </div>
-            <button id="admin-login-btn" class="gy-btn gy-btn-primary w-100" type="button">Sign in</button>
-            <p id="admin-login-error" class="admin-error-text mt-3 d-none"></p>
-        </section>
+        </div>
     </main>
 
     <!-- ============ ACCESS DENIED ============ -->
-    <main id="admin-denied-screen" class="admin-login-screen d-none flex-column align-items-center justify-content-center p-4">
-        <section class="admin-login-card w-100 text-center">
-            <h1 class="admin-login-title">Access Denied</h1>
-            <p class="admin-login-subtitle">This account does not have admin access to LiphtUp.</p>
-            <button id="admin-denied-back-btn" class="gy-btn gy-btn-primary w-100 mt-3" type="button">Back to sign in</button>
-        </section>
+    <main id="admin-denied-screen" class="page page-center admin-login-screen d-none">
+        <div class="container container-tight py-4">
+            <div class="card card-md text-center shadow-sm border-0">
+                <div class="card-body">
+                    <div class="text-danger mb-3">
+                        <i class="ti ti-shield-x" style="font-size: 3rem;"></i>
+                    </div>
+                    <h1 class="h2 fw-bold">Access Denied</h1>
+                    <p class="text-secondary">This account does not have admin privileges for LiphtUp.</p>
+                    <button id="admin-denied-back-btn" class="btn btn-primary w-100 mt-3" type="button">
+                        <i class="ti ti-arrow-left me-2"></i>Back to sign in
+                    </button>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- ============ DASHBOARD SHELL ============ -->
-    <div id="admin-shell" class="admin-shell d-none">
-        <header class="admin-topbar">
-            <button id="admin-sidebar-toggle" class="admin-icon-btn d-lg-none" type="button" aria-label="Toggle menu">&#9776;</button>
-            <span class="admin-topbar-title">LiphtUp Admin</span>
-            <div class="admin-topbar-right">
-                <button id="admin-feed-toggle" class="admin-btn-outline" type="button">Live Feed <span id="admin-feed-badge" class="admin-feed-badge d-none">0</span></button>
-                <span id="admin-user-label" class="admin-user-label"></span>
-                <button id="admin-logout-btn" class="gy-btn admin-btn-outline" type="button">Logout</button>
+    <div id="admin-shell" class="page admin-shell d-none">
+        <!-- Top Navbar Header -->
+        <header class="navbar navbar-expand-md navbar-light d-print-none sticky-top bg-white border-bottom shadow-xs">
+            <div class="container-fluid">
+                <button id="admin-sidebar-toggle" class="navbar-toggler" type="button" aria-label="Toggle menu">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <a href="#" class="navbar-brand me-3 text-primary fw-bold d-flex align-items-center">
+                    <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="rounded me-2" style="height: 28px; width: 28px; object-fit: cover;">
+                    <span>LiphtUp <span class="badge bg-blue-lt text-blue ms-1">Admin</span></span>
+                </a>
+                <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
+                    <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button">
+                        <i class="ti ti-activity me-1"></i> Live Feed 
+                        <span id="admin-feed-badge" class="badge bg-red text-white ms-2 d-none">0</span>
+                    </button>
+                    <div class="nav-item d-none d-sm-inline-block">
+                        <span id="admin-user-label" class="navbar-text small text-secondary"></span>
+                    </div>
+                    <button id="admin-logout-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center" type="button">
+                        <i class="ti ti-logout me-1"></i> Logout
+                    </button>
+                </div>
             </div>
         </header>
 
-        <div class="admin-body">
-            <nav id="admin-sidebar" class="admin-sidebar">
-                <button class="admin-nav-item active" data-section="dashboard" type="button">Dashboard</button>
-                <button class="admin-nav-item" data-section="drivers" type="button">Drivers</button>
-                <button class="admin-nav-item" data-section="payments" type="button">Payments <span id="admin-payments-nav-badge" class="admin-nav-badge d-none">0</span></button>
-                <button class="admin-nav-item" data-section="live-rides" type="button">Live Rides</button>
-                <button class="admin-nav-item" data-section="safety" type="button">Safety <span id="admin-safety-nav-badge" class="admin-nav-badge d-none">0</span></button>
-                <button class="admin-nav-item" data-section="ride-history" type="button">Ride History</button>
-                <button class="admin-nav-item" data-section="passengers" type="button">Passengers</button>
-                <button class="admin-nav-item" data-section="analytics" type="button">Analytics</button>
-                <button class="admin-nav-item" data-section="audit-log" type="button">Audit Log</button>
-            </nav>
+        <div class="page-main d-flex flex-row flex-fill">
+            <!-- Sidebar Navigation -->
+            <aside id="admin-sidebar" class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end">
+                <div class="container-fluid px-2">
+                    <div class="navbar-collapse collapse show" id="sidebar-menu">
+                        <ul class="navbar-nav pt-lg-3 w-100 gap-1">
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link active w-100 text-start" data-section="dashboard" type="button">
+                                    <i class="ti ti-layout-dashboard me-2"></i>
+                                    <span class="nav-link-title">Dashboard</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="drivers" type="button">
+                                    <i class="ti ti-users me-2"></i>
+                                    <span class="nav-link-title">Drivers</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 d-flex align-items-center justify-content-between" data-section="payments" type="button">
+                                    <span>
+                                        <i class="ti ti-currency-rupee me-2"></i>
+                                        <span class="nav-link-title">Payments</span>
+                                    </span>
+                                    <span id="admin-payments-nav-badge" class="badge bg-red text-white d-none">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="live-rides" type="button">
+                                    <i class="ti ti-car-side me-2"></i>
+                                    <span class="nav-link-title">Live Rides</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 d-flex align-items-center justify-content-between" data-section="safety" type="button">
+                                    <span>
+                                        <i class="ti ti-shield-alert me-2"></i>
+                                        <span class="nav-link-title">Safety</span>
+                                    </span>
+                                    <span id="admin-safety-nav-badge" class="badge bg-red text-white d-none">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="ride-history" type="button">
+                                    <i class="ti ti-history me-2"></i>
+                                    <span class="nav-link-title">Ride History</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="passengers" type="button">
+                                    <i class="ti ti-user-check me-2"></i>
+                                    <span class="nav-link-title">Passengers</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="analytics" type="button">
+                                    <i class="ti ti-chart-bar me-2"></i>
+                                    <span class="nav-link-title">Analytics</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="audit-log" type="button">
+                                    <i class="ti ti-file-text me-2"></i>
+                                    <span class="nav-link-title">Audit Log</span>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </aside>
 
-            <main class="admin-content">
+            <!-- Main Body Content -->
+            <main class="admin-content page-wrapper p-3 p-md-4">
+                <div class="container-fluid">
 
-                <!-- Dashboard -->
-                <section id="section-dashboard" class="admin-section">
-                    <h2 class="admin-section-title">Dashboard</h2>
-                    <div id="dashboard-greeting" class="admin-greeting"></div>
-                    <div id="dashboard-kpis" class="admin-kpi-strip"></div>
-                    <div id="dashboard-cards" class="admin-card-grid"></div>
-                </section>
+                    <!-- Dashboard -->
+                    <section id="section-dashboard" class="admin-section">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Overview</div>
+                                    <h2 class="page-title h2 fw-bold">Dashboard</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="dashboard-greeting" class="mb-3"></div>
+                        <div id="dashboard-kpis" class="row row-cards mb-4"></div>
+                        <div id="dashboard-cards" class="row row-cards"></div>
+                    </section>
 
-                <!-- Drivers -->
-                <section id="section-drivers" class="admin-section d-none">
-                    <div class="admin-section-header">
-                        <h2 class="admin-section-title">Drivers</h2>
-                        <div class="admin-filters">
-                            <button type="button" id="drivers-pending-chip" class="admin-quick-chip" title="Show only drivers waiting for approval">
-                                &#128276; New registrations waiting for approval
+                    <!-- Drivers -->
+                    <section id="section-drivers" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Management</div>
+                                    <h2 class="page-title h2 fw-bold">Drivers</h2>
+                                </div>
+                                <div class="col-auto ms-auto d-flex flex-wrap gap-2">
+                                    <button type="button" id="drivers-pending-chip" class="btn btn-warning btn-sm d-flex align-items-center gap-1" title="Show only drivers waiting for approval">
+                                        <i class="ti ti-bell"></i>
+                                        <span>New registrations waiting approval</span>
+                                    </button>
+                                    <select id="driver-status-filter" class="form-select form-select-sm w-auto">
+                                        <option value="">All statuses</option>
+                                        <option value="pending_review">Pending approval</option>
+                                        <option value="approved">Approved</option>
+                                        <option value="rejected">Rejected</option>
+                                        <option value="suspended">Suspended</option>
+                                        <option value="blocked">Blocked</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="drivers-table-wrap" class="card shadow-xs border-0"></div>
+                    </section>
+
+                    <!-- Live rides -->
+                    <section id="section-live-rides" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Real-Time</div>
+                                    <h2 class="page-title h2 fw-bold d-flex align-items-center gap-2">
+                                        <span>Live Rides</span>
+                                        <span class="badge bg-green-lt text-green small d-inline-flex align-items-center gap-1" title="Auto-refreshes every 8s">
+                                            <span class="status-dot status-dot-animated bg-green"></span> Live
+                                        </span>
+                                    </h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="live-rides-list" class="row row-cards"></div>
+                    </section>
+
+                    <!-- Safety -->
+                    <section id="section-safety" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Incidents &amp; Alerts</div>
+                                    <h2 class="page-title h2 fw-bold d-flex align-items-center gap-2">
+                                        <span>Safety Center</span>
+                                        <span class="badge bg-red-lt text-red small d-inline-flex align-items-center gap-1" title="Auto-refreshes">
+                                            <span class="status-dot status-dot-animated bg-red"></span> Live
+                                        </span>
+                                    </h2>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mb-3 border-0 shadow-xs">
+                            <div class="card-header p-2">
+                                <ul class="nav nav-tabs card-header-tabs m-0">
+                                    <li class="nav-item">
+                                        <button class="admin-safety-tab nav-link active" data-safety-tab="sos" type="button">
+                                            <i class="ti ti-alert-triangle me-1 text-danger"></i> SOS Alerts
+                                        </button>
+                                    </li>
+                                    <li class="nav-item">
+                                        <button class="admin-safety-tab nav-link" data-safety-tab="reports" type="button">
+                                            <i class="ti ti-report me-1 text-warning"></i> Safety Reports
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div class="card-body p-3">
+                                <div id="safety-sos-panel" class="mb-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <label class="form-label mb-0 small text-secondary">Filter SOS Status:</label>
+                                        <select id="safety-sos-status-filter" class="form-select form-select-sm w-auto">
+                                            <option value="open" selected>Open</option>
+                                            <option value="resolved">Resolved</option>
+                                            <option value="all">All</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="safety-sos-list" class="row row-cards"></div>
+
+                                <div id="safety-reports-panel" class="mb-3 d-none">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <label class="form-label mb-0 small text-secondary">Filter Reports Status:</label>
+                                        <select id="safety-reports-status-filter" class="form-select form-select-sm w-auto">
+                                            <option value="open" selected>Open</option>
+                                            <option value="resolved">Resolved</option>
+                                            <option value="all">All</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="safety-reports-list" class="row row-cards d-none"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Ride history -->
+                    <section id="section-ride-history" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Records</div>
+                                    <h2 class="page-title h2 fw-bold">Ride History</h2>
+                                </div>
+                                <div class="col-auto ms-auto d-flex flex-wrap gap-2 align-items-center">
+                                    <select id="history-status-filter" class="form-select form-select-sm w-auto">
+                                        <option value="">All statuses</option>
+                                        <option value="completed">Completed</option>
+                                        <option value="cancelled_by_passenger">Cancelled by passenger</option>
+                                        <option value="cancelled_by_driver">Cancelled by driver</option>
+                                    </select>
+                                    <select id="history-vehicle-filter" class="form-select form-select-sm w-auto">
+                                        <option value="">All vehicles</option>
+                                        <option value="bike">Bike / Scooty</option>
+                                        <option value="auto">Auto</option>
+                                    </select>
+                                    <select id="history-feedback-filter" class="form-select form-select-sm w-auto">
+                                        <option value="">All feedback</option>
+                                        <option value="true">With feedback</option>
+                                        <option value="false">Without feedback</option>
+                                    </select>
+                                    <select id="history-month-filter" class="form-select form-select-sm w-auto" title="Filter to a specific month">
+                                        <option value="">Any month</option>
+                                    </select>
+                                    <input type="date" id="history-day-filter" class="form-control form-control-sm w-auto" title="Filter to a specific day">
+                                    <button type="button" id="history-clear-date" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1">
+                                        <i class="ti ti-x"></i> Clear date
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="history-table-wrap" class="card shadow-xs border-0"></div>
+                    </section>
+
+                    <!-- Passengers -->
+                    <section id="section-passengers" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Management</div>
+                                    <h2 class="page-title h2 fw-bold">Passengers</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="passengers-table-wrap" class="card shadow-xs border-0"></div>
+                    </section>
+
+                    <!-- Analytics -->
+                    <section id="section-analytics" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Reports</div>
+                                    <h2 class="page-title h2 fw-bold">Analytics</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card shadow-xs border-0">
+                            <div class="card-header">
+                                <h3 class="card-title fw-bold">
+                                    <i class="ti ti-chart-bar me-2 text-primary"></i>Rides &amp; Revenue (Last 14 Days)
+                                </h3>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="rides-daily-chart" height="90"></canvas>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Audit log -->
+                    <section id="section-audit-log" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Security</div>
+                                    <h2 class="page-title h2 fw-bold">Audit Log</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="audit-log-table-wrap" class="card shadow-xs border-0"></div>
+                    </section>
+
+                    <!-- Payments -->
+                    <section id="section-payments" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center gap-2">
+                                <div class="col">
+                                    <div class="page-pretitle">Finance</div>
+                                    <h2 class="page-title h2 fw-bold">Driver Weekly Payments</h2>
+                                </div>
+                                <div class="col-auto ms-auto d-flex flex-wrap gap-2 align-items-center">
+                                    <button id="admin-reset-all-payments-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" type="button">
+                                        <i class="ti ti-refresh"></i> Reset All Payments
+                                    </button>
+                                    <button id="admin-open-pause-modal-btn" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" type="button">
+                                        <i class="ti ti-player-pause"></i> Pause Settings
+                                    </button>
+                                    <button id="admin-open-manual-pay-btn" class="btn btn-primary btn-sm d-flex align-items-center gap-1" type="button">
+                                        <i class="ti ti-plus"></i> Record Payment Manually
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pause Status Banner -->
+                        <div id="admin-pause-status-strip" class="alert alert-info d-none d-flex justify-content-between align-items-center mb-3 shadow-xs border-info">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="ti ti-sun text-info" style="font-size: 1.5rem;"></i>
+                                <div>
+                                    <strong id="admin-pause-status-title">Weekly Payments Currently Paused</strong>
+                                    <div id="admin-pause-status-sub" class="small text-secondary">Range: --</div>
+                                </div>
+                            </div>
+                            <button id="admin-quick-end-pause-btn" class="btn btn-outline-danger btn-sm" type="button">
+                                End Pause Early
                             </button>
-                            <select id="driver-status-filter" class="form-select gy-input admin-filter-select">
-                                <option value="">All statuses</option>
-                                <option value="pending_review">Pending approval</option>
-                                <option value="approved">Approved</option>
-                                <option value="rejected">Rejected</option>
-                                <option value="suspended">Suspended</option>
-                                <option value="blocked">Blocked</option>
-                            </select>
                         </div>
-                    </div>
-                    <div id="drivers-table-wrap"></div>
-                </section>
 
-                <!-- Live rides -->
-                <section id="section-live-rides" class="admin-section d-none">
-                    <div class="admin-section-header">
-                        <h2 class="admin-section-title">Live Rides</h2>
-                        <span class="admin-live-dot" title="Auto-refreshes every 8s">&#9679; Live</span>
-                    </div>
-                    <div id="live-rides-list" class="admin-card-list"></div>
-                </section>
-
-                <!-- Safety -->
-                <section id="section-safety" class="admin-section d-none">
-                    <div class="admin-section-header">
-                        <h2 class="admin-section-title">Safety</h2>
-                        <span class="admin-live-dot" title="Auto-refreshes">&#9679; Live</span>
-                    </div>
-
-                    <div class="admin-safety-subnav">
-                        <button class="admin-safety-tab active" data-safety-tab="sos" type="button">SOS Alerts</button>
-                        <button class="admin-safety-tab" data-safety-tab="reports" type="button">Safety Reports</button>
-                    </div>
-
-                    <div id="safety-sos-panel" class="admin-filters mb-2">
-                        <select id="safety-sos-status-filter" class="form-select gy-input admin-filter-select">
-                            <option value="open" selected>Open</option>
-                            <option value="resolved">Resolved</option>
-                            <option value="all">All</option>
-                        </select>
-                    </div>
-                    <div id="safety-sos-list" class="admin-card-list"></div>
-
-                    <div id="safety-reports-panel" class="admin-filters mb-2 d-none">
-                        <select id="safety-reports-status-filter" class="form-select gy-input admin-filter-select">
-                            <option value="open" selected>Open</option>
-                            <option value="resolved">Resolved</option>
-                            <option value="all">All</option>
-                        </select>
-                    </div>
-                    <div id="safety-reports-list" class="admin-card-list d-none"></div>
-                </section>
-
-                <!-- Ride history -->
-                <section id="section-ride-history" class="admin-section d-none">
-                    <div class="admin-section-header">
-                        <h2 class="admin-section-title">Ride History</h2>
-                        <div class="admin-filters">
-                            <select id="history-status-filter" class="form-select gy-input admin-filter-select">
-                                <option value="">All statuses</option>
-                                <option value="completed">Completed</option>
-                                <option value="cancelled_by_passenger">Cancelled by passenger</option>
-                                <option value="cancelled_by_driver">Cancelled by driver</option>
-                            </select>
-                            <select id="history-vehicle-filter" class="form-select gy-input admin-filter-select">
-                                <option value="">All vehicles</option>
-                                <option value="bike">Bike / Scooty</option>
-                                <option value="auto">Auto</option>
-                            </select>
-                            <select id="history-feedback-filter" class="form-select gy-input admin-filter-select">
-                                <option value="">All feedback</option>
-                                <option value="true">With feedback</option>
-                                <option value="false">Without feedback</option>
-                            </select>
-                            <select id="history-month-filter" class="form-select gy-input admin-filter-select" title="Filter to a specific month">
-                                <option value="">Any month</option>
-                            </select>
-                            <input type="date" id="history-day-filter" class="form-control gy-input admin-filter-select" title="Filter to a specific day">
-                            <button type="button" id="history-clear-date" class="admin-btn-outline">Clear date</button>
+                        <div class="card mb-3 border-0 shadow-xs">
+                            <div class="card-body p-3">
+                                <div class="row g-2 align-items-center">
+                                    <div class="col-auto">
+                                        <select id="admin-payment-status-filter" class="form-select form-select-sm w-auto">
+                                            <option value="">All statuses</option>
+                                            <option value="submitted" selected>Pending verification</option>
+                                            <option value="approved">Approved</option>
+                                            <option value="declined">Declined</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <div class="input-icon">
+                                            <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                                            <input type="text" id="admin-payment-search" class="form-control form-control-sm" placeholder="Search driver name/phone...">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                    <div id="history-table-wrap"></div>
-                </section>
 
-                <!-- Passengers -->
-                <section id="section-passengers" class="admin-section d-none">
-                    <div class="admin-section-header">
-                        <h2 class="admin-section-title">Passengers</h2>
-                    </div>
-                    <div id="passengers-table-wrap"></div>
-                </section>
+                        <div class="row row-cards mb-3">
+                            <div class="col-sm-4">
+                                <div class="card card-sm border-0 shadow-xs">
+                                    <div class="card-body">
+                                        <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <span class="bg-warning-lt text-warning avatar">
+                                                    <i class="ti ti-clock"></i>
+                                                </span>
+                                            </div>
+                                            <div class="col">
+                                                <div id="admin-kpi-pending-count" class="h1 mb-0 font-weight-bold text-warning">0</div>
+                                                <div class="text-secondary small">Pending Verification</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="card card-sm border-0 shadow-xs">
+                                    <div class="card-body">
+                                        <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <span class="bg-success-lt text-success avatar">
+                                                    <i class="ti ti-circle-check"></i>
+                                                </span>
+                                            </div>
+                                            <div class="col">
+                                                <div id="admin-kpi-approved-count" class="h1 mb-0 font-weight-bold text-success">0</div>
+                                                <div class="text-secondary small">Approved Payments</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="card card-sm border-0 shadow-xs">
+                                    <div class="card-body">
+                                        <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <span class="bg-danger-lt text-danger avatar">
+                                                    <i class="ti ti-circle-x"></i>
+                                                </span>
+                                            </div>
+                                            <div class="col">
+                                                <div id="admin-kpi-declined-count" class="h1 mb-0 font-weight-bold text-danger">0</div>
+                                                <div class="text-secondary small">Declined Submissions</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-                <!-- Analytics -->
-                <section id="section-analytics" class="admin-section d-none">
-                    <h2 class="admin-section-title">Analytics</h2>
-                    <div class="admin-chart-card">
-                        <h3 class="admin-chart-title">Rides &amp; revenue, last 14 days</h3>
-                        <canvas id="rides-daily-chart" height="90"></canvas>
-                    </div>
-                </section>
+                        <div id="admin-payments-table-container" class="card shadow-xs border-0">
+                            <p class="text-muted text-center py-4 my-0">Loading payment submissions...</p>
+                        </div>
+                    </section>
 
-                <!-- Audit log -->
-                <section id="section-audit-log" class="admin-section d-none">
-                    <h2 class="admin-section-title">Audit Log</h2>
-                    <div id="audit-log-table-wrap"></div>
-                </section>
-
+                </div>
             </main>
-
-                <!-- Payments -->
-                <section id="section-payments" class="admin-section d-none">
-                    <div class="admin-section-header flex-wrap gap-2">
-                        <h2 class="admin-section-title">Driver Weekly Payments</h2>
-                        <div class="d-flex gap-2 align-items-center ms-auto">
-                            <button id="admin-reset-all-payments-btn" class="gy-btn gy-btn-danger-outline btn-sm" type="button">
-                                🔄 Reset All Payments
-                            </button>
-                            <button id="admin-open-pause-modal-btn" class="gy-btn gy-btn-outline-dark btn-sm" type="button">
-                                🌴 Pause Settings
-                            </button>
-                            <button id="admin-open-manual-pay-btn" class="gy-btn gy-btn-primary btn-sm" type="button">
-                                ➕ Record Payment Manually
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Pause Status Banner -->
-                    <div id="admin-pause-status-strip" class="alert alert-info d-none d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <strong id="admin-pause-status-title">🌴 Weekly Payments Currently Paused</strong>
-                            <div id="admin-pause-status-sub" class="small text-muted">Range: --</div>
-                        </div>
-                        <button id="admin-quick-end-pause-btn" class="gy-btn gy-btn-danger-outline btn-sm" type="button">
-                            End Pause Early
-                        </button>
-                    </div>
-
-                    <div class="admin-filters mb-3">
-                        <select id="admin-payment-status-filter" class="form-select gy-input admin-filter-select">
-                            <option value="">All statuses</option>
-                            <option value="submitted" selected>Pending verification</option>
-                            <option value="approved">Approved</option>
-                            <option value="declined">Declined</option>
-                        </select>
-                        <input type="text" id="admin-payment-search" class="form-control gy-input" placeholder="Search driver name/phone..." style="max-width: 240px;">
-                    </div>
-
-                    <div class="admin-payments-kpi">
-                        <div class="admin-payments-kpi-card">
-                            <div id="admin-kpi-pending-count" class="admin-payments-kpi-val text-warning">0</div>
-                            <div class="admin-payments-kpi-label">Pending Verification</div>
-                        </div>
-                        <div class="admin-payments-kpi-card">
-                            <div id="admin-kpi-approved-count" class="admin-payments-kpi-val text-success">0</div>
-                            <div class="admin-payments-kpi-label">Approved Payments</div>
-                        </div>
-                        <div class="admin-payments-kpi-card">
-                            <div id="admin-kpi-declined-count" class="admin-payments-kpi-val text-danger">0</div>
-                            <div class="admin-payments-kpi-label">Declined Submissions</div>
-                        </div>
-                    </div>
-
-                    <div id="admin-payments-table-container">
-                        <p class="admin-empty-row">Loading payment submissions...</p>
-                    </div>
-                </section>
+        </div>
+    </div>
 
     <!-- Modal: Record Payment Manually -->
-    <div id="admin-manual-payment-modal" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="manual-pay-modal-title">
-        <div class="qr-modal-card text-start" style="max-width: 480px;">
-            <button id="manual-pay-close-btn" type="button" class="modal-close-btn" aria-label="Close">&times;</button>
-            <h4 id="manual-pay-modal-title" class="fw-bold mb-3">Record Offline Payment</h4>
-
-            <form id="admin-manual-pay-form">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Select Driver <span class="text-danger">*</span></label>
-                    <select id="manual-pay-driver-select" class="form-select gy-input" required>
-                        <option value="">Loading drivers list...</option>
-                    </select>
+    <div id="admin-manual-payment-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="manual-pay-modal-title" style="background: rgba(0, 0, 0, 0.5);">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 id="manual-pay-modal-title" class="modal-title fw-bold">
+                        <i class="ti ti-cash me-2 text-primary"></i>Record Offline Payment
+                    </h5>
+                    <button id="manual-pay-close-btn" type="button" class="btn-close" aria-label="Close"></button>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Payment Week ID</label>
-                    <input type="text" id="manual-pay-week-input" class="form-control gy-input" placeholder="e.g. 2026-W34 (leave blank for current week)">
-                </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label class="form-label fw-bold">Amount (₹)</label>
-                        <input type="number" id="manual-pay-amount-input" class="form-control gy-input" value="140" required min="1">
+                <form id="admin-manual-pay-form">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Select Driver</label>
+                            <select id="manual-pay-driver-select" class="form-select" required>
+                                <option value="">Loading drivers list...</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Payment Week ID</label>
+                            <input type="text" id="manual-pay-week-input" class="form-control" placeholder="e.g. 2026-W34 (leave blank for current week)">
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label required fw-bold">Amount (₹)</label>
+                                <input type="number" id="manual-pay-amount-input" class="form-control" value="140" required min="1">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label fw-bold">Method</label>
+                                <select id="manual-pay-method-select" class="form-select">
+                                    <option value="cash" selected>Cash / Offline</option>
+                                    <option value="upi">UPI / Online</option>
+                                    <option value="bank_transfer">Bank Transfer</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Payment Reference / Note</label>
+                            <input type="text" id="manual-pay-ref-input" class="form-control" value="Collected offline in cash" placeholder="Optional notes or receipt no.">
+                        </div>
                     </div>
-                    <div class="col-6 mb-3">
-                        <label class="form-label fw-bold">Method</label>
-                        <select id="manual-pay-method-select" class="form-select gy-input">
-                            <option value="cash" selected>Cash / Offline</option>
-                            <option value="upi">UPI / Online</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                        </select>
+                    <div class="modal-footer d-flex gap-2">
+                        <button type="button" id="manual-pay-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
+                        <button type="submit" id="manual-pay-submit-btn" class="btn btn-primary flex-fill">Record &amp; Approve Payment</button>
                     </div>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-bold">Payment Reference / Note</label>
-                    <input type="text" id="manual-pay-ref-input" class="form-control gy-input" value="Collected offline in cash" placeholder="Optional notes or receipt no.">
-                </div>
-
-                <div class="d-flex gap-2">
-                    <button type="submit" id="manual-pay-submit-btn" class="gy-btn gy-btn-primary w-100 py-2">Record & Approve Payment</button>
-                    <button type="button" id="manual-pay-cancel-btn" class="gy-btn gy-btn-outline-dark py-2">Cancel</button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
 
     <!-- Modal: Payment Pause Settings -->
-    <div id="admin-pause-modal" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="pause-modal-title">
-        <div class="qr-modal-card text-start" style="max-width: 480px;">
-            <button id="pause-modal-close-btn" type="button" class="modal-close-btn" aria-label="Close">&times;</button>
-            <h4 id="pause-modal-title" class="fw-bold mb-3">🌴 Payment Pause Settings</h4>
-
-            <form id="admin-pause-form">
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" id="pause-enable-switch">
-                    <label class="form-check-label fw-bold" for="pause-enable-switch">Enable Driver Payment Pause</label>
+    <div id="admin-pause-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="pause-modal-title" style="background: rgba(0, 0, 0, 0.5);">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 id="pause-modal-title" class="modal-title fw-bold">
+                        <i class="ti ti-player-pause me-2 text-primary"></i>Payment Pause Settings
+                    </h5>
+                    <button id="pause-modal-close-btn" type="button" class="btn-close" aria-label="Close"></button>
                 </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label class="form-label fw-bold">Start Date</label>
-                        <input type="date" id="pause-start-date" class="form-control gy-input">
+                <form id="admin-pause-form">
+                    <div class="modal-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="pause-enable-switch">
+                            <label class="form-check-label fw-bold" for="pause-enable-switch">Enable Driver Payment Pause</label>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label fw-bold">Start Date</label>
+                                <input type="date" id="pause-start-date" class="form-control">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label fw-bold">End Date</label>
+                                <input type="date" id="pause-end-date" class="form-control">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Message Shown to Drivers</label>
+                            <textarea id="pause-message-input" class="form-control" rows="3" placeholder="Weekly payments are currently paused. Chill and relax — no payment is required during this period."></textarea>
+                        </div>
                     </div>
-                    <div class="col-6 mb-3">
-                        <label class="form-label fw-bold">End Date</label>
-                        <input type="date" id="pause-end-date" class="form-control gy-input">
+                    <div class="modal-footer d-flex flex-column gap-2">
+                        <button type="submit" id="pause-save-btn" class="btn btn-primary w-100">Save Pause Settings</button>
+                        <button type="button" id="pause-clear-btn" class="btn btn-outline-danger w-100">End / Clear Pause</button>
                     </div>
-                </div>
-                <div class="mb-4">
-                    <label class="form-label fw-bold">Message Shown to Drivers</label>
-                    <textarea id="pause-message-input" class="form-control gy-input" rows="3" placeholder="Weekly payments are currently paused. Chill and relax — no payment is required during this period."></textarea>
-                </div>
-
-                <div class="d-flex flex-column gap-2">
-                    <button type="submit" id="pause-save-btn" class="gy-btn gy-btn-primary w-100 py-2">Save Pause Settings</button>
-                    <button type="button" id="pause-clear-btn" class="gy-btn gy-btn-danger-outline w-100 py-2">End / Clear Pause</button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
 
-            <!-- Live feed side panel -->
-            <aside id="admin-feed-panel" class="admin-feed-panel">
-                <div class="admin-feed-header">
-                    <span>Live Activity</span>
-                    <button id="admin-feed-close" class="admin-icon-btn" type="button" aria-label="Close">&times;</button>
-                </div>
-                <div id="admin-feed-list" class="admin-feed-list">
-                    <p class="admin-empty-row">Watching for activity...</p>
-                </div>
-            </aside>
+    <!-- Live feed side panel -->
+    <aside id="admin-feed-panel" class="admin-feed-panel offcanvas offcanvas-end border-start shadow-lg">
+        <div class="offcanvas-header border-bottom p-3">
+            <h5 class="offcanvas-title fw-bold d-flex align-items-center me-auto">
+                <i class="ti ti-activity me-2 text-primary"></i>Live Activity
+            </h5>
+            <button id="admin-feed-close" class="btn-close text-reset" type="button" aria-label="Close"></button>
         </div>
-    </div>
+        <div id="admin-feed-list" class="offcanvas-body p-3">
+            <p class="text-muted text-center py-4 my-0">Watching for activity...</p>
+        </div>
+    </aside>
 
     <!-- Reusable detail/edit drawer -->
     <div id="admin-drawer-root" class="admin-drawer-root d-none">
         <div id="admin-drawer-backdrop" class="admin-drawer-backdrop"></div>
-        <div id="admin-drawer-panel" class="admin-drawer-panel">
-            <div class="admin-drawer-header">
-                <span id="admin-drawer-title"></span>
-                <button id="admin-drawer-close" class="admin-icon-btn" type="button" aria-label="Close">&times;</button>
+        <div id="admin-drawer-panel" class="admin-drawer-panel shadow-lg border-start">
+            <div class="admin-drawer-header border-bottom p-3 d-flex align-items-center justify-content-between">
+                <span id="admin-drawer-title" class="fw-bold h4 mb-0"></span>
+                <button id="admin-drawer-close" class="btn-close text-reset" type="button" aria-label="Close"></button>
             </div>
-            <div id="admin-drawer-body" class="admin-drawer-body"></div>
-            <div id="admin-drawer-footer" class="admin-drawer-footer"></div>
+            <div id="admin-drawer-body" class="admin-drawer-body p-3"></div>
+            <div id="admin-drawer-footer" class="admin-drawer-footer border-top p-3 d-flex justify-content-end gap-2"></div>
         </div>
     </div>
 
     <!-- Toast notifications -->
-    <div id="admin-toast-container" class="admin-toast-container"></div>
+    <div id="admin-toast-container" class="admin-toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
     <script type="module" src="/admin/js/admin-app.js"></script>
 </body>
 </html>

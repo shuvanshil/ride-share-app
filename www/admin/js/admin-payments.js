@@ -38,7 +38,7 @@ export async function loadAdminPayments() {
     } catch (error) {
         console.error("Error loading admin payments:", error);
         if (container) {
-            container.innerHTML = `<p class="admin-empty-row text-danger">Error loading payments: ${error.message}</p>`;
+            container.innerHTML = `<p class="text-danger text-center py-4 my-0">Error loading payments: ${error.message}</p>`;
         }
     }
 }
@@ -52,7 +52,7 @@ function renderAdminPauseStrip(pauseConfig) {
     if (pauseConfig && pauseConfig.isPaused) {
         const start = pauseConfig.startDate || 'Start';
         const end = pauseConfig.endDate || 'Ongoing';
-        if (titleEl) titleEl.innerText = '🌴 Weekly Driver Payments Currently PAUSED';
+        if (titleEl) titleEl.innerText = 'Weekly Driver Payments Currently PAUSED';
         if (subEl) subEl.innerText = `Active Date Range: ${start} → ${end} | Drivers are not asked to pay during this period.`;
         strip.classList.remove('d-none');
     } else {
@@ -82,7 +82,7 @@ export function renderPaymentsTable() {
     });
 
     if (!filtered.length) {
-        container.innerHTML = '<p class="admin-empty-row">No payment submissions found matching the criteria.</p>';
+        container.innerHTML = '<p class="text-muted text-center py-4 my-0">No payment submissions found matching the criteria.</p>';
         return;
     }
 
@@ -95,53 +95,53 @@ export function renderPaymentsTable() {
             day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
         }) : '';
 
-        let statusBadge = `<span class="payment-status-badge due">${(p.status || '').toUpperCase()}</span>`;
+        let statusBadge = `<span class="badge bg-secondary-lt">${(p.status || '').toUpperCase()}</span>`;
         if (p.status === 'submitted' || p.status === 'under_review') {
-            statusBadge = '<span class="payment-status-badge submitted">UNDER REVIEW</span>';
+            statusBadge = '<span class="badge bg-warning-lt text-warning"><i class="ti ti-clock me-1"></i>UNDER REVIEW</span>';
         } else if (p.status === 'approved' || p.status === 'verified') {
-            statusBadge = '<span class="payment-status-badge approved">VERIFIED</span>';
+            statusBadge = '<span class="badge bg-success-lt text-success"><i class="ti ti-circle-check me-1"></i>VERIFIED</span>';
         } else if (p.status === 'declined') {
-            statusBadge = '<span class="payment-status-badge declined">DECLINED</span>';
+            statusBadge = '<span class="badge bg-danger-lt text-danger"><i class="ti ti-circle-x me-1"></i>DECLINED</span>';
         }
 
         const manualBadge = p.isManualRecord
-            ? `<span class="badge bg-secondary text-white ms-1" style="font-size: 0.7rem;">OFFLINE / CASH</span>`
+            ? `<span class="badge bg-purple-lt text-purple ms-1">OFFLINE / CASH</span>`
             : '';
 
         let actionsHtml = '';
         if (p.status === 'submitted') {
             actionsHtml = `
                 <div class="d-flex gap-2">
-                    <button class="gy-btn gy-btn-primary btn-sm approve-pay-btn" data-id="${p.paymentId}" type="button">
-                        Approve
+                    <button class="btn btn-success btn-sm approve-pay-btn d-inline-flex align-items-center gap-1" data-id="${p.paymentId}" type="button">
+                        <i class="ti ti-check"></i> Approve
                     </button>
-                    <button class="gy-btn gy-btn-danger-outline btn-sm decline-pay-btn" data-id="${p.paymentId}" type="button">
-                        Decline
+                    <button class="btn btn-outline-danger btn-sm decline-pay-btn d-inline-flex align-items-center gap-1" data-id="${p.paymentId}" type="button">
+                        <i class="ti ti-x"></i> Decline
                     </button>
                 </div>
             `;
         } else if (p.status === 'approved') {
-            actionsHtml = `<small class="text-success fw-bold">Approved by ${p.verifiedByAdminEmail || 'Admin'}<br>${verDate}</small>`;
+            actionsHtml = `<small class="text-success fw-bold"><i class="ti ti-check me-1"></i>Approved by ${p.verifiedByAdminEmail || 'Admin'}<br>${verDate}</small>`;
         } else if (p.status === 'declined') {
-            actionsHtml = `<small class="text-danger fw-bold">Declined by ${p.verifiedByAdminEmail || 'Admin'}<br>${p.declineReason || ''}</small>`;
+            actionsHtml = `<small class="text-danger fw-bold"><i class="ti ti-x me-1"></i>Declined by ${p.verifiedByAdminEmail || 'Admin'}<br>${p.declineReason || ''}</small>`;
         }
 
         const methodLabel = (p.paymentMethod || 'upi').toUpperCase();
-        const refNote = p.paymentReference ? `<br><small class="text-muted">Ref: ${p.paymentReference}</small>` : '';
+        const refNote = p.paymentReference ? `<br><small class="text-secondary">Ref: ${p.paymentReference}</small>` : '';
 
         return `
             <tr>
                 <td>
                     <strong>${p.driverName || 'Driver'}</strong>${manualBadge}<br>
-                    <small class="text-muted">${p.driverPhone || p.driverId || ''}</small>
+                    <small class="text-secondary">${p.driverPhone || p.driverId || ''}</small>
                 </td>
                 <td>
                     <strong>${p.weekLabel || p.weekId}</strong><br>
-                    <small class="text-muted">Week ID: ${p.weekId}</small>
+                    <small class="text-secondary">Week ID: ${p.weekId}</small>
                 </td>
                 <td>
                     <strong class="text-success">₹${p.amount || 140}</strong><br>
-                    <small class="text-muted">${methodLabel}</small>${refNote}
+                    <small class="text-secondary">${methodLabel}</small>${refNote}
                 </td>
                 <td>${subDate}</td>
                 <td>${statusBadge}</td>
@@ -152,12 +152,12 @@ export function renderPaymentsTable() {
 
     container.innerHTML = `
         <div class="table-responsive">
-            <table class="table admin-table align-middle">
+            <table class="table table-vcenter card-table table-striped table-hover m-0">
                 <thead>
                     <tr>
                         <th>Driver Details</th>
                         <th>Payment Week</th>
-                        <th>Amount & Method</th>
+                        <th>Amount &amp; Method</th>
                         <th>Submitted At</th>
                         <th>Status</th>
                         <th>Actions / Verification</th>
