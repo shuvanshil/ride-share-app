@@ -581,13 +581,26 @@ def update_passenger(
 @router.get("/rides/live")
 def list_live_rides(admin_user: dict[str, Any] = Depends(require_admin_or_super_admin)) -> dict[str, Any]:
     db = _db()
-    query = (
-        db.collection("rides")
-        .where("status", "in", ACTIVE_RIDE_STATUSES)
-        .order_by("updatedAt", direction=fb_firestore.Query.DESCENDING)
-        .limit(100)
-    )
-    docs = [_doc_dict(d) for d in _stream(query)]
+    try:
+        query = (
+            db.collection("rides")
+            .where("status", "in", ACTIVE_RIDE_STATUSES)
+            .order_by("updatedAt", direction=fb_firestore.Query.DESCENDING)
+            .limit(100)
+        )
+        docs = [_doc_dict(d) for d in _stream(query)]
+    except ApiError as err:
+        if err.status_code == 503:
+            query = (
+                db.collection("rides")
+                .where("status", "in", ACTIVE_RIDE_STATUSES)
+                .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+                .limit(100)
+            )
+            docs = [_doc_dict(d) for d in _stream(query)]
+            docs.sort(key=lambda r: str(r.get("updatedAt") or r.get("createdAt") or ""), reverse=True)
+        else:
+            raise err
     return {"ok": True, "rides": _backfill_driver_names(docs)}
 
 
