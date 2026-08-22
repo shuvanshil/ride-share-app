@@ -77,7 +77,9 @@ body {
     font-weight: 600;
 }
 
-.admin-content {
+/* Fix Tabler page-wrapper margin-left so there is no empty gap between sidebar and content */
+.admin-content.page-wrapper {
+    margin-left: 0 !important;
     flex: 1;
     overflow-x: hidden;
 }

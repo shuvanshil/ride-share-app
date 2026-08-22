@@ -238,7 +238,7 @@ export async function refreshSafetyBadge() {
     try {
         const overview = await adminGet("/overview", {}, { cacheable: true });
         const count = overview?.safety?.openSosAlerts || 0;
-        badge.innerText = count;
+        badge.innerText = `(${count})`;
         badge.classList.toggle("d-none", count === 0);
     } catch {
         badge.classList.add("d-none");
@@ -258,7 +258,7 @@ export function startSosRealtimeAlerts() {
         (snap) => {
             const badge = $("admin-safety-nav-badge");
             if (badge) {
-                badge.innerText = snap.size;
+                badge.innerText = `(${snap.size})`;
                 badge.classList.toggle("d-none", snap.size === 0);
             }
             if (!firstSosSnapshot) {
