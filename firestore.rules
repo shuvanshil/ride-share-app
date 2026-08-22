@@ -12,7 +12,7 @@ service cloud.firestore {
     // tracking); every admin write still goes through the FastAPI Admin
     // SDK in www/api/routers/admin.py, which this rule has no bearing on.
     function isAdmin() {
-      return signedIn() && request.auth.token.admin == true;
+      return signedIn() && request.auth.token.get('admin', false) == true;
     }
 
     function userProfile() {

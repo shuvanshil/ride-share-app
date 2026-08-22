@@ -361,14 +361,33 @@ async function loginWithPassword() {
     try {
         const email = await getLoginEmail(identifier);
         const result = await signInWithEmailAndPassword(auth, email, password);
-        const userDocSnap = await getDoc(doc(db, "users", result.user.uid));
+        
+        let userDocSnap;
+        try {
+            userDocSnap = await getDoc(doc(db, "users", result.user.uid));
+        } catch (docErr) {
+            console.warn("Direct Firestore profile lookup failed, attempting API fallback...", docErr);
+        }
 
-        if (!userDocSnap.exists()) {
+        let profileData = userDocSnap?.exists() ? userDocSnap.data() : null;
+
+        if (!profileData) {
+            const token = await result.user.getIdToken();
+            const res = await fetch("/api/account/profile", {
+                headers: { "Authorization": `Bearer ${token}` }
+            }).catch(() => null);
+            if (res && res.ok) {
+                const data = await res.json();
+                profileData = data.profile;
+            }
+        }
+
+        if (!profileData) {
             await signOut(auth);
             throw new Error("Your login worked, but no LiphtUp profile was found. Please contact support.");
         }
 
-        routeToHome(userDocSnap.data());
+        routeToHome(profileData);
     } catch (error) {
         console.error("Password login failed:", error);
         const message = getAuthErrorMessage(error, error.message || "Could not login. Please try again.");
