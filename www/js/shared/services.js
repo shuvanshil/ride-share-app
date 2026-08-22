@@ -697,6 +697,16 @@ window.addEventListener("ride-status-updated", (e) => {
 window.addEventListener("driver-assigned", () => {
     document.getElementById("services-map-card")?.classList.add("is-expanded");
 });
+window.addEventListener("fare-quote-updated", () => {
+    // Automatically expand map height when destination is calculated and route is presented
+    document.getElementById("services-map-card")?.classList.add("is-expanded");
+});
+window.addEventListener("destination-selected", () => {
+    document.getElementById("services-map-card")?.classList.add("is-expanded");
+});
+window.addEventListener("fare-quote-reset", () => {
+    document.getElementById("services-map-card")?.classList.remove("is-expanded");
+});
 window.addEventListener("ride-completed-clear-map", () => {
     document.getElementById("services-map-card")?.classList.remove("is-expanded");
 });

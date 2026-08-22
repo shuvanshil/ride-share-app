@@ -4109,7 +4109,7 @@ body.profile-editor-open {
 
 .services-app-head {
     min-height: 64px;
-    padding: calc(18px + env(safe-area-inset-top)) 16px 14px;
+    padding: calc(14px + env(safe-area-inset-top)) 8px 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -4354,6 +4354,7 @@ body.profile-editor-open {
 }
 
 .passenger-nav-toggle-btn {
+    display: none !important;
     position: absolute;
     /* Sits below Google Maps' native expand/fullscreen control (top-right)
        so the two buttons never overlap. */
