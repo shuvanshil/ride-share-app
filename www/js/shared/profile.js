@@ -69,7 +69,16 @@ function getInitials(name) {
         .map((part) => part[0]?.toUpperCase() || "")
         .join("") || "G";
 }
-function renderAvatar(container, name, photoUrl) {
+function getDefaultAvatarUrl(genderValue) {
+    const gender = String(genderValue || "").trim().toLowerCase();
+    if (gender === 'female' || gender === 'woman' || gender === 'f') {
+        return "assets/icons/webicons/avatar-female.png";
+    }
+    return "assets/icons/webicons/avatar-male.png";
+}
+
+function renderAvatar(container, name, photoUrl, genderValue = "") {
+    if (!container) return;
     container.replaceChildren();
 
     let validUrl = "";
@@ -85,17 +94,16 @@ function renderAvatar(container, name, photoUrl) {
         }
     }
 
-    if (!validUrl) {
-        container.innerText = getInitials(name);
-        return;
-    }
+    const fallbackUrl = getDefaultAvatarUrl(genderValue);
+    const targetUrl = validUrl || fallbackUrl;
 
     const photo = document.createElement('img');
-    photo.src = validUrl;
+    photo.src = targetUrl;
     photo.alt = `${name || "LiphtUp user"} profile photo`;
     photo.addEventListener('error', () => {
-        container.replaceChildren();
-        container.innerText = getInitials(name);
+        if (photo.src !== fallbackUrl) {
+            photo.src = fallbackUrl;
+        }
     }, { once: true });
     container.appendChild(photo);
 }
@@ -107,7 +115,7 @@ function renderProfileSummary(profile = {}) {
     nameEl.innerText = displayName;
     phoneEl.innerText = phone;
     emailEl.innerText = profile.email || "";
-    renderAvatar(avatarEl, displayName, profile.profilePhotoUrl || "");
+    renderAvatar(avatarEl, displayName, profile.profilePhotoUrl || "", profile.gender || profile.sex || "");
 
     const isDriver = profile.role === "driver";
     const paymentsRow = document.getElementById('profile-menu-payments-row');

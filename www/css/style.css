@@ -132,7 +132,7 @@
     display: flex;
     flex-direction: column;
     animation: drawer-slide-in 0.3s ease-out;
-    padding-top: max(12px, env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top, 0px);
 }
 
 @keyframes drawer-slide-in {
@@ -141,7 +141,7 @@
 }
 
 .drawer-header {
-    padding: calc(20px + max(16px, env(safe-area-inset-top))) 20px 20px;
+    padding: 20px 20px 16px;
     border-bottom: 1px solid #f3f4f6;
     display: flex;
     justify-content: space-between;

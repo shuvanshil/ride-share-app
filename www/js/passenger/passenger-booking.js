@@ -105,6 +105,14 @@ function updateGreeting(name) {
     greetingEl.innerHTML = `${greeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
 }
 
+function getDefaultAvatarUrl(profile = {}) {
+    const gender = String(profile.gender || profile.sex || "").trim().toLowerCase();
+    if (gender === 'female' || gender === 'woman' || gender === 'f') {
+        return "assets/icons/webicons/avatar-female.png";
+    }
+    return "assets/icons/webicons/avatar-male.png";
+}
+
 function setupSideDrawer(profile) {
     const trigger = document.getElementById('profile-menu-trigger');
     const drawer = document.getElementById('side-drawer');
@@ -116,8 +124,8 @@ function setupSideDrawer(profile) {
 
     if (!trigger || !drawer) return;
 
-    // Update profile images: prioritize the custom profilePhotoUrl from Firestore,
-    // then fall back to standard Firebase auth fields.
+    // Update profile images: prioritize custom profilePhotoUrl from Firestore,
+    // otherwise fallback to gender-specific avatar placeholder.
     const rawPhotoUrl = profile.profilePhotoUrl || profile.photoURL || profile.avatarUrl || "";
     let validPhotoUrl = "";
     if (typeof rawPhotoUrl === 'string') {
@@ -132,27 +140,25 @@ function setupSideDrawer(profile) {
         }
     }
 
-    if (validPhotoUrl) {
-        if (headerImg) {
-            headerImg.src = validPhotoUrl;
-            headerImg.style.display = 'block';
-            if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'none';
-        }
-        if (drawerImg) {
-            drawerImg.src = validPhotoUrl;
-            drawerImg.style.display = 'block';
-            if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'none';
-        }
-    } else {
-        // Reset to placeholder if no photo is available
-        if (headerImg) {
-            headerImg.style.display = 'none';
-            if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'inline-block';
-        }
-        if (drawerImg) {
-            drawerImg.style.display = 'none';
-            if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'inline-block';
-        }
+    const fallbackUrl = getDefaultAvatarUrl(profile);
+    const finalPhotoUrl = validPhotoUrl || fallbackUrl;
+
+    if (headerImg) {
+        headerImg.src = finalPhotoUrl;
+        headerImg.style.display = 'block';
+        if (headerImg.nextElementSibling) headerImg.nextElementSibling.style.display = 'none';
+        headerImg.onerror = () => {
+            if (headerImg.src !== fallbackUrl) headerImg.src = fallbackUrl;
+        };
+    }
+
+    if (drawerImg) {
+        drawerImg.src = finalPhotoUrl;
+        drawerImg.style.display = 'block';
+        if (drawerImg.nextElementSibling) drawerImg.nextElementSibling.style.display = 'none';
+        drawerImg.onerror = () => {
+            if (drawerImg.src !== fallbackUrl) drawerImg.src = fallbackUrl;
+        };
     }
 
     if (drawerName) drawerName.textContent = profile.name || profile.displayName || "User";
