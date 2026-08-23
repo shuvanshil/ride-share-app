@@ -198,16 +198,34 @@ function renderRecentRides(trips) {
     recentRidesSection?.classList.remove('d-none');
     recentRidesList.innerHTML = trips.map((trip) => {
         const destination = getTripDestination(trip);
-        const when = formatRelativeDay(getTripTime(trip));
-        const cancelled = trip.final_status === "cancelled";
+        const when = formatRelativeDay(getTripTime(trip)) || "Recently";
+        const cancelled = trip.final_status === "cancelled" || trip.status === "cancelled";
+        const fareFormatted = formatMoney(trip.fare_amount || trip.price || 0);
+
         return `
             <button type="button" class="dashboard-recent-item${cancelled ? ' is-cancelled' : ''}" data-destination="${escapeHtml(destination)}">
-                <span class="webicon webicon-history" aria-hidden="true"></span>
-                <span class="dashboard-recent-item-text">
+                <div class="recent-item-icon-badge">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                        <path d="M12 7v5l4 2"/>
+                    </svg>
+                </div>
+                <div class="dashboard-recent-item-text">
                     <strong>${escapeHtml(destination)}</strong>
-                    <small>${escapeHtml(when)}${cancelled ? ' · Cancelled' : ` · ${escapeHtml(formatMoney(trip.fare_amount))}`}</small>
-                </span>
-                <span class="dashboard-recent-item-arrow" aria-hidden="true">&rarr;</span>
+                    <small>
+                        <span>${escapeHtml(when)}</span>
+                        <span class="dot-separator">•</span>
+                        ${cancelled 
+                            ? '<span class="status-cancelled">Cancelled</span>' 
+                            : `<span class="status-price">${escapeHtml(fareFormatted)}</span>`
+                        }
+                    </small>
+                </div>
+                <div class="dashboard-recent-item-right">
+                    <strong class="recent-fare-amount${cancelled ? ' is-cancelled' : ''}">${escapeHtml(cancelled ? '₹0' : fareFormatted)}</strong>
+                    <span class="chevron-right-arrow">&rsaquo;</span>
+                </div>
             </button>
         `;
     }).join('');
