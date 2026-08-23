@@ -934,14 +934,17 @@ select {
 .login-page {
     background: #F8FAFC;
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px 14px;
+    padding-top: max(24px, calc(16px + env(safe-area-inset-top)));
+    padding-bottom: max(24px, calc(16px + env(safe-area-inset-bottom)));
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
 }
 
 .login-page .auth-container {
-    padding-top: max(12px, env(safe-area-inset-top));
     width: 100%;
 }
 
