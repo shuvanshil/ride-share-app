@@ -362,18 +362,23 @@ async function loginWithPassword() {
         const email = await getLoginEmail(identifier);
         const result = await signInWithEmailAndPassword(auth, email, password);
         
+        const token = await result.user.getIdToken(true);
+
         let userDocSnap;
-        try {
-            userDocSnap = await getDoc(doc(db, "users", result.user.uid));
-        } catch (docErr) {
-            console.warn("Direct Firestore profile lookup failed, attempting API fallback...", docErr);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                userDocSnap = await getDoc(doc(db, "users", result.user.uid));
+                if (userDocSnap.exists()) break;
+            } catch (docErr) {
+                console.warn(`Direct Firestore profile lookup attempt ${attempt + 1} failed:`, docErr);
+            }
+            if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 150));
         }
 
         let profileData = userDocSnap?.exists() ? userDocSnap.data() : null;
 
         if (!profileData) {
-            const token = await result.user.getIdToken();
-            const res = await fetch("/api/account/profile", {
+            const res = await fetch("/api/profile", {
                 headers: { "Authorization": `Bearer ${token}` }
             }).catch(() => null);
             if (res && res.ok) {
