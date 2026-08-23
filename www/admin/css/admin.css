@@ -99,8 +99,12 @@ body {
     transition: transform 0.2s ease-in-out;
 }
 
-.admin-feed-panel.is-open {
-    transform: translateX(0);
+.admin-feed-panel.is-open,
+.admin-feed-panel.show {
+    transform: translateX(0) !important;
+    visibility: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 
 .admin-feed-item {
@@ -353,4 +357,19 @@ body {
 
 .admin-toast-info {
     background: #206bc4;
+}
+
+/* Safety Center Cards Accent Borders */
+.sos-alert-card {
+    border: 1px solid #e5e7eb !important;
+    border-left: 10px solid #dc2626 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+}
+
+.safety-report-card {
+    border: 1px solid #e5e7eb !important;
+    border-left: 10px solid #ea580c !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04) !important;
 }

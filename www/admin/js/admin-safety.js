@@ -81,7 +81,7 @@ function renderSosAlerts(alerts) {
             const isUrgent = alert.status === "open";
             return `
             <div class="col-12">
-                <div class="card card-sm border-0 shadow-xs ${isUrgent ? 'border-start border-3 border-danger' : ''}">
+                <div class="card card-sm sos-alert-card">
                     <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge ${isUrgent ? 'bg-danger-lt text-danger' : 'bg-secondary-lt text-secondary'}">
@@ -286,7 +286,7 @@ function renderSafetyReports(reports) {
     list.innerHTML = reports
         .map((report) => `
         <div class="col-12">
-            <div class="card card-sm border-0 shadow-xs">
+            <div class="card card-sm safety-report-card">
                 <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
                     <div class="d-flex align-items-center gap-2">
                         <span class="badge ${report.status === "open" ? 'bg-warning-lt text-warning' : 'bg-secondary-lt text-secondary'}">

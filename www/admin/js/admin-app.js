@@ -100,7 +100,8 @@ function resetToDashboard() {
 }
 
 watchAdminAuth(async (user) => {
-    if (!user) {
+    const adminSessionActive = sessionStorage.getItem("admin_session_active") === "true";
+    if (!user || !adminSessionActive) {
         stopLiveFeed();
         showOnly(loginScreen);
         return;
@@ -127,6 +128,7 @@ watchAdminAuth(async (user) => {
             });
         }
     } catch (error) {
+        sessionStorage.removeItem("admin_session_active");
         stopLiveFeed();
         await logoutAdmin();
         showOnly(deniedScreen);
@@ -148,7 +150,28 @@ async function handleAdminLogin() {
         }
         try {
             await loginAdmin(email, password);
+            sessionStorage.setItem("admin_session_active", "true");
+            const result = await adminGet("/verify");
+            $("admin-user-label").textContent = result.name || result.email || "";
+            applyRolePermissions(result.role);
+            showOnly(shell);
+            resetToDashboard();
+            loadSection("dashboard");
+            refreshSafetyBadge();
+            initAdminPayments();
+            initPermissionsModal();
+            startSosRealtimeAlerts();
+            if (!feedStarted) {
+                feedStarted = true;
+                await refreshAdminToken();
+                startLiveFeed(onFeedEvent, (message) => {
+                    if (liveErrorShown) return;
+                    liveErrorShown = true;
+                    toast(message, "error");
+                });
+            }
         } catch (error) {
+            sessionStorage.removeItem("admin_session_active");
             errorTextEl.textContent = "Sign in failed. Check your email and password.";
             errorEl.classList.remove("d-none");
         }
@@ -163,11 +186,16 @@ $("admin-email")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") handleAdminLogin();
 });
 
-$("admin-denied-back-btn")?.addEventListener("click", () => showOnly(loginScreen));
+$("admin-denied-back-btn")?.addEventListener("click", () => {
+    sessionStorage.removeItem("admin_session_active");
+    showOnly(loginScreen);
+});
 $("admin-logout-btn")?.addEventListener("click", async () => {
     clearInterval(liveRidesTimer);
     stopLiveFeed();
+    sessionStorage.removeItem("admin_session_active");
     await logoutAdmin();
+    showOnly(loginScreen);
 });
 
 // ---------------------------------------------------------------------
@@ -199,13 +227,19 @@ function eventColor(type) {
 }
 
 $("admin-feed-toggle")?.addEventListener("click", () => {
-    $("admin-feed-panel").classList.toggle("is-open");
-    if ($("admin-feed-panel").classList.contains("is-open")) {
+    const panel = $("admin-feed-panel");
+    panel.classList.toggle("is-open");
+    panel.classList.toggle("show");
+    if (panel.classList.contains("is-open")) {
         feedUnreadCount = 0;
-        $("admin-feed-badge").classList.add("d-none");
+        $("admin-feed-badge")?.classList.add("d-none");
     }
 });
-$("admin-feed-close")?.addEventListener("click", () => $("admin-feed-panel").classList.remove("is-open"));
+$("admin-feed-close")?.addEventListener("click", () => {
+    const panel = $("admin-feed-panel");
+    panel.classList.remove("is-open");
+    panel.classList.remove("show");
+});
 
 // ---------------------------------------------------------------------
 // Sidebar navigation & toggle
@@ -655,6 +689,7 @@ async function loadDrivers(reset) {
     if (reset) cursors.drivers = null;
     const status = $("driver-status-filter")?.value || "";
     const table = ensureDriversTable();
+    if (reset) table.setLoading(true);
     try {
         const data = await adminGet("/drivers", { status, cursor: reset ? null : cursors.drivers });
         cursors.drivers = data.nextCursor;
@@ -902,6 +937,7 @@ async function loadHistory(reset) {
         dateTo = end.toISOString().slice(0, 10);
     }
     const table = ensureHistoryTable();
+    if (reset) table.setLoading(true);
     try {
         const data = await adminGet("/rides/history", {
             status: status || (dateFrom ? "all" : undefined),
@@ -1078,6 +1114,7 @@ async function bulkPassengerAction(ids, action) {
 async function loadPassengers(reset) {
     if (reset) cursors.passengers = null;
     const table = ensurePassengersTable();
+    if (reset) table.setLoading(true);
     try {
         const data = await adminGet("/passengers", { cursor: reset ? null : cursors.passengers });
         cursors.passengers = data.nextCursor;

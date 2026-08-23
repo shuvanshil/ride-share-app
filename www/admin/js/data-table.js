@@ -42,6 +42,15 @@ export class DataTable {
         this._renderBody();
     }
 
+    setLoading(loading = true) {
+        if (!loading) return;
+        const colspan = this.columns.length + (this.bulkActions.length ? 1 : 0);
+        this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center py-5">
+            <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+            <div class="text-secondary small">Loading data...</div>
+        </td></tr>`;
+    }
+
     getSelectedIds() {
         return [...this.selected];
     }
