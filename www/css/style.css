@@ -8593,4 +8593,309 @@ body.profile-editor-open {
     color: #15803D;
 }
 
+/* ==========================================================================
+   History Page & Card Redesign (Matching Reference Screenshot)
+   ========================================================================== */
+
+.history-page {
+    background: #FAFAFA;
+    min-height: 100vh;
+    padding-bottom: 90px;
+}
+
+.history-title-block {
+    margin-bottom: 6px;
+}
+
+.history-title-block h1 {
+    font-size: 26px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0 0 2px;
+}
+
+.history-title-block p {
+    font-size: 13.5px;
+    color: #6B7280;
+    margin: 0;
+    font-weight: 500;
+}
+
+.history-filter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #F3F4F6;
+    padding: 4px;
+    border-radius: 16px;
+    margin: 20px 0 24px;
+}
+
+.history-filter {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #6B7280;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.history-filter.active {
+    background: #ffffff;
+    color: #1A7A2E;
+    font-weight: 800;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.standalone-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.history-trip-card {
+    background: #ffffff;
+    border: 1px solid #E5E7EB;
+    border-radius: 18px;
+    padding: 18px 20px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.history-trip-card:hover {
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+.card-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #F3F4F6;
+}
+
+.participant-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.participant-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #E8F5E9;
+    color: #1A7A2E;
+    font-size: 14px;
+    font-weight: 800;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.participant-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.participant-name {
+    font-size: 15.5px;
+    font-weight: 800;
+    color: #111827;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trip-timestamp {
+    font-size: 12.5px;
+    color: #6B7280;
+    margin-top: 2px;
+}
+
+.status-badge-pill {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.status-badge-pill.cancelled-by-actor {
+    background: #FEE2E2;
+    color: #DC2626;
+}
+
+.status-badge-pill.cancelled-generic {
+    background: #F3F4F6;
+    color: #4B5563;
+}
+
+.status-badge-pill.completed {
+    background: #E8F5E9;
+    color: #1A7A2E;
+}
+
+.fare-amount-display {
+    font-size: 18px;
+    font-weight: 800;
+    color: #1A7A2E;
+    flex-shrink: 0;
+}
+
+.card-body-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.route-timeline {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    min-width: 0;
+}
+
+.timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.timeline-line {
+    width: 2px;
+    height: 16px;
+    border-left: 2px dotted #9CA3AF;
+    margin-left: 7px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.pin-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.address-text {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #111827;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card-column-divider {
+    width: 1px;
+    align-self: stretch;
+    background: #F3F4F6;
+}
+
+.trip-meta-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.meta-info-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #4B5563;
+}
+
+.view-details-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    background: #E8F5E9;
+    color: #1A7A2E;
+    font-size: 13px;
+    font-weight: 700;
+    border: 0;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.view-details-pill-btn:hover {
+    background: #DCFCE7;
+}
+
+.view-details-pill-btn:active {
+    transform: scale(0.97);
+}
+
+.view-details-pill-btn .chevron-right {
+    font-size: 16px;
+}
+
+.load-more-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+}
+
+.load-more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    border-radius: 24px;
+    border: 1.5px solid #1A7A2E;
+    background: #ffffff;
+    color: #1A7A2E;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.load-more-btn:hover {
+    background: #F0FDF4;
+}
+
+@media (max-width: 576px) {
+    .card-body-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .card-column-divider {
+        display: none;
+    }
+    .trip-meta-col {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        border-top: 1px solid #F3F4F6;
+        padding-top: 12px;
+        margin-top: 4px;
+    }
+}
+
+
 

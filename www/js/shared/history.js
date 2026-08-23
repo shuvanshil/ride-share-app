@@ -26,6 +26,7 @@ const historyState = {
     profile: null,
     trips: [],
     activeFilter: "all",
+    visibleCount: 15,
     unsubscribe: null,
     streamToken: 0
 };
@@ -72,12 +73,12 @@ function formatMoney(value) {
 
 function formatDistance(value) {
     const distance = Number(value || 0);
-    return distance > 0 ? `${distance.toFixed(1)} km` : "Not recorded";
+    return distance > 0 ? `${distance.toFixed(1)} km` : "0 km";
 }
 
 function formatDuration(value) {
     const duration = Number(value || 0);
-    return duration > 0 ? `${Math.round(duration)} mins` : "Not recorded";
+    return duration > 0 ? `${Math.round(duration)} mins` : "0 mins";
 }
 
 function cleanLocationText(value) {
@@ -106,6 +107,22 @@ function formatDate(timestamp) {
     });
 }
 
+function formatCardTimestamp(rawTimestamp) {
+    let d = null;
+    if (rawTimestamp?.toDate) {
+        d = rawTimestamp.toDate();
+    } else if (typeof rawTimestamp === 'number') {
+        d = new Date(rawTimestamp);
+    } else if (typeof rawTimestamp === 'string') {
+        d = new Date(rawTimestamp);
+    }
+    if (!d || isNaN(d.getTime())) return "Date not recorded";
+
+    const dateStr = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase();
+    return `${dateStr}, ${timeStr}`;
+}
+
 function getTripTime(trip) {
     const timestamp = trip.finalStatusAt || trip.completedAt || trip.cancelledAt || trip.verifiedAt;
     return timestamp?.toMillis ? timestamp.toMillis() : 0;
@@ -121,6 +138,15 @@ function getParticipantName(trip) {
         : trip.driver_name || "Driver";
 }
 
+function getInitials(name) {
+    if (!name) return "LU";
+    const parts = String(name).trim().split(/\s+/);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return parts[0].substring(0, 2).toUpperCase();
+}
+
 function getTripStatusLabel(trip = {}) {
     const finalStatus = String(trip.final_status || "").toLowerCase();
     const tripStatus = String(trip.trip_status || "").toLowerCase();
@@ -131,7 +157,16 @@ function getTripStatusLabel(trip = {}) {
         return actor ? `Cancelled by ${actor}` : "Cancelled";
     }
 
-    return "Verified";
+    return "Completed";
+}
+
+function getStatusPillClass(statusLabel) {
+    const s = String(statusLabel || "").toLowerCase();
+    if (s.includes("cancelled by") || s.includes("cancelled")) {
+        if (s.includes("cancelled by")) return "cancelled-by-actor";
+        return "cancelled-generic";
+    }
+    return "completed";
 }
 
 function getTripDisplayTimestamp(trip = {}) {
@@ -315,58 +350,113 @@ function renderEmptyState() {
 }
 
 function renderTripCard(trip) {
-    const role = getTripRole();
-    const participantLabel = role === "driver" ? "Passenger" : "Driver";
+    const participantName = getParticipantName(trip);
+    const initials = getInitials(participantName);
     const statusLabel = getTripStatusLabel(trip);
-    const vehicleDetails = trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`;
-    const tripTime = formatDate(getTripDisplayTimestamp(trip));
+    const statusClass = getStatusPillClass(statusLabel);
+    const formattedTime = formatCardTimestamp(getTripDisplayTimestamp(trip));
+    const pickupAddress = getHistoryLocation(trip, "pickup");
+    const dropAddress = getHistoryLocation(trip, "drop");
+    const vehicleType = (trip.service_name || trip.vehicle_type || "AUTO").toUpperCase();
+    const cancelled = trip.final_status === "cancelled" || String(trip.trip_status || "").startsWith("cancelled");
+    const fareFormatted = formatMoney(cancelled ? 0 : trip.fare_amount);
 
     return `
-        <article class="history-trip-card">
-            <div class="history-trip-top">
-                <div>
-                    <h3>${escapeHtml(getParticipantName(trip))}</h3>
-                    <p>${escapeHtml(statusLabel)} • ${escapeHtml(tripTime)}</p>
+        <article class="history-trip-card" data-trip-id="${escapeHtml(trip.id)}">
+            <div class="card-header-row">
+                <div class="participant-info">
+                    <div class="participant-avatar">
+                        <span>${escapeHtml(initials)}</span>
+                    </div>
+                    <div class="participant-copy">
+                        <strong class="participant-name">${escapeHtml(participantName)}</strong>
+                        <small class="trip-timestamp">${escapeHtml(formattedTime)}</small>
+                    </div>
                 </div>
-                <div class="history-trip-fare">
-                    <strong>${formatMoney(trip.fare_amount)}</strong>
+
+                <div class="status-badge-pill ${statusClass}">
+                    ${escapeHtml(statusLabel)}
+                </div>
+
+                <div class="fare-amount-display">
+                    <strong>${escapeHtml(fareFormatted)}</strong>
                 </div>
             </div>
 
-            <div class="history-route">
-                <div><span class="webicon webicon-current-location" style="color:var(--gy-green)"></span><p>${escapeHtml(getHistoryLocation(trip, "pickup"))}</p></div>
-                <div class="mt-2"><span class="webicon webicon-destination" style="color:var(--gy-danger)"></span><p>${escapeHtml(getHistoryLocation(trip, "drop"))}</p></div>
-            </div>
+            <div class="card-body-row">
+                <div class="route-timeline">
+                    <div class="timeline-item pickup-item">
+                        <span class="pin-icon pickup-pin">📍</span>
+                        <span class="address-text">${escapeHtml(pickupAddress)}</span>
+                    </div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-item drop-item">
+                        <span class="pin-icon drop-flag">🚩</span>
+                        <span class="address-text">${escapeHtml(dropAddress)}</span>
+                    </div>
+                </div>
 
-            <div class="history-trip-meta">
-                <span>${formatDistance(trip.distance_km)}</span>
-                <span>${formatDuration(trip.duration_minutes)}</span>
-                <span>${escapeHtml(trip.service_name || (trip.vehicle_type === "auto" ? "Auto" : "Bike"))}</span>
-            </div>
+                <div class="card-column-divider"></div>
 
-            <div class="history-trip-footer">
-                <small class="text-muted">${escapeHtml(vehicleDetails)}</small>
-                <button class="history-detail-btn" type="button" data-trip-id="${escapeHtml(trip.id)}">View Details</button>
+                <div class="trip-meta-col">
+                    <div class="meta-info-row">
+                        <div class="meta-item">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            <span>${formatDistance(trip.distance_km)} • ${formatDuration(trip.duration_minutes)}</span>
+                        </div>
+                        <div class="meta-item">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17H5V11L7.5 5.5H16.5L19 11V17Z"/><circle cx="7.5" cy="14" r="1.5"/><circle cx="16.5" cy="14" r="1.5"/></svg>
+                            <span>${escapeHtml(vehicleType)}</span>
+                        </div>
+                    </div>
+
+                    <button class="history-detail-btn view-details-pill-btn" type="button" data-trip-id="${escapeHtml(trip.id)}">
+                        <span>View Details</span>
+                        <span class="chevron-right">&rsaquo;</span>
+                    </button>
+                </div>
             </div>
         </article>
     `;
 }
 
 function renderTrips() {
-    const visibleTrips = getVisibleTrips();
-    renderSummary(visibleTrips);
+    const allFilteredTrips = getVisibleTrips();
+    renderSummary(allFilteredTrips);
 
-    if (!visibleTrips.length) {
+    if (!allFilteredTrips.length) {
         renderEmptyState();
         return;
     }
 
-    historyList.innerHTML = visibleTrips.map(renderTripCard).join("");
+    const paginatedTrips = allFilteredTrips.slice(0, historyState.visibleCount);
+    const hasMore = allFilteredTrips.length > historyState.visibleCount;
+
+    let html = paginatedTrips.map(renderTripCard).join("");
+
+    if (hasMore) {
+        html += `
+            <div class="load-more-container">
+                <button type="button" id="load-more-history-btn" class="load-more-btn">
+                    <span>Load More Rides (${allFilteredTrips.length - historyState.visibleCount} remaining)</span>
+                    <span class="chevron-down">&darr;</span>
+                </button>
+            </div>
+        `;
+    }
+
+    historyList.innerHTML = html;
+
     document.querySelectorAll('.history-detail-btn').forEach((button) => {
         button.addEventListener('click', () => {
             const trip = historyState.trips.find((item) => item.id === button.dataset.tripId);
             if (trip) openTripDetail(trip);
         });
+    });
+
+    document.getElementById('load-more-history-btn')?.addEventListener('click', () => {
+        historyState.visibleCount += 15;
+        renderTrips();
     });
 }
 
@@ -445,6 +535,7 @@ function bindFilters() {
     document.querySelectorAll('.history-filter').forEach((button) => {
         button.addEventListener('click', () => {
             historyState.activeFilter = button.dataset.filter;
+            historyState.visibleCount = 15;
             document.querySelectorAll('.history-filter').forEach((item) => item.classList.remove('active'));
             button.classList.add('active');
             renderTrips();
