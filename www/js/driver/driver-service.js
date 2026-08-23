@@ -440,6 +440,21 @@ class RotatingVehicleMarker {
         this.element.style.cssText = "position:absolute;width:48px;height:48px;pointer-events:auto;will-change:transform;animation:vehicle-marker-pop 260ms cubic-bezier(0.34,1.56,0.64,1);";
         this.element.style.zIndex = String(zIndex);
         this.element.title = title;
+
+        // Glowing pulse ripples
+        const ripple1 = document.createElement("div");
+        ripple1.className = "driver-vehicle-ripple";
+        const ripple2 = document.createElement("div");
+        ripple2.className = "driver-vehicle-ripple driver-vehicle-ripple-2";
+        this.element.appendChild(ripple1);
+        this.element.appendChild(ripple2);
+
+        // 'You are here' wobble speech bubble
+        const bubble = document.createElement("div");
+        bubble.className = "driver-you-are-here-bubble";
+        bubble.textContent = "You are here";
+        this.element.appendChild(bubble);
+
         // Separate inner wrapper for arrive-bounce/select-pop CSS animations,
         // keeping them off both this.element (JS-driven position translate)
         // and the <img> (JS-driven heading rotation) so transforms never fight.
@@ -571,9 +586,19 @@ function renderLocationPreviewLink(label, latValue, lngValue) {
     return `<a class="driver-location-preview-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
 }
 
+function setMapStageExpanded(expanded) {
+    const mapStage = document.getElementById("driver-map-stage");
+    if (mapStage) {
+        mapStage.classList.toggle("has-active-trip", Boolean(expanded));
+        mapStage.classList.toggle("is-expanded", Boolean(expanded));
+    }
+}
+
 function updateIncomingRequestsVisibility() {
     if (!requestsPanel) return;
-    requestsPanel.classList.toggle('d-none', Boolean(currentRideId));
+    const hasRide = Boolean(currentRideId);
+    requestsPanel.classList.toggle('d-none', hasRide);
+    setMapStageExpanded(hasRide);
 }
 
 function renderIncomingRideCard(rideId, ride = {}) {
@@ -1860,6 +1885,7 @@ async function handleLocation(position) {
     lastPosition = coords;
     hasLiveGpsPosition = true;
     rememberDriverLocation(coords);
+    updateDriverLocationDisplay(coords.lat, coords.lng);
     setGpsState("live", "LIVE");
     setLifecycleGpsText("GPS Active & Broadcasting");
     hideMessage();
@@ -2403,12 +2429,149 @@ async function bootstrapDriverService() {
             return;
         }
 
+let geocoderInstance = null;
+function updateDriverLocationDisplay(lat, lng) {
+    const nameEl = document.getElementById("driver-location-name");
+    if (!nameEl || !window.google?.maps?.Geocoder) return;
+
+    if (!geocoderInstance) geocoderInstance = new window.google.maps.Geocoder();
+    geocoderInstance.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === "OK" && results?.[0]) {
+            const comps = results[0].address_components || [];
+            const sublocality = comps.find(c => c.types.includes("sublocality") || c.types.includes("locality") || c.types.includes("neighborhood"))?.long_name;
+            const state = comps.find(c => c.types.includes("administrative_area_level_1"))?.long_name;
+            if (sublocality || state) {
+                nameEl.textContent = [sublocality, state || "Tripura"].filter(Boolean).join(", ");
+            } else {
+                nameEl.textContent = results[0].formatted_address.split(",").slice(0, 2).join(",");
+            }
+        }
+    });
+}
+
+function updateDriverAvailabilityUI(statusOverride) {
+    const status = String(statusOverride || currentUser?.driverAvailability || "searching").toLowerCase();
+    const isOffline = status === "offline";
+
+    const offlineCard = document.getElementById("driver-offline-card");
+    if (offlineCard) {
+        offlineCard.classList.toggle("d-none", !isOffline);
+    }
+
+    const emptyGoOnlineWrap = document.getElementById("driver-empty-go-online-wrap");
+    if (emptyGoOnlineWrap) {
+        emptyGoOnlineWrap.classList.toggle("d-none", !isOffline);
+    }
+
+    const statusPill = document.getElementById("driver-service-live-pill");
+    if (statusPill) {
+        statusPill.dataset.state = isOffline ? "loading" : "ready";
+        statusPill.textContent = isOffline ? "OFFLINE" : "LIVE";
+    }
+
+    const statusText = document.getElementById("driver-service-status");
+    if (statusText) {
+        statusText.textContent = isOffline
+            ? "You are currently offline"
+            : "Online & searching for passengers";
+    }
+}
+
+async function toggleDriverOnlineStatus(targetStatus) {
+    if (!auth.currentUser) return;
+    showPageLoader(targetStatus === "searching" ? "Going Online..." : "Going Offline...");
+    try {
+        const idToken = await auth.currentUser.getIdToken();
+        const res = await fetch("/api/rides/driver-availability", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ status: targetStatus })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+            if (currentUser) currentUser.driverAvailability = targetStatus;
+            updateDriverAvailabilityUI(targetStatus);
+        } else {
+            await showAlert(data.error || "Could not update online status.");
+        }
+    } catch (err) {
+        console.error("Toggle driver availability failed:", err);
+        await showAlert("Could not update online status. Check your connection.");
+    } finally {
+        hidePageLoader({ force: true });
+    }
+}
+
+async function bootstrapDriverService() {
+    showPageLoader("Opening trip console…");
+    const user = await waitForAuth();
+
+    if (!user) {
+        hidePageLoader({ force: true });
+        hideInitialLoader();
+        window.location.replace('/login.html');
+        return;
+    }
+
+    try {
+        const profileSnap = await getDoc(doc(db, "users", user.uid));
+        if (!profileSnap.exists()) {
+            hidePageLoader({ force: true });
+            hideInitialLoader();
+            window.location.replace('/login.html');
+            return;
+        }
+
+        const profile = profileSnap.data();
+        const isCurrent = window.isCurrentPage || ((p) => window.location.pathname.includes(p));
+
+        if (profile.role !== "driver") {
+            hidePageLoader({ force: true });
+            hideInitialLoader();
+            if (!isCurrent('index.html')) {
+                window.location.replace('/index.html');
+            }
+            return;
+        }
+
+        if (profile.verificationStatus !== "approved") {
+            hidePageLoader({ force: true });
+            hideInitialLoader();
+            if (!isCurrent('driver.html')) {
+                window.location.replace('/driver.html');
+            }
+            return;
+        }
+
         currentUser = profile;
         cacheProfile(profile);
+        updateDriverAvailabilityUI(currentUser.driverAvailability);
         checkDriverAccountHoldStatus(user);
         registerDriverPushToken(db, currentUser.uid).catch((error) => {
             console.warn("Driver service push token registration failed:", error);
         });
+
+        // Bind control buttons
+        document.getElementById("driver-go-online-btn")?.addEventListener("click", () => {
+            toggleDriverOnlineStatus("searching");
+        });
+        document.getElementById("driver-empty-go-online-link")?.addEventListener("click", (e) => {
+            e.preventDefault();
+            toggleDriverOnlineStatus("searching");
+        });
+        document.getElementById("driver-recenter-btn")?.addEventListener("click", () => {
+            if (map && lastPosition) map.panTo(lastPosition);
+        });
+        document.getElementById("driver-zoom-in-btn")?.addEventListener("click", () => {
+            if (map) map.setZoom((map.getZoom() || 15) + 1);
+        });
+        document.getElementById("driver-zoom-out-btn")?.addEventListener("click", () => {
+            if (map) map.setZoom((map.getZoom() || 15) - 1);
+        });
+
         startActiveRideListener();
         startIncomingRideListener();
         startLocationTracking();
