@@ -11,6 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showSkeleton, setButtonBusy } from '../shared/loading.js';
+import { waitForAuth } from '../shared/auth.js';
 
 const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 const RECENT_RIDES_LIMIT = 3;
@@ -256,7 +257,14 @@ async function initRecentRides(uid) {
     if (!recentRidesList) return;
     const clearSkeleton = showSkeleton(recentRidesList, { kind: 'avatar-row', count: 2 });
     try {
-        const trips = await loadRecentRides(uid);
+        const user = await waitForAuth();
+        const activeUid = uid || user?.uid;
+        if (!activeUid) {
+            clearSkeleton();
+            recentRidesSection?.classList.add('d-none');
+            return;
+        }
+        const trips = await loadRecentRides(activeUid);
         clearSkeleton();
         renderRecentRides(trips);
     } catch (error) {
@@ -272,7 +280,10 @@ async function initRecentRides(uid) {
 
 async function loadSavedPlaces(uid) {
     try {
-        const snap = await getDoc(doc(db, "savedPlaces", uid));
+        const user = await waitForAuth();
+        const activeUid = uid || user?.uid;
+        if (!activeUid) return {};
+        const snap = await getDoc(doc(db, "savedPlaces", activeUid));
         return snap.exists() ? snap.data() : {};
     } catch (error) {
         console.warn("Could not load saved places:", error);

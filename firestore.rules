@@ -12,25 +12,27 @@ service cloud.firestore {
     // tracking); every admin write still goes through the FastAPI Admin
     // SDK in www/api/routers/admin.py, which this rule has no bearing on.
     function isAdmin() {
-      return signedIn() && request.auth.token.get('admin', false) == true;
+      return signedIn() && 'admin' in request.auth.token && request.auth.token.admin == true;
     }
 
     function userProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : {};
     }
 
     function approvedDriver() {
       return signedIn()
-        && userProfile().role == "driver"
-        && userProfile().verificationStatus == "approved";
+        && userProfile().get('role', '') == "driver"
+        && userProfile().get('verificationStatus', '') == "approved";
     }
 
     function rideParticipant() {
       return signedIn()
-        && (resource.data.passenger_id == request.auth.uid
-          || resource.data.passengerId == request.auth.uid
-          || resource.data.driver_id == request.auth.uid
-          || resource.data.driverId == request.auth.uid);
+        && (('passenger_id' in resource.data && resource.data.passenger_id == request.auth.uid)
+          || ('passengerId' in resource.data && resource.data.passengerId == request.auth.uid)
+          || ('driver_id' in resource.data && resource.data.driver_id == request.auth.uid)
+          || ('driverId' in resource.data && resource.data.driverId == request.auth.uid));
     }
 
     function eligibleDriver() {
@@ -66,8 +68,11 @@ service cloud.firestore {
 
     match /tripHistory/{rideId} {
       allow read: if signedIn()
-        && (resource.data.passenger_id == request.auth.uid
-          || resource.data.driver_id == request.auth.uid
+        && (resource == null
+          || ('passenger_id' in resource.data && resource.data.passenger_id == request.auth.uid)
+          || ('passengerId' in resource.data && resource.data.passengerId == request.auth.uid)
+          || ('driver_id' in resource.data && resource.data.driver_id == request.auth.uid)
+          || ('driverId' in resource.data && resource.data.driverId == request.auth.uid)
           || isAdmin());
 
       // History is written by FastAPI after an authorized ride transition.
@@ -97,7 +102,7 @@ service cloud.firestore {
     match /savedPlaces/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['home', 'work', 'favorites', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['home', 'work', 'favorites', 'customPlaces', 'updatedAt'])
         && (!('favorites' in request.resource.data) || request.resource.data.favorites.size() <= 10);
       allow delete: if signedIn() && request.auth.uid == uid;
     }
@@ -115,7 +120,10 @@ service cloud.firestore {
     // and costs nothing extra to allow.
     match /driverDailyStats/{statId} {
       allow read: if signedIn()
-        && (resource.data.driver_id == request.auth.uid || isAdmin());
+        && (resource == null
+          || ('driver_id' in resource.data && resource.data.driver_id == request.auth.uid)
+          || ('driverId' in resource.data && resource.data.driverId == request.auth.uid)
+          || isAdmin());
       allow create, update, delete: if false;
     }
 
@@ -168,7 +176,7 @@ service cloud.firestore {
     // Allows passengers to read their own pending requests, and admins to read all.
     // All creation, updates, matching, and cancellation are handled server-side via FastAPI.
     match /pendingRideRequests/{requestId} {
-      allow read: if signedIn() && (resource == null || resource.data.passengerId == request.auth.uid || resource.data.passenger_id == request.auth.uid || isAdmin());
+      allow read: if signedIn() && (resource == null || ('passengerId' in resource.data && resource.data.passengerId == request.auth.uid) || ('passenger_id' in resource.data && resource.data.passenger_id == request.auth.uid) || isAdmin());
       allow create, update, delete: if false;
     }
 
@@ -176,7 +184,7 @@ service cloud.firestore {
     // Drivers can read their own payment verification records, admins can read all.
     // All creation, approval, and decline mutations are server-owned via FastAPI.
     match /driverPayments/{paymentId} {
-      allow read: if signedIn() && (resource == null || resource.data.driverId == request.auth.uid || resource.data.driver_id == request.auth.uid || isAdmin());
+      allow read: if signedIn() && (resource == null || ('driverId' in resource.data && resource.data.driverId == request.auth.uid) || ('driver_id' in resource.data && resource.data.driver_id == request.auth.uid) || isAdmin());
       allow create, update, delete: if false;
     }
 
