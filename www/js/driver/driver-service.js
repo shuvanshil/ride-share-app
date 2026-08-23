@@ -1864,7 +1864,38 @@ async function writeDriverLocation(position) {
     await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
 }
 
+let isLocationSettled = false;
+let gpsSampleCount = 0;
+let locationSettlementTimer = null;
+
+function hideLocationLoadingOverlay() {
+    isLocationSettled = true;
+    const overlay = document.getElementById("driver-location-loading-overlay");
+    if (overlay) overlay.classList.add("d-none");
+    driverMarker?.element?.classList.remove("is-locating");
+}
+
+function showLocationLoadingOverlay() {
+    isLocationSettled = false;
+    gpsSampleCount = 0;
+    const overlay = document.getElementById("driver-location-loading-overlay");
+    if (overlay) overlay.classList.remove("d-none");
+    driverMarker?.element?.classList.add("is-locating");
+
+    window.clearTimeout(locationSettlementTimer);
+    locationSettlementTimer = window.setTimeout(() => {
+        hideLocationLoadingOverlay();
+    }, 4000);
+}
+
 async function handleLocation(position) {
+    if (!position?.coords) return;
+    gpsSampleCount++;
+    const accuracy = Number(position?.coords?.accuracy) || 999;
+    if (!isLocationSettled && (accuracy <= 100 || gpsSampleCount >= 2)) {
+        hideLocationLoadingOverlay();
+    }
+
     const previousPosition = lastPosition;
     const coords = {
         lat: position.coords.latitude,
@@ -1950,6 +1981,7 @@ function handleLocationError(error) {
 }
 
 function startLocationTracking() {
+    showLocationLoadingOverlay();
     const initialPosition = getInitialDriverLocation();
     lastPosition = lastPosition || initialPosition;
 
@@ -2429,6 +2461,45 @@ async function bootstrapDriverService() {
             return;
         }
 
+        currentUser = profile;
+        cacheProfile(profile);
+        updateDriverAvailabilityUI(currentUser.driverAvailability);
+        checkDriverAccountHoldStatus(user);
+        registerDriverPushToken(db, currentUser.uid).catch((error) => {
+            console.warn("Driver service push token registration failed:", error);
+        });
+
+        // Bind control buttons
+        document.getElementById("driver-go-online-btn")?.addEventListener("click", () => {
+            toggleDriverOnlineStatus("searching");
+        });
+        document.getElementById("driver-empty-go-online-link")?.addEventListener("click", (e) => {
+            e.preventDefault();
+            toggleDriverOnlineStatus("searching");
+        });
+        document.getElementById("driver-recenter-btn")?.addEventListener("click", () => {
+            if (map && lastPosition) map.panTo(lastPosition);
+        });
+        document.getElementById("driver-zoom-in-btn")?.addEventListener("click", () => {
+            if (map) map.setZoom((map.getZoom() || 15) + 1);
+        });
+        document.getElementById("driver-zoom-out-btn")?.addEventListener("click", () => {
+            if (map) map.setZoom((map.getZoom() || 15) - 1);
+        });
+
+        startActiveRideListener();
+        startIncomingRideListener();
+        startLocationTracking();
+        hidePageLoader({ force: true });
+        hideInitialLoader();
+    } catch (error) {
+        console.error("Driver service authentication failed:", error);
+        hidePageLoader({ force: true });
+        hideInitialLoader();
+        showMessage("Could not load driver account", "Check your connection and retry the page.", "map");
+    }
+}
+
 let geocoderInstance = null;
 function updateDriverLocationDisplay(lat, lng) {
     const nameEl = document.getElementById("driver-location-name");
@@ -2502,86 +2573,6 @@ async function toggleDriverOnlineStatus(targetStatus) {
         await showAlert("Could not update online status. Check your connection.");
     } finally {
         hidePageLoader({ force: true });
-    }
-}
-
-async function bootstrapDriverService() {
-    showPageLoader("Opening trip console…");
-    const user = await waitForAuth();
-
-    if (!user) {
-        hidePageLoader({ force: true });
-        hideInitialLoader();
-        window.location.replace('/login.html');
-        return;
-    }
-
-    try {
-        const profileSnap = await getDoc(doc(db, "users", user.uid));
-        if (!profileSnap.exists()) {
-            hidePageLoader({ force: true });
-            hideInitialLoader();
-            window.location.replace('/login.html');
-            return;
-        }
-
-        const profile = profileSnap.data();
-        const isCurrent = window.isCurrentPage || ((p) => window.location.pathname.includes(p));
-
-        if (profile.role !== "driver") {
-            hidePageLoader({ force: true });
-            hideInitialLoader();
-            if (!isCurrent('index.html')) {
-                window.location.replace('/index.html');
-            }
-            return;
-        }
-
-        if (profile.verificationStatus !== "approved") {
-            hidePageLoader({ force: true });
-            hideInitialLoader();
-            if (!isCurrent('driver.html')) {
-                window.location.replace('/driver.html');
-            }
-            return;
-        }
-
-        currentUser = profile;
-        cacheProfile(profile);
-        updateDriverAvailabilityUI(currentUser.driverAvailability);
-        checkDriverAccountHoldStatus(user);
-        registerDriverPushToken(db, currentUser.uid).catch((error) => {
-            console.warn("Driver service push token registration failed:", error);
-        });
-
-        // Bind control buttons
-        document.getElementById("driver-go-online-btn")?.addEventListener("click", () => {
-            toggleDriverOnlineStatus("searching");
-        });
-        document.getElementById("driver-empty-go-online-link")?.addEventListener("click", (e) => {
-            e.preventDefault();
-            toggleDriverOnlineStatus("searching");
-        });
-        document.getElementById("driver-recenter-btn")?.addEventListener("click", () => {
-            if (map && lastPosition) map.panTo(lastPosition);
-        });
-        document.getElementById("driver-zoom-in-btn")?.addEventListener("click", () => {
-            if (map) map.setZoom((map.getZoom() || 15) + 1);
-        });
-        document.getElementById("driver-zoom-out-btn")?.addEventListener("click", () => {
-            if (map) map.setZoom((map.getZoom() || 15) - 1);
-        });
-
-        startActiveRideListener();
-        startIncomingRideListener();
-        startLocationTracking();
-        hidePageLoader({ force: true });
-        hideInitialLoader();
-    } catch (error) {
-        console.error("Driver service authentication failed:", error);
-        hidePageLoader({ force: true });
-        hideInitialLoader();
-        showMessage("Could not load driver account", "Check your connection and retry the page.", "map");
     }
 }
 
