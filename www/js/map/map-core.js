@@ -2908,7 +2908,10 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
         suggestions.innerHTML = `
             <div class="destination-suggestion-empty">
                 ${showEmptyMessage ? '<div>No Google result found for this name.</div>' : ''}
-                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Select drop on map</button>
+                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;vertical-align:text-bottom;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <span>Select drop on map</span>
+                </button>
             </div>
         `;
         suggestions.querySelector("#choose-destination-on-map-btn")?.addEventListener("click", () => {
@@ -2938,7 +2941,10 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
                 </span>
             </button>
         `).join("")}
-        <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">Select drop on map</button>
+        <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;vertical-align:text-bottom;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Select drop on map</span>
+        </button>
     `;
 
     suggestions.querySelector("#choose-destination-on-map-btn")?.addEventListener("click", () => {

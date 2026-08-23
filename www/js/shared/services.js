@@ -149,6 +149,10 @@ function setGuestLoginVisibility(visible) {
     document.querySelectorAll('.guest-login-btn').forEach((button) => {
         button.classList.toggle('d-none', !visible);
     });
+    const safeBadge = document.getElementById('services-safe-badge');
+    if (safeBadge) {
+        safeBadge.classList.toggle('d-none', visible);
+    }
     const profileTrigger = document.getElementById('profile-menu-trigger');
     if (profileTrigger) {
         profileTrigger.classList.toggle('d-none', visible);
@@ -388,21 +392,7 @@ function escapeHtml(value) {
 // ==========================================
 
 function updateQuickChipsUI() {
-    const homeBtn = document.getElementById('chip-home-btn');
-    const workBtn = document.getElementById('chip-work-btn');
-
-    const homePlace = savedPlacesCache?.home;
-    const workPlace = savedPlacesCache?.work;
-
-    if (homeBtn) {
-        homeBtn.classList.remove('is-disabled');
-        homeBtn.title = homePlace?.address ? `Home: ${homePlace.address}` : "Tap to save Home address";
-    }
-
-    if (workBtn) {
-        workBtn.classList.remove('is-disabled');
-        workBtn.title = workPlace?.address ? `Work: ${workPlace.address}` : "Tap to save Work address";
-    }
+    // Quick chips updated for Saved Places modal
 }
 
 function selectDestinationAddress(addressText) {
@@ -450,7 +440,7 @@ function renderSavedPlacesModalList() {
                     <span class="webicon webicon-edit" style="color: #4B5563;"></span>
                 </button>
                 ${home?.address ? `
-                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete Home" onclick="window.deleteSavedPlace('home')">
+                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete Home" onclick="window.deleteSavedPlace('home', null, this)">
                         <span class="webicon webicon-trash"></span>
                     </button>
                 ` : ''}
@@ -473,7 +463,7 @@ function renderSavedPlacesModalList() {
                     <span class="webicon webicon-edit" style="color: #4B5563;"></span>
                 </button>
                 ${work?.address ? `
-                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete Work" onclick="window.deleteSavedPlace('work')">
+                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete Work" onclick="window.deleteSavedPlace('work', null, this)">
                         <span class="webicon webicon-trash"></span>
                     </button>
                 ` : ''}
@@ -496,7 +486,7 @@ function renderSavedPlacesModalList() {
                     <button type="button" class="saved-item-action-btn" title="Edit" onclick="window.editSavedPlace('custom', ${index})">
                         <span class="webicon webicon-edit" style="color: #4B5563;"></span>
                     </button>
-                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete" onclick="window.deleteSavedPlace('custom', ${index})">
+                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete" onclick="window.deleteSavedPlace('custom', ${index}, this)">
                         <span class="webicon webicon-trash"></span>
                     </button>
                 </div>
@@ -561,6 +551,13 @@ async function persistSavedPlace(targetKey, label, address) {
         return;
     }
 
+    const submitBtn = document.getElementById('save-address-submit-btn');
+    const originalText = submitBtn ? submitBtn.innerHTML : 'Save Address';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="lu-spinner lu-spinner-sm me-2" style="border-top-color:#fff;"></span>Saving...';
+    }
+
     const payload = { ...savedPlacesCache, updatedAt: new Date().toISOString() };
 
     if (targetKey === 'home') {
@@ -574,6 +571,10 @@ async function persistSavedPlace(targetKey, label, address) {
         payload.customPlaces = payload.customPlaces || [];
         if (payload.customPlaces.length >= 3) {
             showAlert("You can save up to 3 places in addition to Home and Work.");
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
             return;
         }
         payload.customPlaces.push({ name: label, address });
@@ -582,17 +583,26 @@ async function persistSavedPlace(targetKey, label, address) {
     try {
         await setDoc(doc(db, "savedPlaces", currentPassengerUid), payload, { merge: true });
         savedPlacesCache = payload;
-        updateQuickChipsUI();
         renderSavedPlacesModalList();
         closeSaveAddressEditor();
     } catch (e) {
         console.error("Could not save address:", e);
         showAlert("Could not save address. Please try again.");
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
     }
 }
 
-async function deleteSavedPlaceItem(targetKey, customIndex = null) {
+async function deleteSavedPlaceItem(targetKey, customIndex = null, btnElement = null) {
     if (!currentPassengerUid) return;
+
+    if (btnElement) {
+        btnElement.disabled = true;
+        btnElement.innerHTML = '<span class="lu-spinner lu-spinner-sm" style="margin:0; border-top-color:#EF4444;"></span>';
+    }
 
     const payload = { ...savedPlacesCache, updatedAt: new Date().toISOString() };
 
@@ -608,10 +618,11 @@ async function deleteSavedPlaceItem(targetKey, customIndex = null) {
     try {
         await setDoc(doc(db, "savedPlaces", currentPassengerUid), payload);
         savedPlacesCache = payload;
-        updateQuickChipsUI();
         renderSavedPlacesModalList();
     } catch (e) {
         console.error("Could not delete saved place:", e);
+        showAlert("Could not delete place. Try again.");
+        renderSavedPlacesModalList();
     }
 }
 
@@ -638,29 +649,9 @@ window.editSavedPlace = (targetKey, index = null) => {
     }
 };
 
-window.deleteSavedPlace = (targetKey, index = null) => {
-    deleteSavedPlaceItem(targetKey, index);
+window.deleteSavedPlace = (targetKey, index = null, btnElement = null) => {
+    deleteSavedPlaceItem(targetKey, index, btnElement);
 };
-
-document.getElementById('chip-home-btn')?.addEventListener('click', () => {
-    if (savedPlacesCache?.home?.address) {
-        selectDestinationAddress(savedPlacesCache.home.address);
-    } else if (!isAuthenticatedPassenger) {
-        openBookingLoginGate();
-    } else {
-        openSavedPlacesModal();
-    }
-});
-
-document.getElementById('chip-work-btn')?.addEventListener('click', () => {
-    if (savedPlacesCache?.work?.address) {
-        selectDestinationAddress(savedPlacesCache.work.address);
-    } else if (!isAuthenticatedPassenger) {
-        openBookingLoginGate();
-    } else {
-        openSavedPlacesModal();
-    }
-});
 
 document.getElementById('chip-saved-places-btn')?.addEventListener('click', () => {
     if (!isAuthenticatedPassenger) {

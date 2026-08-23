@@ -41,11 +41,11 @@
                     <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
                 </div>
                 <div class="app-bar-actions">
-                    <div class="safe-badge-pill">
+                    <div class="safe-badge-pill d-none" id="services-safe-badge">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
                         <span>Safe • Secure • Reliable</span>
                     </div>
-                    <button class="guest-login-btn d-none ms-2" type="button" onclick="window.location.href='/login.html'">Login</button>
+                    <button class="guest-login-btn d-none" id="services-header-login-btn" type="button" onclick="window.location.href='/login.html'">Login</button>
                 </div>
             </header>
 
@@ -80,7 +80,6 @@
                                 <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
                             </div>
                             <button id="refresh-location-btn" class="d-none" type="button" aria-label="Use current location"></button>
-                            <span class="field-chevron">&rsaquo;</span>
                         </div>
 
                         <!-- Floating Swap Button -->
@@ -98,21 +97,12 @@
                                 <label for="drop-input">Where to?</label>
                                 <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination (village, street, town or landmark)" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
                             </div>
-                            <span class="field-chevron">&rsaquo;</span>
                         </div>
                     </div>
 
-                    <!-- Quick Location Chips Row (Home, Work, Saved Places) -->
+                    <!-- Quick Location Chips Row (Saved Places Only) -->
                     <div class="quick-location-chips-row" id="quick-location-chips-row">
-                        <button type="button" id="chip-home-btn" class="quick-chip-btn" title="Home address">
-                            <span class="webicon webicon-home" style="color: #1A7A2E;"></span>
-                            <span>Home</span>
-                        </button>
-                        <button type="button" id="chip-work-btn" class="quick-chip-btn" title="Work address">
-                            <span class="webicon webicon-work" style="color: #1A7A2E;"></span>
-                            <span>Work</span>
-                        </button>
-                        <button type="button" id="chip-saved-places-btn" class="quick-chip-btn" title="View all saved places">
+                        <button type="button" id="chip-saved-places-btn" class="quick-chip-btn w-100" title="View all saved places">
                             <span class="webicon webicon-favorite" style="color: #1A7A2E;"></span>
                             <span>Saved Places</span>
                         </button>
