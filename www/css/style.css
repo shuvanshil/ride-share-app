@@ -2115,31 +2115,59 @@ select {
     object-fit: contain;
 }
 
-.heritage-card {
-    min-height: 118px;
+.explore-section-header {
+    margin-top: 24px;
     margin-bottom: 12px;
+}
+
+.explore-section-header h2 {
+    font-size: 19px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0 0 2px;
+}
+
+.explore-section-header p {
+    font-size: 13.5px;
+    color: #6B7280;
+    margin: 0;
+    font-weight: 500;
+}
+
+.heritage-banners {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.heritage-card {
+    min-height: 126px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 16px;
     overflow: hidden;
     display: flex;
-    align-items: end;
-    padding: 16px;
-    color: #fff;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 18px 20px;
+    color: #ffffff;
     text-decoration: none;
     background-size: cover;
     background-position: center;
     position: relative;
     cursor: pointer;
-    transition: transform 160ms ease, filter 160ms ease;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
 }
 
 .heritage-card:hover {
-    color: #fff;
-    filter: brightness(1.04);
+    color: #ffffff;
+    filter: brightness(1.06);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
 }
 
 .heritage-card:active {
-    transform: scale(0.99);
+    transform: scale(0.985);
 }
 
 .heritage-card:focus-visible {
@@ -2151,31 +2179,63 @@ select {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.72));
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.08) 35%, rgba(0, 0, 0, 0.72) 100%);
+    pointer-events: none;
 }
 
-.heritage-card > div {
+.heritage-card-copy {
     position: relative;
-    display: grid;
-    gap: 4px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
 }
 
-.heritage-card strong {
-    font-size: 18px;
+.heritage-card-copy strong {
+    font-size: 19px;
+    font-weight: 800;
+    color: #ffffff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
-.heritage-card span {
+.heritage-card-copy span {
     font-size: 13px;
-    opacity: 0.92;
+    color: rgba(255, 255, 255, 0.92);
+    font-weight: 500;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.heritage-card-cta {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: #ffffff;
+    font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.heritage-card:hover .heritage-card-cta {
+    background: rgba(255, 255, 255, 0.35);
+    transform: translateX(2px);
 }
 
 .heritage-card.unakoti {
-    background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.78)), url("../assets/backgrounds/unakoti background image.jpg");
+    background-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.05) 35%, rgba(0, 0, 0, 0.72) 100%), url("../assets/backgrounds/unakoti background image.jpg");
     background-position: center;
 }
 
 .heritage-card.railway {
-    background-image: linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.78)), url("../assets/backgrounds/railway background.jpeg");
+    background-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.05) 35%, rgba(0, 0, 0, 0.72) 100%), url("../assets/backgrounds/railway background.jpeg");
     background-position: center;
 }
 
