@@ -149,8 +149,14 @@ async function handleAdminLogin() {
             return;
         }
         try {
+            // Auto logout any previous passenger, driver, or active session to prevent role clashes
+            sessionStorage.removeItem("liphtup_user_profile");
+            sessionStorage.removeItem("admin_session_active");
+            await logoutAdmin().catch(() => null);
+
             await loginAdmin(email, password);
             sessionStorage.setItem("admin_session_active", "true");
+            await refreshAdminToken();
             const result = await adminGet("/verify");
             $("admin-user-label").textContent = result.name || result.email || "";
             applyRolePermissions(result.role);
@@ -163,7 +169,6 @@ async function handleAdminLogin() {
             startSosRealtimeAlerts();
             if (!feedStarted) {
                 feedStarted = true;
-                await refreshAdminToken();
                 startLiveFeed(onFeedEvent, (message) => {
                     if (liveErrorShown) return;
                     liveErrorShown = true;
@@ -172,7 +177,10 @@ async function handleAdminLogin() {
             }
         } catch (error) {
             sessionStorage.removeItem("admin_session_active");
-            errorTextEl.textContent = "Sign in failed. Check your email and password.";
+            await logoutAdmin().catch(() => null);
+            errorTextEl.textContent = error?.message?.includes?.("Admin access required")
+                ? "This account does not have admin privileges."
+                : "Sign in failed. Check your email and password.";
             errorEl.classList.remove("d-none");
         }
     });
@@ -194,6 +202,7 @@ $("admin-logout-btn")?.addEventListener("click", async () => {
     clearInterval(liveRidesTimer);
     stopLiveFeed();
     sessionStorage.removeItem("admin_session_active");
+    sessionStorage.removeItem("liphtup_user_profile");
     await logoutAdmin();
     showOnly(loginScreen);
 });

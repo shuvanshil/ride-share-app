@@ -337,6 +337,18 @@ async function getLoginEmail(identifier) {
     return normalizeEmail(loginIndex.email);
 }
 
+async function clearActiveAdminOrPriorSession() {
+    sessionStorage.removeItem("admin_session_active");
+    sessionStorage.removeItem("liphtup_user_profile");
+    if (auth.currentUser) {
+        try {
+            await signOut(auth);
+        } catch {
+            // Ignore signout errors during session cleanup
+        }
+    }
+}
+
 async function loginWithPassword() {
     if (passwordLoginBtn.disabled) return;
 
@@ -359,6 +371,7 @@ async function loginWithPassword() {
     loginFlowStarted = true;
 
     try {
+        await clearActiveAdminOrPriorSession();
         const email = await getLoginEmail(identifier);
         const result = await signInWithEmailAndPassword(auth, email, password);
         
@@ -559,6 +572,7 @@ async function finalizeRegistration() {
     setAuthStatus("Creating your LiphtUp account...");
 
     try {
+        await clearActiveAdminOrPriorSession();
         const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
         if (existingPhoneLogin?.email) {
             throw new Error("An account already exists for this mobile number. Please login instead.");
