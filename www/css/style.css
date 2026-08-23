@@ -8957,5 +8957,14 @@ body.profile-editor-open {
     }
 }
 
+/* Hide Google Maps Internal Camera Control Widget */
+gmp-internal-camera-control,
+.gmp-internal-camera-control {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 
 

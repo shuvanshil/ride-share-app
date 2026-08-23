@@ -455,6 +455,14 @@ function addGoogleMapStyles() {
             min-height: 180px;
         }
 
+        gmp-internal-camera-control,
+        .gmp-internal-camera-control {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
         .location-suggestions,
         .destination-suggestions {
             margin-top: 12px;
@@ -1283,6 +1291,9 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
         maxZoom: options.maxZoom ?? 20,
         disableDefaultUI: options.disableDefaultUI ?? false,
         zoomControl: options.zoomControl ?? true,
+        cameraControl: false,
+        panControl: false,
+        rotateControl: false,
         fullscreenControl: options.fullscreenControl ?? true,
         streetViewControl: false,
         mapTypeControl: false,
