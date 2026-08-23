@@ -2529,9 +2529,16 @@ function updateDriverAvailabilityUI(statusOverride) {
         offlineCard.classList.toggle("d-none", !isOffline);
     }
 
-    const emptyGoOnlineWrap = document.getElementById("driver-empty-go-online-wrap");
-    if (emptyGoOnlineWrap) {
-        emptyGoOnlineWrap.classList.toggle("d-none", !isOffline);
+    const emptyTitle = document.querySelector("#driver-service-no-rides-msg .driver-empty-title");
+    const emptySubtext = document.getElementById("driver-empty-subtext");
+    if (emptyTitle && emptySubtext) {
+        if (isOffline) {
+            emptyTitle.textContent = "Driver is offline";
+            emptySubtext.innerHTML = `Go online to start receiving ride requests.`;
+        } else {
+            emptyTitle.textContent = "No active requests";
+            emptySubtext.innerHTML = `We are searching for nearby passengers.`;
+        }
     }
 
     const statusPill = document.getElementById("driver-service-live-pill");
