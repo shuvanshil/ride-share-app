@@ -137,7 +137,7 @@
                 <div class="auth-remember-row d-flex align-items-center justify-content-between mb-4">
                     <label class="auth-checkbox-label d-flex align-items-center gap-2 m-0" for="remember-me-checkbox">
                         <input type="checkbox" id="remember-me-checkbox" class="auth-checkbox" checked>
-                        <span class="small fw-semibold text-secondary">Remember me</span>
+                        <span class="small fw-semibold text-secondary" data-i18n="auth.remember_me">Remember me</span>
                     </label>
                     <button id="forgot-password-btn" class="auth-forgot-link" type="button" data-i18n="auth.forgot_password">Forgot password?</button>
                 </div>
@@ -160,16 +160,16 @@
                             <path d="M12 18h.01"/>
                         </svg>
                     </span>
-                    <input type="tel" id="phone-number" class="form-control" placeholder="Phone Number" maxlength="10">
+                    <input type="tel" id="phone-number" class="form-control" placeholder="Phone Number" data-i18n-placeholder="auth.mobile_number" maxlength="10">
                 </div>
                 <button id="send-otp-btn" class="gy-btn-auth" type="button">
-                    <span>Next</span>
+                    <span data-i18n="common.next">Next</span>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M5 12h14"/>
                         <path d="m12 5 7 7-7 7"/>
                     </svg>
                 </button>
-                <p class="auth-footer-text mt-3 text-center small text-muted">Already have an account? <a href="#" onclick="document.getElementById('login-mode-btn').click(); return false;" class="text-success fw-bold">Login</a></p>
+                <p class="auth-footer-text mt-3 text-center small text-muted" data-i18n-html="auth.already_have_account_login">Already have an account? <a href="#" onclick="document.getElementById('login-mode-btn').click(); return false;" class="text-success fw-bold">Login</a></p>
             </div>
 
             <!-- OTP Verification Container -->
@@ -179,15 +179,15 @@
                     <input type="text" id="otp-code" class="form-control text-center fs-4 fw-bold" placeholder="******" maxlength="6">
                 </div>
                 <button id="verify-otp-btn" class="gy-btn-auth" type="button">
-                    <span>Verify OTP</span>
+                    <span data-i18n="auth.verify_otp">Verify OTP</span>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M5 12h14"/>
                         <path d="m12 5 7 7-7 7"/>
                     </svg>
                 </button>
                 <div class="d-flex justify-content-between mt-3">
-                    <button id="resend-otp-btn" class="btn btn-link text-success fw-bold p-0 text-decoration-none small" type="button" disabled>Resend OTP</button>
-                    <button id="change-phone-btn" class="btn btn-link text-muted p-0 text-decoration-none small" type="button">Change number</button>
+                    <button id="resend-otp-btn" class="btn btn-link text-success fw-bold p-0 text-decoration-none small" type="button" data-i18n="auth.resend_otp" disabled>Resend OTP</button>
+                    <button id="change-phone-btn" class="btn btn-link text-muted p-0 text-decoration-none small" type="button" data-i18n="auth.change_number">Change number</button>
                 </div>
             </div>
 
@@ -200,7 +200,7 @@
                             <circle cx="12" cy="7" r="4"/>
                         </svg>
                     </span>
-                    <input type="text" id="user-name" class="form-control" placeholder="Full Name">
+                    <input type="text" id="user-name" class="form-control" placeholder="Full Name" data-i18n-placeholder="auth.full_name">
                 </div>
                 <div class="auth-input-group mb-3">
                     <span class="auth-input-icon">
@@ -209,7 +209,7 @@
                             <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
                         </svg>
                     </span>
-                    <input type="email" id="user-email" class="form-control" placeholder="Email Address">
+                    <input type="email" id="user-email" class="form-control" placeholder="Email Address" data-i18n-placeholder="auth.email_address">
                 </div>
                 <div class="auth-input-group mb-3">
                     <span class="auth-input-icon">
@@ -218,43 +218,43 @@
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
                     </span>
-                    <input type="password" id="user-password" class="form-control" placeholder="Password">
+                    <input type="password" id="user-password" class="form-control" placeholder="Password" data-i18n-placeholder="auth.password">
                     <input type="hidden" id="user-confirm-password">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-bold small text-muted ms-1">Register As</label>
+                    <label class="form-label fw-bold small text-muted ms-1" data-i18n="auth.register_as">Register As</label>
                     <select id="user-role" class="form-select gy-input">
-                        <option value="passenger">Passenger</option>
-                        <option value="driver">Driver</option>
+                        <option value="passenger" data-i18n="auth.role_passenger">Passenger</option>
+                        <option value="driver" data-i18n="auth.role_driver">Driver</option>
                     </select>
                 </div>
                 <div id="driver-verification-fields" class="d-none">
                     <div class="auth-input-group mb-3">
-                        <input type="text" id="driver-vehicle-number" class="form-control text-uppercase" placeholder="Vehicle Number">
+                        <input type="text" id="driver-vehicle-number" class="form-control text-uppercase" placeholder="Vehicle Number" data-i18n-placeholder="profile.vehicle_number">
                     </div>
                     <div class="mb-3">
                         <select id="driver-vehicle-type" class="form-select gy-input">
-                            <option value="">Select vehicle type</option>
-                            <option value="bike">Bike / Scooty</option>
-                            <option value="auto">Auto</option>
+                            <option value="" data-i18n="profile.select_vehicle_type">Select vehicle type</option>
+                            <option value="bike" data-i18n="services.bike">Bike / Scooty</option>
+                            <option value="auto" data-i18n="services.auto">Auto</option>
                         </select>
                     </div>
                     <div class="auth-input-group mb-3">
-                        <input type="text" id="driver-vehicle-model" class="form-control" placeholder="Vehicle Model">
+                        <input type="text" id="driver-vehicle-model" class="form-control" placeholder="Vehicle Model" data-i18n-placeholder="profile.vehicle_model">
                     </div>
                     <div class="auth-input-group mb-3">
-                        <input type="text" id="driver-license-number" class="form-control text-uppercase" placeholder="Licence Number">
+                        <input type="text" id="driver-license-number" class="form-control text-uppercase" placeholder="Licence Number" data-i18n-placeholder="profile.driving_licence">
                     </div>
                     <div class="auth-input-group mb-3">
-                        <input type="text" id="driver-upi-id" class="form-control" placeholder="UPI ID">
+                        <input type="text" id="driver-upi-id" class="form-control" placeholder="UPI ID" data-i18n-placeholder="profile.upi_id">
                     </div>
                     <label class="driver-agreement mb-3 d-flex gap-2 align-items-start" for="driver-agreement-checkbox">
                         <input type="checkbox" id="driver-agreement-checkbox" class="mt-1">
-                        <span class="small text-muted">I agree to LiphtUp's Terms &amp; Privacy Policy.</span>
+                        <span class="small text-muted" data-i18n-html="auth.driver_agreement_notice">I agree to LiphtUp's Terms &amp; Privacy Policy.</span>
                     </label>
                 </div>
                 <button id="register-btn" class="gy-btn-auth" type="button">
-                    <span>Register</span>
+                    <span data-i18n="auth.register_btn">Register</span>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M5 12h14"/>
                         <path d="m12 5 7 7-7 7"/>
@@ -271,7 +271,7 @@
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
                     </span>
-                    <input type="password" id="reset-password" class="form-control" placeholder="New Password">
+                    <input type="password" id="reset-password" class="form-control" placeholder="New Password" data-i18n-placeholder="auth.new_password">
                 </div>
                 <div class="auth-input-group mb-3">
                     <span class="auth-input-icon">
@@ -280,10 +280,10 @@
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
                     </span>
-                    <input type="password" id="reset-confirm-password" class="form-control" placeholder="Confirm New Password">
+                    <input type="password" id="reset-confirm-password" class="form-control" placeholder="Confirm New Password" data-i18n-placeholder="auth.confirm_new_password">
                 </div>
-                <button id="reset-password-btn" class="gy-btn-auth" type="button">Update Password</button>
-                <button id="reset-back-btn" class="auth-footer-link mt-3 w-100 text-center" type="button">Back to login</button>
+                <button id="reset-password-btn" class="gy-btn-auth" type="button" data-i18n="auth.update_password">Update Password</button>
+                <button id="reset-back-btn" class="auth-footer-link mt-3 w-100 text-center" type="button" data-i18n="auth.back_to_login">Back to login</button>
             </div>
 
             <div id="recaptcha-container" class="mt-3 d-flex justify-content-center"></div>
@@ -299,8 +299,8 @@
                         </svg>
                     </div>
                     <div class="auth-trust-text">
-                        <strong>Your safety</strong>
-                        <small>our priority</small>
+                        <strong data-i18n="auth.trust_safety_title">Your safety</strong>
+                        <small data-i18n="auth.trust_safety_sub">our priority</small>
                     </div>
                 </div>
                 <div class="auth-trust-divider"></div>
@@ -314,8 +314,8 @@
                         </svg>
                     </div>
                     <div class="auth-trust-text">
-                        <strong>Local drivers,</strong>
-                        <small>local support</small>
+                        <strong data-i18n="auth.trust_driver_title">Local drivers,</strong>
+                        <small data-i18n="auth.trust_driver_sub">local support</small>
                     </div>
                 </div>
                 <div class="auth-trust-divider"></div>
@@ -327,8 +327,8 @@
                         </svg>
                     </div>
                     <div class="auth-trust-text">
-                        <strong>24/7 customer</strong>
-                        <small>assistance</small>
+                        <strong data-i18n="auth.trust_support_title">24/7 customer</strong>
+                        <small data-i18n="auth.trust_support_sub">assistance</small>
                     </div>
                 </div>
             </div>

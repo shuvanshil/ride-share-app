@@ -286,12 +286,12 @@ function getQuickPosition(timeoutMs = 4000) {
 
 async function sendDriverSos() {
     if (!currentlyAssignedRideId) {
-        await showAlert("Start or accept a trip first, then use SOS during that trip.");
+        await showAlert(t('driver.start_trip_first_sos', "Start or accept a trip first, then use SOS during that trip."));
         return;
     }
     const confirmed = await showConfirm(
-        "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first.",
-        { okText: "Send SOS", cancelText: "Cancel" }
+        t('driver.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first."),
+        { okText: t('driver.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
     );
     if (!confirmed) return;
 
@@ -1489,7 +1489,7 @@ async function cancelRideByDriver(rideId) {
         return;
     }
 
-    if (!(await showConfirm("Are you sure you want to cancel this trip and proceed?"))) return;
+    if (!(await showConfirm(t('driver.cancel_trip_confirm', "Are you sure you want to cancel this trip and proceed?")))) return;
 
     try {
         const result = await transitionRideThroughBackend(rideId, "cancel");

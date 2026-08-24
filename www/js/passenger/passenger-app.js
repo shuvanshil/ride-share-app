@@ -310,30 +310,30 @@ function getQuickPosition(timeoutMs = 4000) {
 
 async function sendPassengerSos() {
     if (!currentPassengerRideId) {
-        await showAlert("SOS is available once a driver is on the way.");
+        await showAlert(t('services.sos_only_active_ride', "SOS is available once a driver is on the way."));
         return;
     }
     const confirmed = await showConfirm(
-        "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first.",
-        { okText: "Send SOS", cancelText: "Cancel" }
+        t('services.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your ride details and location. For any life-threatening emergency, call local emergency services first."),
+        { okText: t('services.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
     );
     if (!confirmed) return;
 
     try {
         const position = await getQuickPosition();
         const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
+        if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
         const response = await fetch(`/api/rides/${encodeURIComponent(currentPassengerRideId)}/sos`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
             body: JSON.stringify(position ? { lat: position.lat, lng: position.lng } : {})
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.ok) throw new Error(data.error || "Could not send the SOS alert.");
-        await showAlert("SOS sent. LiphtUp's safety team has been alerted with your trip and location.");
+        if (!response.ok || !data.ok) throw new Error(data.error || t('services.sos_failed', "Could not send the SOS alert."));
+        await showAlert(t('services.sos_sent_alert', "SOS sent. LiphtUp's safety team has been alerted with your trip and location."));
     } catch (error) {
         console.error("SOS failed:", error);
-        await showAlert(error.message || "Could not send the SOS alert. Please call local emergency services directly.");
+        await showAlert(error.message || t('services.sos_failed', "Could not send the SOS alert."));
     }
 }
 
@@ -1028,12 +1028,12 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
 
         await showAlert(
             mode === "schedule"
-                ? "Ride scheduled! We'll auto-search for nearby drivers when your time arrives."
-                : "You're in queue! We'll notify you the moment an approved driver becomes free."
+                ? t('services.ride_scheduled_alert', "Ride scheduled! We'll auto-search for nearby drivers when your time arrives.")
+                : t('services.queue_joined_alert', "You're in queue! We'll notify you the moment an approved driver becomes free.")
         );
     } catch (e) {
         console.error("Pending request error:", e);
-        await showAlert(e.message || "Could not save pending request.");
+        await showAlert(e.message || t('services.save_pending_failed', "Could not save pending request."));
     } finally {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
@@ -1054,11 +1054,11 @@ function showPendingActiveCard(mode = "notify_only", activatesAt = null) {
     if (mode === "schedule" && activatesAt) {
         const parsedDt = parseDateValue(activatesAt);
         const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
-        if (titleEl) titleEl.innerText = timeStr ? `Scheduled for ${timeStr}` : "Scheduled Ride";
-        if (descEl) descEl.innerText = "We'll automatically connect you with nearby drivers at your scheduled time.";
+        if (titleEl) titleEl.innerText = timeStr ? `${t('services.scheduled_for', 'Scheduled for')} ${timeStr}` : t('services.scheduled_ride', "Scheduled Ride");
+        if (descEl) descEl.innerText = t('services.scheduled_ride_desc', "We'll automatically connect you with nearby drivers at your scheduled time.");
     } else {
-        if (titleEl) titleEl.innerText = "Waiting for next available driver";
-        if (descEl) descEl.innerText = "We are actively monitoring for newly available drivers in your pickup area.";
+        if (titleEl) titleEl.innerText = t('services.waiting_for_next_driver', "Waiting for next available driver");
+        if (descEl) descEl.innerText = t('services.monitoring_drivers_desc', "We are actively monitoring for newly available drivers in your pickup area.");
     }
 
     pendingCard.classList.remove('d-none');
@@ -1069,10 +1069,16 @@ async function cancelPendingRideRequest() {
         resetPassengerBookingUi({ preserveSelections: false });
         return;
     }
-    const confirmed = await showConfirm("Cancel your waiting ride request?", { okText: "Yes, cancel", cancelText: "Keep waiting" });
+    const confirmed = await showConfirm(
+        t('services.cancel_waiting_confirm', "Cancel your waiting ride request?"),
+        {
+            okText: t('services.yes_cancel', "Yes, cancel"),
+            cancelText: t('services.keep_waiting', "Keep waiting")
+        }
+    );
     if (!confirmed) return;
 
-    window.LiphtUpLoading?.showPageLoader?.("Cancelling...");
+    window.LiphtUpLoading?.showPageLoader?.(t('common.cancelling', "Cancelling..."));
 
     const reqId = activePendingRequestId;
     activePendingRequestId = null;
@@ -1109,7 +1115,7 @@ async function cancelPendingRideRequest() {
     } finally {
         resetPassengerBookingUi({ preserveSelections: false });
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
-        await showAlert("Waiting request cancelled.");
+        await showAlert(t('services.waiting_request_cancelled', "Waiting request cancelled."));
     }
 }
 
@@ -1823,14 +1829,17 @@ async function cancelRideByPassenger(rideId) {
 
     const status = currentPassengerRideData?.status || "";
     const cancelMessage = ["started", "en_route"].includes(status)
-        ? "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully."
+        ? t('services.cancel_trip_in_progress_warning', "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully.")
         : ["accepted", "arrived"].includes(status)
-            ? "Cancel this ride? Your driver will be notified immediately."
-            : "Cancel this ride request?";
+            ? t('services.cancel_driver_assigned_confirm', "Cancel this ride? Your driver will be notified immediately.")
+            : t('services.cancel_searching_confirm', "Cancel searching for nearby drivers?");
 
-    if (!(await showConfirm(cancelMessage, { okText: "Cancel ride", cancelText: "Keep ride" }))) return;
+    if (!(await showConfirm(cancelMessage, {
+        okText: t('services.cancel_ride_btn', "Cancel ride"),
+        cancelText: t('services.keep_ride_btn', "Keep ride")
+    }))) return;
 
-    window.LiphtUpLoading?.showPageLoader?.("Cancelling ride request...");
+    window.LiphtUpLoading?.showPageLoader?.(t('services.cancelling_ride_request', "Cancelling ride request..."));
 
     const targetRideId = rideId;
     currentPassengerRideId = null;
@@ -2246,7 +2255,9 @@ function listenToPendingRequestUpdates(requestId) {
                             }).catch(() => {});
                         }
                     }
-                    showAlert(isScheduledMode ? "Drivers are now available for your scheduled ride! Tap 'Yes, start the search' to confirm." : "Drivers are now available! Tap 'Yes, start the search' to find a driver.");
+                    showAlert(isScheduledMode
+                        ? t('services.drivers_available_scheduled', "Drivers are now available for your scheduled ride! Tap 'Yes, start the search' to confirm.")
+                        : t('services.drivers_available_now', "Drivers are now available! Tap 'Yes, start the search' to find a driver."));
                 }
                 
                 lastKnownNotifiedAt = notifiedSec;
@@ -2255,9 +2266,9 @@ function listenToPendingRequestUpdates(requestId) {
                 const descEl = document.getElementById('pending-mode-desc');
                 const rebookBtn = document.getElementById('pending-rebook-btn');
 
-                if (titleEl) titleEl.innerText = "Drivers are available!";
-                if (descEl) descEl.innerText = "Some drivers are now available for your ride, would you like to start the searching again?";
-                if (rebookBtn) rebookBtn.innerText = "Yes, start the search.";
+                if (titleEl) titleEl.innerText = t('services.drivers_available_title', "Drivers are available!");
+                if (descEl) descEl.innerText = t('services.drivers_available_sub', "Some drivers are now available for your ride, would you like to start the searching again?");
+                if (rebookBtn) rebookBtn.innerText = t('services.yes_start_search', "Yes, start the search.");
                 
                 if (availablePrompt) availablePrompt.classList.remove('d-none');
                 if (timeoutPrompt) timeoutPrompt.classList.add('d-none');
@@ -2267,16 +2278,16 @@ function listenToPendingRequestUpdates(requestId) {
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
                 const rebookBtn = document.getElementById('pending-rebook-btn');
-                if (rebookBtn) rebookBtn.innerText = "Yes, start the search.";
+                if (rebookBtn) rebookBtn.innerText = t('services.yes_start_search', "Yes, start the search.");
 
                 if (isScheduledMode) {
                     const parsedDt = parseDateValue(data.activatesAt);
                     const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
-                    if (titleEl) titleEl.innerText = timeStr ? `Scheduled for ${timeStr}` : "Scheduled Ride";
-                    if (descEl) descEl.innerText = "We'll check for available drivers starting at your scheduled time.";
+                    if (titleEl) titleEl.innerText = timeStr ? `${t('services.scheduled_for', 'Scheduled for')} ${timeStr}` : t('services.scheduled_ride', "Scheduled Ride");
+                    if (descEl) descEl.innerText = t('services.scheduled_ride_search_desc', "We'll check for available drivers starting at your scheduled time.");
                 } else {
-                    if (titleEl) titleEl.innerText = "Looking for available drivers...";
-                    if (descEl) descEl.innerText = "We're watching for drivers in your area and will notify you the moment one is available.";
+                    if (titleEl) titleEl.innerText = t('services.looking_for_drivers', "Looking for available drivers...");
+                    if (descEl) descEl.innerText = t('services.pending_queue_desc', "We're watching for drivers in your area and will notify you the moment one is available.");
                 }
                 
                 if (availablePrompt) availablePrompt.classList.add('d-none');

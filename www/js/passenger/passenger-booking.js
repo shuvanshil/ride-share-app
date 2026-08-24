@@ -12,6 +12,7 @@ import {
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showSkeleton, setButtonBusy } from '../shared/loading.js';
 import { waitForAuth } from '../shared/auth.js';
+import { t } from '../shared/i18n.js';
 
 const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 const RECENT_RIDES_LIMIT = 3;
@@ -82,12 +83,11 @@ function getTripTime(trip) {
 function getTripDestination(trip) {
     if (!isUnclearLocation(trip.drop_display_address)) return trip.drop_display_address;
     if (!isUnclearLocation(trip.drop_location)) return trip.drop_location;
-    return "Destination not recorded";
+    return t('history.drop_not_recorded', "Destination not recorded");
 }
 
 function formatRelativeDay(millis) {
     if (!millis) return "";
-    const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
     const diffDays = Math.floor((Date.now() - millis) / (24 * 60 * 60 * 1000));
     if (diffDays <= 0) return t('history.today', "Today");
     if (diffDays === 1) return t('history.yesterday', "Yesterday");
@@ -113,7 +113,6 @@ function updateGreeting(name) {
         fallback = "Good evening";
     }
 
-    const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
     const translatedGreeting = t(key, fallback);
 
     greetingEl.innerHTML = `${translatedGreeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
@@ -124,6 +123,8 @@ window.addEventListener('languageChanged', () => {
     if (nameEl) {
         updateGreeting(nameEl.innerText);
     }
+    renderSavedPlaces();
+    renderRecentRides();
 });
 
 function getDefaultAvatarUrl(profile = {}) {
@@ -384,7 +385,7 @@ function openSavedPlaceModal(slot) {
     activeSavedSlot = slot;
     const existing = savedPlacesCache?.[slot];
     pickedPlace = existing?.address ? { ...existing } : null;
-    if (savedPlaceTitle) savedPlaceTitle.textContent = slot === "home" ? "Save your Home address" : "Save your Work address";
+    if (savedPlaceTitle) savedPlaceTitle.textContent = slot === "home" ? t('profile.save_home_title', "Save your Home address") : t('profile.save_work_title', "Save your Work address");
     if (savedPlaceAddressInput) savedPlaceAddressInput.value = existing?.address || "";
     if (savedPlaceSuggestions) savedPlaceSuggestions.innerHTML = "";
     savedPlaceRemoveBtn?.classList.toggle('d-none', !existing?.address);
@@ -500,10 +501,10 @@ savedPlaceAddressInput?.addEventListener('input', () => {
 
 savedPlaceUseGpsBtn?.addEventListener('click', async () => {
     if (!navigator.geolocation) {
-        await showAlert("Your browser does not support location detection.");
+        await showAlert(t('profile.location_not_supported', "Your browser does not support location detection."));
         return;
     }
-    const restore = setButtonBusy(savedPlaceUseGpsBtn, "Locating…");
+    const restore = setButtonBusy(savedPlaceUseGpsBtn, t('common.locating', "Locating…"));
     navigator.geolocation.getCurrentPosition(async (position) => {
         try {
             const { latitude, longitude } = position.coords;
@@ -514,19 +515,19 @@ savedPlaceUseGpsBtn?.addEventListener('click', async () => {
             const data = await response.json().catch(() => ({}));
             const result = response.ok ? data.result : null;
             const address = result?.displayAddress || result?.fullAddress || "";
-            if (!address) throw new Error("Could not resolve your current address.");
+            if (!address) throw new Error(t('profile.location_resolve_failed', "Could not resolve your current address."));
 
             pickedPlace = { address, lat: latitude, lng: longitude, placeId: "" };
             if (savedPlaceAddressInput) savedPlaceAddressInput.value = address;
             if (savedPlaceSuggestions) savedPlaceSuggestions.innerHTML = "";
         } catch (error) {
-            await showAlert(error.message || "Could not detect your current location.");
+            await showAlert(error.message || t('profile.location_detect_failed', "Could not detect your current location."));
         } finally {
             restore();
         }
     }, async () => {
         restore();
-        await showAlert("Could not access your location. Please allow location access and try again.");
+        await showAlert(t('profile.location_permission_denied', "Could not access your location. Please allow location access and try again."));
     }, { enableHighAccuracy: true, timeout: 10000 });
 });
 
@@ -537,14 +538,14 @@ savedPlaceModal?.addEventListener('mousedown', (event) => {
 
 savedPlaceRemoveBtn?.addEventListener('click', async () => {
     if (!currentUid || !activeSavedSlot) return;
-    const label = activeSavedSlot === "home" ? "Home" : "Work";
-    const confirmed = await showConfirm(`Remove your saved ${label} address?`, {
-        okText: "Remove",
-        cancelText: "Keep it"
+    const label = activeSavedSlot === "home" ? t('profile.home', "Home") : t('profile.work', "Work");
+    const confirmed = await showConfirm(`${t('profile.remove_saved_prefix', "Remove your saved")} ${label} ${t('profile.remove_saved_suffix', "address?")}`, {
+        okText: t('common.remove', "Remove"),
+        cancelText: t('profile.keep_it', "Keep it")
     });
     if (!confirmed) return;
 
-    const restore = setButtonBusy(savedPlaceRemoveBtn, "Removing…");
+    const restore = setButtonBusy(savedPlaceRemoveBtn, t('common.removing', "Removing…"));
     try {
         await setDoc(doc(db, "savedPlaces", currentUid), {
             [activeSavedSlot]: deleteField(),
@@ -557,7 +558,7 @@ savedPlaceRemoveBtn?.addEventListener('click', async () => {
         closeSavedPlaceModal();
     } catch (error) {
         console.error("Could not remove saved place:", error);
-        await showAlert("Could not remove this address. Please try again.");
+        await showAlert(t('profile.remove_address_failed', "Could not remove this address. Please try again."));
     } finally {
         restore();
     }
@@ -569,12 +570,12 @@ savedPlaceForm?.addEventListener('submit', async (event) => {
 
     const address = pickedPlace?.address || cleanText(savedPlaceAddressInput?.value);
     if (!address) {
-        await showAlert("Please enter or pick an address first.");
+        await showAlert(t('profile.enter_or_pick_address', "Please enter or pick an address first."));
         return;
     }
 
     const submitBtn = savedPlaceForm.querySelector('button[type="submit"]');
-    const restore = setButtonBusy(submitBtn, "Saving…");
+    const restore = setButtonBusy(submitBtn, t('common.saving', "Saving…"));
     try {
         const place = pickedPlace?.address === address
             ? pickedPlace
@@ -590,7 +591,7 @@ savedPlaceForm?.addEventListener('submit', async (event) => {
         closeSavedPlaceModal();
     } catch (error) {
         console.error("Could not save place:", error);
-        await showAlert("Could not save this location. Please try again.");
+        await showAlert(t('profile.save_address_failed', "Could not save this location. Please try again."));
     } finally {
         restore();
     }

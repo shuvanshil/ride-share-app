@@ -2185,32 +2185,32 @@ async function completeRideJob() {
 
 async function cancelRideByDriver() {
     if (!currentRideId) {
-        await showAlert("No active trip found to cancel.");
+        await showAlert(t('driver.no_active_trip_to_cancel', "No active trip found to cancel."));
         return;
     }
 
-    if (!(await showConfirm("Warning: Cancelling active trips impacts your driver rating. Proceed?"))) return;
+    if (!(await showConfirm(t('driver.cancel_warning_confirm', "Warning: Cancelling active trips impacts your driver rating. Proceed?")))) return;
 
     try {
         const rideId = currentRideId;
         const result = await transitionRideThroughBackend(rideId, "cancel");
         renderIdleState();
-        await showAlert(fareAdjustmentMessage(result.ride, "Trip cancelled. You are back online."));
+        await showAlert(fareAdjustmentMessage(result.ride, t('driver.trip_cancelled_online', "Trip cancelled. You are back online.")));
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
-        await showAlert("Could not cancel the active trip.");
+        await showAlert(t('driver.cancel_trip_failed', "Could not cancel the active trip."));
     }
 }
 
 async function sendDriverSos() {
     if (!currentRideId) {
-        await showAlert("No active ride found to trigger SOS emergency.");
+        await showAlert(t('driver.no_active_ride_sos', "No active ride found to trigger SOS emergency."));
         return;
     }
 
     const confirmSos = await showConfirm(
-        "Send Emergency SOS Alert?",
-        "This will immediately dispatch an emergency safety alert to our 24/7 safety team with your live GPS location."
+        t('driver.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first."),
+        { okText: t('driver.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
     );
     if (!confirmSos) return;
 

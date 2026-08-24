@@ -256,9 +256,10 @@
     justify-content: center;
     padding: 20px 24px;
     border-radius: 16px;
-    background-image: url("../assets/hero banner.png");
+    background-color: #f7f9f6;
+    background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.82) 46%, rgba(255, 255, 255, 0.15) 100%), url("../assets/hero banner.png");
     background-size: cover;
-    background-position: center;
+    background-position: right center;
     margin: 0 0 12px;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
     border: 1px solid rgba(0, 0, 0, 0.06);
@@ -267,16 +268,19 @@
 }
 
 .hero-card > div {
-    max-width: 260px;
+    max-width: 280px;
+    position: relative;
+    z-index: 2;
 }
 
 .hero-card h1 {
     margin: 0 0 8px;
-    color: #1d1d1d;
+    color: #0f172a;
     font-size: clamp(24px, 6.7vw, 30px);
-    line-height: 1.05;
+    line-height: 1.08;
     font-weight: 800;
-    letter-spacing: 0;
+    letter-spacing: -0.02em;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
 }
 
 .hero-card h1 .headline-line {
@@ -285,14 +289,17 @@
 }
 
 .hero-card h1 .headline-accent {
-    color: #14c22e;
+    color: #15803d;
 }
 
 .hero-card p {
     margin: 0;
-    color: rgba(44, 44, 44, 0.86);
-    font-size: 13px;
-    max-width: 190px;
+    color: #1e293b;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    max-width: 240px;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
 }
 
 /* Side Floating Menu */
@@ -2108,24 +2115,30 @@ select {
     justify-content: center;
     padding: 24px;
     border-radius: 16px;
-    background-image: url("../assets/hero banner.png");
+    background-color: #f7f9f6;
+    background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.82) 46%, rgba(255, 255, 255, 0.15) 100%), url("../assets/hero banner.png");
     background-size: cover;
-    background-position: center;
+    background-position: right center;
     margin-bottom: 20px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    position: relative;
+    overflow: hidden;
 }
 
 .hero-card > div {
-    max-width: 260px;
+    max-width: 280px;
+    position: relative;
+    z-index: 2;
 }
 
 .hero-card h1 {
     margin: 0 0 8px;
-    color: #1d1d1d;
+    color: #0f172a;
     font-size: clamp(24px, 6.7vw, 30px);
-    line-height: 1.05;
+    line-height: 1.08;
     font-weight: 800;
-    letter-spacing: 0;
+    letter-spacing: -0.02em;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
 }
 
 .hero-card h1 .headline-line {
@@ -2134,19 +2147,17 @@ select {
 }
 
 .hero-card h1 .headline-accent {
-    color: #14c22e;
+    color: #15803d;
 }
-
-
-
-
-
 
 .hero-card p {
     margin: 0;
-    color: rgba(44, 44, 44, 0.86);
-    font-size: 13px;
-    max-width: 190px;
+    color: #1e293b;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    max-width: 240px;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
 }
 
 .auto-hero svg {
