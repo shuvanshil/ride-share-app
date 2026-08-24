@@ -40,8 +40,7 @@
                 <div class="brand-logo">
                     <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
                 </div>
-                <div class="app-bar-actions d-flex align-items-center gap-2">
-                    <div id="services-lang-switcher"></div>
+                <div class="app-bar-actions">
                     <button class="guest-login-btn d-none" id="services-header-login-btn" type="button" onclick="window.location.href='/login.html'" data-i18n="common.login">Login</button>
                 </div>
             </header>
@@ -649,10 +648,6 @@
     <script type="module" src="js/shared/services.js?v=2.0.0"></script>
     <script type="module" src="js/passenger/passenger-feedback.js"></script>
     <script type="module" src="js/shared/i18n.js"></script>
-    <script type="module">
-        import { renderLanguageSwitcher } from './js/shared/i18n.js';
-        renderLanguageSwitcher(document.getElementById('services-lang-switcher'));
-    </script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

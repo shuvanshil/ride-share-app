@@ -8,7 +8,7 @@
  * and automatically invalidates outdated client cache.
  */
 
-export const TRANSLATIONS_VERSION = "20260824-v1";
+export const TRANSLATIONS_VERSION = "20260824-v2";
 
 export const TRANSLATIONS = {
     en: {
@@ -36,6 +36,12 @@ export const TRANSLATIONS = {
             language: "Language",
             english: "English",
             bengali: "বাংলা"
+        },
+        nav: {
+            home: "Home",
+            services: "Services",
+            history: "History",
+            profile: "Profile"
         },
         auth: {
             welcome_back: "Welcome back!",
@@ -70,25 +76,25 @@ export const TRANSLATIONS = {
             greeting_evening: "Good evening",
             where_going: "Where are you going today?",
             hero_line1: "Your Everyday",
-            hero_line2: "Ride, Anytime",
+            hero_line2: "Ride, <span class=\"headline-accent\">Anytime</span>",
             hero_line3: "Anywhere",
             hero_sub: "Quick rides, great price, always on time.",
             enter_destination: "Enter destination",
             recent_rides: "Recent rides",
             safe_secure_title: "Safe & Secure",
-            safe_secure_desc: "Your safety\nour priority",
+            safe_secure_desc: "Your safety<br>our priority",
             quick_booking_title: "Quick Booking",
-            quick_booking_desc: "Book in just\nfew taps",
+            quick_booking_desc: "Book in just<br>few taps",
             service_247_title: "24/7 Service",
-            service_247_desc: "We're here\nfor you",
+            service_247_desc: "We're here<br>for you",
             explore_title: "Explore with LiphtUp",
             explore_sub: "Popular places and destinations around you",
             unakoti_title: "Unakoti",
             unakoti_desc: "The Abode of Gods",
             railway_title: "Railway Station",
             railway_desc: "Go anywhere with LiphtUp",
-            share_card_title: "Ride Together,\nSave Together.",
-            share_card_desc: "Invite friends & get exciting\ndiscounts on first few rides.",
+            share_card_title: "Ride Together,<br>Save Together.",
+            share_card_desc: "Invite friends & get exciting discounts on first few rides.",
             invite_btn: "Invite Friends",
             home_chip: "Home",
             work_chip: "Work",
@@ -96,11 +102,11 @@ export const TRANSLATIONS = {
         },
         services: {
             booking_title: "Book Your Ride",
-            booking_sub: "Choose vehicle type and pickup location",
-            pickup_label: "PICKUP LOCATION",
-            destination_label: "DESTINATION",
-            search_pickup_placeholder: "Enter pickup address",
-            search_drop_placeholder: "Where to?",
+            booking_sub: "Fast, safe and reliable rides to your destination",
+            pickup_label: "Pickup location",
+            destination_label: "Where to?",
+            search_pickup_placeholder: "Detecting your pickup...",
+            search_drop_placeholder: "Enter destination (village, street, town or landmark)",
             choose_ride: "Choose your ride",
             bike: "Bike",
             auto: "Auto",
@@ -121,7 +127,13 @@ export const TRANSLATIONS = {
             complete_payment: "Complete Payment",
             rate_ride: "Rate your ride",
             leave_feedback: "How was your trip experience?",
-            submit_feedback: "Submit Feedback"
+            submit_feedback: "Submit Feedback",
+            you_are_here: "You are here",
+            gps_ready: "GPS Ready",
+            gps_detecting: "Finding location...",
+            gps_error: "GPS Error",
+            map_mode: "Map Mode",
+            navigation_mode: "Navigation Mode"
         },
         history: {
             title: "Ride History",
@@ -135,11 +147,12 @@ export const TRANSLATIONS = {
             filter_all: "All",
             no_trips: "No ride history found",
             trip_details: "Trip Details",
+            loading_history: "Loading ride history...",
             status_completed: "Completed",
             status_cancelled: "Cancelled"
         },
         profile: {
-            title: "My Profile",
+            title: "Profile",
             edit_profile: "Edit Profile",
             phone: "Phone Number",
             email: "Email Address",
@@ -172,7 +185,15 @@ export const TRANSLATIONS = {
             start_trip_btn: "Verify OTP & Start Trip",
             enter_pin_prompt: "Enter passenger 4-digit PIN",
             complete_trip_btn: "Complete Trip",
-            fare_collected: "Fare Collected & Clear"
+            fare_collected: "Fare Collected & Clear",
+            review_title: "Account Under Review",
+            review_sub: "Your driver profile has been submitted. You can start accepting rides after admin approval.",
+            last_week_details: "Last/Current Week Details",
+            last_due_date: "Last Payment Due Date",
+            hold_title: "Account Temporarily On Hold",
+            hold_desc: "Your driver account has been placed on hold because weekly fee payments for 10 or more weeks have not been received.",
+            pay_fees_btn: "Pay Outstanding Weekly Fees",
+            upi_qr_notice: "Show this screen to passenger for easy collection"
         }
     },
     bn: {
@@ -200,6 +221,12 @@ export const TRANSLATIONS = {
             language: "ভাষা",
             english: "English",
             bengali: "বাংলা"
+        },
+        nav: {
+            home: "হোম",
+            services: "সার্ভিস",
+            history: "হিস্ট্রি",
+            profile: "প্রোফাইল"
         },
         auth: {
             welcome_back: "স্বাগতম!",
@@ -234,24 +261,24 @@ export const TRANSLATIONS = {
             greeting_evening: "শুভ সন্ধ্যা",
             where_going: "আজ কোথায় যাবেন?",
             hero_line1: "আপনার প্রতিদিনের",
-            hero_line2: "রাইড, যে কোনো সময়",
+            hero_line2: "রাইড, <span class=\"headline-accent\">যে কোনো সময়</span>",
             hero_line3: "যে কোনো জায়গায়",
             hero_sub: "দ্রুত রাইড, সেরা ভাড়া, সঠিক সময়।",
             enter_destination: "গন্তব্য লিখুন",
             recent_rides: "সাম্প্রতিক রাইড",
             safe_secure_title: "নিরাপদ ও সুরক্ষিত",
-            safe_secure_desc: "আপনার সুরক্ষা\nআমাদের অগ্রাধিকার",
+            safe_secure_desc: "আপনার সুরক্ষা<br>আমাদের অগ্রাধিকার",
             quick_booking_title: "দ্রুত বুকিং",
-            quick_booking_desc: "সহজ কয়েকটি\nট্যাপে বুক করুন",
+            quick_booking_desc: "সহজ কয়েকটি<br>ট্যাপে বুক করুন",
             service_247_title: "২৪/৭ সার্ভিস",
-            service_247_desc: "আমরা সবসময়\nআপনার পাশে",
+            service_247_desc: "আমরা সবসময়<br>আপনার পাশে",
             explore_title: "লিফটআপ-এর সাথে ঘুরুন",
             explore_sub: "আপনার আশেপাশের জনপ্রিয় স্থান ও গন্তব্যসমূহ",
             unakoti_title: "উনকোটি",
             unakoti_desc: "দেবতাদের আলয়",
             railway_title: "রেলওয়ে স্টেশন",
             railway_desc: "লিফটআপ-এর সাথে যেকোনো জায়গায় যান",
-            share_card_title: "একসাথে রাইড করুন,\nএকসাথে সাশ্রয় করুন।",
+            share_card_title: "একসাথে রাইড করুন,<br>একসাথে সাশ্রয় করুন।",
             share_card_desc: "বন্ধুদের আমন্ত্রণ জানান ও প্রথম কয়েকটি রাইডে আকর্ষণীয় ছাড় পান।",
             invite_btn: "বন্ধুদের জানান",
             home_chip: "হোম",
@@ -260,11 +287,11 @@ export const TRANSLATIONS = {
         },
         services: {
             booking_title: "রাইড বুক করুন",
-            booking_sub: "যানবাহনের ধরন ও পিকআপ স্থান নির্বাচন করুন",
+            booking_sub: "আপনার গন্তব্যে দ্রুত, নিরাপদ ও নির্ভরযোগ্য রাইড",
             pickup_label: "পিকআপ স্থান",
-            destination_label: "গন্তব্য স্থান",
-            search_pickup_placeholder: "পিকআপ ঠিকানা লিখুন",
-            search_drop_placeholder: "কোথায় যাবেন?",
+            destination_label: "কোথায় যাবেন?",
+            search_pickup_placeholder: "আপনার পিকআপ সন্ধান করা হচ্ছে...",
+            search_drop_placeholder: "গন্তব্য লিখুন (গ্রাম, রাস্তা, শহর বা ল্যান্ডমার্ক)",
             choose_ride: "আপনার বাহন বেছে নিন",
             bike: "বাইক",
             auto: "অটো",
@@ -285,7 +312,13 @@ export const TRANSLATIONS = {
             complete_payment: "পেমেন্ট সম্পন্ন করুন",
             rate_ride: "রাইড মূল্যায়ন করুন",
             leave_feedback: "আপনার রাইডের অভিজ্ঞতা কেমন ছিল?",
-            submit_feedback: "মতামত জমা দিন"
+            submit_feedback: "মতামত জমা দিন",
+            you_are_here: "আপনি এখানে আছেন",
+            gps_ready: "জিপিএস প্রস্তুত",
+            gps_detecting: "লোকেশন খোঁজা হচ্ছে...",
+            gps_error: "জিপিএস সমস্যা",
+            map_mode: "ম্যাপ মোড",
+            navigation_mode: "ন্যাভিগেশন মোড"
         },
         history: {
             title: "রাইড হিস্ট্রি",
@@ -299,11 +332,12 @@ export const TRANSLATIONS = {
             filter_all: "সব",
             no_trips: "কোনো রাইড হিস্ট্রি পাওয়া যায়নি",
             trip_details: "রাইডের বিবরণ",
+            loading_history: "রাইড হিস্ট্রি লোড হচ্ছে...",
             status_completed: "সম্পন্ন",
             status_cancelled: "বাতিল"
         },
         profile: {
-            title: "আমার প্রোফাইল",
+            title: "প্রোফাইল",
             edit_profile: "প্রোফাইল এডিট করুন",
             phone: "ফোন নম্বর",
             email: "ইমেল ঠিকানা",
@@ -336,7 +370,15 @@ export const TRANSLATIONS = {
             start_trip_btn: "OTP যাচাই করে রাইড শুরু করুন",
             enter_pin_prompt: "প্যাসেঞ্জারের ৪-সংখ্যার PIN প্রবেশ করান",
             complete_trip_btn: "রাইড সম্পন্ন করুন",
-            fare_collected: "ভাড়া সংগৃহীত ও ক্লিয়ার"
+            fare_collected: "ভাড়া সংগৃহীত ও ক্লিয়ার",
+            review_title: "অ্যাকাউন্ট পর্যালোচনার অধীনে রয়েছে",
+            review_sub: "আপনার ড্রাইভার প্রোফাইল জমা দেওয়া হয়েছে। এডমিন অনুমোদনের পর আপনি রাইড গ্রহণ শুরু করতে পারবেন।",
+            last_week_details: "গত/বর্তমান সপ্তাহের বিবরণ",
+            last_due_date: "শেষ পেমেন্ট প্রদানের তারিখ",
+            hold_title: "অ্যাকাউন্ট সাময়িকভাবে স্থগিত",
+            hold_desc: "১০ সপ্তাহ বা তার বেশি সময়ের সাপ্তাহিক ফি প্রদান না করায় আপনার অ্যাকাউন্ট স্থগিত করা হয়েছে।",
+            pay_fees_btn: "বকেয়া সাপ্তাহিক ফি প্রদান করুন",
+            upi_qr_notice: "সহজেই ভাড়া সংগ্রাহের জন্য প্যাসেঞ্জারকে এই স্ক্রিন দেখান"
         }
     }
 };

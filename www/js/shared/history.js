@@ -151,13 +151,16 @@ function getTripStatusLabel(trip = {}) {
     const finalStatus = String(trip.final_status || "").toLowerCase();
     const tripStatus = String(trip.trip_status || "").toLowerCase();
 
-    if (finalStatus === "completed" || tripStatus === "completed") return "Completed";
+    const t = (key, fallback) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(key) : fallback;
+
+    if (finalStatus === "completed" || tripStatus === "completed") {
+        return t('history.status_completed', 'Completed');
+    }
     if (finalStatus === "cancelled" || tripStatus.startsWith("cancelled")) {
-        const actor = trip.cancelled_by || (tripStatus === "cancelled_by_passenger" ? "passenger" : tripStatus === "cancelled_by_driver" ? "driver" : "");
-        return actor ? `Cancelled by ${actor}` : "Cancelled";
+        return t('history.status_cancelled', 'Cancelled');
     }
 
-    return "Completed";
+    return t('history.status_completed', 'Completed');
 }
 
 function getStatusPillClass(statusLabel) {
@@ -607,3 +610,9 @@ async function bootstrapHistory() {
 }
 
 bootstrapHistory();
+
+window.addEventListener('languageChanged', () => {
+    if (historyState.trips.length) {
+        renderTrips();
+    }
+});

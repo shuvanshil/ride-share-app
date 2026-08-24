@@ -29,8 +29,7 @@
     <main class="history-page">
         <header class="history-app-head">
             <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
-            <div class="app-bar-actions d-flex align-items-center gap-2">
-                <div id="history-lang-switcher"></div>
+            <div class="app-bar-actions">
                 <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'" data-i18n="common.login">Login</button>
                 <button id="history-refresh-btn" class="mini-action" type="button" data-i18n="common.refresh">Refresh</button>
             </div>
@@ -64,32 +63,31 @@
         </section>
 
         <section id="history-list" class="standalone-history-list">
-            <div class="history-loading-card">Loading ride history...</div>
+            <div class="history-loading-card" data-i18n="history.loading_history">Loading ride history...</div>
         </section>
 
         <div id="history-detail-modal" class="modal-layer d-none">
             <div class="gy-modal history-detail-modal">
-                <div class="modal-head">
-                    <h5>Ride Details</h5>
-                    <button id="history-detail-close-btn" class="mini-action" type="button">Close</button>
-                </div>
-                <div id="history-detail-content" class="history-detail-content"></div>
+                <header class="gy-modal-head">
+                    <h2 data-i18n="history.trip_details">Trip Details</h2>
+                    <button class="modal-close-btn" type="button" aria-label="Close dialog">&times;</button>
+                </header>
+                <div class="history-detail-content" id="history-detail-content"></div>
             </div>
         </div>
 
         <nav class="bottom-nav history-bottom-nav">
-            <button type="button" data-home-link><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
-            <button type="button" data-service-link><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
-            <button class="active" type="button"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-            <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+            <button type="button" data-home-link><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="common.app_name">Home</span></button>
+            <button type="button" data-service-link><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="common.book_a_ride">Services</span></button>
+            <button class="active" type="button"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="history.title">History</span></button>
+            <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="profile.title">Profile</span></button>
         </nav>
     </main>
 
+    <script type="module" src="js/shared/loading.js"></script>
+    <script src="js/shared/navigation.js"></script>
+    <script type="module" src="js/shared/history.js?v=2.0.0"></script>
     <script type="module" src="js/shared/i18n.js"></script>
-    <script type="module">
-        import { renderLanguageSwitcher } from './js/shared/i18n.js';
-        renderLanguageSwitcher(document.getElementById('history-lang-switcher'));
-    </script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

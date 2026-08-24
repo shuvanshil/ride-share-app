@@ -91,6 +91,16 @@ function getNestedKey(obj, keys) {
 export function translateDOM(container = document) {
     if (!container || typeof container.querySelectorAll !== 'function') return;
 
+    // 0. Inner HTML (for rich text with HTML tags like hero accent spans)
+    container.querySelectorAll('[data-i18n-html]').forEach(el => {
+        const key = el.getAttribute('data-i18n-html');
+        if (!key) return;
+        const translated = t(key);
+        if (translated) {
+            el.innerHTML = translated;
+        }
+    });
+
     // 1. Text Content
     container.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');

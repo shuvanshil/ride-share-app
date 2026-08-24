@@ -117,7 +117,7 @@
                     <div>
                         <h1>
                             <span class="headline-line" data-i18n="home.hero_line1">Your Everyday</span>
-                            <span class="headline-line" data-i18n="home.hero_line2">Ride, <span class="headline-accent">Anytime</span></span>
+                            <span class="headline-line" data-i18n-html="home.hero_line2">Ride, <span class="headline-accent">Anytime</span></span>
                             <span class="headline-line" data-i18n="home.hero_line3">Anywhere</span>
                         </h1>
                         <p data-i18n="home.hero_sub">Quick rides, great price, always on time.</p>
@@ -142,8 +142,8 @@
 
                         <section id="dashboard-recent-section" class="dashboard-recent-section redesign-recent-section d-none" aria-labelledby="dashboard-recent-heading">
                             <div class="section-header">
-                                <h2 id="dashboard-recent-heading">Recent rides</h2>
-                                <a href="/history.html" class="see-all-link">See all</a>
+                                <h2 id="dashboard-recent-heading" data-i18n="home.recent_rides">Recent rides</h2>
+                                <a href="/history.html" class="see-all-link" data-i18n="common.see_all">See all</a>
                             </div>
                             <div id="dashboard-recent-rides" class="redesign-recent-rides"></div>
                         </section>
@@ -157,8 +157,8 @@
                                     </svg>
                                 </div>
                                 <div class="trust-text">
-                                    <strong>Safe &amp; Secure</strong>
-                                    <span>Your safety<br>our priority</span>
+                                    <strong data-i18n="home.safe_secure_title">Safe &amp; Secure</strong>
+                                    <span data-i18n-html="home.safe_secure_desc">Your safety<br>our priority</span>
                                 </div>
                             </div>
 
@@ -170,8 +170,8 @@
                                         </svg>
                                     </div>
                                     <div class="trust-text">
-                                        <strong>Quick Booking</strong>
-                                        <span>Book in just<br>few taps</span>
+                                        <strong data-i18n="home.quick_booking_title">Quick Booking</strong>
+                                        <span data-i18n-html="home.quick_booking_desc">Book in just<br>few taps</span>
                                     </div>
                                 </div>
                             </a>
@@ -184,25 +184,25 @@
                                     </svg>
                                 </div>
                                 <div class="trust-text">
-                                    <strong>24/7 Service</strong>
-                                    <span>We're here<br>for you</span>
+                                    <strong data-i18n="home.service_247_title">24/7 Service</strong>
+                                    <span data-i18n-html="home.service_247_desc">We're here<br>for you</span>
                                 </div>
                             </div>
                         </div>
 
                         <section class="explore-section-header">
-                            <h2>Explore with LiphtUp</h2>
-                            <p>Popular places and destinations around you</p>
+                            <h2 data-i18n="home.explore_title">Explore with LiphtUp</h2>
+                            <p data-i18n="home.explore_sub">Popular places and destinations around you</p>
                         </section>
 
                         <div class="heritage-banners">
                             <a class="heritage-card unakoti redesign-heritage" href="/services.html?destination=Unakoti%20Rock%20Carvings%2C%20Tripura" aria-label="Book a ride to Unakoti">
                                 <div class="heritage-card-copy">
-                                    <strong>Unakoti</strong>
-                                    <span>The Abode of Gods</span>
+                                    <strong data-i18n="home.unakoti_title">Unakoti</strong>
+                                    <span data-i18n="home.unakoti_desc">The Abode of Gods</span>
                                 </div>
                                 <div class="heritage-card-cta">
-                                    <span>Explore</span>
+                                    <span data-i18n="common.explore">Explore</span>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M9 18l6-6-6-6"/>
                                     </svg>
@@ -210,11 +210,11 @@
                             </a>
                             <a class="heritage-card railway redesign-heritage" href="/services.html?destination=Kumarghat%20Railway%20Station%2C%20Tripura" aria-label="Book a ride to Railway Station">
                                 <div class="heritage-card-copy">
-                                    <strong>Railway Station</strong>
-                                    <span>Go anywhere with LiphtUp</span>
+                                    <strong data-i18n="home.railway_title">Railway Station</strong>
+                                    <span data-i18n="home.railway_desc">Go anywhere with LiphtUp</span>
                                 </div>
                                 <div class="heritage-card-cta">
-                                    <span>Book a ride</span>
+                                    <span data-i18n="common.book_a_ride">Book a ride</span>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                         <path d="M9 18l6-6-6-6"/>
                                     </svg>
@@ -224,10 +224,10 @@
 
                         <section class="share-card redesign-share" id="invite-friends-card" style="cursor: pointer;" role="button" tabindex="0" aria-labelledby="share-card-heading" onclick="window.LiphtUpShareInvite && window.LiphtUpShareInvite()">
                             <div class="share-card-copy">
-                                <h2 id="share-card-heading">Ride Together,<br>Save Together.</h2>
-                                <p class="share-card-description">Invite friends &amp; get exciting<br>discounts on first few rides.</p>
+                                <h2 id="share-card-heading" data-i18n-html="home.share_card_title">Ride Together,<br>Save Together.</h2>
+                                <p class="share-card-description" data-i18n="home.share_card_desc">Invite friends &amp; get exciting<br>discounts on first few rides.</p>
                                 <button id="invite-friends-btn" class="share-card-action redesigned-btn" type="button" onclick="event.stopPropagation(); window.LiphtUpShareInvite && window.LiphtUpShareInvite()">
-                                    <span>Invite Friends</span>
+                                    <span data-i18n="home.invite_btn">Invite Friends</span>
                                     <span class="share-card-action-arrow" aria-hidden="true">&rarr;</span>
                                 </button>
                                 <p id="invite-friends-status" class="share-card-status" aria-live="polite"></p>

@@ -203,6 +203,7 @@ function renderRecentRides(trips) {
     }
 
     recentRidesSection?.classList.remove('d-none');
+    const tCancelled = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('history.status_cancelled') : "Cancelled";
     recentRidesList.innerHTML = trips.map((trip) => {
         const destination = getTripDestination(trip);
         const when = formatRelativeDay(getTripTime(trip)) || "Recently";
@@ -222,7 +223,7 @@ function renderRecentRides(trips) {
                     <strong>${escapeHtml(destination)}</strong>
                     <small>
                         <span>${escapeHtml(when)}</span>
-                        ${cancelled ? '<span class="dot-separator">•</span><span class="status-cancelled">Cancelled</span>' : ''}
+                        ${cancelled ? `<span class="dot-separator">•</span><span class="status-cancelled">${tCancelled}</span>` : ''}
                     </small>
                 </div>
                 <div class="dashboard-recent-item-right">
@@ -237,6 +238,15 @@ function renderRecentRides(trips) {
         btn.addEventListener('click', () => goToServicesWithDestination(btn.dataset.destination));
     });
 }
+
+let cachedTripsForLanguageSwitch = [];
+
+window.addEventListener('languageChanged', () => {
+    renderSavedPlaces();
+    if (cachedTripsForLanguageSwitch.length) {
+        renderRecentRides(cachedTripsForLanguageSwitch);
+    }
+});
 
 function goToServicesWithDestination(destinationText) {
     const clean = cleanText(destinationText);
@@ -288,7 +298,12 @@ async function loadSavedPlaces(uid) {
 }
 
 function savedPlaceChipMarkup(slot, place) {
-    const labels = { home: "Home", work: "Work" };
+    const t = (key, fallback) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(key) : fallback;
+    const labels = { 
+        home: t('home.home_chip', 'Home'), 
+        work: t('home.work_chip', 'Work') 
+    };
+    const tapToAddText = t('home.tap_to_add', 'Tap to add');
     const icon = slot === "home" ? "webicon-favorite" : "webicon-work";
     const set = Boolean(place?.address);
     return `
@@ -297,7 +312,7 @@ function savedPlaceChipMarkup(slot, place) {
                 <span class="webicon ${icon}" aria-hidden="true"></span>
                 <span class="dashboard-saved-chip-text">
                     <strong>${labels[slot]}</strong>
-                    <small>${set ? escapeHtml(place.address) : 'Tap to add'}</small>
+                    <small>${set ? escapeHtml(place.address) : tapToAddText}</small>
                 </span>
             </button>
             ${set ? `
