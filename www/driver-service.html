@@ -37,7 +37,7 @@
             <header class="app-bar driver-service-header">
                 <div>
                     <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
-                    <small id="driver-service-status">Connecting to driver service...</small>
+                    <small id="driver-service-status" data-i18n="driver.connecting_service">Connecting to driver service...</small>
                 </div>
                 <span id="driver-service-live-pill" class="online-pill driver-live-pill" data-state="loading">GPS</span>
             </header>
@@ -52,15 +52,15 @@
                         </svg>
                     </div>
                     <div class="driver-location-text">
-                        <strong class="driver-location-title">Current Location</strong>
-                        <small id="driver-location-name" class="driver-location-subtitle">Detecting location...</small>
+                        <strong class="driver-location-title" data-i18n="driver.current_location">Current Location</strong>
+                        <small id="driver-location-name" class="driver-location-subtitle" data-i18n="driver.detecting_location">Detecting location...</small>
                     </div>
                 </div>
 
                 <!-- Floating Location Settlement Loading Badge -->
                 <div id="driver-location-loading-overlay" class="driver-location-loading-card">
                     <span class="lu-spinner lu-spinner-sm me-2" aria-hidden="true" style="border-top-color:#166534;"></span>
-                    <span>Getting your location...</span>
+                    <span data-i18n="driver.getting_location">Getting your location...</span>
                 </div>
 
                 <!-- Floating Map Action Controls -->
@@ -69,13 +69,13 @@
                 </button>
 
                 <div id="driver-service-map" class="driver-service-map">
-                    <div class="driver-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Loading Map...</span></div>
+                    <div class="driver-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span data-i18n="common.loading_map">Loading Map...</span></div>
                 </div>
 
                 <section id="driver-route-panel" class="driver-route-panel d-none" aria-live="polite">
                     <div>
-                        <span id="driver-route-label">Next stop</span>
-                        <strong id="driver-route-place">Waiting for ride details</strong>
+                        <span id="driver-route-label" data-i18n="driver.next_stop">Next stop</span>
+                        <strong id="driver-route-place" data-i18n="driver.waiting_ride_details">Waiting for ride details</strong>
                     </div>
                     <div class="driver-route-metrics">
                         <strong id="driver-route-distance">-- km</strong>
@@ -84,12 +84,12 @@
                 </section>
 
                 <section id="driver-map-message" class="driver-map-message d-none" aria-live="assertive">
-                    <strong id="driver-map-message-title">Location unavailable</strong>
-                    <p id="driver-map-message-copy">Allow location access to use live navigation.</p>
-                    <button id="driver-location-retry-btn" class="gy-btn gy-btn-primary" type="button">Retry Location</button>
+                    <strong id="driver-map-message-title" data-i18n="driver.location_unavailable">Location unavailable</strong>
+                    <p id="driver-map-message-copy" data-i18n="driver.location_access_required">Allow location access to use live navigation.</p>
+                    <button id="driver-location-retry-btn" class="gy-btn gy-btn-primary" type="button" data-i18n="driver.retry_location">Retry Location</button>
                 </section>
 
-                <div id="driver-route-warning" class="driver-route-warning d-none" role="status">
+                <div id="driver-route-warning" class="driver-route-warning d-none" role="status" data-i18n="driver.route_unavailable">
                     Route unavailable. Live markers will remain visible while we retry.
                 </div>
             </section>
@@ -107,22 +107,22 @@
                         </svg>
                     </div>
                     <div class="driver-offline-banner-text">
-                        <strong>You are currently offline</strong>
-                        <p>Go online to start receiving ride requests.</p>
+                        <strong data-i18n="driver.currently_offline">You are currently offline</strong>
+                        <p data-i18n="driver.go_online_hint">Go online to start receiving ride requests.</p>
                     </div>
                 </div>
-                <button id="driver-go-online-btn" class="gy-btn driver-go-online-btn" type="button">Go Online</button>
+                <button id="driver-go-online-btn" class="gy-btn driver-go-online-btn" type="button" data-i18n="driver.go_online">Go Online</button>
             </section>
 
             <section id="driver-service-requests" class="driver-service-requests" aria-live="polite">
-                <h6 class="section-title">Incoming Local Ride Requests</h6>
+                <h6 class="section-title" data-i18n="driver.incoming_requests">Incoming Local Ride Requests</h6>
                 <div id="driver-service-rides-list" class="ride-list">
                     <div id="driver-service-no-rides-msg" class="driver-empty-requests-card">
                         <div class="driver-empty-radar-wrap">
                             <div class="driver-radar-pulse"></div>
                             <div class="driver-radar-dot"></div>
                         </div>
-                        <strong class="driver-empty-title">No active requests</strong>
+                        <strong class="driver-empty-title" data-i18n="driver.no_active_requests">No active requests</strong>
                         <p id="driver-empty-subtext" class="driver-empty-subtext">
                             We are searching for nearby passengers.<br>
                             <span id="driver-empty-go-online-wrap" class="d-none">
@@ -135,7 +135,7 @@
 
             <section id="driver-service-lifecycle" class="active-trip-card-container driver-service-lifecycle d-none" aria-live="polite">
                 <div class="active-trip-header-bar">
-                    <span class="active-trip-header-title">Active Trip</span>
+                    <span class="active-trip-header-title" data-i18n="services.active_trip">Active Trip</span>
                     <span class="active-trip-header-badge" id="active-trip-header-badge">Active</span>
                 </div>
                 <div id="driver-service-trip-details"></div>
@@ -145,13 +145,13 @@
                     </button>
                     <button id="driver-open-console-btn-inline" class="at-console-btn d-none" type="button">
                         <span class="webicon webicon-notify" style="width:16px;height:16px;background-color:#fff;"></span>
-                        <span>Open Driver Console</span>
+                        <span data-i18n="driver.open_console">Open Driver Console</span>
                     </button>
                 </div>
             </section>
 
             <section class="driver-service-actions">
-                <button id="driver-open-console-btn" class="gy-btn gy-btn-dark w-100 d-none" type="button">
+                <button id="driver-open-console-btn" class="gy-btn gy-btn-dark w-100 d-none" type="button" data-i18n="driver.open_duty_console">
                     Open Duty Console
                 </button>
             </section>
@@ -168,14 +168,14 @@
     <div id="driver-service-payment-view" class="modal-layer d-none">
         <div class="receipt-card">
             <div class="success-mark">Rs</div>
-            <h4>Collect Your Fare</h4>
-            <p>Show this screen to the passenger for easy collection.</p>
+            <h4 data-i18n="driver.collect_fare_title">Collect Your Fare</h4>
+            <p data-i18n="driver.upi_qr_notice">Show this screen to the passenger for easy collection.</p>
             <div class="price-total" id="driver-service-final-fare">Rs 0.00</div>
             <p id="driver-service-fare-note" class="fare-adjustment-note d-none"></p>
             <div class="qr-frame">
                 <img id="driver-service-upi-qr-image" src="" alt="UPI QR Code">
             </div>
-            <button id="driver-service-close-payment-btn" class="gy-btn gy-btn-dark w-100" type="button">Fare Received & Clear</button>
+            <button id="driver-service-close-payment-btn" class="gy-btn gy-btn-dark w-100" type="button" data-i18n="driver.fare_collected">Fare Received & Clear</button>
         </div>
     </div>
 

@@ -37,14 +37,14 @@
         <div id="driver-review-view" class="review-screen d-none flex-column justify-content-center align-items-center p-4">
             <div class="review-card">
                 <div class="shield-icon">ID</div>
-                <h4>Account Under Review</h4>
-                <p>Your driver profile has been submitted. You can start accepting rides after admin approval.</p>
+                <h4 data-i18n="driver.review_title">Account Under Review</h4>
+                <p data-i18n="driver.review_sub">Your driver profile has been submitted. You can start accepting rides after admin approval.</p>
                 <div class="review-data">
-                    <div><strong>Status</strong><span id="driver-review-status">pending_review</span></div>
+                    <div><strong data-i18n="common.status">Status</strong><span id="driver-review-status">pending_review</span></div>
                     <div><strong>Vehicle</strong><span id="driver-review-vehicle">Not submitted</span></div>
                     <div><strong>Licence</strong><span id="driver-review-license">Not submitted</span></div>
                 </div>
-                <button id="logout-btn-review" class="gy-btn gy-btn-outline w-100 mt-3" type="button">Logout</button>
+                <button id="logout-btn-review" class="gy-btn gy-btn-outline w-100 mt-3" type="button" data-i18n="common.logout">Logout</button>
             </div>
         </div>
 
@@ -72,7 +72,7 @@
                     </div>
                     <div class="driver-greeting-info">
                         <h2 id="driver-welcome-name">Good morning, Driver 👋</h2>
-                        <p>Drive safe and earn more with LightUp</p>
+                        <p data-i18n="driver.greeting_title">Drive safe and earn more with LightUp</p>
                     </div>
                 </section>
 
@@ -129,10 +129,10 @@
                 <div id="active-trip-container" class="active-trip-card d-none my-3 p-3 bg-white rounded-3 shadow-sm border">
                     <h6 class="fw-bold text-dark mb-2" data-i18n="services.active_trip">Active Trip</h6>
                     <div id="active-trip-details" class="trip-details-text mb-3"></div>
-                    <button id="arrived-trip-btn" class="gy-btn gy-btn-outline w-100 mb-2 d-none">Mark Arrived at Pickup</button>
-                    <button id="start-trip-btn" class="gy-btn gy-btn-primary w-100 mb-2 d-none" disabled>Start Trip</button>
-                    <button id="complete-trip-btn" class="gy-btn gy-btn-dark w-100 mb-2 d-none" disabled>Drop off Passenger & Complete Trip</button>
-                    <button id="cancel-driver-trip-btn" class="gy-btn gy-btn-danger-outline w-100 mb-2">Cancel Active Trip</button>
+                    <button id="arrived-trip-btn" class="gy-btn gy-btn-outline w-100 mb-2 d-none" data-i18n="driver.mark_arrived">Mark Arrived at Pickup</button>
+                    <button id="start-trip-btn" class="gy-btn gy-btn-primary w-100 mb-2 d-none" disabled data-i18n="driver.start_trip_btn">Start Trip</button>
+                    <button id="complete-trip-btn" class="gy-btn gy-btn-dark w-100 mb-2 d-none" disabled data-i18n="driver.complete_trip_btn">Drop off Passenger & Complete Trip</button>
+                    <button id="cancel-driver-trip-btn" class="gy-btn gy-btn-danger-outline w-100 mb-2" data-i18n="driver.cancel_trip">Cancel Active Trip</button>
                     <div class="driver-sos-row">
                         <button id="driver-sos-btn" class="gy-btn gy-btn-sos" type="button">
                             <span class="webicon webicon-sos" aria-hidden="true"></span> SOS
@@ -155,14 +155,14 @@
     <div id="driver-payment-view" class="modal-layer d-none">
         <div class="receipt-card">
             <div class="success-mark">Rs</div>
-            <h4>Collect Your Fare</h4>
-            <p>Show this screen to the passenger for easy collection.</p>
+            <h4 data-i18n="driver.collect_fare_title">Collect Your Fare</h4>
+            <p data-i18n="driver.upi_qr_notice">Show this screen to the passenger for easy collection.</p>
             <div class="price-total" id="driver-final-fare">Rs 0.00</div>
             <p id="driver-fare-note" class="fare-adjustment-note d-none"></p>
             <div class="qr-frame">
                 <img id="upi-qr-image" src="" alt="UPI QR Code">
             </div>
-            <button id="close-driver-payment-btn" class="gy-btn gy-btn-dark w-100">Fare Received & Clear</button>
+            <button id="close-driver-payment-btn" class="gy-btn gy-btn-dark w-100" data-i18n="driver.fare_collected">Fare Received & Clear</button>
         </div>
     </div>
 

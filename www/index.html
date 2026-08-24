@@ -67,7 +67,7 @@
     </div>
 
     <div id="app-container" class="app-root">
-        <button id="logout-btn" class="logout-chip d-none">Logout</button>
+        <button id="logout-btn" class="logout-chip d-none" data-i18n="common.logout">Logout</button>
 
         <div id="dashboard-view" class="screen-shell flex-column d-none">
             <header class="app-bar redesign-app-bar">
@@ -258,10 +258,10 @@
                     </div>
                     <img src="assets/icons/webicons/feedback-thankyou-illustration.svg"
                          class="fb-illustration" alt="" aria-hidden="true" width="96" height="96" style="width:96px;height:96px;margin-bottom:16px;">
-                    <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">Thank you<br>for riding with us! 💚</h2>
-                    <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">We hope you had a great ride.<br>Please share your experience.</p>
-                    <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button">Rate your experience</button>
-                    <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button">Maybe later</button>
+                    <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;" data-i18n-html="services.thank_you_title">Thank you<br>for riding with us! 💚</h2>
+                    <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;" data-i18n-html="services.thank_you_sub">We hope you had a great ride.<br>Please share your experience.</p>
+                    <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button" data-i18n="services.rate_experience">Rate your experience</button>
+                    <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button" data-i18n="services.maybe_later">Maybe later</button>
                 </div>
             </div>
         </div>
@@ -270,16 +270,16 @@
     <div id="saved-place-modal" class="modal-layer d-none">
         <div class="saved-place-card">
             <button id="saved-place-cancel-btn" type="button" class="modal-close-btn" aria-label="Close">×</button>
-            <h4 id="saved-place-modal-title">Save a place</h4>
+            <h4 id="saved-place-modal-title" data-i18n="profile.saved_place_title">Save a place</h4>
             <form id="saved-place-form">
-                <label for="saved-place-address-input" class="saved-place-label">Address</label>
-                <input type="text" id="saved-place-address-input" class="form-control gy-input" placeholder="Search for an address" autocomplete="off">
+                <label for="saved-place-address-input" class="saved-place-label" data-i18n="profile.address_label">Address</label>
+                <input type="text" id="saved-place-address-input" class="form-control gy-input" placeholder="Search for an address" data-i18n-placeholder="profile.search_address_placeholder" autocomplete="off">
                 <div id="saved-place-suggestions" class="saved-place-suggestions"></div>
                 <button id="saved-place-use-gps-btn" type="button" class="gy-btn gy-btn-outline w-100 mt-2">
-                    <span class="webicon webicon-current-location" aria-hidden="true"></span> Use current location
+                    <span class="webicon webicon-current-location" aria-hidden="true"></span> <span data-i18n="common.use_current_location">Use current location</span>
                 </button>
-                <button type="submit" class="gy-btn gy-btn-primary w-100 mt-2">Save place</button>
-                <button id="saved-place-remove-btn" type="button" class="gy-btn gy-btn-danger-outline w-100 mt-2 d-none">Remove this address</button>
+                <button type="submit" class="gy-btn gy-btn-primary w-100 mt-2" data-i18n="common.save_place">Save place</button>
+                <button id="saved-place-remove-btn" type="button" class="gy-btn gy-btn-danger-outline w-100 mt-2 d-none" data-i18n="common.remove_address">Remove this address</button>
             </form>
         </div>
     </div>
@@ -314,13 +314,13 @@
                 </svg>
             </div>
             <div class="fb-minimized-text">
-                <strong>How was your ride?</strong>
-                <span>Tap to rate experience</span>
+                <strong data-i18n="services.how_was_ride">How was your ride?</strong>
+                <span data-i18n="services.tap_to_rate">Tap to rate experience</span>
             </div>
         </div>
         <div class="fb-minimized-actions">
             <span class="fb-minimized-expand-chip">
-                <span>Expand</span>
+                <span data-i18n="common.expand">Expand</span>
                 <svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg>
             </span>
             <button class="fb-minimized-close" type="button" aria-label="Dismiss feedback prompt">&times;</button>

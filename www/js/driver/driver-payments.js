@@ -2,6 +2,7 @@ import { auth, db } from '../platform/firebase-init.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { showAlert } from '../shared/dialog.js';
+import { t } from '../shared/i18n.js';
 
 let currentAuthUser = null;
 let currentPaymentData = null;
@@ -61,7 +62,7 @@ async function fetchPaymentStatus() {
         renderPaymentUI(data);
     } catch (error) {
         console.error("Error fetching payment status:", error);
-        showAlert(error.message || "Failed to load payment details.");
+        showAlert(error.message || t('driver.fetch_payment_error', "Failed to load payment details."));
     } finally {
         if (loadingScreen) loadingScreen.classList.add('d-none');
         if (container) container.classList.remove('d-none');
@@ -76,29 +77,29 @@ function renderStatusBadge(element, statusCode) {
         case 'due':
         case 'pending':
             element.classList.add('due');
-            element.innerHTML = '<span>PENDING</span>';
+            element.innerHTML = `<span>${t('driver.status_pending', 'PENDING')}</span>`;
             break;
         case 'submitted':
         case 'under_review':
             element.classList.add('submitted');
-            element.innerHTML = '<span>UNDER REVIEW</span>';
+            element.innerHTML = `<span>${t('driver.status_under_review', 'UNDER REVIEW')}</span>`;
             break;
         case 'approved':
         case 'verified':
             element.classList.add('approved');
-            element.innerHTML = '<span>VERIFIED</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            element.innerHTML = `<span>${t('driver.status_verified', 'VERIFIED')}</span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             break;
         case 'declined':
             element.classList.add('declined');
-            element.innerHTML = '<span>DECLINED</span>';
+            element.innerHTML = `<span>${t('driver.status_declined', 'DECLINED')}</span>`;
             break;
         case 'overdue':
             element.classList.add('overdue');
-            element.innerHTML = '<span>PENDING</span>';
+            element.innerHTML = `<span>${t('driver.status_pending', 'PENDING')}</span>`;
             break;
         case 'paused':
             element.classList.add('approved');
-            element.innerHTML = '<span>PAUSED</span>';
+            element.innerHTML = `<span>${t('driver.paused', 'PAUSED')}</span>`;
             break;
         default:
             element.classList.add('due');
@@ -125,7 +126,7 @@ function renderPaymentUI(data) {
     // 2) Last/Current Week Details
     const lastDueDateEl = document.getElementById('py-last-due-date');
     if (lastDueDateEl) {
-        lastDueDateEl.innerText = isPaused ? 'Paused' : (weekInfo.shortWeekLabel ? weekInfo.shortWeekLabel.split('-')[1].trim() : '23 Aug 2026 (Sun)');
+        lastDueDateEl.innerText = isPaused ? t('driver.paused', 'Paused') : (weekInfo.shortWeekLabel ? weekInfo.shortWeekLabel.split('-')[1].trim() : '23 Aug 2026 (Sun)');
     }
 
     const lastPaidDateEl = document.getElementById('py-last-paid-date');
@@ -135,7 +136,7 @@ function renderPaymentUI(data) {
                 day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
             });
         } else {
-            lastPaidDateEl.innerText = currentStatus === 'approved' ? 'Verified' : 'Not paid yet';
+            lastPaidDateEl.innerText = currentStatus === 'approved' ? t('driver.status_verified', 'Verified') : t('driver.not_paid_yet', 'Not paid yet');
         }
     }
 
@@ -147,7 +148,7 @@ function renderPaymentUI(data) {
 
     const prevDuesEl = document.getElementById('py-prev-dues-text');
     if (prevDuesEl) {
-        prevDuesEl.innerText = duesSummary.previousDuesText || 'No previous dues';
+        prevDuesEl.innerText = duesSummary.previousDuesText || t('driver.no_prev_dues', 'No previous dues');
         prevDuesEl.className = duesSummary.previousDuesIncluded ? 'py-footer-val danger' : 'py-footer-val green';
     }
 
@@ -155,7 +156,7 @@ function renderPaymentUI(data) {
     if (isPaused) {
         if (countdownTimer) clearInterval(countdownTimer);
         const timeEl = document.getElementById('py-time-left');
-        if (timeEl) timeEl.innerText = 'Paused';
+        if (timeEl) timeEl.innerText = t('driver.paused', 'Paused');
     } else {
         startCountdown(weekInfo.sundayDeadline);
     }
@@ -168,25 +169,25 @@ function renderPaymentUI(data) {
     if (noticeCard && noticeTitle && noticeDesc) {
         if (isPaused) {
             noticeCard.className = 'py-general-notice-card approved';
-            noticeTitle.innerText = 'Weekly Payments Paused.';
+            noticeTitle.innerText = t('driver.payments_paused_title', 'Weekly Payments Paused.');
             noticeDesc.innerText = pauseMsg;
         } else if (currentStatus === 'submitted') {
             noticeCard.className = 'py-general-notice-card submitted';
-            noticeTitle.innerText = 'Payment under review.';
-            noticeDesc.innerText = 'Your weekly fee payment has been submitted and is currently under review by our accounts team.';
+            noticeTitle.innerText = t('driver.payment_under_review_title', 'Payment under review.');
+            noticeDesc.innerText = t('driver.payment_under_review_desc', 'Your weekly fee payment has been submitted and is currently under review by our accounts team.');
         } else if (currentStatus === 'approved') {
             noticeCard.className = 'py-general-notice-card approved';
-            noticeTitle.innerText = 'Weekly fee paid & verified.';
-            noticeDesc.innerText = 'Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.';
+            noticeTitle.innerText = t('driver.payment_verified_title', 'Weekly fee paid & verified.');
+            noticeDesc.innerText = t('driver.payment_verified_desc', 'Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.');
         } else if (currentStatus === 'declined') {
             noticeCard.className = 'py-general-notice-card declined';
             const reason = activeSub?.declineReason ? ` (${activeSub.declineReason})` : '';
-            noticeTitle.innerText = 'Payment declined.';
-            noticeDesc.innerText = `Your previous payment submission was declined${reason}. Please scan the QR code and re-submit your payment.`;
+            noticeTitle.innerText = t('driver.payment_declined_title', 'Payment declined.');
+            noticeDesc.innerText = `${t('driver.payment_declined_desc', 'Your previous payment submission was declined')}${reason}.`;
         } else {
             noticeCard.className = 'py-general-notice-card';
-            noticeTitle.innerText = 'Weekly payment pending.';
-            noticeDesc.innerText = 'Please pay your weekly fee before Sunday 12:00 PM to keep your driver account active and accept ride requests.';
+            noticeTitle.innerText = t('driver.payment_pending_title', 'Weekly payment pending.');
+            noticeDesc.innerText = t('driver.payment_pending_desc', 'Please pay your weekly fee before Sunday 12:00 PM to keep your driver account active and accept ride requests.');
         }
     }
 
@@ -194,23 +195,23 @@ function renderPaymentUI(data) {
     if (payBtn) {
         const total = duesSummary.totalAmountToBePaid || weekInfo.amount || 140;
         if (isPaused) {
-            payBtn.innerHTML = '<span>Weekly Payments Paused (No Fee Due)</span>';
+            payBtn.innerHTML = `<span>${t('driver.payments_paused_btn', 'Weekly Payments Paused (No Fee Due)')}</span>`;
             payBtn.disabled = true;
             payBtn.className = 'py-main-pay-btn disabled';
         } else if (currentStatus === 'submitted') {
-            payBtn.innerHTML = '<span>Payment Submitted — Under Review</span>';
+            payBtn.innerHTML = `<span>${t('driver.payment_submitted_btn', 'Payment Submitted — Under Review')}</span>`;
             payBtn.disabled = true;
             payBtn.className = 'py-main-pay-btn disabled';
         } else if (currentStatus === 'approved') {
-            payBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>Weekly Fee Paid (Verified ✓)</span>';
+            payBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>${t('driver.payment_verified_btn', 'Weekly Fee Paid (Verified ✓)')}</span>`;
             payBtn.disabled = true;
             payBtn.className = 'py-main-pay-btn verified';
         } else if (currentStatus === 'declined') {
-            payBtn.innerHTML = `<span>Re-pay Weekly Fee (₹${total})</span>`;
+            payBtn.innerHTML = `<span>${t('driver.repay_fee_btn', 'Re-pay Weekly Fee')} (₹${total})</span>`;
             payBtn.disabled = false;
             payBtn.className = 'py-main-pay-btn danger';
         } else {
-            payBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span>Pay Weekly Fee (₹${total})</span>`;
+            payBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span>${t('driver.pay_weekly_fee', 'Pay Weekly Fee')} (₹${total})</span>`;
             payBtn.disabled = false;
             payBtn.className = 'py-main-pay-btn';
         }
@@ -254,7 +255,7 @@ function startCountdown(deadlineIso) {
         const diff = deadline - now;
 
         if (diff <= 0) {
-            timeEl.innerText = 'Overdue';
+            timeEl.innerText = t('driver.overdue', 'Overdue');
             timeEl.style.color = '#dc2626';
             clearInterval(countdownTimer);
             return;
@@ -285,17 +286,17 @@ function renderHistoryItemHtml(item) {
     }) : '--';
 
     let badgeClass = 'due';
-    let badgeText = (item.status || 'due').toUpperCase();
+    let badgeText = t('driver.status_pending', 'PENDING');
 
     if (item.status === 'submitted') {
         badgeClass = 'submitted';
-        badgeText = 'UNDER VERIFICATION';
+        badgeText = t('driver.status_under_review', 'UNDER VERIFICATION');
     } else if (item.status === 'approved') {
         badgeClass = 'approved';
-        badgeText = 'APPROVED';
+        badgeText = t('driver.status_approved', 'APPROVED');
     } else if (item.status === 'declined') {
         badgeClass = 'declined';
-        badgeText = 'DECLINED';
+        badgeText = t('driver.status_declined', 'DECLINED');
     }
 
     return `
@@ -325,7 +326,7 @@ function renderRecentHistory(recentList) {
     if (!listEl) return;
 
     if (!recentList.length) {
-        listEl.innerHTML = '<p class="text-muted text-center py-3 mb-0" style="font-size: 0.88rem;">No payment history records found.</p>';
+        listEl.innerHTML = `<p class="text-muted text-center py-3 mb-0" style="font-size: 0.88rem;">${t('driver.no_payment_records', 'No payment history records found.')}</p>`;
         return;
     }
 
@@ -337,7 +338,7 @@ function renderFullHistory(fullList) {
     if (!fullListEl) return;
 
     if (!fullList.length) {
-        fullListEl.innerHTML = '<p class="text-muted text-center py-4 mb-0">No payment records found.</p>';
+        fullListEl.innerHTML = `<p class="text-muted text-center py-4 mb-0">${t('driver.no_payment_records', 'No payment records found.')}</p>`;
         return;
     }
 
@@ -376,7 +377,7 @@ function closeQrModal() {
 async function handlePaymentDone() {
     if (!paymentDoneBtn) return;
     paymentDoneBtn.disabled = true;
-    paymentDoneBtn.innerText = 'Submitting verification...';
+    paymentDoneBtn.innerText = t('driver.submitting_verification', 'Submitting verification...');
 
     try {
         const token = await getAuthToken();
@@ -395,18 +396,18 @@ async function handlePaymentDone() {
 
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(formatErrorMessage(data, 'Could not submit payment verification.'));
+            throw new Error(formatErrorMessage(data, t('driver.submit_payment_failed', 'Could not submit payment verification.')));
         }
 
         closeQrModal();
-        await showAlert("Payment submitted! Your payment is now under manual verification by the Ride Share Accounts team.");
+        await showAlert(t('driver.payment_submitted_alert', "Payment submitted! Your payment is now under manual verification by the Ride Share Accounts team."));
         await fetchPaymentStatus();
     } catch (error) {
         console.error("Error submitting payment verification:", error);
-        showAlert(error.message || "Could not submit payment verification.");
+        showAlert(error.message || t('driver.submit_payment_failed', "Could not submit payment verification."));
     } finally {
         paymentDoneBtn.disabled = false;
-        paymentDoneBtn.innerText = 'Payment done';
+        paymentDoneBtn.innerText = t('driver.payment_done', 'Payment done');
     }
 }
 
@@ -459,4 +460,10 @@ onAuthStateChanged(auth, (user) => {
     currentAuthUser = user;
     fetchPaymentStatus();
     setupRealtimeListener(user.uid);
+});
+
+window.addEventListener('languageChanged', () => {
+    if (currentPaymentData) {
+        renderPaymentUI(currentPaymentData);
+    }
 });

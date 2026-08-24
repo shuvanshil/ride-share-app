@@ -118,11 +118,11 @@
                                             <path d="M12 2v2.5M12 19.5v2.5M2 12h2.5M19.5 12h2.5" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round"/>
                                         </svg>
                                     </div>
-                                    <h2>Live pickup map</h2>
+                                    <h2 data-i18n="services.live_map_title">Live pickup map</h2>
                                 </div>
                                 <div class="location-status-wrap">
                                     <span class="status-dot"></span>
-                                    <p id="services-location-status">Locking your exact location...</p>
+                                    <p id="services-location-status" data-i18n="services.locking_location">Locking your exact location...</p>
                                 </div>
                             </div>
                             <span id="services-gps-pill" class="services-live-signal-badge">
@@ -130,7 +130,7 @@
                             </span>
                         </div>
                         <div id="map-container" class="services-map-frame">
-                            <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span>Loading Map...</span></div>
+                            <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span data-i18n="common.loading_map">Loading Map...</span></div>
                         </div>
 
                         <!-- Feature 1: 3-Level Availability Indicator & Estimated Price -->
@@ -144,19 +144,19 @@
                                     </div>
                                     <div class="availability-text-group">
                                         <div class="availability-header-row">
-                                            <span class="availability-label-title">Availability: <strong id="availability-status-name" class="availability-status-name">High</strong></span>
+                                            <span class="availability-label-title"><span data-i18n="services.availability_label">Availability:</span> <strong id="availability-status-name" class="availability-status-name" data-i18n="services.avail_high">High</strong></span>
                                             <button type="button" class="availability-info-trigger" id="availability-info-btn" aria-label="Driver availability info" title="Availability info">
                                                 <img src="assets/icons/info-icon.png" alt="Info" width="15" height="15">
                                             </button>
                                         </div>
-                                        <span id="availability-subtext" class="availability-subtext">Plenty of drivers online nearby.</span>
+                                        <span id="availability-subtext" class="availability-subtext" data-i18n="services.avail_high_sub">Plenty of drivers online nearby.</span>
                                         <button type="button" id="availability-schedule-shortcut" class="availability-schedule-chip d-none">
-                                            <span class="webicon webicon-schedule" style="width:12px; height:12px;"></span> Schedule for later
+                                            <span class="webicon webicon-schedule" style="width:12px; height:12px;"></span> <span data-i18n="services.schedule_for_later">Schedule for later</span>
                                         </button>
                                     </div>
                                 </div>
                                 <div class="availability-price-right">
-                                    <small>Estimated price</small>
+                                    <small data-i18n="services.est_fare">Estimated price</small>
                                     <strong id="availability-price-amount">₹0</strong>
                                 </div>
                             </div>
@@ -168,9 +168,9 @@
                                 <button type="button" class="popover-close-btn" id="estimated-price-popover-close" aria-label="Close modal">&times;</button>
                                 <div class="popover-header">
                                     <img src="assets/icons/info-icon.png" alt="" width="22" height="22">
-                                    <strong id="estimated-price-popover-title">Live Availability & Pricing</strong>
+                                    <strong id="estimated-price-popover-title" data-i18n="services.popover_title">Live Availability & Pricing</strong>
                                 </div>
-                                <p class="popover-body-text" id="availability-popover-desc">Availability is calculated in real-time from approved, free drivers in your pickup radius. Fares are calculated using standard government rates based on road distance with zero hidden surge charges.</p>
+                                <p class="popover-body-text" id="availability-popover-desc" data-i18n="services.popover_desc">Availability is calculated in real-time from approved, free drivers in your pickup radius. Fares are calculated using standard government rates based on road distance with zero hidden surge charges.</p>
                             </div>
                         </div>
 
@@ -180,9 +180,9 @@
                                 <div class="trip-progress-header">
                                     <div class="trip-status-pill">
                                         <span class="trip-status-dot"></span>
-                                        <span id="trip-progress-status-text" class="trip-status-text">Trip in progress</span>
+                                        <span id="trip-progress-status-text" class="trip-status-text" data-i18n="services.trip_in_progress">Trip in progress</span>
                                     </div>
-                                    <span id="trip-progress-status-subtext" class="trip-status-subtext">Tap for details</span>
+                                    <span id="trip-progress-status-subtext" class="trip-status-subtext" data-i18n="services.tap_for_details">Tap for details</span>
                                 </div>
                                 <span class="trip-progress-handle-icon" aria-hidden="true"></span>
                             </button>
@@ -192,24 +192,24 @@
                                 <div class="highlighted-pin-section d-none" id="trip-progress-pin-box">
                                     <div class="pin-header">
                                         <span class="webicon webicon-safety" aria-hidden="true"></span>
-                                        <span>Pickup PIN</span>
+                                        <span data-i18n="services.pin_label">Pickup PIN</span>
                                     </div>
                                     <div class="pin-value" id="trip-progress-pin">----</div>
-                                    <p class="pin-hint">Share this PIN only with your assigned driver.</p>
+                                    <p class="pin-hint" data-i18n="services.share_pin_notice">Share this PIN only with your assigned driver.</p>
                                 </div>
 
                                 <div class="trip-locations-list">
                                     <div class="trip-location-item">
                                         <span class="location-marker-dot pickup"></span>
                                         <div class="location-details">
-                                            <small>Pickup location</small>
+                                            <small data-i18n="services.pickup_location">Pickup location</small>
                                             <strong id="trip-progress-pickup-name">Loading...</strong>
                                         </div>
                                     </div>
                                     <div class="trip-location-item">
                                         <span class="location-marker-dot drop"></span>
                                         <div class="location-details">
-                                            <small>Destination</small>
+                                            <small data-i18n="services.destination">Destination</small>
                                             <strong id="trip-progress-drop-name">Loading...</strong>
                                         </div>
                                     </div>
@@ -219,7 +219,7 @@
                                     <div class="d-flex gap-2 mb-2">
                                         <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline flex-fill" type="button">
                                             <span class="webicon webicon-share" aria-hidden="true"></span>
-                                            <span id="passenger-share-trip-label">Share Trip</span>
+                                            <span id="passenger-share-trip-label" data-i18n="services.share_trip">Share Trip</span>
                                         </button>
                                         <button id="passenger-sos-btn" class="gy-btn gy-btn-sos flex-fill" type="button">
                                             <span class="webicon webicon-sos" aria-hidden="true"></span> SOS
@@ -229,14 +229,14 @@
 
                                 <div class="trip-progress-row d-none">
                                     <div class="trip-progress-fare">
-                                        <span>Fare</span>
+                                        <span data-i18n="services.fare">Fare</span>
                                         <strong id="trip-progress-fare">₹0</strong>
                                     </div>
                                 </div>
 
                                 <div class="safety-assurance-tag mt-3">
                                     <span class="webicon webicon-safety-check" aria-hidden="true"></span>
-                                    <span>Your safety is our priority. We monitor every trip for a safe and reliable experience.</span>
+                                    <span data-i18n="services.safety_assurance">Your safety is our priority. We monitor every trip for a safe and reliable experience.</span>
                                     <span class="webicon webicon-view-more ms-auto" style="width: 14px; height: 14px; opacity: 0.4;"></span>
                                 </div>
                             </div>
@@ -365,23 +365,23 @@
                     <section id="pending-active-card" class="pending-active-card d-none">
                         <div class="pending-active-header">
                             <span class="pending-badge-pill">
-                                <span class="webicon webicon-notify" style="width: 14px; height: 14px;"></span> Notify Alert Active
+                                <span class="webicon webicon-notify" style="width: 14px; height: 14px;"></span> <span data-i18n="services.pending_queue_active">Notify Alert Active</span>
                             </span>
                             <small id="pending-expires-in" style="font-size: 11px; color: #64748B;">Expires in 25 min</small>
                         </div>
                         <div class="pending-active-body">
-                            <strong id="pending-mode-title">Looking for available drivers...</strong>
-                            <p id="pending-mode-desc">We're watching for drivers in your area and will notify you the moment one is available.</p>
+                            <strong id="pending-mode-title" data-i18n="services.pending_queue_desc">Looking for available drivers...</strong>
+                            <p id="pending-mode-desc" data-i18n="services.pending_queue_desc">We're watching for drivers in your area and will notify you the moment one is available.</p>
                             <div id="pending-driver-available-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
-                                <button id="pending-rebook-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold" style="font-size: 13px;" type="button">Yes, start the search.</button>
+                                <button id="pending-rebook-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold" style="font-size: 13px;" type="button" data-i18n="services.pending_driver_available_prompt">Yes, start the search.</button>
                             </div>
                             <div id="pending-schedule-timeout-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
-                                <p style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 8px;">
+                                <p style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 8px;" data-i18n="services.pending_schedule_timeout">
                                     No driver was found within 10 minutes of your scheduled time. Would you like to update your scheduled time by 15 minutes or cancel for now?
                                 </p>
                                 <div class="d-flex gap-2">
-                                    <button id="pending-extend-15min-btn" class="gy-btn gy-btn-primary py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button">+15 Min Update</button>
-                                    <button id="pending-timeout-cancel-btn" class="btn btn-outline-danger py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button">Cancel</button>
+                                    <button id="pending-extend-15min-btn" class="gy-btn gy-btn-primary py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button" data-i18n="services.extend_15min">+15 Min Update</button>
+                                    <button id="pending-timeout-cancel-btn" class="btn btn-outline-danger py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button" data-i18n="common.cancel">Cancel</button>
                                 </div>
                             </div>
                         </div>
@@ -409,12 +409,12 @@
                                 <div class="custom-flow-badge badge-green">
                                     <span class="webicon webicon-try-again" style="width: 22px; height: 22px;"></span>
                                 </div>
-                                <h3 id="try-again-modal-title">Try Searching Again</h3>
-                                <p>We'll re-scan for 35 seconds to check for drivers who just came online or finished their previous trips.</p>
+                                <h3 id="try-again-modal-title" data-i18n="services.try_again_title">Try Searching Again</h3>
+                                <p data-i18n="services.try_again_desc">We'll re-scan for 35 seconds to check for drivers who just came online or finished their previous trips.</p>
                             </div>
                             <div class="custom-flow-actions">
-                                <button type="button" id="try-again-cancel-btn" class="gy-btn gy-btn-outline">Cancel</button>
-                                <button type="button" id="try-again-confirm-btn" class="gy-btn gy-btn-primary">Scan Again</button>
+                                <button type="button" id="try-again-cancel-btn" class="gy-btn gy-btn-outline" data-i18n="common.cancel">Cancel</button>
+                                <button type="button" id="try-again-confirm-btn" class="gy-btn gy-btn-primary" data-i18n="services.scan_again">Scan Again</button>
                             </div>
                         </div>
                     </div>
@@ -428,17 +428,17 @@
                                 <div class="custom-flow-badge badge-orange">
                                     <span class="webicon webicon-schedule" style="width: 22px; height: 22px;"></span>
                                 </div>
-                                <h3 id="schedule-modal-title">Schedule for Later</h3>
-                                <p>Choose a future pickup time. We'll automatically start matching nearby drivers when your time approaches.</p>
+                                <h3 id="schedule-modal-title" data-i18n="services.schedule_title">Schedule for Later</h3>
+                                <p data-i18n="services.schedule_hint">Choose a future pickup time. We'll automatically start matching nearby drivers when your time approaches.</p>
                             </div>
                             <div class="custom-flow-field-group">
-                                <label for="schedule-time-input" class="custom-flow-label">Pickup Date & Time</label>
+                                <label for="schedule-time-input" class="custom-flow-label" data-i18n="services.schedule_pickup_date_time">Pickup Date & Time</label>
                                 <input type="datetime-local" id="schedule-time-input" class="custom-flow-input" aria-describedby="schedule-time-hint">
-                                <span id="schedule-time-hint" class="custom-flow-hint">We will start searching for your driver 5 minutes before your scheduled time.</span>
+                                <span id="schedule-time-hint" class="custom-flow-hint" data-i18n="services.schedule_hint">We will start searching for your driver 5 minutes before your scheduled time.</span>
                             </div>
                             <div class="custom-flow-actions">
-                                <button type="button" id="schedule-modal-cancel-btn" class="gy-btn gy-btn-outline">Cancel</button>
-                                <button type="button" id="schedule-modal-confirm-btn" class="gy-btn gy-btn-primary">Confirm Schedule</button>
+                                <button type="button" id="schedule-modal-cancel-btn" class="gy-btn gy-btn-outline" data-i18n="common.cancel">Cancel</button>
+                                <button type="button" id="schedule-modal-confirm-btn" class="gy-btn gy-btn-primary" data-i18n="services.confirm_schedule">Confirm Schedule</button>
                             </div>
                         </div>
                     </div>
@@ -452,22 +452,22 @@
                                 <div class="custom-flow-badge badge-purple">
                                     <span class="webicon webicon-notify" style="width: 22px; height: 22px;"></span>
                                 </div>
-                                <h3 id="notify-modal-title">Notify When Driver Available</h3>
-                                <p>Keep your request active in our background queue. We will instantly alert you when an approved driver comes online nearby.</p>
+                                <h3 id="notify-modal-title" data-i18n="services.notify_title">Notify When Driver Available</h3>
+                                <p data-i18n="services.notify_desc">Keep your request active in our background queue. We will instantly alert you when an approved driver comes online nearby.</p>
                             </div>
                             <div class="custom-flow-info-box">
                                 <div class="custom-flow-info-row">
-                                    <span>Queue Validity</span>
-                                    <strong>25 minutes</strong>
+                                    <span data-i18n="services.queue_validity">Queue Validity</span>
+                                    <strong data-i18n="services.validity_25min">25 minutes</strong>
                                 </div>
                                 <div class="custom-flow-info-row">
-                                    <span>Fare Guarantee</span>
-                                    <strong>Locked upfront</strong>
+                                    <span data-i18n="services.fare_guarantee">Fare Guarantee</span>
+                                    <strong data-i18n="services.locked_upfront">Locked upfront</strong>
                                 </div>
                             </div>
                             <div class="custom-flow-actions">
-                                <button type="button" id="notify-modal-cancel-btn" class="gy-btn gy-btn-outline">Cancel</button>
-                                <button type="button" id="notify-modal-confirm-btn" class="gy-btn gy-btn-primary">Notify Me</button>
+                                <button type="button" id="notify-modal-cancel-btn" class="gy-btn gy-btn-outline" data-i18n="common.cancel">Cancel</button>
+                                <button type="button" id="notify-modal-confirm-btn" class="gy-btn gy-btn-primary" data-i18n="services.notify_me">Notify Me</button>
                             </div>
                         </div>
                     </div>
@@ -481,19 +481,19 @@
                                 <div class="custom-flow-badge badge-blue">
                                     <span class="webicon webicon-radius" style="width: 22px; height: 22px;"></span>
                                 </div>
-                                <h3 id="fare-disclosure-title">Expand Search Radius</h3>
-                                <p id="fare-disclosure-body">We'll search up to 12 km around your pickup point to reach more drivers who can pick you up.</p>
+                                <h3 id="fare-disclosure-title" data-i18n="services.expand_search_title">Expand Search Radius</h3>
+                                <p id="fare-disclosure-body" data-i18n="services.expand_search_desc">We'll search up to 12 km around your pickup point to reach more drivers who can pick you up.</p>
                             </div>
                             <div class="custom-flow-info-box">
                                 <div class="custom-flow-info-row">
-                                    <span>Estimated Trip Fare</span>
+                                    <span data-i18n="services.estimated_trip_fare">Estimated Trip Fare</span>
                                     <strong id="fare-disclosure-new-amount" style="color: #16723A; font-size: 16px;">₹0</strong>
                                 </div>
-                                <span class="custom-flow-hint" style="margin-top: 4px; display: block;">Standard road distance rate applies. No extra surge surcharge.</span>
+                                <span class="custom-flow-hint" style="margin-top: 4px; display: block;" data-i18n="services.standard_rate_note">Standard road distance rate applies. No extra surge surcharge.</span>
                             </div>
                             <div class="custom-flow-actions">
-                                <button type="button" id="fare-disclosure-cancel-btn" class="gy-btn gy-btn-outline">Keep Current</button>
-                                <button type="button" id="fare-disclosure-confirm-btn" class="gy-btn gy-btn-primary">Expand & Search</button>
+                                <button type="button" id="fare-disclosure-cancel-btn" class="gy-btn gy-btn-outline" data-i18n="services.keep_current">Keep Current</button>
+                                <button type="button" id="fare-disclosure-confirm-btn" class="gy-btn gy-btn-primary" data-i18n="services.expand_and_search">Expand & Search</button>
                             </div>
                         </div>
                     </div>
@@ -502,7 +502,7 @@
 
             <!-- Scroll-to-proceed Guidance Button -->
             <button type="button" id="scroll-to-proceed-btn" class="scroll-to-proceed-btn d-none" aria-label="Scroll down to choose vehicle">
-                <span>Scroll to choose ride &darr;</span>
+                <span data-i18n="services.scroll_to_choose">Scroll to choose ride &darr;</span>
             </button>
 
             <nav class="bottom-nav services-bottom-nav">
@@ -615,22 +615,22 @@
             <div class="saved-places-modal-card editor-card">
                 <button type="button" class="saved-places-close-btn" id="save-address-editor-close">&times;</button>
                 <div class="saved-places-modal-header">
-                    <h3 id="save-address-editor-title">Save Address</h3>
-                    <p id="save-address-editor-subtitle">Choose a location to save for fast booking</p>
+                    <h3 id="save-address-editor-title" data-i18n="services.save_address_title">Save Address</h3>
+                    <p id="save-address-editor-subtitle" data-i18n="services.save_address_desc">Choose a location to save for fast booking</p>
                 </div>
                 <form id="save-address-editor-form" class="mt-3">
                     <div class="mb-3">
-                        <label for="save-address-type-input" class="form-label text-muted small fw-bold mb-1">Place Label / Name</label>
-                        <input type="text" id="save-address-type-input" class="form-control gy-input" placeholder="e.g. Home, Work, Gym, School" required>
+                        <label for="save-address-type-input" class="form-label text-muted small fw-bold mb-1" data-i18n="services.place_label_name">Place Label / Name</label>
+                        <input type="text" id="save-address-type-input" class="form-control gy-input" placeholder="e.g. Home, Work, Gym, School" data-i18n-placeholder="services.place_label_placeholder" required>
                     </div>
                     <div class="mb-3 position-relative">
-                        <label for="save-address-location-input" class="form-label text-muted small fw-bold mb-1">Address</label>
-                        <input type="text" id="save-address-location-input" class="form-control gy-input" placeholder="Enter landmark, street or town" autocomplete="off" required>
+                        <label for="save-address-location-input" class="form-label text-muted small fw-bold mb-1" data-i18n="profile.address_label">Address</label>
+                        <input type="text" id="save-address-location-input" class="form-control gy-input" placeholder="Enter landmark, street or town" data-i18n-placeholder="services.save_address_placeholder" autocomplete="off" required>
                         <div id="save-address-suggestions" class="destination-suggestions mt-1"></div>
                     </div>
                     <div class="d-flex gap-2 justify-content-end mt-4">
-                        <button type="button" id="save-address-cancel-btn" class="gy-btn gy-btn-outline px-4">Cancel</button>
-                        <button type="submit" id="save-address-submit-btn" class="gy-btn gy-btn-primary px-4">Save Address</button>
+                        <button type="button" id="save-address-cancel-btn" class="gy-btn gy-btn-outline px-4" data-i18n="common.cancel">Cancel</button>
+                        <button type="submit" id="save-address-submit-btn" class="gy-btn gy-btn-primary px-4" data-i18n="services.save_address">Save Address</button>
                     </div>
                 </form>
             </div>

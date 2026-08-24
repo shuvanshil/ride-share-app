@@ -3,6 +3,7 @@ import { serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/fi
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { showAlert, showConfirm } from './dialog.js';
 import { hideInitialLoader } from './loading.js';
+import { t } from './i18n.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const APP_SHARE_URL = "https://liphtup.in/";
@@ -343,14 +344,14 @@ async function saveEmergencyContacts() {
 }
 
 async function removeEmergencyContact(index) {
-    if (!(await showConfirm("Remove this emergency contact?"))) return;
+    if (!(await showConfirm(t('profile.remove_contact_confirm', "Remove this emergency contact?")))) return;
     emergencyContactsCache = emergencyContactsCache.filter((_, i) => i !== index);
     renderEmergencyContacts();
     try {
         await saveEmergencyContacts();
     } catch (error) {
         console.error("Could not remove emergency contact:", error);
-        await showAlert("Could not remove this contact. Please try again.");
+        await showAlert(t('profile.remove_contact_failed', "Could not remove this contact. Please try again."));
         loadEmergencyContacts();
     }
 }
@@ -372,7 +373,7 @@ document.getElementById('emergency-contact-form')?.addEventListener('submit', as
     const phone = document.getElementById('emergency-contact-phone')?.value.trim();
     if (!name || !phone) return;
     if (emergencyContactsCache.length >= 3) {
-        await showAlert("You can save up to 3 emergency contacts.");
+        await showAlert(t('profile.contact_limit_alert', "You can save up to 3 emergency contacts."));
         return;
     }
 
@@ -384,7 +385,7 @@ document.getElementById('emergency-contact-form')?.addEventListener('submit', as
         renderEmergencyContacts();
     } catch (error) {
         console.error("Could not save emergency contact:", error);
-        await showAlert("Could not save this contact. Please try again.");
+        await showAlert(t('profile.save_contact_failed', "Could not save this contact. Please try again."));
     }
 });
 
@@ -416,20 +417,20 @@ document.getElementById('safety-report-form')?.addEventListener('submit', async 
 
     try {
         const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Please log in to submit a report.");
+        if (!idToken) throw new Error(t('history.login_to_report', "Please log in to submit a report."));
         const response = await fetch("/api/rides/safety-report", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({ category, description })
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.ok) throw new Error(data.error || "Could not submit this report.");
+        if (!response.ok || !data.ok) throw new Error(data.error || t('history.report_failed', "Could not submit this report."));
 
         document.getElementById('safety-report-form')?.reset();
-        await showAlert("Thank you. Your report has been submitted to LiphtUp's safety team.");
+        await showAlert(t('history.report_submitted', "Thank you. Your report has been submitted to LiphtUp's safety team."));
     } catch (error) {
         console.error("Safety report submit failed:", error);
-        await showAlert(error.message || "Could not submit this report. Please try again.");
+        await showAlert(error.message || t('history.report_failed_retry', "Could not submit this report. Please try again."));
     } finally {
         if (submitBtn) submitBtn.disabled = false;
     }
@@ -497,10 +498,10 @@ async function copyShareLink() {
     }
 
     closeFallbackShareSheet();
-    saveNotice.innerText = "LiphtUp link copied";
+    saveNotice.innerText = t('profile.link_copied', "LiphtUp link copied");
     showSaveNotice();
     window.setTimeout(() => {
-        saveNotice.innerText = "Profile updated successfully";
+        saveNotice.innerText = t('profile.profile_updated', "Profile updated successfully");
     }, 2700);
 }
 
@@ -547,7 +548,7 @@ async function shareLiphtUp() {
 function setSavingState(isSaving) {
     saveInProgress = isSaving;
     saveButton.disabled = isSaving;
-    saveButton.innerText = isSaving ? "Saving..." : "Save Changes";
+    saveButton.innerText = isSaving ? t('common.saving', "Saving...") : t('profile.save_changes', "Save Changes");
     editForm.querySelectorAll('input, button').forEach((control) => {
         if (control !== saveButton) control.disabled = isSaving;
     });
@@ -573,7 +574,7 @@ function populateEditForm() {
     photoFileInput.value = "";
     pendingPhotoValue = photoUrl;
 
-    roleBadge.innerText = isDriver ? "Driver account" : "Passenger account";
+    roleBadge.innerText = isDriver ? t('profile.driver_account', "Driver account") : t('profile.passenger_account', "Passenger account");
     driverFields.classList.toggle('d-none', !isDriver);
     removePhotoButton.classList.toggle('d-none', !photoUrl);
     renderAvatar(editAvatar, inputs.name.value, photoUrl);
@@ -598,14 +599,14 @@ function closeEditor() {
 function setDeleteState(isDeleting) {
     deleteInProgress = isDeleting;
     deleteSubmitButton.disabled = isDeleting;
-    deleteSubmitButton.innerText = isDeleting ? "Deleting..." : "Delete my account";
+    deleteSubmitButton.innerText = isDeleting ? t('common.deleting', "Deleting...") : t('profile.delete_my_account', "Delete my account");
     deleteForm.querySelectorAll('input, button').forEach((control) => {
         if (control !== deleteSubmitButton) control.disabled = isDeleting;
     });
 }
 
 async function logoutCurrentUser() {
-    window.LiphtUpLoading?.showPageLoader?.("Logging out...");
+    window.LiphtUpLoading?.showPageLoader?.(t('common.logging_out', "Logging out..."));
     try {
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
         await signOut(auth);
@@ -624,15 +625,15 @@ async function deleteAccount(event) {
     const password = deletePasswordInput.value;
 
     if (confirmation !== "DELETE") {
-        showDeleteError("Type DELETE exactly to confirm permanent deletion.");
+        showDeleteError(t('profile.type_delete_error', "Type DELETE exactly to confirm permanent deletion."));
         return;
     }
     if (password.length < 6) {
-        showDeleteError("Enter your account password to delete this account.");
+        showDeleteError(t('profile.enter_password_error', "Enter your account password to delete this account."));
         return;
     }
 
-    window.LiphtUpLoading?.showPageLoader?.("Deleting account...");
+    window.LiphtUpLoading?.showPageLoader?.(t('profile.deleting_account', "Deleting account..."));
 
     clearDeleteError();
     setDeleteState(true);
@@ -650,11 +651,11 @@ async function deleteAccount(event) {
         const data = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            throw new Error(data.error || "Could not delete your account. Please try again.");
+            throw new Error(data.error || t('profile.delete_failed', "Could not delete your account. Please try again."));
         }
 
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
-        saveNotice.innerText = "Account deleted";
+        saveNotice.innerText = t('profile.account_deleted', "Account deleted");
         showSaveNotice();
         try {
             await signOut(auth);
@@ -665,7 +666,7 @@ async function deleteAccount(event) {
     } catch (error) {
         console.error("Account deletion failed:", error);
         setDeleteState(false);
-        showDeleteError(error.message || "Could not delete your account. Please try again.");
+        showDeleteError(error.message || t('profile.delete_failed', "Could not delete your account. Please try again."));
     }
 }
 
@@ -727,9 +728,9 @@ function validateProfileForm() {
     const photoUrl = photoUrlInput.value.trim();
     const isDriver = currentProfile?.role === "driver";
 
-    if (name.length < 2) return "Enter your full name.";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email address.";
-    if (photoUrl && !/^https?:\/\/[^\s]+$/i.test(photoUrl)) return "Enter a valid profile photo URL.";
+    if (name.length < 2) return t('profile.enter_full_name', "Enter your full name.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return t('profile.enter_valid_email', "Enter a valid email address.");
+    if (photoUrl && !/^https?:\/\/[^\s]+$/i.test(photoUrl)) return t('profile.enter_valid_photo_url', "Enter a valid profile photo URL.");
 
     if (isDriver) {
         const vehicleType = inputs.vehicleType.value;
@@ -738,12 +739,12 @@ function validateProfileForm() {
         const license = inputs.license.value.trim();
         const upi = inputs.upi.value.trim();
 
-        if (!pendingPhotoValue) return "A profile photo is required for driver accounts.";
-        if (!vehicleType) return "Select Bike / Scooty or Auto as your ride service.";
-        if (vehicleModel.length < 2) return "Enter the registered vehicle model.";
-        if (!/^[A-Z0-9 -]{4,20}$/i.test(vehicleNumber)) return "Enter a valid vehicle number.";
-        if (!/^[A-Z0-9 -]{5,30}$/i.test(license)) return "Enter a valid driving licence number.";
-        if (!/^[a-z0-9._-]{2,}@[a-z0-9.-]{2,}$/i.test(upi)) return "Enter a valid UPI ID.";
+        if (!pendingPhotoValue) return t('profile.photo_required_driver', "A profile photo is required for driver accounts.");
+        if (!vehicleType) return t('profile.select_vehicle_service', "Select Bike / Scooty or Auto as your ride service.");
+        if (vehicleModel.length < 2) return t('profile.enter_vehicle_model', "Enter the registered vehicle model.");
+        if (!/^[A-Z0-9 -]{4,20}$/i.test(vehicleNumber)) return t('profile.enter_vehicle_number', "Enter a valid vehicle number.");
+        if (!/^[A-Z0-9 -]{5,30}$/i.test(license)) return t('profile.enter_license_number', "Enter a valid driving licence number.");
+        if (!/^[a-z0-9._-]{2,}@[a-z0-9.-]{2,}$/i.test(upi)) return t('profile.enter_upi_id', "Enter a valid UPI ID.");
     }
 
     return "";
@@ -805,7 +806,7 @@ async function saveProfile(event) {
         });
     }
 
-    window.LiphtUpLoading?.showPageLoader?.("Saving profile changes...");
+    window.LiphtUpLoading?.showPageLoader?.(t('profile.saving_changes', "Saving profile changes..."));
     try {
         currentProfile = await saveProfileThroughBackend(currentAuthUser, updates);
 
@@ -817,7 +818,7 @@ async function saveProfile(event) {
     } catch (error) {
         console.error("Profile update failed:", error);
         setSavingState(false);
-        showError("Could not save your profile. Check your connection and try again.");
+        showError(t('profile.save_failed', "Could not save your profile. Check your connection and try again."));
     } finally {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
@@ -965,12 +966,12 @@ onAuthStateChanged(auth, async (user) => {
     if (!user) {
         currentAuthUser = null;
         currentProfile = null;
-        nameEl.innerText = "Guest User";
-        phoneEl.innerText = "Login to view your profile";
+        nameEl.innerText = t('profile.guest_user', "Guest User");
+        phoneEl.innerText = t('profile.login_to_view', "Login to view your profile");
         emailEl.innerText = "";
         avatarEl.innerText = "G";
         editButton.disabled = true;
-        profileSessionButton.innerText = "Login / Register";
+        profileSessionButton.innerText = t('auth.tab_login', "Login / Register");
         profileSessionButton.classList.add('is-login');
         profileSessionButton.classList.remove('d-none');
         document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.remove('d-none'));
@@ -980,7 +981,7 @@ onAuthStateChanged(auth, async (user) => {
 
     currentAuthUser = user;
     editButton.disabled = false;
-    profileSessionButton.innerText = "Account";
+    profileSessionButton.innerText = t('profile.account_settings', "Account");
     profileSessionButton.classList.remove('is-login');
     profileSessionButton.classList.remove('d-none');
     document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
@@ -1001,11 +1002,17 @@ onAuthStateChanged(auth, async (user) => {
         console.error("Profile backend load failed:", error);
         currentProfile = {
             uid: user.uid,
-            name: user.displayName || "LiphtUp User",
+            name: user.displayName || t('history.default_user', "LiphtUp User"),
             phone: user.phoneNumber || "",
             role: "passenger"
         };
         renderProfileSummary(currentProfile);
         hideInitialLoader();
+    }
+});
+
+window.addEventListener('languageChanged', () => {
+    if (currentProfile) {
+        renderProfileSummary(currentProfile);
     }
 });

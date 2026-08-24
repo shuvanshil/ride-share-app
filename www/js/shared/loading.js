@@ -67,15 +67,18 @@ export function hidePageLoader({ force = false } = {}) {
  * @param {HTMLElement} button
  * @param {string} [busyText]
  */
-export function setButtonBusy(button, busyText = "Please wait…") {
+export function setButtonBusy(button, busyText) {
     if (!button) return () => {};
     if (button.dataset.luBusy === "1") return () => {};
+
+    const tWait = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('common.please_wait') : "Please wait…";
+    const finalText = (busyText !== undefined && busyText !== "Please wait…") ? busyText : tWait;
 
     const originalHtml = button.innerHTML;
     const originalDisabled = button.disabled;
     button.dataset.luBusy = "1";
     button.disabled = true;
-    button.innerHTML = `<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>${busyText}</span>`;
+    button.innerHTML = `<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>${finalText}</span>`;
 
     return function restore() {
         if (button.dataset.luBusy !== "1") return;

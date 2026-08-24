@@ -110,9 +110,10 @@ function openDialog(options) {
  * @returns {Promise<true>}
  */
 export function showAlert(message, opts = {}) {
+    const tOk = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('common.ok') : "OK";
     return openDialog({
         message: String(message ?? ""),
-        okText: opts.okText || "OK",
+        okText: opts.okText || tOk,
         cancelText: "Cancel",
         showCancel: false
     });

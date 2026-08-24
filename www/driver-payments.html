@@ -32,7 +32,7 @@
                 <line x1="8" y1="2" x2="8" y2="6"></line>
                 <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
-            <span>Weekly Payment</span>
+            <span data-i18n="driver.weekly_payment">Weekly Payment</span>
         </div>
         <button id="payments-help-btn" type="button" class="py-help-btn" aria-label="Help">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -242,7 +242,7 @@
                         <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
                         <line x1="12" y1="17" x2="12.01" y2="17"></line>
                     </svg>
-                    <span>How it works</span>
+                    <span data-i18n="driver.how_it_works">How it works</span>
                 </div>
             </div>
 
@@ -250,35 +250,35 @@
             <div class="py-step-list mb-4">
                 <div class="py-step-item">
                     <span class="py-step-num">1</span>
-                    <span class="py-step-text">Click "Pay the weekly fee"</span>
+                    <span class="py-step-text" data-i18n="driver.step_1">Click "Pay the weekly fee"</span>
                     <span class="py-step-icon">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6M10 10.5V2a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8M18 8a2 2 0 0 1 2 2v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-3"/></svg>
                     </span>
                 </div>
                 <div class="py-step-item">
                     <span class="py-step-num">2</span>
-                    <span class="py-step-text">Scan the QR code using any UPI app (GPay, PhonePe, Paytm)</span>
+                    <span class="py-step-text" data-i18n="driver.step_2">Scan the QR code using any UPI app (GPay, PhonePe, Paytm)</span>
                     <span class="py-step-icon">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                     </span>
                 </div>
                 <div class="py-step-item">
                     <span class="py-step-num">3</span>
-                    <span class="py-step-text">Pay ₹140 (amount auto-filled)</span>
+                    <span class="py-step-text" data-i18n="driver.step_3">Pay ₹140 (amount auto-filled)</span>
                     <span class="py-step-icon">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 6v12"/></svg>
                     </span>
                 </div>
                 <div class="py-step-item">
                     <span class="py-step-num">4</span>
-                    <span class="py-step-text">Click "Payment done" in the app</span>
+                    <span class="py-step-text" data-i18n="driver.step_4">Click "Payment done" in the app</span>
                     <span class="py-step-icon">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                     </span>
                 </div>
                 <div class="py-step-item">
                     <span class="py-step-num">5</span>
-                    <span class="py-step-text">Wait for verification from our accounts team</span>
+                    <span class="py-step-text" data-i18n="driver.step_5">Wait for verification from our accounts team</span>
                     <span class="py-step-icon">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     </span>
@@ -332,7 +332,7 @@
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#059669" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
             </div>
             <div class="py-notice-content">
-                <p class="mb-0 text-dark fw-semibold" style="font-size: 0.88rem;">Once verified, your status will be updated and you will continue to receive ride requests.</p>
+                <p class="mb-0 text-dark fw-semibold" style="font-size: 0.88rem;" data-i18n="driver.verification_notice">Once verified, your status will be updated and you will continue to receive ride requests.</p>
             </div>
         </section>
     </main>
@@ -341,7 +341,7 @@
     <div id="py-history-modal" class="py-modal-overlay d-none">
         <div class="py-modal-card">
             <div class="py-modal-header">
-                <h3>All Payment Histories</h3>
+                <h3 data-i18n="driver.all_payment_histories">All Payment Histories</h3>
                 <button id="py-modal-close-btn" class="py-modal-close" type="button">×</button>
             </div>
             <div class="py-modal-body" id="py-full-history-list">
@@ -354,20 +354,20 @@
     <div id="qr-payment-modal" class="py-modal-overlay d-none">
         <div class="py-modal-card text-center" style="max-width: 380px;">
             <div class="py-modal-header">
-                <h3>Pay Weekly Fee</h3>
+                <h3 data-i18n="driver.pay_weekly_fee">Pay Weekly Fee</h3>
                 <button id="qr-modal-close-btn" class="py-modal-close" type="button">×</button>
             </div>
             <div class="py-modal-body p-4">
-                <p class="text-muted small mb-3">Scan this QR code with GPay, PhonePe, Paytm or any UPI app to complete your payment.</p>
+                <p class="text-muted small mb-3" data-i18n="driver.scan_qr_desc">Scan this QR code with GPay, PhonePe, Paytm or any UPI app to complete your payment.</p>
                 <div class="d-flex justify-content-center mb-3">
                     <img id="upi-qr-image" src="" alt="UPI QR Code" style="width: 220px; height: 220px; border-radius: 12px; border: 1px solid #E2E8F0; padding: 8px;">
                 </div>
                 <div class="py-qr-amount-box mb-4">
-                    <span>Total Payable:</span>
+                    <span data-i18n="driver.total_payable">Total Payable:</span>
                     <strong id="qr-modal-amount" class="text-success fs-4 ms-2">₹140</strong>
                 </div>
-                <button id="payment-done-btn" type="button" class="py-main-pay-btn w-100 mb-2">Payment done</button>
-                <button id="qr-modal-cancel-btn" type="button" class="btn btn-link text-muted text-decoration-none">Cancel</button>
+                <button id="payment-done-btn" type="button" class="py-main-pay-btn w-100 mb-2" data-i18n="driver.payment_done">Payment done</button>
+                <button id="qr-modal-cancel-btn" type="button" class="btn btn-link text-muted text-decoration-none" data-i18n="common.cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -382,14 +382,14 @@
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                     </svg>
                 </div>
-                <h3 class="text-danger fw-extrabold mb-2" style="font-size: 1.25rem;">Account Temporarily On Hold</h3>
-                <p class="text-secondary small mb-4" style="line-height: 1.5;">
+                <h3 class="text-danger fw-extrabold mb-2" style="font-size: 1.25rem;" data-i18n="driver.hold_title">Account Temporarily On Hold</h3>
+                <p class="text-secondary small mb-4" style="line-height: 1.5;" data-i18n="driver.hold_desc">
                     Your driver account has been placed on hold because weekly fee payments for <strong>10 or more weeks</strong> have not been received. Please complete your payment below to request account reactivation.
                 </p>
-                <a href="driver-payments.html" id="hold-pay-now-btn" class="py-main-pay-btn w-100 text-decoration-none d-inline-flex justify-content-center align-items-center">
+                <a href="driver-payments.html" id="hold-pay-now-btn" class="py-main-pay-btn w-100 text-decoration-none d-inline-flex justify-content-center align-items-center" data-i18n="driver.pay_fees_btn">
                     Pay Outstanding Weekly Fees
                 </a>
-                <p class="text-muted mt-3 mb-0" style="font-size: 0.75rem;">
+                <p class="text-muted mt-3 mb-0" style="font-size: 0.75rem;" data-i18n="driver.hold_removal_notice">
                     This dialog will be automatically removed once your payment submission is reviewed and approved by our accounts team.
                 </p>
             </div>

@@ -12,13 +12,16 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/fi
 import { showAlert, showConfirm } from './dialog.js';
 import { hideInitialLoader } from './loading.js';
 import { waitForAuth } from './auth.js';
+import { t } from './i18n.js';
 
-const FILTER_LABELS = {
-    day: "today",
-    week: "this week",
-    month: "this month",
-    all: "all time"
-};
+function getFilterLabels() {
+    return {
+        day: t('history.filter_day_label', 'today'),
+        week: t('history.filter_week_label', 'this week'),
+        month: t('history.filter_month_label', 'this month'),
+        all: t('history.filter_all_label', 'all time')
+    };
+}
 const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
 
 const historyState = {
@@ -91,7 +94,7 @@ function isUnclearLocationText(value) {
 }
 
 function getHistoryLocation(trip = {}, kind = "pickup") {
-    const fallback = kind === "pickup" ? "Pickup not recorded" : "Drop not recorded";
+    const fallback = kind === "pickup" ? t('history.pickup_not_recorded', 'Pickup not recorded') : t('history.drop_not_recorded', 'Drop not recorded');
     const candidates = kind === "pickup"
         ? [trip.pickup_display_address, trip.pickup_formatted_address, trip.pickup_location]
         : [trip.drop_display_address, trip.drop_formatted_address, trip.drop_full_address, trip.drop_location];
@@ -100,7 +103,7 @@ function getHistoryLocation(trip = {}, kind = "pickup") {
 }
 
 function formatDate(timestamp) {
-    if (!timestamp?.toDate) return "Date not recorded";
+    if (!timestamp?.toDate) return t('history.date_not_recorded', 'Date not recorded');
     return timestamp.toDate().toLocaleString("en-IN", {
         dateStyle: "medium",
         timeStyle: "medium"
@@ -116,7 +119,7 @@ function formatCardTimestamp(rawTimestamp) {
     } else if (typeof rawTimestamp === 'string') {
         d = new Date(rawTimestamp);
     }
-    if (!d || isNaN(d.getTime())) return "Date not recorded";
+    if (!d || isNaN(d.getTime())) return t('history.date_not_recorded', 'Date not recorded');
 
     const dateStr = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
     const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase();
@@ -134,8 +137,8 @@ function getTripRole() {
 
 function getParticipantName(trip) {
     return isDriverAccount()
-        ? trip.passenger_name || "Passenger"
-        : trip.driver_name || "Driver";
+        ? trip.passenger_name || t('history.passenger', 'Passenger')
+        : trip.driver_name || t('history.driver_label', 'Driver');
 }
 
 function getInitials(name) {
@@ -179,7 +182,8 @@ function getTripDisplayTimestamp(trip = {}) {
 }
 
 function getFilterLabel(filterName = historyState.activeFilter) {
-    return FILTER_LABELS[filterName] || FILTER_LABELS.all;
+    const labels = getFilterLabels();
+    return labels[filterName] || labels.all;
 }
 
 function getDayStart(now) {
@@ -333,21 +337,21 @@ function renderSummary(trips) {
     totalTripsEl.innerText = String(trips.length);
     totalFareEl.innerText = formatMoney(totalFare);
     totalDistanceEl.innerText = totalDistance > 0 ? `${totalDistance.toFixed(1)} km` : "0 km";
-    moneyLabelEl.innerText = "Total Fare";
+    moneyLabelEl.innerText = t('history.total_fare', 'Total Fare');
 }
 
 function renderEmptyState() {
-    const roleText = isDriverAccount() ? "driven" : "booked";
+    const roleText = isDriverAccount() ? t('history.driven', 'driven') : t('history.booked', 'booked');
     const filterText = getFilterLabel();
-    const actionLabel = isDriverAccount() ? "Go Home" : "Book a Ride";
+    const actionLabel = isDriverAccount() ? t('common.go_home', 'Go Home') : t('common.book_a_ride', 'Book a Ride');
     const actionLink = isDriverAccount() ? "/driver.html" : "/index.html";
 
     historyList.innerHTML = `
         <div class="history-empty-card">
             <div class="history-empty-icon">◷</div>
-            <h3>No ride history for ${escapeHtml(filterText)}</h3>
-            <p>Your verified, completed, and cancelled ${escapeHtml(roleText)} trips for ${escapeHtml(filterText)} will appear here.</p>
-            <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='${actionLink}'">${actionLabel}</button>
+            <h3>${t('history.no_history_for', 'No ride history for')} ${escapeHtml(filterText)}</h3>
+            <p>${t('history.empty_history_desc', 'Your verified, completed, and cancelled trips will appear here.')}</p>
+            <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='${actionLink}'">${escapeHtml(actionLabel)}</button>
         </div>
     `;
 }
@@ -414,7 +418,7 @@ function renderTripCard(trip) {
                     </div>
 
                     <button class="history-detail-btn view-details-pill-btn" type="button" data-trip-id="${escapeHtml(trip.id)}">
-                        <span>View Details</span>
+                        <span>${escapeHtml(t('history.view_details', 'View Details'))}</span>
                         <span class="chevron-right">&rsaquo;</span>
                     </button>
                 </div>
@@ -441,7 +445,7 @@ function renderTrips() {
         html += `
             <div class="load-more-container">
                 <button type="button" id="load-more-history-btn" class="load-more-btn">
-                    <span>Load More Rides (${allFilteredTrips.length - historyState.visibleCount} remaining)</span>
+                    <span>${escapeHtml(t('history.load_more', 'Load More'))} (${allFilteredTrips.length - historyState.visibleCount} ${escapeHtml(t('history.remaining', 'remaining'))})</span>
                     <span class="chevron-down">&darr;</span>
                 </button>
             </div>
@@ -466,26 +470,26 @@ function renderTrips() {
 function openTripDetail(trip) {
     const role = getTripRole();
     const statusLabel = getTripStatusLabel(trip);
-    const vehicleDetails = trip.vehicle_details || `${trip.vehicle_model || "Vehicle"} • ${trip.vehicle_number || "Number not recorded"}`;
+    const vehicleDetails = trip.vehicle_details || `${trip.vehicle_model || t('history.vehicle_label', 'Vehicle')} • ${trip.vehicle_number || t('history.number_not_recorded', 'Number not recorded')}`;
 
     detailContent.innerHTML = `
-        <div class="history-detail-row"><span>Ride ID</span><strong>${escapeHtml(trip.ride_id || trip.id)}</strong></div>
-        <div class="history-detail-row"><span>Final Status</span><strong>${escapeHtml(statusLabel)}</strong></div>
-        <div class="history-detail-row"><span>Verification Date & Time</span><strong>${escapeHtml(formatDate(trip.verifiedAt))}</strong></div>
-        <div class="history-detail-row"><span>Completion Date & Time</span><strong>${escapeHtml(formatDate(trip.completedAt))}</strong></div>
-        <div class="history-detail-row"><span>Cancellation Date & Time</span><strong>${escapeHtml(formatDate(trip.cancelledAt))}</strong></div>
-        <div class="history-detail-row"><span>Payment</span><strong>${escapeHtml(trip.payment_status || "pending")}</strong></div>
-        <div class="history-detail-row"><span>Your Role</span><strong>${role === "driver" ? "Driver" : "Passenger"}</strong></div>
-        <div class="history-detail-row"><span>Passenger</span><strong>${escapeHtml(trip.passenger_name || "Passenger")}</strong></div>
-        <div class="history-detail-row"><span>Driver</span><strong>${escapeHtml(trip.driver_name || "Driver")}</strong></div>
-        <div class="history-detail-row"><span>Vehicle</span><strong>${escapeHtml(vehicleDetails)}</strong></div>
-        <div class="history-detail-row"><span>Service</span><strong>${escapeHtml(trip.service_name || (trip.vehicle_type === "auto" ? "Auto" : "Bike / Scooty"))}</strong></div>
-        <div class="history-detail-row"><span>Pickup</span><strong>${escapeHtml(getHistoryLocation(trip, "pickup"))}</strong></div>
-        <div class="history-detail-row"><span>Drop</span><strong>${escapeHtml(getHistoryLocation(trip, "drop"))}</strong></div>
-        <div class="history-detail-row"><span>Distance</span><strong>${formatDistance(trip.distance_km)}</strong></div>
-        <div class="history-detail-row"><span>Duration</span><strong>${formatDuration(trip.duration_minutes)}</strong></div>
-        <div class="history-detail-row total"><span>Fare</span><strong>${formatMoney(trip.fare_amount)}</strong></div>
-        <button id="history-report-issue-btn" class="gy-btn gy-btn-danger-outline w-100 mt-3" type="button">Report an Issue with This Ride</button>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.ride_id', 'Ride ID'))}</span><strong>${escapeHtml(trip.ride_id || trip.id)}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.final_status', 'Final Status'))}</span><strong>${escapeHtml(statusLabel)}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.verification_date', 'Verification Date & Time'))}</span><strong>${escapeHtml(formatDate(trip.verifiedAt))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.completion_date', 'Completion Date & Time'))}</span><strong>${escapeHtml(formatDate(trip.completedAt))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.cancellation_date', 'Cancellation Date & Time'))}</span><strong>${escapeHtml(formatDate(trip.cancelledAt))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.payment_label', 'Payment'))}</span><strong>${escapeHtml(trip.payment_status || "pending")}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.your_role', 'Your Role'))}</span><strong>${role === "driver" ? escapeHtml(t('history.driver_label', 'Driver')) : escapeHtml(t('history.passenger', 'Passenger'))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.passenger', 'Passenger'))}</span><strong>${escapeHtml(trip.passenger_name || t('history.passenger', 'Passenger'))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.driver_label', 'Driver'))}</span><strong>${escapeHtml(trip.driver_name || t('history.driver_label', 'Driver'))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.vehicle_label', 'Vehicle'))}</span><strong>${escapeHtml(vehicleDetails)}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.service_label', 'Service'))}</span><strong>${escapeHtml(trip.service_name || (trip.vehicle_type === "auto" ? t('services.auto', 'Auto') : t('services.bike', 'Bike / Scooty')))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.pickup_label', 'Pickup'))}</span><strong>${escapeHtml(getHistoryLocation(trip, "pickup"))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.drop_label', 'Drop'))}</span><strong>${escapeHtml(getHistoryLocation(trip, "drop"))}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.total_distance', 'Distance'))}</span><strong>${formatDistance(trip.distance_km)}</strong></div>
+        <div class="history-detail-row"><span>${escapeHtml(t('history.duration', 'Duration'))}</span><strong>${formatDuration(trip.duration_minutes)}</strong></div>
+        <div class="history-detail-row total"><span>${escapeHtml(t('history.fare_label', 'Fare'))}</span><strong>${formatMoney(trip.fare_amount)}</strong></div>
+        <button id="history-report-issue-btn" class="gy-btn gy-btn-danger-outline w-100 mt-3" type="button">${escapeHtml(t('history.report_issue', 'Report an Issue with This Ride'))}</button>
     `;
     document.getElementById('history-report-issue-btn')?.addEventListener('click', () => reportRideIssue(trip.ride_id || trip.id));
     detailModal.classList.remove('d-none');
@@ -493,27 +497,27 @@ function openTripDetail(trip) {
 
 async function reportRideIssue(rideId) {
     if (!rideId) return;
-    if (!(await showConfirm("Report a safety or behavior concern about this ride to LiphtUp's safety team?"))) return;
+    if (!(await showConfirm(t('history.report_confirm', "Report a safety or behavior concern about this ride to LiphtUp's safety team?")))) return;
 
     try {
         const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Please log in to submit a report.");
+        if (!idToken) throw new Error(t('history.login_to_report', "Please log in to submit a report."));
         const response = await fetch("/api/rides/safety-report", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({ rideId, category: "other", description: "Reported from ride history." })
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.ok) throw new Error(data.error || "Could not submit this report.");
-        await showAlert("Thank you. Your report has been submitted to LiphtUp's safety team.");
+        if (!response.ok || !data.ok) throw new Error(data.error || t('history.report_failed', "Could not submit this report."));
+        await showAlert(t('history.report_submitted', "Thank you. Your report has been submitted to LiphtUp's safety team."));
     } catch (error) {
         console.error("Ride issue report failed:", error);
-        await showAlert(error.message || "Could not submit this report. Please try again.");
+        await showAlert(error.message || t('history.report_failed_retry', "Could not submit this report. Please try again."));
     }
 }
 
 function setLoadingState() {
-    historyList.innerHTML = `<div class="history-loading-card">Loading ride history...</div>`;
+    historyList.innerHTML = `<div class="history-loading-card">${escapeHtml(t('history.loading_history', 'Loading ride history...'))}</div>`;
 }
 
 function setErrorState(error) {
@@ -521,9 +525,9 @@ function setErrorState(error) {
     historyList.innerHTML = `
         <div class="history-empty-card">
             <div class="history-empty-icon">!</div>
-            <h3>Could not load history</h3>
-            <p>Please check your internet connection and Firestore rules, then try again.</p>
-            <button id="history-retry-btn" class="gy-btn gy-btn-primary" type="button">Try Again</button>
+            <h3>${escapeHtml(t('history.error_title', 'Could not load history'))}</h3>
+            <p>${escapeHtml(t('history.error_desc', 'Please check your internet connection and Firestore rules, then try again.'))}</p>
+            <button id="history-retry-btn" class="gy-btn gy-btn-primary" type="button">${escapeHtml(t('common.refresh', 'Try Again'))}</button>
         </div>
     `;
     document.getElementById('history-retry-btn').addEventListener('click', refreshHistory);
@@ -568,13 +572,13 @@ async function bootstrapHistory() {
         historyState.profile = null;
         historyState.trips = [];
         document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.remove('d-none'));
-        userContext.innerText = "Login to view your ride history";
+        userContext.innerText = t('history.login_to_view', "Login to view your ride history");
         historyList.innerHTML = `
             <div class="history-empty-card">
                 <div class="history-empty-icon">○</div>
-                <h3>You are not logged in</h3>
-                <p>Please login to view your ride history.</p>
-                <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='/login.html'">Go to Login</button>
+                <h3>${escapeHtml(t('history.not_logged_in', 'You are not logged in'))}</h3>
+                <p>${escapeHtml(t('history.please_login', 'Please login to view your ride history.'))}</p>
+                <button class="gy-btn gy-btn-primary" type="button" onclick="window.location.href='/login.html'">${escapeHtml(t('common.go_to_login', 'Go to Login'))}</button>
             </div>
         `;
         renderSummary([]);
@@ -589,14 +593,18 @@ async function bootstrapHistory() {
 
     if (cachedProfile?.uid === user.uid) {
         historyState.profile = cachedProfile;
-        userContext.innerText = `${cachedProfile.name || "LiphtUp user"} • ${isDriverAccount() ? "driver" : "passenger"}`;
+        const name = cachedProfile.name || t('history.default_user', "LiphtUp user");
+        const role = isDriverAccount() ? t('history.role_driver', "driver") : t('history.role_passenger', "passenger");
+        userContext.innerText = `${name} • ${role}`;
         startHistoryRealtime();
         hideInitialLoader();
 
         loadUserProfile(user).then((profile) => {
             const roleChanged = profile.role !== historyState.profile?.role;
             historyState.profile = profile;
-            userContext.innerText = `${profile.name || "LiphtUp user"} • ${isDriverAccount() ? "driver" : "passenger"}`;
+            const updatedName = profile.name || t('history.default_user', "LiphtUp user");
+            const updatedRole = isDriverAccount() ? t('history.role_driver', "driver") : t('history.role_passenger', "passenger");
+            userContext.innerText = `${updatedName} • ${updatedRole}`;
             if (roleChanged) startHistoryRealtime();
         }).catch((error) => console.warn("Could not refresh history profile:", error));
         return;
@@ -606,8 +614,8 @@ async function bootstrapHistory() {
 
     try {
         historyState.profile = await loadUserProfile(user);
-        const name = historyState.profile.name || "LiphtUp user";
-        const role = isDriverAccount() ? "driver" : "passenger";
+        const name = historyState.profile.name || t('history.default_user', "LiphtUp user");
+        const role = isDriverAccount() ? t('history.role_driver', "driver") : t('history.role_passenger', "passenger");
         userContext.innerText = `${name} • ${role}`;
         startHistoryRealtime();
         hideInitialLoader();
@@ -622,5 +630,12 @@ bootstrapHistory();
 window.addEventListener('languageChanged', () => {
     if (historyState.trips.length) {
         renderTrips();
+    } else {
+        renderEmptyState();
+    }
+    if (historyState.profile && historyState.user) {
+        const name = historyState.profile.name || t('history.default_user', 'LiphtUp user');
+        const role = isDriverAccount() ? t('history.role_driver', 'driver') : t('history.role_passenger', 'passenger');
+        if (userContext) userContext.innerText = `${name} • ${role}`;
     }
 });

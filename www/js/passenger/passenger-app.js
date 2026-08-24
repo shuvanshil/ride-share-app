@@ -14,6 +14,7 @@ import { showAlert, showConfirm } from '../shared/dialog.js';
 import { share, copyToClipboard } from '../platform/share.js';
 import { getCurrentPosition } from '../platform/geolocation.js';
 import { schedulePrompt as triggerRideFeedback } from './passenger-feedback.js';
+import { t } from '../shared/i18n.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -53,12 +54,14 @@ let activePendingRequestData = null;
 let activePendingRequestListener = null;
 
 
-const SEARCH_STATUS_MESSAGES = [
-    { maxSec: 7, headline: "Finding the best driver for you...", subline: "This usually takes less than 35s" },
-    { maxSec: 15, headline: "Checking nearby drivers...", subline: "Reaching out to vehicles near your pickup" },
-    { maxSec: 25, headline: "Waiting on driver confirmation...", subline: "Almost there, securing your ride" },
-    { maxSec: 999, headline: "Still looking for available drivers...", subline: "It's a quiet hour, expanding our search" }
-];
+function getSearchStatusMessages() {
+    return [
+        { maxSec: 7, headline: t('services.finding_driver_headline', "Finding the best driver for you..."), subline: t('services.finding_driver_subline', "This usually takes less than 35s") },
+        { maxSec: 15, headline: t('services.checking_drivers_headline', "Checking nearby drivers..."), subline: t('services.checking_drivers_subline', "Reaching out to vehicles near your pickup") },
+        { maxSec: 25, headline: t('services.waiting_driver_headline', "Waiting on driver confirmation..."), subline: t('services.waiting_driver_subline', "Almost there, securing your ride") },
+        { maxSec: 999, headline: t('services.still_looking_headline', "Still looking for available drivers..."), subline: t('services.still_looking_subline', "It's a quiet hour, expanding our search") }
+    ];
+}
 
 function formatFareAmount(value) {
     const amount = Number(value);
@@ -806,7 +809,8 @@ function startSearchStateUi(customDurationSeconds = SEARCH_WINDOW_SECONDS) {
             dot.classList.toggle('is-active', idx === searchDotsCycle);
         });
 
-        const msgObj = SEARCH_STATUS_MESSAGES.find((m) => elapsedSec <= m.maxSec) || SEARCH_STATUS_MESSAGES[SEARCH_STATUS_MESSAGES.length - 1];
+        const searchMessages = getSearchStatusMessages();
+        const msgObj = searchMessages.find((m) => elapsedSec <= m.maxSec) || searchMessages[searchMessages.length - 1];
         if (headline && msgObj) headline.innerText = msgObj.headline;
         if (subline && msgObj) subline.innerText = msgObj.subline;
 
@@ -2381,5 +2385,14 @@ async function rebookPendingRequestToLiveRide() {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
+
+window.addEventListener('languageChanged', () => {
+    if (activePendingRequestData) {
+        renderPendingQueueCard(activePendingRequestData);
+    }
+    if (currentPassengerRideData) {
+        renderPassengerActiveRide(currentPassengerRideData);
+    }
+});
 
 

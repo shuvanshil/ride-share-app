@@ -14,6 +14,7 @@ import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, setButtonBusy, hideInitialLoader } from '../shared/loading.js';
 import { waitForAuth } from '../shared/auth.js';
+import { t } from '../shared/i18n.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -1725,3 +1726,17 @@ async function bootstrapDriver() {
 }
 
 bootstrapDriver();
+
+window.addEventListener('languageChanged', () => {
+    const jobsContainer = document.getElementById('driver-jobs-list');
+    if (jobsContainer && (jobsContainer.classList.contains('offline-empty-card') || jobsContainer.classList.contains('online-empty-card') || !jobsContainer.children.length)) {
+        if (!driverDutyOnline) {
+            renderOfflineEmptyState(jobsContainer);
+        } else {
+            renderOnlineEmptyState(jobsContainer);
+        }
+    }
+    if (activeDriverRideData) {
+        renderActiveTripStatus(activeDriverRideData.status, activeDriverRideData);
+    }
+});

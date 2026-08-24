@@ -69,12 +69,12 @@
             </button>
             <button class="profile-menu-row" type="button" data-action="refer">
                 <span class="profile-menu-icon"><span class="webicon webicon-share" aria-hidden="true"></span></span>
-                <span>Share</span>
+                <span data-i18n="common.share">Share</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="contact">
                 <span class="profile-menu-icon"><span class="webicon webicon-contact-us" aria-hidden="true"></span></span>
-                <span>Contact Us</span>
+                <span data-i18n="profile.contact_us">Contact Us</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="about">
@@ -117,7 +117,7 @@
             <header class="profile-edit-head">
                 <div>
                     <span id="profile-edit-role" class="profile-role-badge">Account</span>
-                    <h2 id="profile-edit-title">Edit Profile</h2>
+                    <h2 id="profile-edit-title" data-i18n="profile.edit_profile">Edit Profile</h2>
                 </div>
                 <button id="profile-edit-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
             </header>
@@ -126,66 +126,66 @@
                 <section class="profile-photo-editor" aria-label="Profile photo">
                     <div id="profile-edit-avatar" class="profile-avatar profile-edit-avatar">G</div>
                     <div class="profile-photo-actions">
-                        <label class="profile-photo-upload" for="profile-photo-file">Choose photo</label>
+                        <label class="profile-photo-upload" for="profile-photo-file" data-i18n="profile.choose_photo">Choose photo</label>
                         <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-                        <button id="profile-photo-remove-btn" class="profile-photo-remove" type="button">Remove</button>
-                        <small>JPG, PNG or WebP. The image is resized before saving.</small>
+                        <button id="profile-photo-remove-btn" class="profile-photo-remove" type="button" data-i18n="common.remove">Remove</button>
+                        <small data-i18n="profile.photo_hint">JPG, PNG or WebP. The image is resized before saving.</small>
                     </div>
                 </section>
 
                 <div class="profile-form-field">
-                    <label for="profile-edit-name">Full name</label>
+                    <label for="profile-edit-name" data-i18n="auth.full_name">Full name</label>
                     <input id="profile-edit-name" class="form-control gy-input" type="text" maxlength="80" autocomplete="name" required>
                 </div>
 
                 <div class="profile-form-field">
-                    <label for="profile-edit-email">Email</label>
+                    <label for="profile-edit-email" data-i18n="profile.email">Email</label>
                     <input id="profile-edit-email" class="form-control gy-input" type="email" maxlength="120" autocomplete="email" required>
                 </div>
 
                 <div class="profile-form-field">
-                    <label for="profile-edit-phone">Mobile number</label>
+                    <label for="profile-edit-phone" data-i18n="auth.mobile_number">Mobile number</label>
                     <input id="profile-edit-phone" class="form-control gy-input" type="tel" readonly aria-readonly="true">
-                    <small>Mobile number is secured by phone authentication and cannot be changed here.</small>
+                    <small data-i18n="profile.phone_readonly_hint">Mobile number is secured by phone authentication and cannot be changed here.</small>
                 </div>
 
                 <div class="profile-form-field">
-                    <label for="profile-photo-url">Profile photo URL <span>Optional</span></label>
+                    <label for="profile-photo-url"><span data-i18n="profile.photo_url_label">Profile photo URL</span> <span data-i18n="common.optional">Optional</span></label>
                     <input id="profile-photo-url" class="form-control gy-input" type="url" maxlength="1500" placeholder="https://example.com/photo.jpg">
                 </div>
 
                 <section id="profile-driver-fields" class="profile-driver-fields d-none">
                     <div class="profile-form-section-title">
-                        <h3>Driver Details</h3>
-                        <p>Keep these details identical to your registered documents.</p>
+                        <h3 data-i18n="profile.driver_details">Driver Details</h3>
+                        <p data-i18n="profile.driver_details_hint">Keep these details identical to your registered documents.</p>
                     </div>
 
                     <div class="profile-form-field">
-                        <label for="profile-edit-vehicle-type">Ride service</label>
+                        <label for="profile-edit-vehicle-type" data-i18n="profile.ride_service_label">Ride service</label>
                         <select id="profile-edit-vehicle-type" class="form-select gy-input">
-                            <option value="">Select vehicle type</option>
-                            <option value="bike">Bike / Scooty</option>
-                            <option value="auto">Auto</option>
+                            <option value="" data-i18n="profile.select_vehicle_type">Select vehicle type</option>
+                            <option value="bike" data-i18n="services.bike">Bike / Scooty</option>
+                            <option value="auto" data-i18n="services.auto">Auto</option>
                         </select>
                     </div>
 
                     <div class="profile-form-field">
-                        <label for="profile-edit-vehicle-model">Vehicle model</label>
+                        <label for="profile-edit-vehicle-model" data-i18n="profile.vehicle_model">Vehicle model</label>
                         <input id="profile-edit-vehicle-model" class="form-control gy-input" type="text" maxlength="80">
                     </div>
 
                     <div class="profile-form-field">
-                        <label for="profile-edit-vehicle-number">Vehicle number</label>
+                        <label for="profile-edit-vehicle-number" data-i18n="profile.vehicle_number">Vehicle number</label>
                         <input id="profile-edit-vehicle-number" class="form-control gy-input text-uppercase" type="text" maxlength="20">
                     </div>
 
                     <div class="profile-form-field">
-                        <label for="profile-edit-license">Driving licence number</label>
+                        <label for="profile-edit-license" data-i18n="profile.driving_licence">Driving licence number</label>
                         <input id="profile-edit-license" class="form-control gy-input text-uppercase" type="text" maxlength="30">
                     </div>
 
                     <div class="profile-form-field">
-                        <label for="profile-edit-upi">UPI ID</label>
+                        <label for="profile-edit-upi" data-i18n="profile.upi_id">UPI ID</label>
                         <input id="profile-edit-upi" class="form-control gy-input" type="text" maxlength="100" inputmode="email" placeholder="drivername@upi">
                     </div>
                 </section>
@@ -193,34 +193,34 @@
                 <div id="profile-edit-error" class="profile-edit-error d-none" role="alert"></div>
 
                 <footer class="profile-edit-footer">
-                    <button id="profile-edit-cancel-btn" class="gy-btn profile-cancel-btn" type="button">Cancel</button>
-                    <button id="profile-save-btn" class="gy-btn gy-btn-primary" type="submit">Save Changes</button>
+                    <button id="profile-edit-cancel-btn" class="gy-btn profile-cancel-btn" type="button" data-i18n="common.cancel">Cancel</button>
+                    <button id="profile-save-btn" class="gy-btn gy-btn-primary" type="submit" data-i18n="profile.save_changes">Save Changes</button>
                 </footer>
             </form>
         </section>
     </div>
 
-    <div id="profile-save-notice" class="profile-save-notice d-none" role="status">Profile updated successfully</div>
+    <div id="profile-save-notice" class="profile-save-notice d-none" role="status" data-i18n="profile.profile_updated">Profile updated successfully</div>
 
     <div id="profile-account-layer" class="profile-account-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-account-title">
         <button id="profile-account-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close account options"></button>
         <section class="profile-account-sheet">
             <header class="profile-share-head">
                 <div>
-                    <span>Account</span>
-                    <h2 id="profile-account-title">Account options</h2>
+                    <span data-i18n="profile.account_settings">Account</span>
+                    <h2 id="profile-account-title" data-i18n="profile.account_options">Account options</h2>
                 </div>
                 <button id="profile-account-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
             </header>
 
             <div class="profile-account-actions">
                 <button id="profile-account-logout-btn" class="profile-account-action" type="button">
-                    <span>Log out</span>
-                    <strong>End this session on your device.</strong>
+                    <span data-i18n="common.logout">Log out</span>
+                    <strong data-i18n="profile.logout_desc">End this session on your device.</strong>
                 </button>
                 <button id="profile-account-delete-open-btn" class="profile-account-action is-danger" type="button">
-                    <span>Delete account permanently</span>
-                    <strong>Remove your login, profile, and saved account access.</strong>
+                    <span data-i18n="profile.delete_account">Delete account permanently</span>
+                    <strong data-i18n="profile.delete_account_desc">Remove your login, profile, and saved account access.</strong>
                 </button>
             </div>
         </section>
@@ -231,39 +231,39 @@
         <section class="profile-delete-sheet">
             <header class="profile-share-head">
                 <div>
-                    <span>Permanent deletion</span>
-                    <h2 id="profile-delete-title">Delete account</h2>
+                    <span data-i18n="profile.permanent_deletion">Permanent deletion</span>
+                    <h2 id="profile-delete-title" data-i18n="profile.delete_account">Delete account</h2>
                 </div>
                 <button id="profile-delete-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
             </header>
 
             <form id="profile-delete-form" class="profile-delete-form" novalidate>
                 <div class="profile-delete-warning">
-                    <h3>This cannot be undone.</h3>
-                    <p>Your LiphtUp login and profile will be permanently deleted. Completed ride records may remain for safety, support, payment, or legal reasons, but your personal account details will be removed from them.</p>
+                    <h3 data-i18n="profile.cannot_undo">This cannot be undone.</h3>
+                    <p data-i18n="profile.delete_warning">Your LiphtUp login and profile will be permanently deleted. Completed ride records may remain for safety, support, payment, or legal reasons, but your personal account details will be removed from them.</p>
                 </div>
 
                 <ul class="profile-delete-list">
-                    <li>Any active ride must be completed or cancelled before deletion.</li>
-                    <li>Your phone number and email can be used again to create a new passenger or driver account.</li>
-                    <li>Your old completed trips will not be automatically linked to a new account.</li>
+                    <li data-i18n="profile.delete_list_1">Any active ride must be completed or cancelled before deletion.</li>
+                    <li data-i18n="profile.delete_list_2">Your phone number and email can be used again to create a new passenger or driver account.</li>
+                    <li data-i18n="profile.delete_list_3">Your old completed trips will not be automatically linked to a new account.</li>
                 </ul>
 
                 <div class="profile-form-field">
-                    <label for="profile-delete-confirmation">Type DELETE</label>
+                    <label for="profile-delete-confirmation" data-i18n="profile.type_delete">Type DELETE</label>
                     <input id="profile-delete-confirmation" class="form-control gy-input" type="text" autocomplete="off" spellcheck="false" required>
                 </div>
 
                 <div class="profile-form-field">
-                    <label for="profile-delete-password">Account password</label>
+                    <label for="profile-delete-password" data-i18n="profile.account_password">Account password</label>
                     <input id="profile-delete-password" class="form-control gy-input" type="password" autocomplete="current-password" required>
                 </div>
 
                 <div id="profile-delete-error" class="profile-edit-error d-none" role="alert"></div>
 
                 <footer class="profile-edit-footer">
-                    <button id="profile-delete-cancel-btn" class="gy-btn profile-cancel-btn" type="button">Cancel</button>
-                    <button id="profile-delete-submit-btn" class="gy-btn profile-delete-submit" type="submit">Delete my account</button>
+                    <button id="profile-delete-cancel-btn" class="gy-btn profile-cancel-btn" type="button" data-i18n="common.cancel">Cancel</button>
+                    <button id="profile-delete-submit-btn" class="gy-btn profile-delete-submit" type="submit" data-i18n="profile.delete_my_account">Delete my account</button>
                 </footer>
             </form>
         </section>
@@ -274,8 +274,8 @@
         <section class="profile-share-sheet">
             <header class="profile-share-head">
                 <div>
-                    <span>Refer LiphtUp</span>
-                    <h2 id="profile-share-title">Share with friends</h2>
+                    <span data-i18n="profile.refer_liphtup">Refer LiphtUp</span>
+                    <h2 id="profile-share-title" data-i18n="profile.share_with_friends">Share with friends</h2>
                 </div>
                 <button id="profile-share-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
             </header>
@@ -322,16 +322,16 @@
                     <div id="emergency-contacts-list" class="emergency-contacts-list"></div>
 
                     <form id="emergency-contact-form" class="emergency-contact-form d-none">
-                        <input type="text" id="emergency-contact-name" class="form-control gy-input" placeholder="Contact name" maxlength="80" required>
-                        <input type="tel" id="emergency-contact-phone" class="form-control gy-input" placeholder="Phone number (+91...)" maxlength="20" required>
+                        <input type="text" id="emergency-contact-name" class="form-control gy-input" placeholder="Contact name" data-i18n-placeholder="profile.contact_name_placeholder" maxlength="80" required>
+                        <input type="tel" id="emergency-contact-phone" class="form-control gy-input" placeholder="Phone number (+91...)" data-i18n-placeholder="profile.contact_phone_placeholder" maxlength="20" required>
                         <div class="emergency-contact-form-actions">
-                            <button type="submit" class="gy-btn gy-btn-primary flex-fill">Save Contact</button>
-                            <button type="button" id="emergency-contact-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
+                            <button type="submit" class="gy-btn gy-btn-primary flex-fill" data-i18n="profile.save_contact">Save Contact</button>
+                            <button type="button" id="emergency-contact-cancel-btn" class="gy-btn gy-btn-outline flex-fill" data-i18n="common.cancel">Cancel</button>
                         </div>
                     </form>
 
-                    <button id="emergency-contact-add-btn" class="gy-btn gy-btn-outline-green w-100 mt-2" type="button">+ Add Emergency Contact</button>
-                    <div id="emergency-contact-limit-notice" class="max-contacts-notice d-none">You've reached the 3-contact limit.</div>
+                    <button id="emergency-contact-add-btn" class="gy-btn gy-btn-outline-green w-100 mt-2" type="button" data-i18n="profile.add_emergency_contact">+ Add Emergency Contact</button>
+                    <div id="emergency-contact-limit-notice" class="max-contacts-notice d-none" data-i18n="profile.contact_limit_reached">You've reached the 3-contact limit.</div>
                 </section>
 
                 <!-- Section 2: During your ride -->

@@ -4,6 +4,7 @@ import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, hideInitialLoader } from '../shared/loading.js';
 import { waitForAuth } from '../shared/auth.js';
+import { t } from '../shared/i18n.js';
 import {
     registerDriverPushToken,
     startRideRequestRing,
@@ -2533,31 +2534,31 @@ function updateDriverAvailabilityUI(statusOverride) {
     const emptySubtext = document.getElementById("driver-empty-subtext");
     if (emptyTitle && emptySubtext) {
         if (isOffline) {
-            emptyTitle.textContent = "Driver is offline";
-            emptySubtext.innerHTML = `Go online to start receiving ride requests.`;
+            emptyTitle.textContent = t('driver.driver_offline', "Driver is offline");
+            emptySubtext.innerHTML = t('driver.go_online_hint', "Go online to start receiving ride requests.");
         } else {
-            emptyTitle.textContent = "No active requests";
-            emptySubtext.innerHTML = `We are searching for nearby passengers.`;
+            emptyTitle.textContent = t('driver.no_active_requests', "No active requests");
+            emptySubtext.innerHTML = t('driver.searching_nearby_passengers', "We are searching for nearby passengers.");
         }
     }
 
     const statusPill = document.getElementById("driver-service-live-pill");
     if (statusPill) {
         statusPill.dataset.state = isOffline ? "loading" : "ready";
-        statusPill.textContent = isOffline ? "OFFLINE" : "LIVE";
+        statusPill.textContent = isOffline ? t('driver.offline_pill', "OFFLINE") : t('driver.live_pill', "LIVE");
     }
 
     const statusText = document.getElementById("driver-service-status");
     if (statusText) {
         statusText.textContent = isOffline
-            ? "You are currently offline"
-            : "Online & searching for passengers";
+            ? t('driver.currently_offline', "You are currently offline")
+            : t('driver.online_searching', "Online & searching for passengers");
     }
 }
 
 async function toggleDriverOnlineStatus(targetStatus) {
     if (!auth.currentUser) return;
-    showPageLoader(targetStatus === "searching" ? "Going Online..." : "Going Offline...");
+    showPageLoader(targetStatus === "searching" ? t('driver.going_online', "Going Online...") : t('driver.going_offline', "Going Offline..."));
     try {
         const idToken = await auth.currentUser.getIdToken();
         const res = await fetch("/api/rides/driver-availability", {
@@ -2573,14 +2574,19 @@ async function toggleDriverOnlineStatus(targetStatus) {
             if (currentUser) currentUser.driverAvailability = targetStatus;
             updateDriverAvailabilityUI(targetStatus);
         } else {
-            await showAlert(data.error || "Could not update online status.");
+            await showAlert(data.error || t('driver.update_status_failed', "Could not update online status."));
         }
     } catch (err) {
         console.error("Toggle driver availability failed:", err);
-        await showAlert("Could not update online status. Check your connection.");
+        await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
     } finally {
         hidePageLoader({ force: true });
     }
 }
 
 bootstrapDriverService();
+
+window.addEventListener('languageChanged', () => {
+    const status = currentUser?.driverAvailability || "offline";
+    updateDriverAvailabilityUI(status);
+});

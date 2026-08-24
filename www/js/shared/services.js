@@ -7,6 +7,7 @@ import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { setInlineLoading, hideInitialLoader } from './loading.js';
 import { waitForAuth } from './auth.js';
 import { showAlert } from './dialog.js';
+import { t } from './i18n.js';
 
 const dashboardView = document.getElementById('dashboard-view');
 const pickupInput = document.getElementById('pickup-input');
@@ -53,7 +54,7 @@ function selectRideService(serviceType) {
     if (availPriceEl) availPriceEl.innerText = `₹${fare}`;
     const availWrapper = document.getElementById('availability-card-wrapper');
     if (availWrapper) availWrapper.classList.remove('d-none');
-    findRideBtn.innerText = `Confirm ${service.shortName} · ₹${fare}`;
+    findRideBtn.innerText = `${t('services.confirm', 'Confirm')} ${service.shortName} · ₹${fare}`;
     findRideBtn.disabled = false;
 }
 
@@ -65,8 +66,8 @@ function renderFareOptions(quote) {
     const headingCopy = serviceOptions.querySelector('.ride-service-heading p');
     if (headingCopy) {
         headingCopy.innerText = quote.is_night_fare
-            ? "Night fare applies from 10:00 PM to 4:30 AM."
-            : "Vehicle locked for your active ride.";
+            ? t('services.night_fare_applied', "Night fare applies from 10:00 PM to 4:30 AM.")
+            : t('services.vehicle_locked', "Vehicle locked for your active ride.");
     }
     const availWrapper = document.getElementById('availability-card-wrapper');
     if (availWrapper) availWrapper.classList.remove('d-none');
@@ -86,8 +87,8 @@ function resetFareOptions() {
     const availWrapper = document.getElementById('availability-card-wrapper');
     if (availWrapper) availWrapper.classList.add('d-none');
     findRideBtn.innerHTML = dropInput.value.trim()
-        ? '<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>Just a sec...</span>'
-        : "Please enter destination";
+        ? `<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>${t('services.just_a_sec', 'Just a sec...')}</span>`
+        : t('services.please_enter_destination', "Please enter destination");
     findRideBtn.disabled = true;
 }
 
@@ -99,8 +100,8 @@ function setServiceSelectionLocked(detail = {}) {
     const headingCopy = serviceOptions.querySelector('.ride-service-heading p');
     if (headingCopy) {
         headingCopy.innerText = serviceSelectionLocked
-            ? "Vehicle locked for your active ride."
-            : "Fares use the calculated road distance.";
+            ? t('services.vehicle_locked', "Vehicle locked for your active ride.")
+            : t('services.calculated_road_distance', "Fares use the calculated road distance.");
     }
 
     document.querySelectorAll('[data-service-type]').forEach((card) => {
@@ -703,3 +704,11 @@ window.addEventListener("ride-completed-clear-map", () => {
 });
 
 bootstrapServices();
+
+window.addEventListener('languageChanged', () => {
+    if (window.selectedRideService && Number.isFinite(window.selectedRideService.fare)) {
+        findRideBtn.innerText = `${t('services.confirm', 'Confirm')} ${window.selectedRideService.shortName} · ₹${window.selectedRideService.fare}`;
+    } else if (!dropInput.value.trim()) {
+        findRideBtn.innerText = t('services.please_enter_destination', 'Please enter destination');
+    }
+});
