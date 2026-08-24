@@ -229,25 +229,29 @@
 }
 
 /* Redesign Search & Home Layout */
+/* Redesign Search & Home Layout */
 .passenger-home.redesign-home {
-    padding: 0 10px calc(76px + env(safe-area-inset-bottom));
+    padding: 0 12px calc(76px + env(safe-area-inset-bottom));
+    max-width: 600px;
+    margin: 0 auto;
 }
 
 .welcome-section {
-    padding: 10px 4px 12px;
+    padding: 12px 4px 14px;
 }
 
 .welcome-section h2 {
     font-size: 20px;
     font-weight: 800;
     color: #111827;
-    margin: 0 0 2px;
+    margin: 0 0 3px;
+    letter-spacing: -0.2px;
 }
 
 .welcome-section p {
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 500;
-    color: #6b7280;
+    color: #6B7280;
     margin: 0;
 }
 
@@ -257,22 +261,23 @@
 }
 
 .redesign-input {
-    background: #fff;
-    border: 1px solid rgba(0, 0, 0, 0.07);
-    border-radius: 16px;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
     padding: 6px 14px;
     min-height: 52px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .redesign-input .gy-input {
     border: 0;
     box-shadow: none;
     font-size: 15px;
-    color: #333;
+    font-weight: 500;
+    color: #111827;
     width: 100%;
     background: transparent;
 }
@@ -282,7 +287,7 @@
     border: 0;
     color: #1A7A2E;
     padding: 6px;
-    border-left: 1px solid #eee;
+    border-left: 1px solid #F3F4F6;
     margin-left: 4px;
     display: flex;
     align-items: center;
@@ -294,20 +299,20 @@
 .redesign-saved-places {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
-    gap: 8px !important;
-    margin: 12px 0 !important;
+    gap: 10px !important;
+    margin: 16px 0 !important;
     width: 100% !important;
 }
 
 .dashboard-saved-chip-wrap {
-    background: transparent;
-    border-radius: 0;
-    padding: 0;
-    border: 0;
+    background: #FFFFFF;
+    border-radius: 14px;
+    padding: 10px 12px;
+    border: 1px solid #E5E7EB;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    box-shadow: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
     position: relative;
     width: 100%;
 }
@@ -327,9 +332,9 @@
 
 .dashboard-saved-chip .webicon {
     background-color: currentColor !important;
-    color: var(--gy-green);
-    width: 24px;
-    height: 24px;
+    color: #1A7A2E;
+    width: 22px;
+    height: 22px;
     padding: 0;
     border-radius: 0;
     flex-shrink: 0;
@@ -342,14 +347,14 @@
 
 .dashboard-saved-chip-text strong {
     display: block;
-    font-size: 13px;
-    color: #111;
+    font-size: 13.5px;
+    color: #111827;
     font-weight: 700;
 }
 
 .dashboard-saved-chip-text small {
-    font-size: 10px;
-    color: #666;
+    font-size: 11px;
+    color: #6B7280;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -369,30 +374,30 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
 .section-header h2 {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 800;
     color: #111827;
     margin: 0;
+    letter-spacing: -0.2px;
 }
 
 .see-all-link {
-    font-size: 13px;
-    color: var(--gy-green);
+    font-size: 13.5px;
+    color: #1A7A2E;
     font-weight: 700;
     text-decoration: none;
 }
 
-.redesign-recent-section {
-    margin-bottom: 14px;
+.see-all-link:hover {
+    text-decoration: underline;
 }
 
 .redesign-recent-section {
-    margin-top: 22px;
-    margin-bottom: 22px;
+    margin: 16px 0;
 }
 
 .redesign-recent-section .section-header {
@@ -403,10 +408,11 @@
 }
 
 .redesign-recent-section .section-header h2 {
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 800;
     color: #111827;
     margin: 0;
+    letter-spacing: -0.2px;
 }
 
 .redesign-recent-section .see-all-link {
@@ -416,15 +422,11 @@
     text-decoration: none;
 }
 
-.redesign-recent-section .see-all-link:hover {
-    text-decoration: underline;
-}
-
 .redesign-recent-rides {
     border: 1px solid #E5E7EB;
-    border-radius: 16px;
-    background: #ffffff;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+    border-radius: 14px;
+    background: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -435,7 +437,7 @@
     align-items: center;
     gap: 14px;
     width: 100%;
-    padding: 14px 16px;
+    padding: 13px 16px;
     border: 0;
     border-bottom: 1px solid #F3F4F6;
     background: transparent;
@@ -457,8 +459,8 @@
 }
 
 .recent-item-icon-badge {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     background: #E8F5E9;
     display: grid;
@@ -474,10 +476,10 @@
 }
 
 .dashboard-recent-item-text strong {
-    font-size: 15px;
-    font-weight: 800;
+    font-size: 14.5px;
+    font-weight: 700;
     color: #111827;
-    line-height: 1.2;
+    line-height: 1.25;
     margin-bottom: 2px;
     white-space: nowrap;
     overflow: hidden;
@@ -488,9 +490,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 13px;
+    font-size: 12.5px;
     color: #6B7280;
-    margin-top: 2px;
+    margin-top: 1px;
 }
 
 .dashboard-recent-item-text small .dot-separator {
@@ -502,30 +504,25 @@
     font-weight: 600;
 }
 
-.dashboard-recent-item-text small .status-price {
-    color: #1A7A2E;
-    font-weight: 600;
-}
-
 .dashboard-recent-item-right {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
 }
 
 .recent-fare-amount {
-    font-size: 17px;
+    font-size: 16px;
     font-weight: 800;
     color: #1A7A2E;
 }
 
 .recent-fare-amount.is-cancelled {
-    color: #111827;
+    color: #6B7280;
 }
 
 .chevron-right-arrow {
-    font-size: 20px;
+    font-size: 18px;
     color: #9CA3AF;
     font-weight: 600;
 }
@@ -534,12 +531,12 @@
 .home-trust-features {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
-    background: #f8faf8 !important;
-    border: 1px solid #e2ebe4 !important;
-    border-radius: 16px !important;
-    padding: 12px 2px !important;
-    margin: 12px 0 !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02) !important;
+    background: #F8FAFC !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 14px !important;
+    padding: 12px 6px !important;
+    margin: 16px 0 !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
@@ -573,16 +570,16 @@
 
 .home-trust-features > .trust-feature-item:not(:last-child),
 .home-trust-features > .trust-feature-link:not(:last-child) .trust-feature-item {
-    border-right: 1px solid #e1eae3 !important;
+    border-right: 1px solid #E2E8F0 !important;
 }
 
 .trust-icon-badge {
-    width: 36px !important;
-    height: 36px !important;
-    min-width: 36px !important;
-    min-height: 36px !important;
-    max-width: 36px !important;
-    max-height: 36px !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    max-width: 38px !important;
+    max-height: 38px !important;
     border-radius: 50% !important;
     display: flex !important;
     align-items: center !important;
@@ -595,11 +592,11 @@
 }
 
 .trust-icon-badge.badge-green {
-    background: #e6f4ea !important;
+    background: #E8F5E9 !important;
 }
 
 .trust-icon-badge.badge-yellow {
-    background: #fef7e0 !important;
+    background: #FEF3C7 !important;
 }
 
 .trust-text {
@@ -619,20 +616,20 @@
 }
 
 .trust-text strong {
-    font-size: 11px !important;
+    font-size: 11.5px !important;
     font-weight: 700 !important;
-    color: #0f172a !important;
-    line-height: 1.18 !important;
+    color: #111827 !important;
+    line-height: 1.2 !important;
     white-space: nowrap !important;
     display: block !important;
     text-align: center !important;
 }
 
 .trust-text span {
-    font-size: 9.5px !important;
+    font-size: 10px !important;
     font-weight: 500 !important;
-    color: #526167 !important;
-    line-height: 1.15 !important;
+    color: #6B7280 !important;
+    line-height: 1.18 !important;
     margin-top: 2px !important;
     display: block !important;
     text-align: center !important;

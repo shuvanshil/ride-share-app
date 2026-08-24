@@ -222,11 +222,7 @@ function renderRecentRides(trips) {
                     <strong>${escapeHtml(destination)}</strong>
                     <small>
                         <span>${escapeHtml(when)}</span>
-                        <span class="dot-separator">•</span>
-                        ${cancelled 
-                            ? '<span class="status-cancelled">Cancelled</span>' 
-                            : `<span class="status-price">${escapeHtml(fareFormatted)}</span>`
-                        }
+                        ${cancelled ? '<span class="dot-separator">•</span><span class="status-cancelled">Cancelled</span>' : ''}
                     </small>
                 </div>
                 <div class="dashboard-recent-item-right">
