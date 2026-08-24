@@ -100,7 +100,7 @@
                     <div class="quick-location-chips-row" id="quick-location-chips-row">
                         <button type="button" id="chip-saved-places-btn" class="quick-chip-btn w-100" title="View all saved places">
                             <span class="webicon webicon-favorite" style="color: #1A7A2E;"></span>
-                            <span>Saved Places</span>
+                            <span data-i18n="profile.saved_places">Saved Places</span>
                         </button>
                     </div>
 
@@ -246,8 +246,8 @@
                     <section id="ride-service-options" class="ride-service-options d-none" aria-labelledby="ride-service-title">
                         <div class="ride-service-heading">
                             <div>
-                                <h2 id="ride-service-title">Choose your ride</h2>
-                                <p>Vehicle locked for your active ride.</p>
+                                <h2 id="ride-service-title" data-i18n="services.choose_ride">Choose your ride</h2>
+                                <p data-i18n="services.vehicle_locked">Vehicle locked for your active ride.</p>
                             </div>
                         </div>
                         <div class="ride-distance-badge">
@@ -260,8 +260,8 @@
                                     <img src="assets/vehicle-markers/auto-card.png" alt="Auto">
                                 </div>
                                 <div class="ride-service-copy">
-                                    <strong>Auto</strong>
-                                    <small>Up to 3 passengers</small>
+                                    <strong data-i18n="services.auto">Auto</strong>
+                                    <small data-i18n="services.auto_desc">Up to 3 passengers</small>
                                 </div>
                                 <div class="ride-service-price-wrap">
                                     <strong class="ride-service-fare" id="auto-fare">₹0</strong>
@@ -273,8 +273,8 @@
                                     <img src="assets/vehicle-markers/bike-card.png" alt="Bike">
                                 </div>
                                 <div class="ride-service-copy">
-                                    <strong>Bike / Scooty</strong>
-                                    <small>Up to 1 passenger</small>
+                                    <strong data-i18n="services.bike">Bike / Scooty</strong>
+                                    <small data-i18n="services.bike_desc">Up to 1 passenger</small>
                                 </div>
                                 <div class="ride-service-price-wrap">
                                     <strong class="ride-service-fare" id="bike-fare">₹0</strong>
@@ -388,13 +388,13 @@
                     </section>
 
                     <section class="services-ride-actions">
-                        <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button">Select a destination</button>
+                        <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button" data-i18n="services.select_destination">Select a destination</button>
                         <button id="cancel-ride-request-btn" class="gy-btn-cancel-outline mt-2 d-none" type="button">
-                            <span class="webicon webicon-trash" style="width: 18px; height: 18px;"></span> Cancel Ride Request
+                            <span class="webicon webicon-trash" style="width: 18px; height: 18px;"></span> <span data-i18n="services.cancel_request">Cancel Ride Request</span>
                         </button>
                         <div class="safety-assurance-tag">
                             <span class="webicon webicon-safety-check" aria-hidden="true"></span>
-                            <span>Safe, secure and reliable rides</span>
+                            <span data-i18n="services.safe_reliable_tag">Safe, secure and reliable rides</span>
                         </div>
                         <p id="services-action-hint" class="d-none">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>

@@ -278,8 +278,12 @@ function renderEmergencyContacts() {
     const limitNotice = document.getElementById('emergency-contact-limit-notice');
     if (!list) return;
 
+    const t = (key, fallback) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(key) : fallback;
+    const tRemove = t('common.remove', 'Remove');
+    const tEmpty = t('profile.no_emergency_contacts', 'No emergency contacts saved yet.');
+
     if (!emergencyContactsCache.length) {
-        list.innerHTML = `<p class="profile-safety-tools-hint mb-0 text-muted" style="font-size:12.5px;">No emergency contacts saved yet.</p>`;
+        list.innerHTML = `<p class="profile-safety-tools-hint mb-0 text-muted" style="font-size:12.5px;">${tEmpty}</p>`;
     } else {
         list.innerHTML = emergencyContactsCache.map((contact, index) => `
             <div class="emergency-contact-item">
@@ -295,7 +299,7 @@ function renderEmergencyContacts() {
                         <span>${escapeHtmlText(contact.phone)}</span>
                     </div>
                 </div>
-                <button type="button" class="emergency-contact-remove-btn" data-index="${index}">Remove</button>
+                <button type="button" class="emergency-contact-remove-btn" data-index="${index}">${tRemove}</button>
             </div>
         `).join("");
         list.querySelectorAll('.emergency-contact-remove-btn').forEach((btn) => {
@@ -307,6 +311,10 @@ function renderEmergencyContacts() {
     if (addBtn) addBtn.classList.toggle('d-none', isMax);
     if (limitNotice) limitNotice.classList.toggle('d-none', !isMax);
 }
+
+window.addEventListener('languageChanged', () => {
+    renderEmergencyContacts();
+});
 
 function escapeHtmlText(text) {
     return String(text ?? "").replace(/[&<>"']/g, (ch) => ({

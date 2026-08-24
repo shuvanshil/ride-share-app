@@ -754,20 +754,22 @@ function updateAvailabilityIndicator(freeDriversCount = 0) {
 
     card.classList.remove('is-high', 'is-moderate', 'is-low');
 
+    const t = (key, fallback) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(key) : fallback;
+
     if (freeDriversCount >= AVAILABILITY_THRESHOLDS.HIGH) {
         card.classList.add('is-high');
-        statusName.innerText = "High";
-        subtext.innerText = "Plenty of drivers online nearby.";
+        statusName.innerText = t('services.avail_high', "High");
+        subtext.innerText = t('services.avail_high_sub', "Plenty of drivers online nearby.");
         scheduleShortcut?.classList.add('d-none');
     } else if (freeDriversCount >= AVAILABILITY_THRESHOLDS.MODERATE) {
         card.classList.add('is-moderate');
-        statusName.innerText = "Moderate";
-        subtext.innerText = "Drivers are available, may take a few mins.";
+        statusName.innerText = t('services.avail_moderate', "Moderate");
+        subtext.innerText = t('services.avail_moderate_sub', "Drivers are available, may take a few mins.");
         scheduleShortcut?.classList.add('d-none');
     } else {
         card.classList.add('is-low');
-        statusName.innerText = "Very Low";
-        subtext.innerText = "Fewer drivers online in this area right now.";
+        statusName.innerText = t('services.avail_low', "Very Low");
+        subtext.innerText = t('services.avail_low_sub', "Fewer drivers online in this area right now.");
         scheduleShortcut?.classList.remove('d-none');
     }
 }

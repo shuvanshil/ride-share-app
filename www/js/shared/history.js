@@ -547,10 +547,18 @@ function bindFilters() {
 }
 
 bindFilters();
-document.getElementById('history-refresh-btn').addEventListener('click', refreshHistory);
-document.getElementById('history-detail-close-btn').addEventListener('click', () => {
-    detailModal.classList.add('d-none');
-});
+
+const refreshBtn = document.getElementById('history-refresh-btn');
+if (refreshBtn) {
+    refreshBtn.addEventListener('click', refreshHistory);
+}
+
+const detailCloseBtn = document.getElementById('history-detail-close-btn') || document.querySelector('#history-detail-modal .modal-close-btn');
+if (detailCloseBtn) {
+    detailCloseBtn.addEventListener('click', () => {
+        if (detailModal) detailModal.classList.add('d-none');
+    });
+}
 
 async function bootstrapHistory() {
     const user = await waitForAuth();

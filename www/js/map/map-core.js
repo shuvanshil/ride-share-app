@@ -1421,8 +1421,9 @@ class UserLocationMarkerOverlay {
         // Floating Pointed "You are here" Tag
         this.bubbleCard = document.createElement("div");
         this.bubbleCard.className = "user-location-bubble-card user-location-wobble";
+        const tHere = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('services.you_are_here') : "You are here";
         this.bubbleCard.innerHTML = `
-            <span class="user-location-bubble-text">You are here</span>
+            <span class="user-location-bubble-text" data-i18n="services.you_are_here">${tHere}</span>
             <div class="user-location-bubble-arrow"></div>
         `;
         this.element.appendChild(this.bubbleCard);
