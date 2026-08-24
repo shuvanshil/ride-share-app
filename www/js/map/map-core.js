@@ -348,29 +348,32 @@ async function loadGoogleMaps() {
     if (googleMapsLoadPromise) return googleMapsLoadPromise;
 
     googleMapsLoadPromise = (async () => {
+        if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
+            return getGoogleMaps();
+        }
+
         const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
         if (existingScript) {
             await new Promise((resolve, reject) => {
-                if (getGoogleMaps()?.Map) {
+                if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
                     resolve();
                     return;
                 }
-                let checkTimer = setInterval(() => {
-                    if (getGoogleMaps()?.Map) {
+                let attempts = 0;
+                const checkTimer = setInterval(() => {
+                    attempts++;
+                    if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
                         clearInterval(checkTimer);
                         resolve();
+                    } else if (attempts > 300) { // 15s timeout
+                        clearInterval(checkTimer);
+                        if (getGoogleMaps()?.Map) {
+                            resolve();
+                        } else {
+                            reject(new Error("Google Maps SDK load timed out."));
+                        }
                     }
                 }, 50);
-                existingScript.addEventListener("load", () => {
-                    setTimeout(() => {
-                        clearInterval(checkTimer);
-                        resolve();
-                    }, 100);
-                }, { once: true });
-                existingScript.addEventListener("error", (err) => {
-                    clearInterval(checkTimer);
-                    reject(err);
-                }, { once: true });
             });
             return getGoogleMaps();
         }
@@ -378,16 +381,28 @@ async function loadGoogleMaps() {
         const browserKey = await getGoogleBrowserKey();
         await new Promise((resolve, reject) => {
             const callbackName = `__googleMapsInit_${Date.now()}`;
-            let resolved = false;
+            let finished = false;
 
-            const cleanup = () => {
-                delete window[callbackName];
-            };
+            const timeoutId = setTimeout(() => {
+                if (finished) return;
+                if (getGoogleMaps()?.Map) {
+                    finished = true;
+                    try { delete window[callbackName]; } catch {}
+                    resolve();
+                } else {
+                    finished = true;
+                    try { delete window[callbackName]; } catch {}
+                    reject(new Error("Google Maps SDK did not load in time."));
+                }
+            }, 20000);
 
             window[callbackName] = () => {
-                if (resolved) return;
-                resolved = true;
-                cleanup();
+                if (finished) return;
+                finished = true;
+                clearTimeout(timeoutId);
+                setTimeout(() => {
+                    try { delete window[callbackName]; } catch {}
+                }, 200);
                 resolve();
             };
 
@@ -397,30 +412,14 @@ async function loadGoogleMaps() {
             script.defer = true;
             script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&callback=${callbackName}&loading=async`;
             
-            script.onload = () => {
-                // If callback didn't fire immediately, poll briefly for google.maps.Map
-                if (!resolved) {
-                    let attempts = 0;
-                    const poll = setInterval(() => {
-                        attempts++;
-                        if (getGoogleMaps()?.Map || attempts > 30) {
-                            clearInterval(poll);
-                            if (!resolved) {
-                                resolved = true;
-                                cleanup();
-                                resolve();
-                            }
-                        }
-                    }, 50);
-                }
-            };
             script.onerror = (err) => {
-                if (!resolved) {
-                    resolved = true;
-                    cleanup();
-                    reject(err);
-                }
+                if (finished) return;
+                finished = true;
+                clearTimeout(timeoutId);
+                try { delete window[callbackName]; } catch {}
+                reject(err || new Error("Failed to load Google Maps script."));
             };
+
             document.head.appendChild(script);
         });
 
