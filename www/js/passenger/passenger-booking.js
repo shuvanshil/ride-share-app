@@ -87,10 +87,14 @@ function getTripDestination(trip) {
 
 function formatRelativeDay(millis) {
     if (!millis) return "";
+    const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
     const diffDays = Math.floor((Date.now() - millis) / (24 * 60 * 60 * 1000));
-    if (diffDays <= 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays <= 0) return t('history.today', "Today");
+    if (diffDays === 1) return t('history.yesterday', "Yesterday");
+    if (diffDays < 7) {
+        const lang = (window.LiphtUpI18n && window.LiphtUpI18n.getCurrentLang) ? window.LiphtUpI18n.getCurrentLang() : 'en';
+        return lang === 'bn' ? `${diffDays} দিন আগে` : `${diffDays} days ago`;
+    }
     return new Date(millis).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
@@ -99,12 +103,28 @@ function updateGreeting(name) {
     if (!greetingEl) return;
 
     const hour = new Date().getHours();
-    let greeting = "Good morning";
-    if (hour >= 12 && hour < 17) greeting = "Good afternoon";
-    else if (hour >= 17 || hour < 4) greeting = "Good evening";
+    let key = "home.greeting_morning";
+    let fallback = "Good morning";
+    if (hour >= 12 && hour < 17) {
+        key = "home.greeting_afternoon";
+        fallback = "Good afternoon";
+    } else if (hour >= 17 || hour < 4) {
+        key = "home.greeting_evening";
+        fallback = "Good evening";
+    }
 
-    greetingEl.innerHTML = `${greeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
+    const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
+    const translatedGreeting = t(key, fallback);
+
+    greetingEl.innerHTML = `${translatedGreeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
 }
+
+window.addEventListener('languageChanged', () => {
+    const nameEl = document.getElementById('user-display-name');
+    if (nameEl) {
+        updateGreeting(nameEl.innerText);
+    }
+});
 
 function getDefaultAvatarUrl(profile = {}) {
     const gender = String(profile.gender || profile.sex || "").trim().toLowerCase();

@@ -8,7 +8,7 @@
  * and automatically invalidates outdated client cache.
  */
 
-export const TRANSLATIONS_VERSION = "20260824-v4";
+export const TRANSLATIONS_VERSION = "20260824-v5";
 
 export const TRANSLATIONS = {
     en: {
@@ -193,7 +193,9 @@ export const TRANSLATIONS = {
             trip_details: "Trip Details",
             loading_history: "Loading ride history...",
             status_completed: "Completed",
-            status_cancelled: "Cancelled"
+            status_cancelled: "Cancelled",
+            today: "Today",
+            yesterday: "Yesterday"
         },
         profile: {
             title: "Profile",
@@ -252,6 +254,8 @@ export const TRANSLATIONS = {
             read_safety_guidelines: "Read Safety Guidelines →"
         },
         driver: {
+            duty_console: "Driver Duty Console",
+            duty_helper: "Ride alerts can continue while you stay online, even if the app is minimized.",
             duty_online: "Online",
             duty_offline: "Offline",
             go_online: "Go Online",
@@ -280,7 +284,23 @@ export const TRANSLATIONS = {
             hold_title: "Account Temporarily On Hold",
             hold_desc: "Your driver account has been placed on hold because weekly fee payments for 10 or more weeks have not been received.",
             pay_fees_btn: "Pay Outstanding Weekly Fees",
-            upi_qr_notice: "Show this screen to passenger for easy collection"
+            upi_qr_notice: "Show this screen to passenger for easy collection",
+            earnings: "Earnings",
+            view_dashboard: "View Your Dashboard",
+            incoming_requests: "Incoming Local Ride Requests",
+            offline_title: "You're Offline",
+            duty_switch_off: "Duty switch is off",
+            turn_online_desc: "Turn online to get new ride requests and start earning.",
+            all_set: "You're all set!",
+            new_requests_appear: "New ride requests will appear here.",
+            currently_offline: "You are currently offline",
+            go_online_hint: "Go online to start receiving ride requests.",
+            searching_passengers_title: "Searching nearby passengers",
+            upcoming_week_details: "Upcoming Week Details",
+            next_due_date: "Next Due Date",
+            amount: "Amount",
+            payment_history: "Payment History",
+            see_all_history: "See All History"
         }
     },
     bn: {
@@ -465,7 +485,9 @@ export const TRANSLATIONS = {
             trip_details: "রাইডের বিবরণ",
             loading_history: "রাইড হিস্ট্রি লোড হচ্ছে...",
             status_completed: "সম্পন্ন",
-            status_cancelled: "বাতিল"
+            status_cancelled: "বাতিল",
+            today: "আজ",
+            yesterday: "গতকাল"
         },
         profile: {
             title: "প্রোফাইল",
@@ -524,6 +546,8 @@ export const TRANSLATIONS = {
             read_safety_guidelines: "নিরাপত্তা নির্দেশিকা পড়ুন →"
         },
         driver: {
+            duty_console: "ড্রাইভার ডিউটি কনসোল",
+            duty_helper: "অ্যাপ ছোট করা থাকলেও অনলাইনে রাইড এলার্ট পাবেন।",
             duty_online: "অনলাইন",
             duty_offline: "অফলাইন",
             go_online: "অনলাইন হন",
@@ -552,7 +576,23 @@ export const TRANSLATIONS = {
             hold_title: "অ্যাকাউন্ট সাময়িকভাবে স্থগিত",
             hold_desc: "১০ সপ্তাহ বা তার বেশি সময়ের সাপ্তাহিক ফি প্রদান না করায় আপনার অ্যাকাউন্ট স্থগিত করা হয়েছে।",
             pay_fees_btn: "বকেয়া সাপ্তাহিক ফি প্রদান করুন",
-            upi_qr_notice: "সহজেই ভাড়া সংগ্রাহের জন্য প্যাসেঞ্জারকে এই স্ক্রিন দেখান"
+            upi_qr_notice: "সহজেই ভাড়া সংগ্রাহের জন্য প্যাসেঞ্জারকে এই স্ক্রিন দেখান",
+            earnings: "আয়",
+            view_dashboard: "আপনার ড্যাশবোর্ড দেখুন",
+            incoming_requests: "নিকটস্থ রাইড রিকোয়েস্টসমূহ",
+            offline_title: "আপনি অফলাইনে আছেন",
+            duty_switch_off: "ডিউটি সুইচ বন্ধ রয়েছে",
+            turn_online_desc: "নতুন রাইড পেতে ও আয় শুরু করতে অনলাইন হন।",
+            all_set: "সব প্রস্তুত!",
+            new_requests_appear: "নতুন রাইড রিকোয়েস্ট এখানে প্রদর্শিত হবে।",
+            currently_offline: "আপনি বর্তমানে অফলাইনে আছেন",
+            go_online_hint: "রাইড পেতে অনলাইন হন।",
+            searching_passengers_title: "নিকটস্থ প্যাসেঞ্জার খোঁজা হচ্ছে",
+            upcoming_week_details: "পরবর্তী সপ্তাহের বিবরণ",
+            next_due_date: "পরবর্তী ফি প্রদানের তারিখ",
+            amount: "পরিমাণ",
+            payment_history: "পেমেন্ট হিস্ট্রি",
+            see_all_history: "সম্পূর্ণ হিস্ট্রি দেখুন"
         }
     }
 };

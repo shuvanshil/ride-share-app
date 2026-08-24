@@ -84,16 +84,22 @@ function saveIgnoredRideIds(rideIds) {
 
 function renderOfflineEmptyState(container) {
     if (!container) return;
+    const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
+    const tOfflineTitle = t('driver.offline_title', "You're Offline");
+    const tOfflineSub = t('driver.duty_switch_off', "Duty switch is off");
+    const tOfflineDesc = t('driver.turn_online_desc', "Turn online to get new ride requests and start earning.");
+    const tGoOnline = t('driver.go_online', "Go Online");
+
     container.className = "offline-empty-card";
     container.innerHTML = `
         <div class="offline-illustration-wrapper mb-3">
-            <img src="assets/driver-offline-illustration.png" alt="You're Offline" class="offline-illustration-img">
+            <img src="assets/driver-offline-illustration.png" alt="${tOfflineTitle}" class="offline-illustration-img">
         </div>
-        <h4 class="fw-bold text-dark mb-1">You're Offline</h4>
-        <p class="offline-subtitle fw-bold text-secondary mb-2">Duty switch is off</p>
-        <p class="offline-desc text-muted small mb-4">Turn online to get new ride requests and start earning.</p>
+        <h4 class="fw-bold text-dark mb-1">${tOfflineTitle}</h4>
+        <p class="offline-subtitle fw-bold text-secondary mb-2">${tOfflineSub}</p>
+        <p class="offline-desc text-muted small mb-4">${tOfflineDesc}</p>
         <button id="go-online-btn" class="btn-go-online" type="button">
-            <span>⚡</span> Go Online
+            <span>⚡</span> ${tGoOnline}
         </button>
     `;
     const goOnlineBtn = container.querySelector('#go-online-btn');
@@ -109,13 +115,17 @@ function renderOfflineEmptyState(container) {
 
 function renderOnlineEmptyState(container) {
     if (!container) return;
+    const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
+    const tAllSet = t('driver.all_set', "You're all set!");
+    const tRequestsNotice = t('driver.new_requests_appear', "New ride requests will appear here.");
+
     container.className = "online-empty-card";
     container.innerHTML = `
         <div class="searching-icon-circle">
             <span>📡</span>
         </div>
-        <h4 class="fw-bold text-dark mb-1">You're all set!</h4>
-        <p class="text-muted small mb-0">New ride requests will appear here.</p>
+        <h4 class="fw-bold text-dark mb-1">${tAllSet}</h4>
+        <p class="text-muted small mb-0">${tRequestsNotice}</p>
     `;
 }
 
@@ -529,9 +539,10 @@ function showDriverReview(profile) {
 
 function getGreetingPrefix() {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return "Good morning";
-    if (hour >= 12 && hour < 17) return "Good afternoon";
-    return "Good evening";
+    const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
+    if (hour >= 5 && hour < 12) return t('home.greeting_morning', "Good morning");
+    if (hour >= 12 && hour < 17) return t('home.greeting_afternoon', "Good afternoon");
+    return t('home.greeting_evening', "Good evening");
 }
 
 function showDriverHome(profile) {

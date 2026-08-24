@@ -31,11 +31,13 @@ function ensureOverlay() {
  * (e.g. auth check + map init both loading at once) don't hide it early.
  * @param {string} [message]
  */
-export function showPageLoader(message = "Loading…") {
+export function showPageLoader(message) {
+    const tLoading = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('common.loading') : "Loading…";
+    const finalMsg = (!message || message === "Loading…") ? tLoading : message;
     overlayRefCount += 1;
     const overlay = ensureOverlay();
     const textEl = overlay.querySelector("#lu-loading-overlay-text");
-    if (textEl) textEl.textContent = message;
+    if (textEl) textEl.textContent = finalMsg;
     if (overlayHideTimer) {
         window.clearTimeout(overlayHideTimer);
         overlayHideTimer = null;

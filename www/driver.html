@@ -80,24 +80,24 @@
                 <section class="duty-console-card">
                     <div class="duty-console-top">
                         <div class="duty-console-info">
-                            <h3>Driver Duty Console</h3>
-                            <p id="driver-duty-helper">Ride alerts can continue while you stay online, even if the app is minimized.</p>
+                            <h3 data-i18n="driver.duty_console">Driver Duty Console</h3>
+                            <p id="driver-duty-helper" data-i18n="driver.duty_helper">Ride alerts can continue while you stay online, even if the app is minimized.</p>
                         </div>
                         <div class="duty-toggle-wrapper">
                             <label class="driver-duty-switch" for="driver-duty-switch">
                                 <input id="driver-duty-switch" type="checkbox" checked>
                                 <span aria-hidden="true"></span>
                             </label>
-                            <strong id="driver-duty-state">Online</strong>
+                            <strong id="driver-duty-state" data-i18n="driver.duty_online">Online</strong>
                         </div>
                     </div>
                     <div class="duty-console-actions">
                         <button id="driver-history-btn" class="console-action-btn" type="button">
-                            <span class="btn-icon">🕒</span> History
+                            <span class="btn-icon">🕒</span> <span data-i18n="history.title">History</span>
                         </button>
                         <div class="console-action-divider"></div>
                         <button id="driver-earnings-btn" class="console-action-btn" type="button">
-                            <span class="btn-icon">💼</span> Earnings
+                            <span class="btn-icon">💼</span> <span data-i18n="driver.earnings">Earnings</span>
                         </button>
                     </div>
                 </section>
@@ -105,13 +105,13 @@
                 <!-- View Dashboard Primary CTA -->
                 <button id="driver-dashboard-link-btn" class="driver-dashboard-cta-btn" type="button" onclick="window.location.href='/driver-dashboard.html'">
                     <span class="btn-icon">🗺️</span>
-                    View Your Dashboard
+                    <span data-i18n="driver.view_dashboard">View Your Dashboard</span>
                 </button>
 
                 <!-- Incoming Local Ride Requests Section -->
                 <section class="incoming-requests-section">
                     <div class="requests-section-header">
-                        <h6 class="section-title">Incoming Local Ride Requests</h6>
+                        <h6 class="section-title" data-i18n="driver.incoming_requests">Incoming Local Ride Requests</h6>
                         <span id="incoming-requests-badge" class="requests-badge d-none">
                             <span id="incoming-requests-count">0 New</span> <span>›</span>
                         </span>
@@ -127,7 +127,7 @@
 
                 <!-- Active Trip Lifecycle Card (Preserved) -->
                 <div id="active-trip-container" class="active-trip-card d-none my-3 p-3 bg-white rounded-3 shadow-sm border">
-                    <h6 class="fw-bold text-dark mb-2">Active Trip Lifecycle</h6>
+                    <h6 class="fw-bold text-dark mb-2" data-i18n="services.active_trip">Active Trip</h6>
                     <div id="active-trip-details" class="trip-details-text mb-3"></div>
                     <button id="arrived-trip-btn" class="gy-btn gy-btn-outline w-100 mb-2 d-none">Mark Arrived at Pickup</button>
                     <button id="start-trip-btn" class="gy-btn gy-btn-primary w-100 mb-2 d-none" disabled>Start Trip</button>
@@ -143,10 +143,10 @@
 
             <!-- Bottom Navigation Bar -->
             <nav class="bottom-nav">
-                <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
-                <button type="button" onclick="window.location.href='/driver-service.html'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
-                <button type="button" onclick="document.getElementById('driver-history-btn').click()"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-                <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+                <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="nav.home">Home</span></button>
+                <button type="button" onclick="window.location.href='/driver-service.html'"><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="nav.services">Services</span></button>
+                <button type="button" onclick="document.getElementById('driver-history-btn').click()"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="nav.history">History</span></button>
+                <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="nav.profile">Profile</span></button>
             </nav>
         </div>
     </div>
