@@ -104,10 +104,10 @@
         </section>
 
         <nav class="bottom-nav profile-bottom-nav">
-            <button type="button" onclick="window.location.href='/index.html'"><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="common.app_name">Home</span></button>
-            <button type="button" onclick="window.location.href='/services.html'"><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="common.book_a_ride">Services</span></button>
-            <button type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="history.title">History</span></button>
-            <button class="active" type="button"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="profile.title">Profile</span></button>
+            <button type="button" onclick="window.location.href='/index.html'"><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="nav.home">Home</span></button>
+            <button type="button" onclick="window.location.href='/services.html'"><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="nav.services">Services</span></button>
+            <button type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="nav.history">History</span></button>
+            <button class="active" type="button"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="nav.profile">Profile</span></button>
         </nav>
     </main>
 
@@ -344,7 +344,7 @@
                             </svg>
                         </div>
                         <div>
-                            <h3>During your ride</h3>
+                            <h3 data-i18n="profile.during_your_ride">During your ride</h3>
                         </div>
                     </div>
 
@@ -357,10 +357,10 @@
                             </svg>
                         </div>
                         <div class="during-ride-text">
-                            <strong>Share your trip</strong>
-                            <p id="safety-share-trip-hint">Send your live trip location to your emergency contacts.</p>
+                            <strong data-i18n="profile.share_your_trip">Share your trip</strong>
+                            <p id="safety-share-trip-hint" data-i18n="profile.share_trip_hint">Send your live trip location to your emergency contacts.</p>
                         </div>
-                        <button type="button" id="safety-center-share-btn" class="gy-btn gy-btn-outline-green safety-share-btn">
+                        <button type="button" id="safety-center-share-btn" class="gy-btn gy-btn-outline-green safety-share-btn" data-i18n="profile.share_trip_btn">
                             Share Trip &rarr;
                         </button>
                     </div>
@@ -377,35 +377,35 @@
                             </svg>
                         </div>
                         <div>
-                            <h3>Report a Safety Concern</h3>
-                            <p>Help us keep LightUp safe for everyone.</p>
+                            <h3 data-i18n="profile.report_safety_title">Report a Safety Concern</h3>
+                            <p data-i18n="profile.report_safety_sub">Help us keep LiphtUp safe for everyone.</p>
                         </div>
                     </div>
 
                     <form id="safety-report-form" class="safety-report-form">
                         <div class="form-group mb-2">
                             <select id="safety-report-category" class="form-select gy-input" required>
-                                <option value="" disabled selected>Select a concern</option>
-                                <option value="unsafe_driving">Unsafe driving</option>
-                                <option value="harassment">Harassment</option>
-                                <option value="route_deviation">Route deviation</option>
-                                <option value="vehicle_condition">Vehicle condition</option>
-                                <option value="payment_dispute">Payment dispute</option>
-                                <option value="rude_behavior">Rude behavior</option>
-                                <option value="other">Other concern</option>
+                                <option value="" disabled selected data-i18n="profile.select_concern">Select a concern</option>
+                                <option value="unsafe_driving" data-i18n="profile.concern_unsafe_driving">Unsafe driving</option>
+                                <option value="harassment" data-i18n="profile.concern_harassment">Harassment</option>
+                                <option value="route_deviation" data-i18n="profile.concern_route_deviation">Route deviation</option>
+                                <option value="vehicle_condition" data-i18n="profile.concern_vehicle_condition">Vehicle condition</option>
+                                <option value="payment_dispute" data-i18n="profile.concern_payment_dispute">Payment dispute</option>
+                                <option value="rude_behavior" data-i18n="profile.concern_rude_behavior">Rude behavior</option>
+                                <option value="other" data-i18n="profile.concern_other">Other concern</option>
                             </select>
                         </div>
 
                         <div class="form-group mb-3">
-                            <textarea id="safety-report-description" class="form-control gy-input" rows="3" maxlength="1000" placeholder="Tell us more (optional)"></textarea>
+                            <textarea id="safety-report-description" class="form-control gy-input" rows="3" maxlength="1000" placeholder="Tell us more (optional)" data-i18n-placeholder="profile.tell_us_more"></textarea>
                         </div>
 
                         <div class="safety-report-buttons">
-                            <button type="submit" class="gy-btn gy-btn-primary flex-fill">Submit Report</button>
-                            <button type="button" id="safety-report-cancel-btn" class="gy-btn gy-btn-outline flex-fill">Cancel</button>
+                            <button type="submit" class="gy-btn gy-btn-primary flex-fill" data-i18n="profile.submit_report">Submit Report</button>
+                            <button type="button" id="safety-report-cancel-btn" class="gy-btn gy-btn-outline flex-fill" data-i18n="common.cancel">Cancel</button>
                         </div>
                         <div class="safety-reassurance-tag">
-                            <span>🔒 Your report will be reviewed by the LightUp safety team.</span>
+                            <span data-i18n="profile.report_reassurance">🔒 Your report will be reviewed by the LiphtUp safety team.</span>
                         </div>
                     </form>
                 </section>
@@ -417,16 +417,16 @@
                             <strong>SOS</strong>
                         </div>
                         <div class="safety-emergency-copy">
-                            <h3>Need immediate help?</h3>
-                            <p>Get emergency assistance from LightUp.</p>
+                            <h3 data-i18n="profile.need_immediate_help">Need immediate help?</h3>
+                            <p data-i18n="profile.emergency_assistance">Get emergency assistance from LiphtUp.</p>
                         </div>
-                        <button type="button" id="safety-get-help-btn" class="gy-btn gy-btn-danger safety-get-help-btn">
+                        <button type="button" id="safety-get-help-btn" class="gy-btn gy-btn-danger safety-get-help-btn" data-i18n="profile.get_help">
                             📞 Get Help
                         </button>
                     </div>
                 </section>
 
-                <!-- Section 5: LightUp Safety Standards -->
+                <!-- Section 5: LiphtUp Safety Standards -->
                 <section class="safety-center-card safety-standards-card">
                     <div class="safety-standards-row">
                         <div class="safety-badge badge-green">
@@ -436,10 +436,10 @@
                             </svg>
                         </div>
                         <div class="safety-standards-copy">
-                            <h3>LightUp Safety Standards</h3>
-                            <p>Learn about our safety standards, passenger guidelines, and driver guidelines.</p>
+                            <h3 data-i18n="profile.safety_standards_title">LiphtUp Safety Standards</h3>
+                            <p data-i18n="profile.safety_standards_sub">Learn about our safety standards, passenger guidelines, and driver guidelines.</p>
                         </div>
-                        <button type="button" class="safety-guidelines-btn" onclick="window.navigateToPage('safety.html')">
+                        <button type="button" class="safety-guidelines-btn" onclick="window.navigateToPage('safety.html')" data-i18n="profile.read_safety_guidelines">
                             Read Safety Guidelines &rarr;
                         </button>
                     </div>

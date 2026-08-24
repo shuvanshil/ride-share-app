@@ -65,12 +65,12 @@
                     </svg>
                 </div>
                 <div class="py-dark-card-info">
-                    <span class="py-dark-card-label">Current Week</span>
+                    <span class="py-dark-card-label" data-i18n="driver.current_week">Current Week</span>
                     <strong id="current-week-label" class="py-dark-card-dates">17 Aug 2026 (Mon) – 23 Aug 2026 (Sun)</strong>
                 </div>
             </div>
             <div id="current-week-status-badge" class="py-status-badge approved">
-                <span>APPROVED</span>
+                <span data-i18n="driver.status_approved">APPROVED</span>
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
@@ -81,8 +81,8 @@
         <div id="account-hold-banner" class="py-alert-banner hold d-none">
             <div class="py-alert-icon">⚠️</div>
             <div class="py-alert-text">
-                <strong>Account Temporarily On Hold (10+ Unpaid Weeks)</strong>
-                <p>Your driver account is temporarily on hold because weekly fees have not been paid for 10 or more weeks. Please pay your outstanding fees below to restore your account.</p>
+                <strong data-i18n="driver.hold_title">Account Temporarily On Hold (10+ Unpaid Weeks)</strong>
+                <p data-i18n="driver.hold_desc">Your driver account is temporarily on hold because weekly fees have not been paid for 10 or more weeks. Please pay your outstanding fees below to restore your account.</p>
             </div>
         </div>
 
@@ -97,7 +97,7 @@
                         <line x1="16" y1="17" x2="8" y2="17"></line>
                         <polyline points="10 9 9 9 8 9"></polyline>
                     </svg>
-                    <span>Last/Current Week Details</span>
+                    <span data-i18n="driver.last_week_details">Last/Current Week Details</span>
                 </div>
             </div>
 
@@ -107,7 +107,7 @@
                         <span class="py-row-icon green-icon">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                         </span>
-                        <span>Last Payment Due Date</span>
+                        <span data-i18n="driver.last_due_date">Last Payment Due Date</span>
                     </div>
                     <strong id="py-last-due-date" class="py-detail-val">23 Aug 2026 (Sun)</strong>
                 </div>
@@ -117,7 +117,7 @@
                         <span class="py-row-icon green-check-icon">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                         </span>
-                        <span>Last Payment Date</span>
+                        <span data-i18n="driver.last_paid_date">Last Payment Date</span>
                     </div>
                     <strong id="py-last-paid-date" class="py-detail-val">19 Aug 2026, 12:48 PM</strong>
                 </div>
@@ -127,9 +127,9 @@
                         <span class="py-row-icon green-icon">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                         </span>
-                        <span>Status</span>
+                        <span data-i18n="common.status">Status</span>
                     </div>
-                    <span id="py-current-status-badge" class="py-status-badge approved">APPROVED</span>
+                    <span id="py-current-status-badge" class="py-status-badge approved" data-i18n="driver.status_approved">APPROVED</span>
                 </div>
 
                 <div class="py-detail-row highlight-amount">
@@ -137,7 +137,7 @@
                         <span class="py-row-icon green-icon">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
                         </span>
-                        <span>Total Amount to be Paid</span>
+                        <span data-i18n="driver.total_amount_to_pay">Total Amount to be Paid</span>
                     </div>
                     <strong id="py-total-amount" class="py-total-amount-val">₹140</strong>
                 </div>
@@ -146,11 +146,11 @@
             <!-- Bottom 2-Column Grid -->
             <div class="py-details-footer-grid">
                 <div class="py-footer-col">
-                    <span class="py-footer-label">Previous Dues Included?</span>
+                    <span class="py-footer-label" data-i18n="driver.previous_dues_label">Previous Dues Included?</span>
                     <strong id="py-prev-dues-text" class="py-footer-val green">No previous dues</strong>
                 </div>
                 <div class="py-footer-col">
-                    <span class="py-footer-label">Time Left to Pay</span>
+                    <span class="py-footer-label" data-i18n="driver.time_left_label">Time Left to Pay</span>
                     <div class="py-time-left-wrap">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#D97706" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         <strong id="py-time-left" class="py-footer-val">2d 15h 59m</strong>
@@ -177,7 +177,7 @@
                     <rect x="2" y="5" width="20" height="14" rx="2"></rect>
                     <line x1="2" y1="10" x2="22" y2="10"></line>
                 </svg>
-                <span>Pay Weekly Fee</span>
+                <span data-i18n="driver.pay_weekly_fee">Pay Weekly Fee</span>
             </button>
         </section>
 

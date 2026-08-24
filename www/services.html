@@ -291,8 +291,8 @@
                                 <span class="webicon webicon-search-radar" style="width: 22px; height: 22px;"></span>
                             </div>
                             <div class="search-copy-wrap">
-                                <h3 id="search-headline" class="search-headline">Finding the best driver for you...</h3>
-                                <p id="search-subline" class="search-subline">This usually takes less than 35s</p>
+                                <h3 id="search-headline" class="search-headline" data-i18n="services.finding_driver">Finding the best driver for you...</h3>
+                                <p id="search-subline" class="search-subline" data-i18n="services.searching_drivers_desc">This usually takes less than 35s</p>
                             </div>
                         </div>
                         <div class="search-progress-dots" id="search-progress-dots" aria-label="Search progress">
@@ -303,16 +303,16 @@
                             <span class="search-dot"></span>
                         </div>
                         <div class="search-tapout-hint">
-                            <span style="font-size: 11.5px; color: #6B7280;">Need options sooner?</span>
-                            <button type="button" id="search-tapout-btn" class="search-tapout-btn">View choices now &rarr;</button>
+                            <span style="font-size: 11.5px; color: #6B7280;" data-i18n="services.need_options_sooner">Need options sooner?</span>
+                            <button type="button" id="search-tapout-btn" class="search-tapout-btn" data-i18n="services.view_choices_now">View choices now &rarr;</button>
                         </div>
                     </section>
 
                     <!-- Feature 3: No-Driver Options Action Sheet -->
                     <section id="no-driver-options-shell" class="no-driver-options-shell d-none">
                         <div class="no-driver-header">
-                            <h2>We're still looking for a driver for you</h2>
-                            <p>In the meantime, you can try one of these options.</p>
+                            <h2 data-i18n="services.still_looking_title">We're still looking for a driver for you</h2>
+                            <p data-i18n="services.still_looking_sub">In the meantime, you can try one of these options.</p>
                         </div>
                         <div class="options-action-list">
                             <button type="button" class="option-action-card" id="opt-try-again-btn">
@@ -320,8 +320,8 @@
                                     <span class="webicon webicon-try-again" style="width: 20px; height: 20px;"></span>
                                 </div>
                                 <div class="option-copy">
-                                    <strong>Try Again Now</strong>
-                                    <small>Search again for nearby drivers</small>
+                                    <strong data-i18n="services.try_again_now">Try Again Now</strong>
+                                    <small data-i18n="services.try_again_sub">Search again for nearby drivers</small>
                                 </div>
                                 <span class="option-chevron">&rsaquo;</span>
                             </button>
@@ -331,8 +331,8 @@
                                     <span class="webicon webicon-schedule" style="width: 20px; height: 20px;"></span>
                                 </div>
                                 <div class="option-copy">
-                                    <strong>Schedule for Later</strong>
-                                    <small>Book this ride for a later time</small>
+                                    <strong data-i18n="services.schedule_for_later_title">Schedule for Later</strong>
+                                    <small data-i18n="services.schedule_for_later_sub">Book this ride for a later time</small>
                                 </div>
                                 <span class="option-chevron">&rsaquo;</span>
                             </button>
@@ -342,8 +342,8 @@
                                     <span class="webicon webicon-notify" style="width: 20px; height: 20px;"></span>
                                 </div>
                                 <div class="option-copy">
-                                    <strong>Notify Me When Available</strong>
-                                    <small>We'll notify you when drivers are available</small>
+                                    <strong data-i18n="services.notify_me_title">Notify Me When Available</strong>
+                                    <small data-i18n="services.notify_me_sub">We'll notify you when drivers are available</small>
                                 </div>
                                 <span class="option-chevron">&rsaquo;</span>
                             </button>
@@ -353,8 +353,8 @@
                                     <span class="webicon webicon-radius" style="width: 20px; height: 20px;"></span>
                                 </div>
                                 <div class="option-copy">
-                                    <strong>Increase Search Radius</strong>
-                                    <small>Expand the area to find more drivers</small>
+                                    <strong data-i18n="services.increase_radius_title">Increase Search Radius</strong>
+                                    <small data-i18n="services.increase_radius_sub">Expand the area to find more drivers</small>
                                 </div>
                                 <span class="option-chevron">&rsaquo;</span>
                             </button>
@@ -506,10 +506,10 @@
             </button>
 
             <nav class="bottom-nav services-bottom-nav">
-                <button type="button" onclick="window.location.href='/index.html'"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
-                <button class="active" type="button"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
-                <button id="passenger-history-btn" type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-                <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+                <button type="button" onclick="window.location.href='/index.html'"><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="nav.home">Home</span></button>
+                <button class="active" type="button"><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="nav.services">Services</span></button>
+                <button id="passenger-history-btn" type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="nav.history">History</span></button>
+                <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="nav.profile">Profile</span></button>
             </nav>
         </main>
 
@@ -524,10 +524,10 @@
                         </div>
                         <img src="assets/icons/webicons/feedback-thankyou-illustration.svg"
                              class="fb-illustration" alt="" aria-hidden="true" width="96" height="96" style="width:96px;height:96px;margin-bottom:16px;">
-                        <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">Thank you<br>for riding with us! 💚</h2>
-                        <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">We hope you had a great ride.<br>Please share your experience.</p>
-                        <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button">Rate your experience</button>
-                        <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button">Maybe later</button>
+                        <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;" data-i18n-html="services.thank_you_title">Thank you<br>for riding with us! 💚</h2>
+                        <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;" data-i18n-html="services.thank_you_sub">We hope you had a great ride.<br>Please share your experience.</p>
+                        <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button" data-i18n="services.rate_experience">Rate your experience</button>
+                        <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button" data-i18n="services.maybe_later">Maybe later</button>
                     </div>
                 </div>
             </div>
@@ -536,10 +536,10 @@
         <div id="booking-login-gate" class="modal-layer d-none" role="dialog" aria-modal="true" aria-labelledby="booking-login-title">
             <div class="gy-modal login-gate-card">
                 <div class="login-gate-mark">GO</div>
-                <h2 id="booking-login-title">Login to book this ride</h2>
-                <p>You can explore routes and fares as a guest. Login or register to confirm your selected ride.</p>
-                <button id="booking-login-btn" class="gy-btn gy-btn-primary w-100" type="button" onclick="window.location.href='/login.html'">Login / Register</button>
-                <button id="booking-login-close-btn" class="auth-link-btn mt-3" type="button">Continue exploring</button>
+                <h2 id="booking-login-title" data-i18n="auth.booking_login_title">Login to book this ride</h2>
+                <p data-i18n="auth.booking_login_sub">You can explore routes and fares as a guest. Login or register to confirm your selected ride.</p>
+                <button id="booking-login-btn" class="gy-btn gy-btn-primary w-100" type="button" onclick="window.location.href='/login.html'" data-i18n="auth.tab_login">Login / Register</button>
+                <button id="booking-login-close-btn" class="auth-link-btn mt-3" type="button" data-i18n="common.close">Continue exploring</button>
             </div>
         </div>
 
@@ -554,13 +554,13 @@
                     </svg>
                 </div>
                 <div class="fb-minimized-text">
-                    <strong>How was your ride?</strong>
-                    <span>Tap to rate experience</span>
+                    <strong data-i18n="services.how_was_ride">How was your ride?</strong>
+                    <span data-i18n="services.tap_to_rate">Tap to rate experience</span>
                 </div>
             </div>
             <div class="fb-minimized-actions">
                 <span class="fb-minimized-expand-chip">
-                    <span>Expand</span>
+                    <span data-i18n="common.expand">Expand</span>
                     <svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg>
                 </span>
                 <button class="fb-minimized-close" type="button" aria-label="Dismiss feedback prompt">&times;</button>
@@ -568,19 +568,18 @@
         </div>
 
         <!-- ===== Saved Places Modal (Matching Reference Design) ===== -->
-        <div id="saved-places-modal" class="saved-places-modal-shell d-none" role="dialog" aria-modal="true" aria-labelledby="saved-places-modal-title">
+        <div id="saved-places-modal" class="saved-places-modal-shell d-none" role="dialog" aria-modal="true">
             <div class="saved-places-modal-backdrop" id="saved-places-modal-backdrop"></div>
             <div class="saved-places-modal-card">
-                <div class="modal-handle-bar"></div>
                 <button type="button" class="saved-places-close-btn" id="saved-places-modal-close" aria-label="Close dialog">&times;</button>
                 
                 <div class="saved-places-modal-header">
-                    <h2 id="saved-places-modal-title">Saved Places</h2>
-                    <p>Quickly choose from your saved addresses</p>
+                    <h2 id="saved-places-modal-title" data-i18n="profile.saved_places">Saved Places</h2>
+                    <p data-i18n="profile.saved_places_sub">Manage your saved addresses for fast 1-tap booking</p>
                 </div>
 
                 <div class="saved-places-modal-body">
-                    <div class="saved-places-subheader">Your saved places (max 3)</div>
+                    <div class="saved-places-subheader" data-i18n="profile.saved_places_limit">Your saved places (max 3)</div>
                     
                     <div id="saved-places-list-container" class="saved-places-list">
                         <!-- Populated dynamically via JS -->
@@ -591,8 +590,8 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
                         </div>
                         <div class="add-address-copy">
-                            <strong>Add a new address</strong>
-                            <small>Save a new place for faster booking</small>
+                            <strong data-i18n="profile.add_new_address">Add a new address</strong>
+                            <small data-i18n="profile.add_new_address_sub">Save a new place for faster booking</small>
                         </div>
                         <span class="chevron-right">&rsaquo;</span>
                     </button>
@@ -602,8 +601,8 @@
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
                         </div>
                         <div class="security-banner-text">
-                            <strong>Your places are private and safe</strong>
-                            <span>Only you can see and manage your saved places.</span>
+                            <strong data-i18n="profile.saved_places_private_title">Your places are private and safe</strong>
+                            <span data-i18n="profile.saved_places_private_sub">Only you can see and manage your saved places.</span>
                         </div>
                     </div>
                 </div>
