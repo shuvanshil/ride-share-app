@@ -16,8 +16,6 @@ const AUTOCOMPLETE_CACHE_MAX_ENTRIES = 40;
 const MAX_VISIBLE_SUGGESTIONS = 5;
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-js-sdk";
 const GOOGLE_MAP_SCRIPT_VERSION = "weekly";
-// Known-good key authorized for https://localhost/* in your console
-const LIPHTUP_FALLBACK_GOOGLE_KEY = "AIzaSyD_mNOtbXCYucI--drFUMtp40MIIADSDfU";
 const DRIVER_MARKER_ANIMATION_MS = 600;
 const DRIVER_MARKER_ANIMATION_MIN_MS = 300;
 const DRIVER_MARKER_ANIMATION_MAX_MS = 5000;
@@ -305,11 +303,10 @@ function getInitialPickupLocation() {
 async function getGoogleBrowserKey() {
     if (googleBrowserKey) return googleBrowserKey;
 
-    // Capacitor Native optimization: Skip backend fetch and use the authorized
-    // mobile fallback key immediately to prevent domain/CORS mismatch on localhost.
-    if (window.LIPHTUP_IS_NATIVE) {
-        googleBrowserKey = LIPHTUP_FALLBACK_GOOGLE_KEY;
-        return googleBrowserKey;
+    // Capacitor Native: Fetch key from Native Bridge
+    if (window.LiphtUpNativeStatus?.getGoogleMapsKey) {
+        googleBrowserKey = window.LiphtUpNativeStatus.getGoogleMapsKey();
+        if (googleBrowserKey) return googleBrowserKey;
     }
 
     try {
@@ -326,16 +323,15 @@ async function getGoogleBrowserKey() {
         }
 
         const suspicious = !googleBrowserKey ||
-                           googleBrowserKey.trim().startsWith("AIzaSyD9-KWR") ||
                            googleBrowserKey.length < 20;
 
         if (suspicious) {
-            googleBrowserKey = LIPHTUP_FALLBACK_GOOGLE_KEY;
+            console.warn('[map] Backend key invalid or restricted.');
         }
 
         return googleBrowserKey;
     } catch (error) {
-        googleBrowserKey = LIPHTUP_FALLBACK_GOOGLE_KEY;
+        console.error('[map] Config fetch failed:', error);
         return googleBrowserKey;
     }
 }
