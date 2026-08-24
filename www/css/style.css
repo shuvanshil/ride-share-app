@@ -924,28 +924,41 @@ select {
 }
 
 .login-page {
-    background: #fff;
-    min-height: 100vh;
-    padding: 0;
-    padding-top: max(28px, env(safe-area-inset-top));
-    overflow-x: hidden;
-}
-
-.login-page {
     background: #F8FAFC;
     min-height: 100vh;
     min-height: 100dvh;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding-top: max(24px, calc(16px + env(safe-area-inset-top)));
-    padding-bottom: max(24px, calc(16px + env(safe-area-inset-bottom)));
-    padding-left: max(14px, env(safe-area-inset-left));
-    padding-right: max(14px, env(safe-area-inset-right));
+    justify-content: flex-start;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+.auth-app-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #ffffff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    padding: max(14px, calc(14px + env(safe-area-inset-top))) 20px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.auth-app-bar .brand-logo img {
+    height: 30px;
+    width: auto;
+    object-fit: contain;
 }
 
 .login-page .auth-container {
     width: 100%;
+    max-width: 540px;
+    padding: 16px 14px max(24px, calc(16px + env(safe-area-inset-bottom)));
+    margin: 0 auto;
 }
 
 .auth-card-redesign {

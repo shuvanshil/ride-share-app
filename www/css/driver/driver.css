@@ -1602,7 +1602,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    padding: max(14px, calc(14px + env(safe-area-inset-top))) 16px 14px;
 }
 
 .py-back-btn, .py-help-btn {
