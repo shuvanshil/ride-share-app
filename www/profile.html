@@ -33,11 +33,12 @@
     <main class="profile-page">
         <header class="profile-app-head">
             <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
-            <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
+            <div id="profile-lang-switcher" class="app-bar-actions d-flex align-items-center gap-2"></div>
+            <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'" data-i18n="common.login">Login</button>
         </header>
 
         <section class="profile-title-block">
-            <h1>Profile</h1>
+            <h1 data-i18n="profile.title">Profile</h1>
         </section>
 
         <section class="profile-user-card">
@@ -47,23 +48,23 @@
                 <p id="profile-user-phone">Loading phone number...</p>
                 <small id="profile-user-email" class="profile-user-email"></small>
             </div>
-            <button id="profile-edit-btn" class="profile-edit-btn" type="button" aria-haspopup="dialog" disabled>Edit</button>
+            <button id="profile-edit-btn" class="profile-edit-btn" type="button" aria-haspopup="dialog" disabled data-i18n="profile.edit_profile">Edit</button>
         </section>
 
         <section class="profile-menu" aria-label="Profile menu">
             <button class="profile-menu-row" type="button" data-action="rides">
                 <span class="profile-menu-icon"><span class="webicon webicon-history" aria-hidden="true"></span></span>
-                <span>My Rides</span>
+                <span data-i18n="history.title">My Rides</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button id="profile-menu-payments-row" class="profile-menu-row d-none" type="button" data-action="payments">
                 <span class="profile-menu-icon"><span class="webicon webicon-payments" aria-hidden="true"></span></span>
-                <span>Payments</span>
+                <span data-i18n="driver.weekly_payment">Payments</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="safety">
                 <span class="profile-menu-icon"><span class="webicon webicon-safety" aria-hidden="true"></span></span>
-                <span>Safety</span>
+                <span data-i18n="profile.safety_center">Safety</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="refer">
@@ -78,35 +79,35 @@
             </button>
             <button class="profile-menu-row" type="button" data-action="about">
                 <span class="profile-menu-icon"><span class="webicon webicon-about-us" aria-hidden="true"></span></span>
-                <span>About Us</span>
+                <span data-i18n="profile.about_app">About Us</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="terms">
                 <span class="profile-menu-icon"><span class="webicon webicon-terms" aria-hidden="true"></span></span>
-                <span>Terms &amp; Conditions</span>
+                <span data-i18n="profile.terms_conditions">Terms &amp; Conditions</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="privacy">
                 <span class="profile-menu-icon"><span class="webicon webicon-privacy" aria-hidden="true"></span></span>
-                <span>Privacy Policy</span>
+                <span data-i18n="profile.privacy_policy">Privacy Policy</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
             <button class="profile-menu-row" type="button" data-action="help">
                 <span class="profile-menu-icon"><span class="webicon webicon-help" aria-hidden="true"></span></span>
-                <span>Help</span>
+                <span data-i18n="profile.help_support">Help</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
         </section>
 
         <section class="profile-footer-actions">
-            <button id="profile-logout-btn" class="profile-logout-btn d-none" type="button">Account</button>
+            <button id="profile-logout-btn" class="profile-logout-btn d-none" type="button" data-i18n="profile.account_settings">Account</button>
         </section>
 
         <nav class="bottom-nav profile-bottom-nav">
-            <button type="button" onclick="window.location.href='/index.html'"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
-            <button type="button" onclick="window.location.href='/services.html'"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
-            <button type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-            <button class="active" type="button"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
+            <button type="button" onclick="window.location.href='/index.html'"><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="common.app_name">Home</span></button>
+            <button type="button" onclick="window.location.href='/services.html'"><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="common.book_a_ride">Services</span></button>
+            <button type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="history.title">History</span></button>
+            <button class="active" type="button"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="profile.title">Profile</span></button>
         </nav>
     </main>
 
@@ -797,6 +798,11 @@
     <script src="js/shared/navigation.js"></script>
     <script type="module" src="js/shared/profile.js?v=2.0.0"></script>
     <script type="module" src="js/shared/password-toggle.js"></script>
+    <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module">
+        import { renderLanguageSwitcher } from './js/shared/i18n.js';
+        renderLanguageSwitcher(document.getElementById('profile-lang-switcher'));
+    </script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

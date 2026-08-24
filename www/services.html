@@ -40,12 +40,9 @@
                 <div class="brand-logo">
                     <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
                 </div>
-                <div class="app-bar-actions">
-                    <div class="safe-badge-pill d-none" id="services-safe-badge">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-                        <span>Safe • Secure • Reliable</span>
-                    </div>
-                    <button class="guest-login-btn d-none" id="services-header-login-btn" type="button" onclick="window.location.href='/login.html'">Login</button>
+                <div class="app-bar-actions d-flex align-items-center gap-2">
+                    <div id="services-lang-switcher"></div>
+                    <button class="guest-login-btn d-none" id="services-header-login-btn" type="button" onclick="window.location.href='/login.html'" data-i18n="common.login">Login</button>
                 </div>
             </header>
 
@@ -61,8 +58,8 @@
                         </svg>
                     </div>
                     <div class="title-text-group">
-                        <h1 class="book-ride-title">Book a Ride</h1>
-                        <p class="book-ride-subtitle">Fast, safe and reliable rides to your destination</p>
+                        <h1 class="book-ride-title" data-i18n="services.booking_title">Book a Ride</h1>
+                        <p class="book-ride-subtitle" data-i18n="services.booking_sub">Fast, safe and reliable rides to your destination</p>
                     </div>
                 </div>
             </section>
@@ -76,8 +73,8 @@
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="#1A7A2E"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                             </div>
                             <div class="location-input-wrap">
-                                <label for="pickup-input">Pickup location</label>
-                                <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
+                                <label for="pickup-input" data-i18n="services.pickup_label">Pickup location</label>
+                                <input type="text" id="pickup-input" class="form-control gy-input" placeholder="Detecting your pickup..." data-i18n-placeholder="services.search_pickup_placeholder" autocomplete="off" aria-autocomplete="list" aria-controls="pickup-suggestions">
                             </div>
                             <button id="refresh-location-btn" class="d-none" type="button" aria-label="Use current location"></button>
                         </div>
@@ -94,8 +91,8 @@
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="#E53935"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6z"/></svg>
                             </div>
                             <div class="location-input-wrap">
-                                <label for="drop-input">Where to?</label>
-                                <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination (village, street, town or landmark)" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
+                                <label for="drop-input" data-i18n="services.destination_label">Where to?</label>
+                                <input type="text" id="drop-input" class="form-control gy-input" placeholder="Enter destination (village, street, town or landmark)" data-i18n-placeholder="services.search_drop_placeholder" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions">
                             </div>
                         </div>
                     </div>
@@ -651,6 +648,11 @@
     <script type="module" src="js/passenger/passenger-app.js?v=2.3.0"></script>
     <script type="module" src="js/shared/services.js?v=2.0.0"></script>
     <script type="module" src="js/passenger/passenger-feedback.js"></script>
+    <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module">
+        import { renderLanguageSwitcher } from './js/shared/i18n.js';
+        renderLanguageSwitcher(document.getElementById('services-lang-switcher'));
+    </script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

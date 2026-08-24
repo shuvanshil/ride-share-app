@@ -11,14 +11,196 @@
     --gy-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
 }
 
-/* Redesign Header */
-.redesign-app-bar {
-    padding: 14px 16px;
-    background: transparent;
-    border-bottom: 0;
-    display: flex;
-    justify-content: space-between;
+/* Language Switcher Pill (Matching User Demo Design) */
+.lang-switcher-pill-wrap {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.lang-toggle-btn {
+    display: inline-flex;
     align-items: center;
+    gap: 6px;
+    padding: 3px 10px 3px 4px;
+    background: #FFFFFF;
+    border: 1px solid #1A7A2E;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.lang-toggle-btn:hover,
+.lang-toggle-btn:focus-visible {
+    background: #F8FAFC;
+    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.15);
+}
+
+.lang-toggle-btn:active {
+    transform: scale(0.97);
+}
+
+.lang-globe-icon-badge {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #E8F5E9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.lang-divider {
+    width: 1px;
+    height: 18px;
+    background: #E2E8F0;
+    margin: 0 2px;
+}
+
+.lang-label-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    line-height: 1.1;
+}
+
+.lang-label-primary {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #0F172A;
+    letter-spacing: -0.1px;
+}
+
+.lang-label-secondary {
+    font-size: 10px;
+    font-weight: 500;
+    color: #64748B;
+}
+
+.lang-chevron {
+    margin-left: 2px;
+    transition: transform 0.2s ease;
+}
+
+.lang-toggle-btn[aria-expanded="true"] .lang-chevron {
+    transform: rotate(180deg);
+}
+
+/* Dropdown Menu */
+.lang-dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+    width: 145px;
+    padding: 6px;
+    z-index: 2100;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: lang-dropdown-fade 0.18s ease-out;
+}
+
+@keyframes lang-dropdown-fade {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.lang-option-item {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.lang-option-item:hover {
+    background: #F1F5F9;
+}
+
+.lang-option-item.active {
+    background: #E8F5E9;
+}
+
+.lang-option-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0F172A;
+    line-height: 1.15;
+}
+
+.lang-option-item.active .lang-option-title {
+    color: #1A7A2E;
+}
+
+.lang-option-sub {
+    font-size: 10.5px;
+    color: #64748B;
+    font-weight: 500;
+}
+
+/* Brief Language Switch Loader Overlay */
+.lang-switch-loader-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.lang-switch-loader-overlay.is-active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.lang-switch-spinner-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 20px 24px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.lang-switch-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #E8F5E9;
+    border-top: 3px solid #1A7A2E;
+    border-radius: 50%;
+    animation: lu-lang-spin 0.7s linear infinite;
+}
+
+@keyframes lu-lang-spin {
+    to { transform: rotate(360deg); }
+}
+
+.lang-switch-spinner-card span {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1A7A2E;
 }
 
 .user-profile-avatar {

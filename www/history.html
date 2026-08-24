@@ -29,37 +29,38 @@
     <main class="history-page">
         <header class="history-app-head">
             <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
-            <div class="app-bar-actions">
-                <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'">Login</button>
-                <button id="history-refresh-btn" class="mini-action" type="button">Refresh</button>
+            <div class="app-bar-actions d-flex align-items-center gap-2">
+                <div id="history-lang-switcher"></div>
+                <button class="guest-login-btn d-none" type="button" onclick="window.location.href='/login.html'" data-i18n="common.login">Login</button>
+                <button id="history-refresh-btn" class="mini-action" type="button" data-i18n="common.refresh">Refresh</button>
             </div>
         </header>
 
         <section class="history-title-block">
-            <h1>Ride History</h1>
-            <p id="history-user-context">Trip by you as passenger</p>
+            <h1 data-i18n="history.title">Ride History</h1>
+            <p id="history-user-context" data-i18n="history.subtitle">Trip by you as passenger</p>
         </section>
 
         <section id="history-summary-grid" class="history-summary-grid d-none" aria-label="Trip summary">
             <div class="history-summary-card">
-                <span>Total Trips</span>
+                <span data-i18n="history.total_trips">Total Trips</span>
                 <strong id="history-total-trips">0</strong>
             </div>
             <div class="history-summary-card">
-                <span id="history-money-label">Total Fare</span>
+                <span id="history-money-label" data-i18n="history.total_fare">Total Fare</span>
                 <strong id="history-total-fare">₹0</strong>
             </div>
             <div class="history-summary-card">
-                <span>Distance</span>
+                <span data-i18n="history.total_distance">Distance</span>
                 <strong id="history-total-distance">0 km</strong>
             </div>
         </section>
 
         <section class="history-filter-row" aria-label="History filters">
-            <button class="history-filter" type="button" data-filter="day">Day</button>
-            <button class="history-filter" type="button" data-filter="week">Week</button>
-            <button class="history-filter" type="button" data-filter="month">Month</button>
-            <button class="history-filter active" type="button" data-filter="all">All</button>
+            <button class="history-filter" type="button" data-filter="day" data-i18n="history.filter_day">Day</button>
+            <button class="history-filter" type="button" data-filter="week" data-i18n="history.filter_week">Week</button>
+            <button class="history-filter" type="button" data-filter="month" data-i18n="history.filter_month">Month</button>
+            <button class="history-filter active" type="button" data-filter="all" data-i18n="history.filter_all">All</button>
         </section>
 
         <section id="history-list" class="standalone-history-list">
@@ -84,9 +85,11 @@
         </nav>
     </main>
 
-    <script type="module" src="js/shared/loading.js"></script>
-    <script src="js/shared/navigation.js"></script>
-    <script type="module" src="js/shared/history.js?v=2.0.0"></script>
+    <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module">
+        import { renderLanguageSwitcher } from './js/shared/i18n.js';
+        renderLanguageSwitcher(document.getElementById('history-lang-switcher'));
+    </script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

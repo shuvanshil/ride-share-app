@@ -56,11 +56,12 @@
                     <img src="assets/branding/liphtup-logo.jpeg" alt="LightUp">
                 </div>
                 <div class="d-flex align-items-center gap-2">
+                    <div id="driver-lang-switcher"></div>
                     <span id="driver-duty-pill" class="driver-status-badge online">
                         <span class="status-dot"></span>
-                        <span id="driver-duty-pill-text">Online</span>
+                        <span id="driver-duty-status-text" data-i18n="driver.duty_online">Online</span>
                     </span>
-                    <button id="logout-btn" class="btn btn-sm btn-light border text-secondary rounded-pill px-2 py-1" style="font-size:12px;" title="Logout">Logout</button>
+                    <button id="logout-btn" class="mini-action" type="button" data-i18n="common.logout">Logout</button>
                 </div>
             </header>
 
@@ -170,6 +171,11 @@
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
     <script type="module" src="js/driver/driver-onboarding.js?v=2.0.0"></script>
+    <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module">
+        import { renderLanguageSwitcher } from './js/shared/i18n.js';
+        renderLanguageSwitcher(document.getElementById('driver-lang-switcher'));
+    </script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

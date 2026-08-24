@@ -126,10 +126,12 @@ export function showAlert(message, opts = {}) {
  * @returns {Promise<boolean>} resolves true if the user confirmed, false otherwise
  */
 export function showConfirm(message, opts = {}) {
+    const tOk = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('common.confirm') : "OK";
+    const tCancel = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('common.cancel') : "Cancel";
     return openDialog({
         message: String(message ?? ""),
-        okText: opts.okText || "OK",
-        cancelText: opts.cancelText || "Cancel",
+        okText: opts.okText || tOk,
+        cancelText: opts.cancelText || tCancel,
         showCancel: true
     });
 }

@@ -37,6 +37,7 @@
         <div class="brand-logo">
             <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
         </div>
+        <div id="auth-lang-switcher" class="app-bar-actions"></div>
     </header>
 
     <main class="auth-container">
@@ -45,8 +46,8 @@
             <!-- Hero Section: Heading, Bullet Features & Illustration -->
             <div class="auth-hero-row mb-4">
                 <div class="auth-hero-left">
-                    <h1 id="auth-entry-title" class="auth-hero-title">Welcome <span class="text-green-accent">back!</span></h1>
-                    <p id="auth-entry-copy" class="auth-hero-sub">Login to continue your journey with LiphtUp.</p>
+                    <h1 id="auth-entry-title" class="auth-hero-title" data-i18n="auth.welcome_back">Welcome back!</h1>
+                    <p id="auth-entry-copy" class="auth-hero-sub" data-i18n="auth.login_sub">Login to continue your journey with LiphtUp.</p>
                     
                     <div class="auth-feature-list">
                         <div class="auth-feature-item">
@@ -56,7 +57,7 @@
                                     <path d="m9 12 2 2 4-4"/>
                                 </svg>
                             </span>
-                            <span>Safe &amp; reliable rides</span>
+                            <span data-i18n="auth.feature_safe">Safe &amp; reliable rides</span>
                         </div>
                         <div class="auth-feature-item">
                             <span class="auth-feature-icon">
@@ -65,7 +66,7 @@
                                     <circle cx="12" cy="10" r="3"/>
                                 </svg>
                             </span>
-                            <span>Trusted by locals</span>
+                            <span data-i18n="auth.feature_trusted">Trusted by locals</span>
                         </div>
                         <div class="auth-feature-item">
                             <span class="auth-feature-icon">
@@ -73,7 +74,7 @@
                                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
                                 </svg>
                             </span>
-                            <span>Fast, convenient &amp; affordable</span>
+                            <span data-i18n="auth.feature_fast">Fast, convenient &amp; affordable</span>
                         </div>
                     </div>
                 </div>
@@ -90,7 +91,7 @@
                         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
                         <circle cx="12" cy="7" r="4"/>
                     </svg>
-                    <span>Login</span>
+                    <span data-i18n="auth.tab_login">Login</span>
                 </button>
                 <button id="register-mode-btn" class="auth-mode-btn" type="button" role="tab" aria-selected="false">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
@@ -99,7 +100,7 @@
                         <line x1="19" y1="8" x2="19" y2="14"/>
                         <line x1="16" y1="11" x2="22" y2="11"/>
                     </svg>
-                    <span>Register</span>
+                    <span data-i18n="auth.tab_register">Register</span>
                 </button>
             </div>
 
@@ -112,7 +113,7 @@
                             <path d="M12 18h.01"/>
                         </svg>
                     </span>
-                    <input type="text" id="login-identifier" class="form-control" placeholder="Phone number or email">
+                    <input type="text" id="login-identifier" class="form-control" placeholder="Phone number or email" data-i18n-placeholder="auth.phone_or_email">
                     <span class="auth-input-suffix">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect width="18" height="14" x="3" y="5" rx="2"/>
@@ -130,7 +131,7 @@
                             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                         </svg>
                     </span>
-                    <input type="password" id="login-password" class="form-control" placeholder="Password">
+                    <input type="password" id="login-password" class="form-control" placeholder="Password" data-i18n-placeholder="auth.password">
                 </div>
 
                 <div class="auth-remember-row d-flex align-items-center justify-content-between mb-4">
@@ -138,11 +139,11 @@
                         <input type="checkbox" id="remember-me-checkbox" class="auth-checkbox" checked>
                         <span class="small fw-semibold text-secondary">Remember me</span>
                     </label>
-                    <button id="forgot-password-btn" class="auth-forgot-link" type="button">Forgot password?</button>
+                    <button id="forgot-password-btn" class="auth-forgot-link" type="button" data-i18n="auth.forgot_password">Forgot password?</button>
                 </div>
 
                 <button id="password-login-btn" class="gy-btn-auth" type="button">
-                    <span>Login</span>
+                    <span data-i18n="auth.login_btn">Login</span>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M5 12h14"/>
                         <path d="m12 5 7 7-7 7"/>
@@ -341,7 +342,11 @@
     <script type="module" src="js/shared/loading.js"></script>
     <script type="module" src="js/shared/login.js?v=2.0.0"></script>
     <script type="module" src="js/shared/password-toggle.js"></script>
-    <script src="js/shared/pwa.js" defer></script>
+    <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module">
+        import { renderLanguageSwitcher } from './js/shared/i18n.js';
+        renderLanguageSwitcher(document.getElementById('auth-lang-switcher'));
+    </script>
     <script>
         const up = document.getElementById('user-password');
         const ucp = document.getElementById('user-confirm-password');
