@@ -369,7 +369,7 @@ async function loginWithPassword() {
 
     passwordLoginBtn.disabled = true;
     passwordLoginBtn.textContent = t('common.logging_in', "Logging in...");
-    setAuthStatus(t('auth.checking_account', "Checking your account..."));
+    setAuthStatus();
     loginFlowStarted = true;
 
     try {

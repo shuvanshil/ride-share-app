@@ -1125,17 +1125,21 @@ select {
     z-index: 100;
     background: #ffffff;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-    min-height: 56px;
-    padding: max(14px, calc(14px + env(safe-area-inset-top))) 16px 14px !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+    min-height: 68px;
+    padding: max(16px, calc(16px + env(safe-area-inset-top))) 20px 16px !important;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
     width: 100%;
+    box-sizing: border-box;
 }
 
 .auth-app-bar .brand-logo img,
 .auth-app-head .brand-logo img {
-    height: 30px;
+    height: 42px;
+    max-height: 44px;
     width: auto;
     object-fit: contain;
 }

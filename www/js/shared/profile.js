@@ -963,9 +963,11 @@ async function loadProfileThroughBackend(user) {
 }
 
 onAuthStateChanged(auth, async (user) => {
+    const profileLangSwitcher = document.getElementById('profile-lang-switcher');
     if (!user) {
         currentAuthUser = null;
         currentProfile = null;
+        if (profileLangSwitcher) profileLangSwitcher.classList.add('d-none');
         nameEl.innerText = t('profile.guest_user', "Guest User");
         phoneEl.innerText = t('profile.login_to_view', "Login to view your profile");
         emailEl.innerText = "";
@@ -980,6 +982,7 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     currentAuthUser = user;
+    if (profileLangSwitcher) profileLangSwitcher.classList.remove('d-none');
     editButton.disabled = false;
     profileSessionButton.innerText = t('profile.account_settings', "Account");
     profileSessionButton.classList.remove('is-login');
