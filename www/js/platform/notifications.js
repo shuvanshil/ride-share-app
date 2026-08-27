@@ -22,7 +22,10 @@ export async function registerForPush() {
     if (isNative()) {
         console.log("[platform/notifications] registering native push...");
         try {
-            const token = await window.LiphtUpNative.registerPushNotifications();
+            const token = await Promise.race([
+                window.LiphtUpNative.registerPushNotifications(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("native-timeout")), 5000))
+            ]);
             return { ok: !!token, token };
         } catch (error) {
             console.error("[platform/notifications] native registration failed:", error);
@@ -35,24 +38,37 @@ export async function registerForPush() {
         return { ok: false, reason: "unsupported" };
     }
 
-    const supported = await isSupported().catch(() => false);
-    if (!supported) return { ok: false, reason: "messaging-unsupported" };
-
-    const permission = Notification.permission === "granted"
-        ? "granted"
-        : await Notification.requestPermission();
-
-    if (permission !== "granted") {
-        return { ok: false, reason: permission };
-    }
-
     try {
-        const registration = await navigator.serviceWorker.ready;
+        const supported = await Promise.race([
+            isSupported().catch(() => false),
+            new Promise((resolve) => setTimeout(() => resolve(false), 2000))
+        ]);
+        if (!supported) return { ok: false, reason: "messaging-unsupported" };
+
+        const permission = Notification.permission === "granted"
+            ? "granted"
+            : await Promise.race([
+                Notification.requestPermission(),
+                new Promise((resolve) => setTimeout(() => resolve("denied"), 6000))
+            ]);
+
+        if (permission !== "granted") {
+            return { ok: false, reason: permission };
+        }
+
+        const registration = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("sw-ready-timeout")), 3000))
+        ]);
+
         const messaging = getMessaging(app);
-        const token = await getToken(messaging, {
-            vapidKey: DRIVER_PUSH_VAPID_KEY,
-            serviceWorkerRegistration: registration
-        });
+        const token = await Promise.race([
+            getToken(messaging, {
+                vapidKey: DRIVER_PUSH_VAPID_KEY,
+                serviceWorkerRegistration: registration
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("get-token-timeout")), 4000))
+        ]);
         return { ok: !!token, token };
     } catch (error) {
         console.warn("[platform/notifications] web push registration warning:", error?.message || error);
@@ -75,7 +91,8 @@ export async function sendTokenToBackend(token) {
         let response = await fetch(primaryEndpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-            body: JSON.stringify({ token, userAgent: navigator.userAgent, permission: "granted" })
+            body: JSON.stringify({ token, userAgent: navigator.userAgent, permission: "granted" }),
+            signal: AbortSignal.timeout(5000)
         });
         
         // Fallback retry if 403 (e.g. role mismatch)
@@ -84,7 +101,8 @@ export async function sendTokenToBackend(token) {
             response = await fetch(fallbackEndpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-                body: JSON.stringify({ token, userAgent: navigator.userAgent, permission: "granted" })
+                body: JSON.stringify({ token, userAgent: navigator.userAgent, permission: "granted" }),
+                signal: AbortSignal.timeout(5000)
             });
         }
 

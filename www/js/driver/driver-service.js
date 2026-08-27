@@ -782,7 +782,8 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
     const response = await fetch("/api/rides/driver-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ status, ...(locationData || {}) })
+        body: JSON.stringify({ status, ...(locationData || {}) }),
+        signal: AbortSignal.timeout(8000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -801,7 +802,8 @@ async function pollDriverNearbyDemand() {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) return;
         const res = await fetch("/api/rides/driver/nearby-demand", {
-            headers: { Authorization: `Bearer ${idToken}` }
+            headers: { Authorization: `Bearer ${idToken}` },
+            signal: AbortSignal.timeout(6000)
         });
         const data = await res.json().catch(() => ({}));
         if (data.ok && (data.waitingCount > 0 || data.scheduledSoonCount > 0)) {
@@ -850,17 +852,22 @@ function hideDriverDemandChip() {
 async function setServiceDriverAvailability(status) {
     if (!currentUser?.uid) return;
 
+    // 1. Instant local & UI update
     currentUser.driverAvailability = status;
     currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
-    const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
-    await updateDriverAvailabilityThroughBackend(status, locationData);
     cacheProfile(currentUser);
+    updateDriverAvailabilityUI(status);
 
     if (status === "searching") {
         pollDriverNearbyDemand();
         if (!demandPollInterval) {
             demandPollInterval = setInterval(pollDriverNearbyDemand, 30000);
         }
+        setTimeout(() => {
+            registerDriverPushToken(db, currentUser.uid).catch((error) => {
+                console.warn("Driver push token registration failed:", error);
+            });
+        }, 0);
     } else {
         if (demandPollInterval) {
             clearInterval(demandPollInterval);
@@ -868,6 +875,10 @@ async function setServiceDriverAvailability(status) {
         }
         hideDriverDemandChip();
     }
+
+    // 2. Fast background sync
+    const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
+    return updateDriverAvailabilityThroughBackend(status, locationData);
 }
 
 async function acceptIncomingRide(rideId, button) {
@@ -2479,6 +2490,11 @@ async function bootstrapDriverService() {
             e.preventDefault();
             toggleDriverOnlineStatus("searching");
         });
+        document.getElementById("driver-service-live-pill")?.addEventListener("click", () => {
+            if (activeRide) return;
+            const isCurrentlyOffline = (currentUser?.driverAvailability || "offline") === "offline";
+            toggleDriverOnlineStatus(isCurrentlyOffline ? "searching" : "offline");
+        });
         document.getElementById("driver-recenter-btn")?.addEventListener("click", () => {
             if (map && lastPosition) map.panTo(lastPosition);
         });
@@ -2559,29 +2575,50 @@ function updateDriverAvailabilityUI(statusOverride) {
 
 async function toggleDriverOnlineStatus(targetStatus) {
     if (!auth.currentUser) return;
-    showPageLoader(targetStatus === "searching" ? t('driver.going_online', "Going Online...") : t('driver.going_offline', "Going Offline..."));
-    try {
-        const idToken = await auth.currentUser.getIdToken();
-        const res = await fetch("/api/rides/driver-availability", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
-            },
-            body: JSON.stringify({ status: targetStatus })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.ok) {
-            if (currentUser) currentUser.driverAvailability = targetStatus;
-            updateDriverAvailabilityUI(targetStatus);
-        } else {
-            await showAlert(data.error || t('driver.update_status_failed', "Could not update online status."));
+    const prevStatus = currentUser?.driverAvailability || "offline";
+    const prevDesired = currentUser?.desiredAvailability || "offline";
+
+    // 1. Instant Optimistic UI Update (0ms latency)
+    if (currentUser) {
+        currentUser.driverAvailability = targetStatus;
+        currentUser.desiredAvailability = targetStatus === "offline" ? "offline" : "online";
+        cacheProfile(currentUser);
+    }
+    updateDriverAvailabilityUI(targetStatus);
+
+    if (targetStatus === "searching") {
+        pollDriverNearbyDemand();
+        if (!demandPollInterval) {
+            demandPollInterval = setInterval(pollDriverNearbyDemand, 30000);
         }
+        startLocationTracking();
+        setTimeout(() => {
+            registerDriverPushToken(db, currentUser?.uid).catch((error) => {
+                console.warn("Driver push token registration failed:", error);
+            });
+        }, 0);
+    } else {
+        if (demandPollInterval) {
+            clearInterval(demandPollInterval);
+            demandPollInterval = null;
+        }
+        hideDriverDemandChip();
+    }
+
+    // 2. Fast background sync
+    try {
+        const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
+        await updateDriverAvailabilityThroughBackend(targetStatus, locationData);
     } catch (err) {
         console.error("Toggle driver availability failed:", err);
+        // Rollback state on error
+        if (currentUser) {
+            currentUser.driverAvailability = prevStatus;
+            currentUser.desiredAvailability = prevDesired;
+            cacheProfile(currentUser);
+        }
+        updateDriverAvailabilityUI(prevStatus);
         await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
-    } finally {
-        hidePageLoader({ force: true });
     }
 }
 

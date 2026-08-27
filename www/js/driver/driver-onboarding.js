@@ -643,7 +643,8 @@ async function updateDriverAvailabilityThroughBackend(status) {
     const response = await fetch("/api/rides/driver-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status }),
+        signal: AbortSignal.timeout(8000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -656,22 +657,40 @@ async function updateDriverAvailabilityThroughBackend(status) {
 
 async function setDriverAvailability(status) {
     if (!auth.currentUser || !currentUser || currentUser.role !== "driver") return;
+    const previousStatus = currentUser.driverAvailability;
+    const previousDesired = currentUser.desiredAvailability;
+
+    // 1. Instant local & UI update (0ms latency)
     currentUser.driverAvailability = status;
     currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
     driverDutyOnline = currentUser.desiredAvailability === "online";
     updateDutySwitchUi();
+    cacheProfile(currentUser);
 
-    try {
-        if (status === "offline") stopPresenceTracking();
-        await updateDriverAvailabilityThroughBackend(status);
-        cacheProfile(currentUser);
-        if (status === "online" || status === "searching" || status === "busy") {
+    if (status === "offline") {
+        stopPresenceTracking();
+        stopRideRequestRing();
+    } else {
+        startDriverPresenceTracking();
+        setTimeout(() => {
             registerDriverPushToken(db, currentUser.uid).catch((error) => {
                 console.warn("Driver push token registration failed:", error);
             });
-        }
+        }, 0);
+    }
+
+    // 2. Fast background sync
+    try {
+        await updateDriverAvailabilityThroughBackend(status);
     } catch (error) {
-        console.warn("Driver availability update failed:", error);
+        console.warn("Driver availability background sync failed:", error);
+        // Rollback state if server rejected
+        currentUser.driverAvailability = previousStatus;
+        currentUser.desiredAvailability = previousDesired;
+        driverDutyOnline = previousDesired === "online";
+        updateDutySwitchUi();
+        cacheProfile(currentUser);
+        throw error;
     }
 }
 
@@ -1590,27 +1609,45 @@ addOptionalClickListener('logout-btn-review', async () => {
 });
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const checked = event.target.checked;
-    event.target.disabled = true;
-    window.LiphtUpLoading?.showPageLoader?.("Updating online status...");
-    try {
-        if (checked) {
-            driverDutyOnline = true;
-            currentUser.desiredAvailability = "online";
-            await registerDriverPushToken(db, currentUser.uid).catch((error) => {
+    const targetStatus = checked ? (currentlyAssignedRideId ? "busy" : "searching") : "offline";
+    const prevStatus = currentUser?.driverAvailability || "offline";
+    const prevDesired = currentUser?.desiredAvailability || "offline";
+
+    // 1. Instant Optimistic UI Update (0ms latency)
+    driverDutyOnline = checked;
+    if (currentUser) {
+        currentUser.driverAvailability = targetStatus;
+        currentUser.desiredAvailability = checked ? "online" : "offline";
+        cacheProfile(currentUser);
+    }
+    updateDutySwitchUi();
+
+    if (checked) {
+        startDriverPresenceTracking();
+        setTimeout(() => {
+            registerDriverPushToken(db, currentUser?.uid).catch((error) => {
                 console.warn("Driver push token registration failed:", error);
             });
-            await setDriverAvailability(currentlyAssignedRideId ? "busy" : "searching");
-            startDriverPresenceTracking();
-        } else {
-            driverDutyOnline = false;
-            currentUser.desiredAvailability = "offline";
-            stopRideRequestRing();
-            await setDriverAvailability("offline");
+        }, 0);
+    } else {
+        stopRideRequestRing();
+        stopPresenceTracking();
+    }
+
+    // 2. Fast background sync
+    try {
+        await updateDriverAvailabilityThroughBackend(targetStatus);
+    } catch (error) {
+        console.error("Failed to update driver duty status on server:", error);
+        // Rollback switch and state
+        driverDutyOnline = prevDesired === "online";
+        if (currentUser) {
+            currentUser.driverAvailability = prevStatus;
+            currentUser.desiredAvailability = prevDesired;
+            cacheProfile(currentUser);
         }
-    } finally {
-        event.target.disabled = false;
         updateDutySwitchUi();
-        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+        await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
     }
 });
 
