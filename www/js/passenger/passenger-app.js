@@ -975,7 +975,7 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
         return;
     }
 
-    window.LiphtUpLoading?.showPageLoader?.("Saving waiting request...");
+    window.LiphtUpLoading?.showPageLoader?.(t('services.saving_waiting_request', "Saving waiting request..."));
     try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Please log in to continue.");
@@ -1868,7 +1868,7 @@ async function cancelRideByPassenger(rideId) {
 
 async function reschedulePendingRequest15min() {
     if (!activePendingRequestId) return;
-    window.LiphtUpLoading?.showPageLoader?.("Updating scheduled time...");
+    window.LiphtUpLoading?.showPageLoader?.(t('services.updating_scheduled_time', "Updating scheduled time..."));
     try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");
@@ -2302,7 +2302,7 @@ function listenToPendingRequestUpdates(requestId) {
 async function rebookPendingRequestToLiveRide() {
     if (!activePendingRequestId || !activePendingRequestData) return;
 
-    window.LiphtUpLoading?.showPageLoader?.("Starting search...");
+    window.LiphtUpLoading?.showPageLoader?.(t('services.starting_search', "Starting search..."));
     try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");

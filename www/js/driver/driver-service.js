@@ -453,7 +453,7 @@ class RotatingVehicleMarker {
         // 'You are here' wobble speech bubble
         const bubble = document.createElement("div");
         bubble.className = "driver-you-are-here-bubble";
-        bubble.textContent = "You are here";
+        bubble.textContent = t('services.you_are_here', "You are here");
         this.element.appendChild(bubble);
 
         // Separate inner wrapper for arrive-bounce/select-pop CSS animations,
@@ -608,6 +608,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
     const passengerName = escapeHtml(ride.passenger_name || "Passenger");
     const fareAmount = Math.round(Number(ride.fare) || 0);
     const passCount = ride.passenger_capacity || (ride.vehicle_type === "auto" ? 3 : 1);
+    const passLabel = Number(passCount) === 1 ? t('common.passenger', "passenger") : t('driver.passengers_count', "passengers");
     const remainingMs = getRideRemainingMs(ride);
 
     const card = document.createElement('div');
@@ -618,23 +619,23 @@ function renderIncomingRideCard(rideId, ride = {}) {
             <div class="passenger-name-wrap">
                 <h5 class="passenger-name mb-1">${passengerName}</h5>
                 <span class="vehicle-capacity-badge">
-                    <span>👤</span> ${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${passCount} passenger${Number(passCount) === 1 ? "" : "s"}
+                    <span>👤</span> ${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${passCount} ${passLabel}
                 </span>
             </div>
             <div class="d-flex flex-column align-items-end gap-1">
                 <span class="fare-badge">₹${fareAmount}</span>
                 <div class="request-timer-pill ${remainingMs <= 60000 ? 'is-urgent' : ''}" id="srv-timer-${rideId}">
                     <span class="timer-icon">⏳</span>
-                    <span class="timer-label">Expires in</span>
+                    <span class="timer-label">${t('driver.expires_in', "Expires in")}</span>
                     <strong class="timer-val" id="srv-timer-val-${rideId}">${formatCountdownTimer(remainingMs)}</strong>
                 </div>
                 ${callablePhone ? `
-                    <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
-                        <span>📞</span> Call
+                    <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="${t('driver.call_btn', 'Call')} ${passengerName}">
+                        <span>📞</span> ${t('driver.call_btn', 'Call')}
                     </a>
                 ` : `
                     <button class="btn-call-passenger disabled mt-1" type="button" disabled aria-label="Phone unavailable">
-                        <span>📞</span> Call
+                        <span>📞</span> ${t('driver.call_btn', 'Call')}
                     </button>
                 `}
             </div>
@@ -644,40 +645,40 @@ function renderIncomingRideCard(rideId, ride = {}) {
             <div class="route-step pickup">
                 <span class="route-dot green"></span>
                 <div class="route-text-group">
-                    <span class="route-label">From: </span>
+                    <span class="route-label">${t('driver.from_label', "From: ")}</span>
                     <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</span>
                 </div>
             </div>
             <div class="route-step drop">
                 <span class="route-dot red"></span>
                 <div class="route-text-group">
-                    <span class="route-label">To: </span>
+                    <span class="route-label">${t('driver.to_label', "To: ")}</span>
                     <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "drop"))}</span>
                 </div>
             </div>
         </div>
 
         <div class="location-preview-row">
-            ${renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng)}
-            ${renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)}
+            ${renderLocationPreviewLink(t('driver.preview_pickup', "Preview pickup"), ride.pickup_lat, ride.pickup_lng)}
+            ${renderLocationPreviewLink(t('driver.preview_destination', "Preview destination"), ride.drop_lat, ride.drop_lng)}
         </div>
 
         <div class="trip-metrics-card">
             <div class="metric-column">
-                <small>Distance</small>
+                <small>${t('history.total_distance', "Distance")}</small>
                 <strong>${formatRideDistance(ride.distance_km)}</strong>
             </div>
             <div class="metric-column text-end">
-                <small>Estimated time</small>
+                <small>${t('driver.estimated_time', "Estimated time")}</small>
                 <strong>${formatRideDuration(ride.duration_minutes)}</strong>
             </div>
         </div>
 
         <button class="btn-accept-ride accept-job-btn driver-service-accept-btn" data-id="${rideId}" data-ride-id="${rideId}">
-            <span>✓</span> Accept Ride Request
+            <span>✓</span> ${t('driver.accept_ride_request_btn', "Accept Ride Request")}
         </button>
         <button class="btn-ignore-ride ignore-job-btn driver-service-ignore-btn" data-id="${rideId}" data-ride-id="${rideId}">
-            <span>✕</span> Ignore
+            <span>✕</span> ${t('driver.ignore_btn', "Ignore")}
         </button>
     `;
 
@@ -687,8 +688,8 @@ function renderIncomingRideCard(rideId, ride = {}) {
 function renderNoIncomingRequests() {
     ridesContainer.innerHTML = "";
     ridesContainer.appendChild(noRidesMsg);
-    noRidesMsg.querySelector('strong').innerText = "Searching nearby passengers";
-    noRidesMsg.querySelector('p').innerText = "Keep this page open to receive targeted requests.";
+    noRidesMsg.querySelector('strong').innerText = t('driver.searching_passengers_title', "Searching nearby passengers");
+    noRidesMsg.querySelector('p').innerText = t('driver.keep_open_hint', "Keep this page open to receive targeted requests.");
     noRidesMsg.classList.remove('d-none');
 }
 
@@ -877,7 +878,7 @@ async function acceptIncomingRide(rideId, button) {
     stopRideRequestRing();
     if (button) {
         button.disabled = true;
-        button.innerText = "Accepting...";
+        button.innerText = t('driver.accepting', "Accepting...");
     }
 
     try {
@@ -897,7 +898,7 @@ async function acceptIncomingRide(rideId, button) {
         await setServiceDriverAvailability("busy");
         renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });
         updateIncomingRequestsVisibility();
-        statusText.innerText = "Ride accepted - route is loading";
+        statusText.innerText = t('driver.ride_accepted_route_loading', "Ride accepted - route is loading");
     } catch (error) {
         console.error("Driver service ride acceptance failed:", error);
         clearRideRequestTimer(rideId);
@@ -908,18 +909,18 @@ async function acceptIncomingRide(rideId, button) {
         const alreadyTaken = /already accepted/i.test(error.message || "");
 
         if (isCancelled) {
-            await showAlert("This ride request was cancelled by the passenger.");
+            await showAlert(t('driver.ride_cancelled_by_passenger', "This ride request was cancelled by the passenger."));
         } else if (isExpired) {
-            await showAlert("This ride request has expired.");
+            await showAlert(t('driver.ride_request_expired', "This ride request has expired."));
         } else if (alreadyTaken) {
-            await showAlert("Another driver already accepted this ride. Refreshing the list…");
+            await showAlert(t('driver.another_driver_accepted', "Another driver already accepted this ride. Refreshing the list…"));
         } else {
             await showAlert(error.message || "Could not accept this ride.");
         }
 
         if (button) {
             button.disabled = false;
-            button.innerText = "Accept Ride Request";
+            button.innerText = t('driver.accept_ride_request_btn', "Accept Ride Request");
         }
     } finally {
         acceptRideInProgress = false;
@@ -1093,8 +1094,8 @@ function renderLifecycleState(status, rideData = currentRide) {
                     <span class="webicon webicon-schedule" style="width:20px;height:20px;background-color:#D97706;"></span>
                 </div>
                 <div class="at-status-text">
-                    <strong>WAITING TO START TRIP</strong>
-                    <p>Ask the passenger for their 4-digit trip PIN</p>
+                    <strong>${t('driver.waiting_to_start_trip', "WAITING TO START TRIP")}</strong>
+                    <p>${t('driver.ask_pin_hint', "Ask the passenger for their 4-digit trip PIN")}</p>
                 </div>
             `;
         }
@@ -1107,19 +1108,19 @@ function renderLifecycleState(status, rideData = currentRide) {
                 <div class="at-passenger-avatar">${passengerInitial}</div>
                 <div class="at-passenger-info">
                     <strong class="at-passenger-name">${passengerName}</strong>
-                    <span class="at-passenger-role">Passenger</span>
+                    <span class="at-passenger-role">${t('common.passenger', "Passenger")}</span>
                 </div>
             </div>
             <div class="at-passenger-actions">
                 ${callablePhone ? `
-                    <a class="at-action-btn" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
+                    <a class="at-action-btn" href="tel:${callablePhone}" aria-label="${t('driver.call_btn', 'Call')} ${passengerName}">
                         <span class="webicon webicon-call" aria-hidden="true" style="width:16px;height:16px;"></span>
-                        <span>Call</span>
+                        <span>${t('driver.call_btn', 'Call')}</span>
                     </a>
                 ` : `
                     <button class="at-action-btn" type="button" disabled aria-label="Passenger phone unavailable">
                         <span class="webicon webicon-call" aria-hidden="true" style="width:16px;height:16px;"></span>
-                        <span>Call</span>
+                        <span>${t('driver.call_btn', 'Call')}</span>
                     </button>
                 `}
             </div>
@@ -1132,8 +1133,8 @@ function renderLifecycleState(status, rideData = currentRide) {
                 <span class="webicon webicon-schedule" style="width:20px;height:20px;background-color:#D97706;"></span>
             </div>
             <div class="at-status-text">
-                <strong>WAITING TO START TRIP</strong>
-                <p>Ask the passenger for their 4-digit trip PIN</p>
+                <strong>${t('driver.waiting_to_start_trip', "WAITING TO START TRIP")}</strong>
+                <p>${t('driver.ask_pin_hint', "Ask the passenger for their 4-digit trip PIN")}</p>
             </div>
         </div>
     ` : `
@@ -1142,22 +1143,22 @@ function renderLifecycleState(status, rideData = currentRide) {
                 <span class="webicon webicon-notify" style="width:20px;height:20px;background-color:#059669;"></span>
             </div>
             <div class="at-status-text">
-                <strong>TRIP IN PROGRESS</strong>
-                <p>Driving passenger safely to destination</p>
+                <strong>${t('driver.trip_in_progress_title', "TRIP IN PROGRESS")}</strong>
+                <p>${t('driver.driving_to_destination', "Driving passenger safely to destination")}</p>
             </div>
         </div>
     `;
 
     const routeCardHtml = `
         <div class="at-card at-route-card">
-            <div class="at-card-section-label">ROUTE DETAILS</div>
+            <div class="at-card-section-label">${t('driver.route_details', "ROUTE DETAILS")}</div>
             <div class="at-route-timeline">
                 <div class="at-route-stop">
                     <span class="at-stop-dot at-stop-pickup">
                         <span class="at-dot-inner"></span>
                     </span>
                     <div class="at-stop-content">
-                        <span class="at-stop-tag at-tag-pickup">PICKUP</span>
+                        <span class="at-stop-tag at-tag-pickup">${t('driver.pickup_tag', "PICKUP")}</span>
                         <strong class="at-stop-title">${pickupName}</strong>
                     </div>
                 </div>
@@ -1167,7 +1168,7 @@ function renderLifecycleState(status, rideData = currentRide) {
                         <span class="at-dot-pin"></span>
                     </span>
                     <div class="at-stop-content">
-                        <span class="at-stop-tag at-tag-dest">DESTINATION</span>
+                        <span class="at-stop-tag at-tag-dest">${t('driver.destination_tag', "DESTINATION")}</span>
                         <strong class="at-stop-title">${destName}</strong>
                     </div>
                 </div>
@@ -1187,20 +1188,20 @@ function renderLifecycleState(status, rideData = currentRide) {
 
     const pinVerificationCardHtml = showPinVerification ? `
         <div class="at-card at-pin-card" id="at-pin-card-wrap">
-            <div class="at-card-section-label">PASSENGER TRIP PIN</div>
+            <div class="at-card-section-label">${t('driver.passenger_trip_pin', "PASSENGER TRIP PIN")}</div>
             <div class="at-pin-boxes-wrap" id="at-pin-boxes-container">
                 <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="0" autocomplete="off">
                 <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="1" autocomplete="off">
                 <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="2" autocomplete="off">
                 <input type="tel" class="at-pin-digit-box" maxlength="1" inputmode="numeric" pattern="[0-9]*" data-index="3" autocomplete="off">
             </div>
-            <p class="at-pin-hint">Enter 4-digit PIN provided by the passenger</p>
+            <p class="at-pin-hint">${t('driver.enter_pin_subhint', "Enter 4-digit PIN provided by the passenger")}</p>
             <button type="button" id="driver-service-verify-pin-btn" class="at-start-trip-btn">
                 <div class="at-start-btn-content">
                     <span class="at-play-icon">►</span>
-                    <span>Start Trip</span>
+                    <span>${t('driver.start_trip_action', "Start Trip")}</span>
                 </div>
-                <small class="at-start-btn-sub">PIN will be verified automatically</small>
+                <small class="at-start-btn-sub">${t('driver.pin_auto_verify', "PIN will be verified automatically")}</small>
             </button>
         </div>
     ` : `
@@ -1212,8 +1213,8 @@ function renderLifecycleState(status, rideData = currentRide) {
                     </svg>
                 </div>
                 <div class="at-dropoff-btn-text">
-                    <strong>Drop Off Passenger & Complete Trip</strong>
-                    <span>Tap when passenger has safely arrived at destination</span>
+                    <strong>${t('driver.dropoff_passenger_btn', "Drop Off Passenger & Complete Trip")}</strong>
+                    <span>${t('driver.dropoff_tap_hint', "Tap when passenger has safely arrived at destination")}</span>
                 </div>
             </button>
         </div>
@@ -1222,7 +1223,7 @@ function renderLifecycleState(status, rideData = currentRide) {
     const cancelCardHtml = `
         <div class="at-cancel-card-wrap">
             <button type="button" id="driver-service-cancel-btn" class="gy-btn gy-btn-danger-outline w-100 py-2.5 fw-bold" style="border-radius: 12px; font-size: 14px;">
-                Cancel this ride
+                ${t('driver.cancel_this_ride', "Cancel this ride")}
             </button>
         </div>
     `;
@@ -2103,14 +2104,14 @@ function renderActiveRideState(rideId, ride) {
 
 async function verifyAndStartTrip(rideId) {
     if (!rideId) {
-        await showAlert("No active ride found for PIN verification.");
+        await showAlert(t('driver.no_active_ride_pin', "No active ride found for PIN verification."));
         return;
     }
 
     const typedPin = getEnteredPin();
 
     if (!/^\d{4}$/.test(typedPin)) {
-        await showAlert("Please enter the 4-digit passenger PIN.");
+        await showAlert(t('driver.enter_4digit_pin', "Please enter the 4-digit passenger PIN."));
         return;
     }
 
@@ -2119,14 +2120,14 @@ async function verifyAndStartTrip(rideId) {
         renderActiveRideState(rideId, result.ride || { ...currentRide, status: "en_route" });
     } catch (error) {
         console.error("PIN verification failed:", error);
-        await showAlert("Could not verify PIN. Please try again.");
+        await showAlert(t('driver.verify_pin_failed', "Could not verify PIN. Please try again."));
     }
 }
 
 async function transitionRideThroughBackend(rideId, action, pin = "") {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) throw new Error("Authentication is required.");
-    window.LiphtUpLoading?.showPageLoader?.("Updating trip status...");
+    window.LiphtUpLoading?.showPageLoader?.(t('driver.updating_trip_status', "Updating trip status..."));
     try {
         const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
             method: "POST",
@@ -2147,7 +2148,7 @@ async function transitionRideThroughBackend(rideId, action, pin = "") {
 
 async function completeRideJob() {
     if (!currentRideId) {
-        await showAlert("No active trip found to complete.");
+        await showAlert(t('driver.no_active_trip_complete', "No active trip found to complete."));
         return;
     }
 
@@ -2170,7 +2171,7 @@ async function completeRideJob() {
         } else {
             upiQrImage.src = "";
             upiQrImage.classList.add('d-none');
-            await showAlert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+            await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
         }
 
         paymentModal.classList.remove('d-none');
@@ -2179,7 +2180,7 @@ async function completeRideJob() {
         hideLifecyclePanel();
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
-        await showAlert("Database connection dropped during checkout.");
+        await showAlert(t('driver.db_dropped_checkout', "Database connection dropped during checkout."));
     }
 }
 
@@ -2218,7 +2219,7 @@ async function sendDriverSos() {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");
 
-        window.LiphtUpLoading?.showPageLoader?.("Sending Emergency SOS...");
+        window.LiphtUpLoading?.showPageLoader?.(t('driver.sending_emergency_sos', "Sending Emergency SOS..."));
         const response = await fetch(`/api/rides/${encodeURIComponent(currentRideId)}/sos`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
@@ -2228,10 +2229,10 @@ async function sendDriverSos() {
         if (!response.ok || !data.ok) {
             throw new Error(data.error || "Could not send emergency alert.");
         }
-        await showAlert("Emergency SOS Alert Sent! Our safety team has received your live location and is responding.");
+        await showAlert(t('driver.driver_sos_sent', "Emergency SOS Alert Sent! Our safety team has received your live location and is responding."));
     } catch (error) {
         console.error("Driver SOS alert failed:", error);
-        await showAlert("Could not send SOS alert. Please call emergency services (112) directly if in immediate danger.");
+        await showAlert(t('driver.sos_send_error', "Could not send SOS alert. Please call emergency services (112) directly if in immediate danger."));
     } finally {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
@@ -2239,7 +2240,7 @@ async function sendDriverSos() {
 
 async function markRidePaidAndCreateHistory(rideId) {
     if (!rideId) {
-        await showAlert("No completed ride found for payment confirmation.");
+        await showAlert(t('driver.no_completed_ride_payment', "No completed ride found for payment confirmation."));
         return false;
     }
 
@@ -2248,7 +2249,7 @@ async function markRidePaidAndCreateHistory(rideId) {
         return true;
     } catch (error) {
         console.error("Trip history creation failed:", error);
-        await showAlert(error.message || "Could not confirm payment and save trip history.");
+        await showAlert(error.message || t('driver.confirm_payment_failed', "Could not confirm payment and save trip history."));
         return false;
     }
 }
@@ -2349,12 +2350,12 @@ ridesContainer?.addEventListener('click', (event) => {
 
 closePaymentButton.addEventListener('click', async () => {
     closePaymentButton.disabled = true;
-    closePaymentButton.innerText = "Saving trip history...";
+    closePaymentButton.innerText = t('driver.saving_trip_history', "Saving trip history...");
 
     const saved = await markRidePaidAndCreateHistory(pendingPaymentRideId);
     if (!saved) {
         closePaymentButton.disabled = false;
-        closePaymentButton.innerText = "Fare Received & Clear";
+        closePaymentButton.innerText = t('driver.fare_received_clear', "Fare Received & Clear");
         return;
     }
 
@@ -2422,7 +2423,7 @@ function renderAccountHoldModal() {
 }
 
 async function bootstrapDriverService() {
-    showPageLoader("Opening trip console…");
+    showPageLoader(t('driver.opening_trip_console', "Opening trip console…"));
     const user = await waitForAuth();
 
     if (!user) {

@@ -780,18 +780,18 @@ function renderActivePassengerContact(ride = {}) {
         <div class="active-passenger-contact">
             <div class="active-passenger-avatar" aria-hidden="true">${passengerInitial}</div>
             <div class="active-passenger-copy">
-                <span>Passenger</span>
+                <span>${t('common.passenger', "Passenger")}</span>
                 <strong>${passengerName}</strong>
             </div>
             ${callablePhone ? `
-                <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
+                <a class="active-passenger-call" href="tel:${callablePhone}" aria-label="${t('driver.call_btn', 'Call')} ${passengerName}">
                     <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
-                    <small>Call</small>
+                    <small>${t('driver.call_btn', 'Call')}</small>
                 </a>
             ` : `
                 <button class="active-passenger-call" type="button" disabled aria-label="Passenger phone unavailable">
                     <span class="webicon webicon-call" aria-hidden="true" style="width:14px;height:14px;"></span>
-                    <small>Call</small>
+                    <small>${t('driver.call_btn', 'Call')}</small>
                 </button>
             `}
         </div>
@@ -855,7 +855,7 @@ function renderActiveTripRoute(ride = {}) {
             <div class="active-trip-place">
                 <span class="active-route-dot pickup" aria-hidden="true"></span>
                 <div>
-                    <small>Pickup</small>
+                    <small>${t('driver.pickup_tag', 'Pickup')}</small>
                     <strong>${pickup}</strong>
                 </div>
             </div>
@@ -863,13 +863,13 @@ function renderActiveTripRoute(ride = {}) {
             <div class="active-trip-place">
                 <span class="active-route-dot destination" aria-hidden="true"></span>
                 <div>
-                    <small>Destination</small>
+                    <small>${t('driver.destination_tag', 'Destination')}</small>
                     <strong>${destination}</strong>
                 </div>
             </div>
             <div class="active-trip-metrics">
-                <div><small>Distance</small><strong>${distanceLabel}</strong></div>
-                <div><small>Estimated time</small><strong>${durationLabel}</strong></div>
+                <div><small>${t('history.total_distance', 'Distance')}</small><strong>${distanceLabel}</strong></div>
+                <div><small>${t('driver.estimated_time', 'Estimated time')}</small><strong>${durationLabel}</strong></div>
             </div>
         </div>
     `;
@@ -880,20 +880,20 @@ function renderActiveTripStatus(status, rideData = activeDriverRideData) {
     activeDriverRideData = { ...(activeDriverRideData || {}), ...(rideData || {}), status };
 
     const labels = {
-        accepted: "PIN verification required",
-        arrived: "Arrived at pickup - ready to start",
-        started: "Trip started - drive to destination",
-        en_route: "Trip in Progress"
+        accepted: t('driver.pin_verification_required', "PIN verification required"),
+        arrived: t('driver.arrived_ready_to_start', "Arrived at pickup - ready to start"),
+        started: t('driver.trip_started_drive', "Trip started - drive to destination"),
+        en_route: t('driver.trip_in_progress_title', "Trip in Progress")
     };
 
     const activeTripDetails = document.getElementById('active-trip-details');
     const gpsStatusText = document.getElementById('gps-status')?.innerText || "GPS locking...";
     const pinVerificationHtml = status === "accepted" ? `
         <div id="verification-pin-panel" class="mt-3">
-            <label for="verification-pin-input" class="form-label fw-semibold mb-1">Passenger PIN</label>
-            <input id="verification-pin-input" type="tel" maxlength="4" inputmode="numeric" class="form-control text-center fw-bold mb-2" placeholder="Enter 4-digit PIN">
+            <label for="verification-pin-input" class="form-label fw-semibold mb-1">${t('driver.passenger_pin_label', "Passenger PIN")}</label>
+            <input id="verification-pin-input" type="tel" maxlength="4" inputmode="numeric" class="form-control text-center fw-bold mb-2" placeholder="${t('driver.enter_pin_placeholder', "Enter 4-digit PIN")}">
             <button id="verify-pin-btn" class="btn btn-success w-100 fw-bold">
-                Verify & Start Trip
+                ${t('driver.start_trip_action', "Start Trip")}
             </button>
         </div>
     ` : "";
@@ -1115,6 +1115,7 @@ function initDriverJobsStream() {
             const passengerName = escapeHtml(ride.passenger_name || "Passenger");
             const fareAmount = Math.round(Number(ride.fare) || 0);
             const passCount = ride.passenger_capacity || (ride.vehicle_type === "auto" ? 3 : 1);
+            const passLabel = Number(passCount) === 1 ? t('common.passenger', "passenger") : t('driver.passengers_count', "passengers");
 
             const card = document.createElement('div');
             card.className = "ride-request-card card shadow-sm p-3 mb-3";
@@ -1124,23 +1125,23 @@ function initDriverJobsStream() {
                     <div class="passenger-name-wrap">
                         <h5 class="passenger-name mb-1">${passengerName}</h5>
                         <span class="vehicle-capacity-badge">
-                            <span>👤</span> ${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${passCount} passenger${Number(passCount) === 1 ? "" : "s"}
+                            <span>👤</span> ${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${passCount} ${passLabel}
                         </span>
                     </div>
                     <div class="d-flex flex-column align-items-end gap-1">
                         <span class="fare-badge">₹${fareAmount}</span>
                         <div class="request-timer-pill ${remainingMs <= 60000 ? 'is-urgent' : ''}" id="req-timer-${rideId}">
                             <span class="timer-icon">⏳</span>
-                            <span class="timer-label">Expires in</span>
+                            <span class="timer-label">${t('driver.expires_in', "Expires in")}</span>
                             <strong class="timer-val" id="req-timer-val-${rideId}">${formatCountdownTimer(remainingMs)}</strong>
                         </div>
                         ${callablePhone ? `
-                            <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="Call ${passengerName}">
-                                <span>📞</span> Call
+                            <a class="btn-call-passenger mt-1" href="tel:${callablePhone}" aria-label="${t('driver.call_btn', 'Call')} ${passengerName}">
+                                <span>📞</span> ${t('driver.call_btn', 'Call')}
                             </a>
                         ` : `
                             <button class="btn-call-passenger disabled mt-1" type="button" disabled aria-label="Phone unavailable">
-                                <span>📞</span> Call
+                                <span>📞</span> ${t('driver.call_btn', 'Call')}
                             </button>
                         `}
                     </div>
@@ -1150,40 +1151,40 @@ function initDriverJobsStream() {
                     <div class="route-step pickup">
                         <span class="route-dot green"></span>
                         <div class="route-text-group">
-                            <span class="route-label">From: </span>
+                            <span class="route-label">${t('driver.from_label', "From: ")}</span>
                             <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</span>
                         </div>
                     </div>
                     <div class="route-step drop">
                         <span class="route-dot red"></span>
                         <div class="route-text-group">
-                            <span class="route-label">To: </span>
+                            <span class="route-label">${t('driver.to_label', "To: ")}</span>
                             <span class="route-address">${escapeHtml(getRideDisplayAddress(ride, "drop"))}</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="location-preview-row">
-                    ${renderLocationPreviewLink("Preview pickup", ride.pickup_lat, ride.pickup_lng)}
-                    ${renderLocationPreviewLink("Preview destination", ride.drop_lat, ride.drop_lng)}
+                    ${renderLocationPreviewLink(t('driver.preview_pickup', "Preview pickup"), ride.pickup_lat, ride.pickup_lng)}
+                    ${renderLocationPreviewLink(t('driver.preview_destination', "Preview destination"), ride.drop_lat, ride.drop_lng)}
                 </div>
 
                 <div class="trip-metrics-card">
                     <div class="metric-column">
-                        <small>Distance</small>
+                        <small>${t('history.total_distance', "Distance")}</small>
                         <strong>${formatRideDistance(ride.distance_km)}</strong>
                     </div>
                     <div class="metric-column text-end">
-                        <small>Estimated time</small>
+                        <small>${t('driver.estimated_time', "Estimated time")}</small>
                         <strong>${formatRideDuration(ride.duration_minutes)}</strong>
                     </div>
                 </div>
 
                 <button class="btn-accept-ride accept-job-btn" data-id="${rideId}">
-                    <span>✓</span> Accept Ride Request
+                    <span>✓</span> ${t('driver.accept_ride_request_btn', "Accept Ride Request")}
                 </button>
                 <button class="btn-ignore-ride ignore-job-btn" data-id="${rideId}">
-                    <span>✕</span> Ignore
+                    <span>✕</span> ${t('driver.ignore_btn', "Ignore")}
                 </button>
             `;
 

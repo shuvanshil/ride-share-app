@@ -19,91 +19,96 @@
  */
 
 import { auth } from '../platform/firebase-init.js';
+import { t } from '../shared/i18n.js';
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants & Dynamic Localized Options
 // ---------------------------------------------------------------------------
 
-const EXPERIENCES = [
-    {
-        key: 'poor',
-        label: 'Poor',
-        icon: 'assets/icons/webicons/feedback-poor.svg',
-        title: "We're sorry to hear that.",
-        subtitle: 'What went wrong? (Select up to 3)',
-        titleColor: '#E53E3E',
-    },
-    {
-        key: 'decent',
-        label: 'Decent',
-        icon: 'assets/icons/webicons/feedback-decent.svg',
-        title: "Thanks for the feedback!",
-        subtitle: 'What could be better? (Select up to 3)',
-        titleColor: '#D97706',
-    },
-    {
-        key: 'good',
-        label: 'Good',
-        icon: 'assets/icons/webicons/feedback-good.svg',
-        title: "Glad you had a good ride!",
-        subtitle: 'What did you like? (Select up to 3)',
-        titleColor: '#16A34A',
-    },
-    {
-        key: 'loved',
-        label: 'Loved it!',
-        icon: 'assets/icons/webicons/feedback-loved.svg',
-        title: "Awesome! Thanks for the love! 💚",
-        subtitle: 'What made it great? (Select up to 3)',
-        titleColor: '#1A7A2E',
-    },
-];
+function getExperiences() {
+    return [
+        {
+            key: 'poor',
+            label: t('feedback.exp_poor', 'Poor'),
+            icon: 'assets/icons/webicons/feedback-poor.svg',
+            title: t('feedback.exp_poor_title', "We're sorry to hear that."),
+            subtitle: t('feedback.exp_poor_sub', 'What went wrong? (Select up to 3)'),
+            titleColor: '#E53E3E',
+        },
+        {
+            key: 'decent',
+            label: t('feedback.exp_decent', 'Decent'),
+            icon: 'assets/icons/webicons/feedback-decent.svg',
+            title: t('feedback.exp_decent_title', "Thanks for the feedback!"),
+            subtitle: t('feedback.exp_decent_sub', 'What could be better? (Select up to 3)'),
+            titleColor: '#D97706',
+        },
+        {
+            key: 'good',
+            label: t('feedback.exp_good', 'Good'),
+            icon: 'assets/icons/webicons/feedback-good.svg',
+            title: t('feedback.exp_good_title', "Glad you had a good ride!"),
+            subtitle: t('feedback.exp_good_sub', 'What did you like? (Select up to 3)'),
+            titleColor: '#16A34A',
+        },
+        {
+            key: 'loved',
+            label: t('feedback.exp_loved', 'Loved it!'),
+            icon: 'assets/icons/webicons/feedback-loved.svg',
+            title: t('feedback.exp_loved_title', "Awesome! Thanks for the love! 💚"),
+            subtitle: t('feedback.exp_loved_sub', 'What made it great? (Select up to 3)'),
+            titleColor: '#1A7A2E',
+        },
+    ];
+}
 
-/** All valid reason keys per experience level — must match api/routers/rides.py */
-const REASONS = {
-    poor: [
-        { key: 'driver_was_late',     label: 'Driver was late' },
-        { key: 'driver_misbehaved',   label: 'Misbehaved' },
-        { key: 'driver_was_rude',     label: 'Rude' },
-        { key: 'unsafe_driving',      label: 'Unsafe driving' },
-        { key: 'vehicle_issue',       label: 'Vehicle issue' },
-        { key: 'bad_app_experience',  label: 'Bad app experience' },
-        { key: 'app_glitches',        label: 'App glitches' },
-        { key: 'payment_issue',       label: 'Payment issue' },
-        { key: 'booking_problem',     label: 'Booking problem' },
-        { key: 'other',              label: 'Other' },
-    ],
-    decent: [
-        { key: 'driver_was_late',              label: 'Driver was late' },
-        { key: 'long_waiting_time',            label: 'Long waiting time' },
-        { key: 'vehicle_could_be_better',      label: 'Vehicle could be better' },
-        { key: 'app_experience_could_improve', label: 'App could improve' },
-        { key: 'booking_was_confusing',        label: 'Booking was confusing' },
-        { key: 'payment_issue',                label: 'Payment issue' },
-        { key: 'route_destination_issue',      label: 'Route/destination issue' },
-        { key: 'other',                       label: 'Other' },
-    ],
-    good: [
-        { key: 'friendly_driver',     label: 'Friendly driver' },
-        { key: 'smooth_ride',         label: 'Smooth ride' },
-        { key: 'quick_pickup',        label: 'Quick pickup' },
-        { key: 'easy_booking',        label: 'Easy booking' },
-        { key: 'good_vehicle',        label: 'Good vehicle' },
-        { key: 'good_app_experience', label: 'Good app experience' },
-        { key: 'fair_price',          label: 'Fair price' },
-        { key: 'easy_payment',        label: 'Easy payment' },
-    ],
-    loved: [
-        { key: 'excellent_driver',      label: 'Excellent driver' },
-        { key: 'very_smooth_ride',      label: 'Very smooth ride' },
-        { key: 'quick_pickup',          label: 'Quick pickup' },
-        { key: 'great_vehicle',         label: 'Great vehicle' },
-        { key: 'easy_booking',          label: 'Easy booking' },
-        { key: 'great_app_experience',  label: 'Great app experience' },
-        { key: 'fair_price',            label: 'Fair price' },
-        { key: 'would_ride_again',      label: 'Would ride again' },
-    ],
-};
+function getReasons(expKey) {
+    const reasonDefs = {
+        poor: [
+            { key: 'driver_was_late',     label: t('feedback.reason_driver_was_late', 'Driver was late') },
+            { key: 'driver_misbehaved',   label: t('feedback.reason_driver_misbehaved', 'Misbehaved') },
+            { key: 'driver_was_rude',     label: t('feedback.reason_driver_was_rude', 'Rude') },
+            { key: 'unsafe_driving',      label: t('feedback.reason_unsafe_driving', 'Unsafe driving') },
+            { key: 'vehicle_issue',       label: t('feedback.reason_vehicle_issue', 'Vehicle issue') },
+            { key: 'bad_app_experience',  label: t('feedback.reason_bad_app_experience', 'Bad app experience') },
+            { key: 'app_glitches',        label: t('feedback.reason_app_glitches', 'App glitches') },
+            { key: 'payment_issue',       label: t('feedback.reason_payment_issue', 'Payment issue') },
+            { key: 'booking_problem',     label: t('feedback.reason_booking_problem', 'Booking problem') },
+            { key: 'other',              label: t('feedback.reason_other', 'Other') },
+        ],
+        decent: [
+            { key: 'driver_was_late',              label: t('feedback.reason_driver_was_late', 'Driver was late') },
+            { key: 'long_waiting_time',            label: t('feedback.reason_long_waiting_time', 'Long waiting time') },
+            { key: 'vehicle_could_be_better',      label: t('feedback.reason_vehicle_could_be_better', 'Vehicle could be better') },
+            { key: 'app_experience_could_improve', label: t('feedback.reason_app_experience_could_improve', 'App could improve') },
+            { key: 'booking_was_confusing',        label: t('feedback.reason_booking_was_confusing', 'Booking was confusing') },
+            { key: 'payment_issue',                label: t('feedback.reason_payment_issue', 'Payment issue') },
+            { key: 'route_destination_issue',      label: t('feedback.reason_route_destination_issue', 'Route/destination issue') },
+            { key: 'other',                       label: t('feedback.reason_other', 'Other') },
+        ],
+        good: [
+            { key: 'friendly_driver',     label: t('feedback.reason_friendly_driver', 'Friendly driver') },
+            { key: 'smooth_ride',         label: t('feedback.reason_smooth_ride', 'Smooth ride') },
+            { key: 'quick_pickup',        label: t('feedback.reason_quick_pickup', 'Quick pickup') },
+            { key: 'easy_booking',        label: t('feedback.reason_easy_booking', 'Easy booking') },
+            { key: 'good_vehicle',        label: t('feedback.reason_good_vehicle', 'Good vehicle') },
+            { key: 'good_app_experience', label: t('feedback.reason_good_app_experience', 'Good app experience') },
+            { key: 'fair_price',          label: t('feedback.reason_fair_price', 'Fair price') },
+            { key: 'easy_payment',        label: t('feedback.reason_easy_payment', 'Easy payment') },
+        ],
+        loved: [
+            { key: 'excellent_driver',      label: t('feedback.reason_excellent_driver', 'Excellent driver') },
+            { key: 'very_smooth_ride',      label: t('feedback.reason_very_smooth_ride', 'Very smooth ride') },
+            { key: 'quick_pickup',          label: t('feedback.reason_quick_pickup', 'Quick pickup') },
+            { key: 'great_vehicle',         label: t('feedback.reason_great_vehicle', 'Great vehicle') },
+            { key: 'easy_booking',          label: t('feedback.reason_easy_booking', 'Easy booking') },
+            { key: 'great_app_experience',  label: t('feedback.reason_great_app_experience', 'Great app experience') },
+            { key: 'fair_price',            label: t('feedback.reason_fair_price', 'Fair price') },
+            { key: 'would_ride_again',      label: t('feedback.reason_would_ride_again', 'Would ride again') },
+        ],
+    };
+    return reasonDefs[expKey] || [];
+}
 
 const MAX_REASONS = 3;
 
@@ -225,35 +230,36 @@ function _closeFeedbackModal() {
 }
 
 function _renderModal(modal, step) {
+    const experiences = getExperiences();
     modal.innerHTML = `
-        <div class="fb-card" role="dialog" aria-modal="true" aria-label="Ride feedback">
+        <div class="fb-card" role="dialog" aria-modal="true" aria-label="${t('services.rate_ride', 'Ride feedback')}">
             <div class="fb-card-scroll">
 
                 <!-- Step 1: Thank you popup (Screen 1 in mockup) -->
                 <div id="fb-step-thankyou" class="fb-step${step === 'step-thankyou' ? ' fb-active' : ''}">
                     <div class="fb-header">
-                        <button class="fb-back-btn d-invisible" type="button" aria-label="Back">&#8592;</button>
-                        <button class="fb-close-btn" id="fb-close-thankyou" type="button" aria-label="Close feedback">&times;</button>
+                        <button class="fb-back-btn d-invisible" type="button" aria-label="${t('common.back', 'Back')}">&#8592;</button>
+                        <button class="fb-close-btn" id="fb-close-thankyou" type="button" aria-label="${t('common.close', 'Close')}">&times;</button>
                     </div>
                     <img src="assets/icons/webicons/feedback-thankyou-illustration.svg"
                          class="fb-illustration" alt="" aria-hidden="true" width="96" height="96" style="width:96px;height:96px;margin-bottom:16px;">
-                    <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">Thank you<br>for riding with us! 💚</h2>
-                    <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">We hope you had a great ride.<br>Please share your experience.</p>
-                    <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button">Rate your experience</button>
-                    <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button">Maybe later</button>
+                    <h2 class="fb-title" style="font-size:20px;font-weight:800;margin-bottom:8px;">${t('services.thank_you_title', 'Thank you<br>for riding with us! 💚')}</h2>
+                    <p class="fb-subtitle" style="font-size:13px;color:var(--gy-muted);margin-bottom:24px;line-height:1.4;">${t('services.thank_you_sub', 'We hope you had a great ride.<br>Please share your experience.')}</p>
+                    <button class="fb-rate-btn" id="fb-thankyou-rate-btn" type="button">${t('services.rate_experience', 'Rate your experience')}</button>
+                    <button class="fb-maybe-later-btn" id="fb-thankyou-later-btn" type="button">${t('services.maybe_later', 'Maybe later')}</button>
                 </div>
 
                 <!-- Step 2: Choose experience (Screen 2 in mockup) -->
                 <div id="fb-step-exp" class="fb-step${step === 'step-exp' ? ' fb-active' : ''}">
                     <div class="fb-header">
-                        <button class="fb-back-btn" id="fb-back-exp" type="button" aria-label="Back">&#8592;</button>
-                        <button class="fb-close-btn" id="fb-close-exp" type="button" aria-label="Close feedback">&times;</button>
+                        <button class="fb-back-btn" id="fb-back-exp" type="button" aria-label="${t('common.back', 'Back')}">&#8592;</button>
+                        <button class="fb-close-btn" id="fb-close-exp" type="button" aria-label="${t('common.close', 'Close')}">&times;</button>
                     </div>
                     <img src="assets/icons/webicons/feedback-loved.svg" class="fb-illustration" alt="" aria-hidden="true">
-                    <h2 class="fb-title">How was your experience?</h2>
-                    <p class="fb-subtitle">Please select one option</p>
+                    <h2 class="fb-title">${t('feedback.how_was_experience', 'How was your experience?')}</h2>
+                    <p class="fb-subtitle">${t('feedback.select_one_option', 'Please select one option')}</p>
                     <div class="fb-exp-grid" id="fb-exp-grid">
-                        ${EXPERIENCES.map(exp => `
+                        ${experiences.map(exp => `
                             <button class="fb-exp-chip" data-exp="${exp.key}" type="button" aria-label="${exp.label}">
                                 <img src="${exp.icon}" alt="${exp.label}" width="44" height="44">
                                 <span>${exp.label}</span>
@@ -267,15 +273,15 @@ function _renderModal(modal, step) {
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#1A7A2E" stroke-width="2" fill="none"/>
                             <path d="M9 12l2 2 4-4" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
-                        <span>Your feedback is anonymous and helps us improve LightUp.</span>
+                        <span>${t('feedback.anonymous_note', 'Your feedback is anonymous and helps us improve LiphtUp.')}</span>
                     </div>
                 </div>
 
                 <!-- Step: Select reasons -->
                 <div id="fb-step-reasons" class="fb-step${step === 'step-reasons' ? ' fb-active' : ''}">
                     <div class="fb-header">
-                        <button class="fb-back-btn" id="fb-back-reasons" type="button" aria-label="Back">&#8592;</button>
-                        <button class="fb-close-btn" id="fb-close-reasons" type="button" aria-label="Close feedback">&times;</button>
+                        <button class="fb-back-btn" id="fb-back-reasons" type="button" aria-label="${t('common.back', 'Back')}">&#8592;</button>
+                        <button class="fb-close-btn" id="fb-close-reasons" type="button" aria-label="${t('common.close', 'Close')}">&times;</button>
                     </div>
                     <div id="fb-reasons-exp-icon" style="margin:0 auto 12px;width:56px;height:56px;display:block;"></div>
                     <h2 class="fb-reasons-title" id="fb-reasons-title" style="text-align:center;width:100%;"></h2>
@@ -283,27 +289,27 @@ function _renderModal(modal, step) {
                     <p class="fb-count-label" id="fb-count-label" aria-live="polite">0 of ${MAX_REASONS} selected</p>
                     <div class="fb-reasons-grid" id="fb-reasons-grid"></div>
                     <p id="fb-reasons-validation" class="fb-validation-msg" aria-live="polite"></p>
-                    <button class="fb-submit-btn" id="fb-submit-btn" type="button">Submit Feedback</button>
+                    <button class="fb-submit-btn" id="fb-submit-btn" type="button">${t('services.submit_feedback', 'Submit Feedback')}</button>
                 </div>
 
                 <!-- Step: Loading -->
                 <div id="fb-step-loading" class="fb-step${step === 'step-loading' ? ' fb-active' : ''}">
                     <div class="fb-header">
-                        <button class="fb-back-btn d-invisible" type="button" aria-label="Back">&#8592;</button>
+                        <button class="fb-back-btn d-invisible" type="button" aria-label="${t('common.back', 'Back')}">&#8592;</button>
                         <span></span>
                     </div>
                     <div class="fb-loading-wrap">
                         <img src="assets/icons/webicons/feedback-submit-illustration.svg"
                              class="fb-illustration fb-illustration-spin"
                              alt="" aria-hidden="true" width="88" height="88">
-                        <h2 class="fb-title">Submitting your feedback...</h2>
-                        <p class="fb-subtitle">Please wait a moment.</p>
+                        <h2 class="fb-title">${t('feedback.submitting_feedback', 'Submitting your feedback...')}</h2>
+                        <p class="fb-subtitle">${t('feedback.please_wait_moment', 'Please wait a moment.')}</p>
                         <p style="font-size:11px;color:var(--gy-muted);display:flex;align-items:center;gap:6px;margin:8px 0 0;">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="#1A7A2E" aria-hidden="true">
                                 <rect x="3" y="11" width="18" height="10" rx="2" stroke="#1A7A2E" stroke-width="2" fill="none"/>
                                 <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round"/>
                             </svg>
-                            This will only take a few seconds.
+                            ${t('feedback.few_seconds_note', 'This will only take a few seconds.')}
                         </p>
                     </div>
                 </div>
@@ -311,17 +317,16 @@ function _renderModal(modal, step) {
                 <!-- Step: Success -->
                 <div id="fb-step-success" class="fb-step${step === 'step-success' ? ' fb-active' : ''}">
                     <div class="fb-header">
-                        <button class="fb-back-btn d-invisible" type="button" aria-label="Back">&#8592;</button>
+                        <button class="fb-back-btn d-invisible" type="button" aria-label="${t('common.back', 'Back')}">&#8592;</button>
                         <span></span>
                     </div>
                     <div class="fb-success-wrap">
                         <img src="assets/icons/webicons/feedback-success-illustration.svg"
-
                              class="fb-illustration"
                              alt="" aria-hidden="true" width="88" height="88">
-                        <h2 class="fb-success-title">Thanks for your feedback! 💚</h2>
-                        <p class="fb-success-sub">You're helping us improve LightUp for everyone.</p>
-                        <button class="fb-done-btn" id="fb-done-btn" type="button">Done</button>
+                        <h2 class="fb-success-title">${t('feedback.thanks_for_feedback', 'Thanks for your feedback! 💚')}</h2>
+                        <p class="fb-success-sub">${t('feedback.helping_improve', "You're helping us improve LiphtUp for everyone.")}</p>
+                        <button class="fb-done-btn" id="fb-done-btn" type="button">${t('common.done', 'Done')}</button>
                     </div>
                 </div>
 
@@ -433,7 +438,8 @@ function _highlightExpChip(modal, expKey) {
 
 function _renderReasonsStep(modal) {
     if (!_selectedExp) return;
-    const exp = EXPERIENCES.find(e => e.key === _selectedExp);
+    const experiences = getExperiences();
+    const exp = experiences.find(e => e.key === _selectedExp);
     if (!exp) return;
 
     // Update icon
@@ -449,7 +455,7 @@ function _renderReasonsStep(modal) {
     // Render reason chips
     const grid = modal.querySelector('#fb-reasons-grid');
     if (grid) {
-        const reasons = REASONS[_selectedExp] || [];
+        const reasons = getReasons(_selectedExp);
         grid.innerHTML = reasons.map(r => {
             const sel = _selectedReasons.includes(r.key);
             const disabled = !sel && _selectedReasons.length >= MAX_REASONS;
@@ -485,7 +491,7 @@ function _updateCountLabel(modal) {
     const label = modal.querySelector('#fb-count-label');
     if (!label) return;
     const count = _selectedReasons.length;
-    label.textContent = `${count} of ${MAX_REASONS} selected`;
+    label.textContent = t('feedback.count_selected', '{count} of {max} selected', { count, max: MAX_REASONS });
     label.classList.toggle('fb-maxed', count >= MAX_REASONS);
 }
 
@@ -500,7 +506,7 @@ async function _handleSubmit(modal) {
     if (!_selectedExp) {
         const v = modal.querySelector('#fb-reasons-validation') || modal.querySelector('#fb-exp-validation');
         if (v) {
-            v.textContent = 'Please select an experience first.';
+            v.textContent = t('feedback.select_exp_first', 'Please select an experience first.');
             setTimeout(() => { if (v) v.textContent = ''; }, 3000);
         }
         return;
@@ -511,7 +517,7 @@ async function _handleSubmit(modal) {
 
     try {
         const user = auth.currentUser;
-        if (!user) throw new Error('Please sign in to submit feedback.');
+        if (!user) throw new Error(t('feedback.signin_required', 'Please sign in to submit feedback.'));
         const idToken = await user.getIdToken();
 
         const response = await fetch(`/api/rides/${encodeURIComponent(_rideId)}/feedback`, {
@@ -549,7 +555,7 @@ async function _handleSubmit(modal) {
         _renderReasonsStep(modal);
         const v = modal.querySelector('#fb-reasons-validation');
         if (v) {
-            v.textContent = err.message || 'Could not submit. Please try again.';
+            v.textContent = err.message || t('feedback.submit_failed_retry', 'Could not submit. Please try again.');
             setTimeout(() => { if (v) v.textContent = ''; }, 5000);
         }
     }
