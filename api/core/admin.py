@@ -10,9 +10,9 @@ from typing import Any, Optional
 from fastapi import Header
 from firebase_admin import firestore as fb_firestore
 
-from api.core.auth import verify_firebase_token
-from api.core.errors import ApiError
-from api.core.firebase import get_admin_app
+from .auth import verify_firebase_token
+from .errors import ApiError
+from .firebase import get_admin_app
 
 
 def get_user_admin_role(uid: str, email: str = "") -> str:

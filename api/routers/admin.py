@@ -24,16 +24,16 @@ from firebase_admin import firestore as fb_firestore
 from google.api_core import exceptions as gcloud_exceptions
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.core.admin import (
+from ..core.admin import (
     now_utc,
     require_admin,
     require_super_admin,
     require_admin_or_super_admin,
     write_audit_log,
 )
-from api.core.config import get_env
-from api.core.errors import ApiError
-from api.core.firebase import get_admin_app
+from ..core.config import get_env
+from ..core.errors import ApiError
+from ..core.firebase import get_admin_app
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

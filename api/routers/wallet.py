@@ -14,11 +14,11 @@ from firebase_admin import firestore as fb_firestore
 from firebase_admin import messaging as fb_messaging
 from pydantic import BaseModel, Field
 
-from api.core.auth import current_user
-from api.core.config import get_env
-from api.core.errors import ApiError
-from api.core.firebase import get_admin_app, get_firestore
-from api.core.wallet_service import (
+from ..core.auth import current_user
+from ..core.config import get_env
+from ..core.errors import ApiError
+from ..core.firebase import get_admin_app, get_firestore
+from ..core.wallet_service import (
     inr_to_paise,
     paise_to_inr_float,
     transfer_ride_fare,

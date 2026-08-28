@@ -16,8 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from firebase_admin import firestore as fb_firestore
 
-from api.core.admin import write_audit_log
-from api.core.errors import ApiError
+from .admin import write_audit_log
+from .errors import ApiError
 
 
 REVERSAL_MIN_THRESHOLD_PAISE = 100000  # Strictly > 100,000 paise (i.e. > ₹1,000.00)
