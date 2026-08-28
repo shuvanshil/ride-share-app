@@ -3,6 +3,17 @@ FastAPI application entrypoint.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure project root and api package are on sys.path for Vercel Serverless
+_API_DIR = Path(__file__).resolve().parent
+_ROOT_DIR = _API_DIR.parent
+if str(_ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(_ROOT_DIR))
+if str(_API_DIR) not in sys.path:
+    sys.path.insert(0, str(_API_DIR))
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .core.errors import ApiError
-from .routers import account, admin, auth, google, notify, otp, rides
+from .routers import account, admin, admin_wallet, auth, google, notify, otp, rides, wallet
 from .routers import driver_payments
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
@@ -83,14 +94,25 @@ async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResp
     )
 
 app.include_router(google.router, prefix="/api")
+app.include_router(google.router)
 app.include_router(otp.router, prefix="/api")
+app.include_router(otp.router)
 app.include_router(account.router, prefix="/api")
+app.include_router(account.router)
 app.include_router(driver_payments.router)
 app.include_router(driver_payments.admin_router)
 app.include_router(notify.router, prefix="/api")
+app.include_router(notify.router)
 app.include_router(auth.router, prefix="/api")
+app.include_router(auth.router)
 app.include_router(rides.router, prefix="/api")
+app.include_router(rides.router)
+app.include_router(wallet.router, prefix="/api")
+app.include_router(wallet.router)
+app.include_router(admin_wallet.router, prefix="/api")
+app.include_router(admin_wallet.router)
 app.include_router(admin.router, prefix="/api")
+app.include_router(admin.router)
 
 # Continuous background thread for scheduled ride activation & matching sweep
 import threading

@@ -12,11 +12,11 @@ import datetime
 from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel
 
-from api.core.auth import current_user
-from api.core.admin import require_admin, write_audit_log, now_utc
-from api.core.errors import ApiError
-from api.core.firebase import get_firestore
-from api.core.payment_schedule import (
+from ..core.auth import current_user
+from ..core.admin import require_admin, write_audit_log, now_utc
+from ..core.errors import ApiError
+from ..core.firebase import get_firestore
+from ..core.payment_schedule import (
     get_payment_week_info,
     get_ist_now,
     is_date_in_pause_range,
@@ -155,6 +155,7 @@ def get_driver_payment_status(
     current_week_id = week_info["weekId"]
 
     # Query all payment submissions for this driver
+    # Query all payment submissions for this driver
     payments_ref = db.collection("driverPayments").where("driverId", "==", uid)
     docs = list(payments_ref.stream())
 
@@ -292,6 +293,12 @@ def submit_weekly_payment(
         "ok": True,
         "message": "Payment submitted for verification successfully.",
         "payment": _format_payment_doc(target_doc_ref.id, payload),
+    }
+
+    return {
+        "ok": True,
+        "message": "Payment submitted for verification successfully.",
+        "payment": _format_payment_doc(doc_id, payload),
     }
 
 
