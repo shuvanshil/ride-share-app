@@ -2021,6 +2021,11 @@ body {
     color: #16A34A;
 }
 
+.py-history-check-circle.declined {
+    background: #FEE2E2;
+    color: #DC2626;
+}
+
 .py-history-item-info {
     display: flex;
     flex-direction: column;
@@ -2048,6 +2053,8 @@ body {
 
 .py-sub-badge.approved { color: #16A34A; }
 .py-sub-badge.submitted { color: #2563EB; }
+.py-sub-badge.declined { color: #DC2626; }
+.py-sub-badge.due { color: #D97706; }
 .py-sub-badge.declined, .py-sub-badge.overdue { color: #DC2626; }
 
 .py-history-item-right {

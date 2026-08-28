@@ -165,52 +165,62 @@ function renderPaymentUI(data) {
     const noticeTitle = document.getElementById('py-notice-title');
     const noticeDesc = document.getElementById('py-notice-desc');
     const noticeCard = document.getElementById('py-general-notice-card');
+    const noticeIconWrap = document.getElementById('py-notice-icon-wrap');
 
     if (noticeCard && noticeTitle && noticeDesc) {
         if (isPaused) {
             noticeCard.className = 'py-general-notice-card approved';
+            if (noticeIconWrap) {
+                noticeIconWrap.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>`;
+            }
             noticeTitle.innerText = t('driver.payments_paused_title', 'Weekly Payments Paused.');
             noticeDesc.innerText = pauseMsg;
         } else if (currentStatus === 'submitted') {
             noticeCard.className = 'py-general-notice-card submitted';
+            if (noticeIconWrap) {
+                noticeIconWrap.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#2563EB" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+            }
             noticeTitle.innerText = t('driver.payment_under_review_title', 'Payment under review.');
             noticeDesc.innerText = t('driver.payment_under_review_desc', 'Your weekly fee payment has been submitted and is currently under review by our accounts team.');
         } else if (currentStatus === 'approved') {
             noticeCard.className = 'py-general-notice-card approved';
+            if (noticeIconWrap) {
+                noticeIconWrap.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#16A34A" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+            }
             noticeTitle.innerText = t('driver.payment_verified_title', 'Weekly fee paid & verified.');
             noticeDesc.innerText = t('driver.payment_verified_desc', 'Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.');
         } else if (currentStatus === 'declined') {
             noticeCard.className = 'py-general-notice-card declined';
+            if (noticeIconWrap) {
+                noticeIconWrap.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#DC2626" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+            }
             const reason = activeSub?.declineReason ? ` (${activeSub.declineReason})` : '';
             noticeTitle.innerText = t('driver.payment_declined_title', 'Payment declined.');
             noticeDesc.innerText = `${t('driver.payment_declined_desc', 'Your previous payment submission was declined')}${reason}.`;
         } else {
             noticeCard.className = 'py-general-notice-card';
+            if (noticeIconWrap) {
+                noticeIconWrap.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#D97706" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+            }
             noticeTitle.innerText = t('driver.payment_pending_title', 'Weekly payment pending.');
             noticeDesc.innerText = t('driver.payment_pending_desc', 'Please pay your weekly fee before Sunday 12:00 PM to keep your driver account active and accept ride requests.');
         }
     }
 
-    // 4) Main Pay Button
+    // 4) Main Pay Button: Hidden on pending/under review or approved
+    const payActionWrap = document.getElementById('py-pay-action-wrap');
     if (payBtn) {
         const total = duesSummary.totalAmountToBePaid || weekInfo.amount || 140;
-        if (isPaused) {
-            payBtn.innerHTML = `<span>${t('driver.payments_paused_btn', 'Weekly Payments Paused (No Fee Due)')}</span>`;
+        if (isPaused || currentStatus === 'submitted' || currentStatus === 'approved') {
+            if (payActionWrap) payActionWrap.classList.add('d-none');
             payBtn.disabled = true;
-            payBtn.className = 'py-main-pay-btn disabled';
-        } else if (currentStatus === 'submitted') {
-            payBtn.innerHTML = `<span>${t('driver.payment_submitted_btn', 'Payment Submitted — Under Review')}</span>`;
-            payBtn.disabled = true;
-            payBtn.className = 'py-main-pay-btn disabled';
-        } else if (currentStatus === 'approved') {
-            payBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><span>${t('driver.payment_verified_btn', 'Weekly Fee Paid (Verified ✓)')}</span>`;
-            payBtn.disabled = true;
-            payBtn.className = 'py-main-pay-btn verified';
         } else if (currentStatus === 'declined') {
+            if (payActionWrap) payActionWrap.classList.remove('d-none');
             payBtn.innerHTML = `<span>${t('driver.repay_fee_btn', 'Re-pay Weekly Fee')} (₹${total})</span>`;
             payBtn.disabled = false;
             payBtn.className = 'py-main-pay-btn danger';
         } else {
+            if (payActionWrap) payActionWrap.classList.remove('d-none');
             payBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg><span>${t('driver.pay_weekly_fee', 'Pay Weekly Fee')} (₹${total})</span>`;
             payBtn.disabled = false;
             payBtn.className = 'py-main-pay-btn';
@@ -227,8 +237,8 @@ function renderPaymentUI(data) {
         nextAmountEl.innerText = upcomingWeek.amount || 140;
     }
 
-    // 6) History Lists
-    const history = data.history || [];
+    // 6) History Lists (Only completed: approved or declined)
+    const history = (data.history || []).filter(item => item.status === 'approved' || item.status === 'declined');
     renderRecentHistory(history.slice(0, 3));
     renderFullHistory(history);
 
@@ -285,26 +295,19 @@ function renderHistoryItemHtml(item) {
         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
     }) : '--';
 
-    let badgeClass = 'due';
-    let badgeText = t('driver.status_pending', 'PENDING');
+    const isApproved = item.status === 'approved';
+    const isDeclined = item.status === 'declined';
+    const badgeClass = isApproved ? 'approved' : 'declined';
+    const badgeText = isApproved ? t('driver.status_approved', 'APPROVED') : t('driver.status_declined', 'DECLINED');
 
-    if (item.status === 'submitted') {
-        badgeClass = 'submitted';
-        badgeText = t('driver.status_under_review', 'UNDER VERIFICATION');
-    } else if (item.status === 'approved') {
-        badgeClass = 'approved';
-        badgeText = t('driver.status_approved', 'APPROVED');
-    } else if (item.status === 'declined') {
-        badgeClass = 'declined';
-        badgeText = t('driver.status_declined', 'DECLINED');
-    }
+    const iconHtml = isApproved
+        ? `<div class="py-history-check-circle approved"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#16A34A" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>`
+        : `<div class="py-history-check-circle declined"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#DC2626" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`;
 
     return `
         <div class="py-history-item">
             <div class="py-history-item-left">
-                <div class="py-history-check-circle ${item.status === 'approved' ? 'approved' : ''}">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                </div>
+                ${iconHtml}
                 <div class="py-history-item-info">
                     <strong>Week ${item.weekId || '2026-W34'}</strong>
                     <span>${weekStr}</span>

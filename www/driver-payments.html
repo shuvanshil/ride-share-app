@@ -78,226 +78,224 @@
         <div id="driver-service-fee-tab-content" class="driver-tab-pane">
             <!-- 1) TOP DARK CARD: CURRENT WEEK -->
             <section class="py-top-dark-card">
-            <div class="py-dark-card-left">
-                <div class="py-dark-card-icon">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <div class="py-dark-card-left">
+                    <div class="py-dark-card-icon">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                    </div>
+                    <div class="py-dark-card-info">
+                        <span class="py-dark-card-label" data-i18n="driver.current_week">Current Week</span>
+                        <strong id="current-week-label" class="py-dark-card-dates">17 Aug 2026 (Mon) – 23 Aug 2026 (Sun)</strong>
+                    </div>
+                </div>
+                <div id="current-week-status-badge" class="py-status-badge approved">
+                    <span data-i18n="driver.status_approved">APPROVED</span>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                </div>
+            </section>
+
+            <!-- 2) CURRENT WEEK DETAILS CARD -->
+            <section class="py-white-card">
+                <div class="py-card-header mb-2">
+                    <div class="py-card-header-title">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                            <line x1="1" y1="10" x2="23" y2="10"></line>
+                        </svg>
+                        <span data-i18n="driver.payment_details">Payment Details</span>
+                    </div>
+                </div>
+
+                <!-- Dues Warning / Breakdown Section -->
+                <div id="py-dues-alert" class="py-alert-dues d-none mb-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <span class="py-dues-tag" data-i18n="driver.multiple_weeks_due">Multiple Weeks Due</span>
+                            <h4 id="py-dues-amount" class="py-dues-amount">₹0</h4>
+                            <p id="py-dues-desc" class="py-dues-desc mb-0">Includes current week and 0 past overdue weeks.</p>
+                        </div>
+                        <button id="py-see-all-top-btn" type="button" class="btn btn-sm btn-outline-success fw-bold px-3 py-1" style="border-radius: 8px;" data-i18n="driver.see_all">See all</button>
+                    </div>
+                </div>
+
+                <div class="py-details-list">
+                    <div class="py-detail-row">
+                        <div class="py-detail-left">
+                            <span class="py-row-icon green-icon">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            </span>
+                            <span data-i18n="common.status">Status</span>
+                        </div>
+                        <span id="py-current-status-badge" class="py-status-badge approved" data-i18n="driver.status_approved">APPROVED</span>
+                    </div>
+
+                    <div class="py-detail-row highlight-amount">
+                        <div class="py-detail-left">
+                            <span class="py-row-icon green-icon">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                            </span>
+                            <span data-i18n="driver.total_amount_to_pay">Total Amount to be Paid</span>
+                        </div>
+                        <strong id="py-total-amount" class="py-total-amount-val">₹140</strong>
+                    </div>
+                </div>
+
+                <!-- Bottom 2-Column Grid -->
+                <div class="py-details-footer-grid">
+                    <div class="py-footer-col">
+                        <span class="py-footer-label" data-i18n="driver.previous_dues_label">Previous Dues Included?</span>
+                        <strong id="py-prev-dues-text" class="py-footer-val green">No previous dues</strong>
+                    </div>
+                    <div class="py-footer-col">
+                        <span class="py-footer-label" data-i18n="driver.time_left_label">Time Left to Pay</span>
+                        <div class="py-time-left-wrap">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#D97706" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <strong id="py-time-left" class="py-footer-val">2d 15h 59m</strong>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3) NOTICE CARD / STATUS CARD WITH DYNAMIC ICONS -->
+            <section id="py-general-notice-card" class="py-general-notice-card approved">
+                <div class="py-notice-icon-wrap" id="py-notice-icon-wrap">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#16A34A" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="py-notice-content">
+                    <strong id="py-notice-title">Weekly fee paid & verified.</strong>
+                    <p id="py-notice-desc" class="mb-0">Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.</p>
+                </div>
+            </section>
+
+            <!-- 4) PAYMENT BUTTON (HIDDEN ON PENDING/UNDER REVIEW/APPROVED) -->
+            <section id="py-pay-action-wrap" class="py-pay-action-wrap d-none">
+                <button id="pay-weekly-fee-btn" type="button" class="py-main-pay-btn">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                        <line x1="2" y1="10" x2="22" y2="10"></line>
+                    </svg>
+                    <span data-i18n="driver.pay_weekly_fee">Pay Weekly Fee</span>
+                </button>
+            </section>
+
+            <!-- 5) UPCOMING WEEK DETAILS CARD -->
+            <section class="py-upcoming-card">
+                <div class="py-upcoming-header">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#D97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="16" y1="2" x2="16" y2="6"></line>
                         <line x1="8" y1="2" x2="8" y2="6"></line>
                         <line x1="3" y1="10" x2="21" y2="10"></line>
                     </svg>
+                    <span data-i18n="driver.upcoming_week_details">Upcoming Week Details</span>
                 </div>
-                <div class="py-dark-card-info">
-                    <span class="py-dark-card-label" data-i18n="driver.current_week">Current Week</span>
-                    <strong id="current-week-label" class="py-dark-card-dates">17 Aug 2026 (Mon) – 23 Aug 2026 (Sun)</strong>
+                <div class="py-upcoming-body">
+                    <div class="py-upcoming-col">
+                        <span class="py-upcoming-label" data-i18n="driver.next_due_date">Next Due Date</span>
+                        <strong id="py-next-due-date" class="py-upcoming-val">30 Aug 2026 (Sun)</strong>
+                    </div>
+                    <div class="py-upcoming-col text-end">
+                        <span class="py-upcoming-label" data-i18n="driver.amount">Amount</span>
+                        <div class="py-upcoming-amount-badge">
+                            <span class="py-rupee-symbol">₹</span>
+                            <strong id="py-next-amount">140</strong>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div id="current-week-status-badge" class="py-status-badge approved">
-                <span data-i18n="driver.status_approved">APPROVED</span>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-            </div>
-        </section>
+            </section>
 
-            <!-- 2) CURRENT WEEK DETAILS CARD -->
+            <!-- 6) PAYMENT HISTORY SECTION (LAST 3 COMPLETED + SEE ALL) -->
             <section class="py-white-card">
-            <div class="py-card-header">
-                <div class="py-card-header-title">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-                        <line x1="1" y1="10" x2="23" y2="10"></line>
-                    </svg>
-                    <span data-i18n="driver.payment_details">Payment Details</span>
-                </div>
-            </div>
-
-            <!-- Dues Warning / Breakdown Section -->
-            <div id="py-dues-alert" class="py-alert-dues d-none">
-                <div class="d-flex align-items-center justify-content-between">
-                    <div>
-                        <span class="py-dues-tag" data-i18n="driver.multiple_weeks_due">Multiple Weeks Due</span>
-                        <h4 id="py-dues-amount" class="py-dues-amount">₹0</h4>
-                        <p id="py-dues-desc" class="py-dues-desc mb-0">Includes current week and 0 past overdue weeks.</p>
+                <div class="py-card-header justify-content-between mb-3">
+                    <div class="py-card-header-title">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="8" y1="6" x2="21" y2="6"></line>
+                            <line x1="8" y1="12" x2="21" y2="12"></line>
+                            <line x1="8" y1="18" x2="21" y2="18"></line>
+                            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                        </svg>
+                        <span data-i18n="driver.payment_history">Payment History</span>
                     </div>
-                    <button id="py-see-all-top-btn" type="button" class="btn btn-sm btn-outline-success fw-bold px-3 py-1" style="border-radius: 8px;" data-i18n="driver.see_all">See all</button>
+                    <button id="py-see-all-top-btn" type="button" class="py-see-all-top-link" style="color: #059669;" data-i18n="driver.see_all">See all</button>
                 </div>
-            </div>
 
-            <div class="py-details-list">
-                <div class="py-detail-row">
-                    <div class="py-detail-left">
-                        <span class="py-row-icon green-icon">
-                    <div class="py-detail-left">
-                        <span class="py-row-icon green-icon">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <div id="payments-history-list" class="py-history-list">
+                    <!-- Dynamically rendered recent items -->
+                </div>
+
+                <button id="py-see-all-btn" type="button" class="py-see-all-full-btn mt-3">
+                    <span data-i18n="driver.see_all_history">See All History</span>
+                </button>
+            </section>
+
+            <!-- 7) INSTRUCTIONS SECTION (HOW IT WORKS) -->
+            <section class="py-white-card py-instructions-card">
+                <div class="py-card-header mb-3">
+                    <div class="py-card-header-title">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span data-i18n="driver.how_it_works">How it works</span>
+                    </div>
+                </div>
+
+                <!-- Steps with data-i18n -->
+                <div class="py-step-list mb-3">
+                    <div class="py-step-item">
+                        <span class="py-step-num">1</span>
+                        <span class="py-step-text" data-i18n="driver.step_1">Click "Pay the weekly fee"</span>
+                        <span class="py-step-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#059669" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6M10 10.5V2a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8M18 8a2 2 0 0 1 2 2v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-3"/></svg>
                         </span>
-                        <span data-i18n="common.status">Status</span>
                     </div>
-                    <span id="py-current-status-badge" class="py-status-badge approved" data-i18n="driver.status_approved">APPROVED</span>
-                </div>
-
-                <div class="py-detail-row highlight-amount">
-                    <div class="py-detail-left">
-                        <span class="py-row-icon green-icon">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                    <div class="py-step-item">
+                        <span class="py-step-num">2</span>
+                        <span class="py-step-text" data-i18n="driver.step_2">Scan the QR code using any UPI app (GPay, PhonePe, Paytm)</span>
+                        <span class="py-step-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#059669" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                         </span>
-                        <span data-i18n="driver.total_amount_to_pay">Total Amount to be Paid</span>
                     </div>
-                    <strong id="py-total-amount" class="py-total-amount-val">₹140</strong>
-                </div>
-            </div>
-
-            <!-- Bottom 2-Column Grid -->
-            <div class="py-details-footer-grid">
-                <div class="py-footer-col">
-                    <span class="py-footer-label" data-i18n="driver.previous_dues_label">Previous Dues Included?</span>
-                    <strong id="py-prev-dues-text" class="py-footer-val green">No previous dues</strong>
-                </div>
-                <div class="py-footer-col">
-                    <span class="py-footer-label" data-i18n="driver.time_left_label">Time Left to Pay</span>
-                    <div class="py-time-left-wrap">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#D97706" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        <strong id="py-time-left" class="py-footer-val">2d 15h 59m</strong>
+                    <div class="py-step-item">
+                        <span class="py-step-num">3</span>
+                        <span class="py-step-text" data-i18n="driver.step_3">Pay ₹140 (amount auto-filled)</span>
+                        <span class="py-step-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#059669" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 6v12"/></svg>
+                        </span>
                     </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 3) ENCOURAGING GENERAL MESSAGE CARD -->
-        <section id="py-general-notice-card" class="py-general-notice-card">
-            <div class="py-notice-icon-wrap">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
-            <div class="py-notice-content">
-                <strong id="py-notice-title">Weekly fee paid & verified.</strong>
-                <p id="py-notice-desc" class="mb-0">Your weekly fee payment of ₹140 has been verified and approved. You are active to receive ride requests.</p>
-            </div>
-        </section>
-
-        <!-- 4) PAYMENT BUTTON -->
-        <section class="py-pay-action-wrap">
-            <button id="pay-weekly-fee-btn" type="button" class="py-main-pay-btn">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-                    <line x1="2" y1="10" x2="22" y2="10"></line>
-                </svg>
-                <span data-i18n="driver.pay_weekly_fee">Pay Weekly Fee</span>
-            </button>
-        </section>
-
-        <!-- 5) UPCOMING WEEK DETAILS CARD -->
-        <section class="py-upcoming-card">
-            <div class="py-upcoming-header">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#D97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
-                <span data-i18n="driver.upcoming_week_details">Upcoming Week Details</span>
-            </div>
-            <div class="py-upcoming-body">
-                <div class="py-upcoming-col">
-                    <span class="py-upcoming-label" data-i18n="driver.next_due_date">Next Due Date</span>
-                    <strong id="py-next-due-date" class="py-upcoming-val">30 Aug 2026 (Sun)</strong>
-                </div>
-                <div class="py-upcoming-col text-end">
-                    <span class="py-upcoming-label" data-i18n="driver.amount">Amount</span>
-                    <div class="py-upcoming-amount-badge">
-                        <span class="py-rupee-symbol">₹</span>
-                        <strong id="py-next-amount">140</strong>
+                    <div class="py-step-item">
+                        <span class="py-step-num">4</span>
+                        <span class="py-step-text" data-i18n="driver.step_4">Click "Payment done" in the app</span>
+                        <span class="py-step-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#059669" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        </span>
+                    </div>
+                    <div class="py-step-item">
+                        <span class="py-step-num">5</span>
+                        <span class="py-step-text" data-i18n="driver.step_5">Wait for verification from our accounts team</span>
+                        <span class="py-step-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#059669" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        </span>
                     </div>
                 </div>
-            </div>
-        </section>
-
-        <!-- 6) PAYMENT HISTORY SECTION (LAST 3 + SEE ALL) -->
-        <section class="py-white-card">
-            <div class="py-card-header justify-content-between mb-3">
-                <div class="py-card-header-title">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#6D28D9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="8" y1="6" x2="21" y2="6"></line>
-                        <line x1="8" y1="12" x2="21" y2="12"></line>
-                        <line x1="8" y1="18" x2="21" y2="18"></line>
-                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
-                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
-                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
-                    </svg>
-                    <span data-i18n="driver.payment_history">Payment History</span>
-                </div>
-                <button id="py-see-all-top-btn" type="button" class="py-see-all-top-link" data-i18n="common.see_all">See All</button>
-            </div>
-
-            <div id="payments-history-list" class="py-history-list">
-                <!-- Dynamically rendered recent items -->
-            </div>
-
-            <button id="py-see-all-btn" type="button" class="py-see-all-full-btn">
-                <span data-i18n="driver.see_all_history">See All History</span>
-            </button>
-        </section>
-
-        <!-- 7) INSTRUCTIONS SECTION (HOW IT WORKS: ENGLISH & BENGALI) -->
-        <section class="py-white-card py-instructions-card">
-            <div class="py-card-header mb-3">
-                <div class="py-card-header-title">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4338CA" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                    <span data-i18n="driver.how_it_works">How it works</span>
-                </div>
-            </div>
-
-            <!-- English Steps -->
-            <div class="py-step-list mb-4">
-                <div class="py-step-item">
-                    <span class="py-step-num">1</span>
-                    <span class="py-step-text" data-i18n="driver.step_1">Click "Pay the weekly fee"</span>
-                    <span class="py-step-icon">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v6M10 10.5V2a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8M18 8a2 2 0 0 1 2 2v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-3"/></svg>
-                    </span>
-                </div>
-                <div class="py-step-item">
-                    <span class="py-step-num">2</span>
-                    <span class="py-step-text" data-i18n="driver.step_2">Scan the QR code using any UPI app (GPay, PhonePe, Paytm)</span>
-                    <span class="py-step-icon">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-                    </span>
-                </div>
-                <div class="py-step-item">
-                    <span class="py-step-num">3</span>
-                    <span class="py-step-text" data-i18n="driver.step_3">Pay ₹140 (amount auto-filled)</span>
-                    <span class="py-step-icon">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 6v12"/></svg>
-                    </span>
-                </div>
-                <div class="py-step-item">
-                    <span class="py-step-num">4</span>
-                    <span class="py-step-text" data-i18n="driver.step_4">Click "Payment done" in the app</span>
-                    <span class="py-step-icon">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                    </span>
-                </div>
-                <div class="py-step-item">
-                    <span class="py-step-num">5</span>
-                    <span class="py-step-text" data-i18n="driver.step_5">Wait for verification from our accounts team</span>
-                    <span class="py-step-icon">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#4338CA" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    </span>
-                </div>
-            </div>
-        </section>
+            </section>
 
             <!-- Footer Safety Assurance -->
-            <section class="py-general-notice-card">
-                <div class="py-notice-icon-wrap">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#059669" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+            <section class="py-general-notice-card" style="background: #F8FAFC; border-color: #E2E8F0;">
+                <div class="py-notice-icon-wrap" style="background: #EBF9F1;">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
                 </div>
                 <div class="py-notice-content">
-                    <p class="mb-0 text-dark fw-semibold" style="font-size: 0.88rem;" data-i18n="driver.verification_notice">Once verified, your status will be updated and you will continue to receive ride requests.</p>
+                    <p class="mb-0 text-dark fw-semibold" style="font-size: 0.85rem;" data-i18n="driver.verification_notice">Once verified, your status will be updated and you will continue to receive ride requests.</p>
                 </div>
             </section>
         </div>
