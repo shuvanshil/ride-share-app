@@ -192,9 +192,10 @@ def admin_list_passengers_wallets(
         uid = doc.id
         name = u_data.get("name", "Passenger")
         phone = u_data.get("phone", "")
+        email = u_data.get("email", "")
 
         if search_term:
-            if search_term not in name.lower() and search_term not in phone and search_term not in uid:
+            if search_term not in name.lower() and search_term not in phone and search_term not in uid and search_term not in email.lower():
                 continue
 
         wallet_snap = db.collection("wallets").document(uid).get()
@@ -212,9 +213,11 @@ def admin_list_passengers_wallets(
 
         results.append(
             {
+                "userId": uid,
                 "passengerId": uid,
                 "name": name,
                 "phone": phone,
+                "email": email,
                 "balancePaise": balance_paise,
                 "balance": paise_to_inr_float(balance_paise),
                 "lifetimeCreditPaise": lifetime_credit_paise,
@@ -229,6 +232,7 @@ def admin_list_passengers_wallets(
     return {"ok": True, "passengers": results[:limit], "totalCount": len(results)}
 
 
+@router.get("/user/{uid}/transactions")
 @router.get("/passenger/{uid}/transactions")
 def admin_get_passenger_transactions(
     uid: str,
@@ -244,9 +248,14 @@ def admin_get_passenger_transactions(
         created_at = data.get("createdAt")
         created_at_str = created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at or "")
         amount_paise = int(data.get("amountPaise") or 0)
+        is_credit = data.get("direction") == "credit"
+        is_reversed = bool(data.get("isReversed", False))
+        is_reversible = is_credit and (amount_paise > 100000) and not is_reversed
+
         txs.append(
             {
                 "transactionId": data.get("transactionId"),
+                "transactionType": data.get("type"),
                 "type": data.get("type"),
                 "direction": data.get("direction"),
                 "amountPaise": amount_paise,
@@ -259,7 +268,8 @@ def admin_get_passenger_transactions(
                 "description": data.get("description"),
                 "tags": data.get("tags") or [],
                 "createdBy": data.get("createdBy"),
-                "isReversed": bool(data.get("isReversed", False)),
+                "isReversible": is_reversible,
+                "isReversed": is_reversed,
                 "reversedTransactionId": data.get("reversedTransactionId"),
                 "reversalReason": data.get("reversalReason"),
                 "createdAt": created_at_str,
@@ -270,6 +280,7 @@ def admin_get_passenger_transactions(
     return {"ok": True, "transactions": txs}
 
 
+@router.post("/passenger/grant-credit")
 @router.post("/passenger-credit")
 def admin_grant_credit(
     body: GrantPassengerCreditRequest = Body(...),
@@ -315,6 +326,7 @@ def admin_grant_credit(
     }
 
 
+@router.post("/passenger/reverse-credit")
 @router.post("/credit-reversal")
 def admin_reverse_credit(
     body: ReverseCreditRequest = Body(...),
@@ -343,6 +355,7 @@ def admin_reverse_credit(
 # DRIVER SETTLEMENT MANAGEMENT ENDPOINTS
 # =====================================================================
 
+@router.get("/driver/settlements-summary")
 @router.get("/driver-settlements")
 def admin_list_driver_settlements(
     status_filter: Optional[str] = Query(None, alias="status"),
@@ -398,6 +411,8 @@ def admin_list_driver_settlements(
 
         if active_settlement:
             settlement_status = active_settlement.get("status")
+            if "settlementAmount" not in active_settlement:
+                active_settlement["settlementAmount"] = paise_to_inr_float(int(active_settlement.get("settlementAmountPaise") or 0))
         elif balance_paise > 0:
             settlement_status = "ready"
         else:
@@ -409,6 +424,7 @@ def admin_list_driver_settlements(
         results.append(
             {
                 "driverId": driver_id,
+                "userId": driver_id,
                 "name": name,
                 "phone": phone,
                 "upiId": raw_upi,
@@ -427,9 +443,10 @@ def admin_list_driver_settlements(
         )
 
     results.sort(key=lambda x: x["balancePaise"], reverse=True)
-    return {"ok": True, "drivers": results}
+    return {"ok": True, "driverSettlements": results, "drivers": results}
 
 
+@router.post("/driver/create-settlement")
 @router.post("/driver-settlement/create")
 def admin_create_driver_settlement(
     body: CreateSettlementRequest = Body(...),
@@ -450,20 +467,26 @@ def admin_create_driver_settlement(
     }
 
 
+@router.post("/driver/resolve-settlement")
+@router.post("/driver-settlement/resolve")
 @router.post("/driver-settlement/{settlement_id}/resolve")
 def admin_resolve_settlement(
-    settlement_id: str,
     body: ResolveSettlementRequest = Body(...),
+    settlement_id: Optional[str] = None,
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """
     Atomically resolves a driver settlement by deducting EXACT captured settlement amount.
     New driver earnings received after creation remain untouched.
     """
+    target_id = settlement_id or body.settlementId
+    if not target_id:
+        raise ApiError("Settlement ID is required.", 400)
+
     db = get_firestore()
     result = resolve_driver_settlement(
         db=db,
-        settlement_id=settlement_id,
+        settlement_id=target_id,
         admin_user=admin_user,
         admin_note=body.adminNote,
     )
@@ -477,21 +500,28 @@ def admin_resolve_settlement(
 
     return {
         "ok": True,
-        "message": f"Settlement #{settlement_id} marked as resolved. ₹{result['settledAmount']:g} deducted from driver wallet.",
+        "message": f"Settlement #{target_id} marked as resolved. ₹{result['settledAmount']:g} deducted from driver wallet.",
         "result": result,
+        "settlement": result,
     }
 
 
+@router.get("/driver/settlement-config")
 @router.get("/settlement-config")
 def admin_get_settlement_config(admin_user: Dict[str, Any] = Depends(require_admin)) -> Dict[str, Any]:
     """Retrieve global next scheduled driver settlement date."""
     db = get_firestore()
     cfg_snap = db.collection("systemSettings").document("driverSettlementConfig").get()
-    if not cfg_snap.exists:
-        return {"ok": True, "nextSettlementDate": None}
-    return {"ok": True, "config": cfg_snap.to_dict() or {}}
+    cfg_data = (cfg_snap.to_dict() or {}) if cfg_snap.exists else {}
+    next_date = cfg_data.get("nextSettlementDate")
+    return {
+        "ok": True,
+        "nextSettlementDate": next_date,
+        "config": cfg_data,
+    }
 
 
+@router.post("/driver/settlement-config")
 @router.post("/settlement-config")
 def admin_update_settlement_config(
     body: UpdateSettlementConfigRequest = Body(...),
@@ -519,7 +549,12 @@ def admin_update_settlement_config(
         after=payload,
     )
 
-    return {"ok": True, "message": "Driver settlement schedule updated successfully.", "config": payload}
+    return {
+        "ok": True,
+        "message": "Driver settlement schedule updated successfully.",
+        "config": payload,
+        "nextSettlementDate": clean_date,
+    }
 
 
 @router.get("/reconcile/{user_id}")
@@ -530,4 +565,4 @@ def admin_reconcile_wallet(
     """Runs a ledger-vs-materialized balance reconciliation for audit purposes."""
     db = get_firestore()
     report = reconcile_wallet(db, user_id)
-    return {"ok": True, "report": report}
+    return {"ok": True, "report": report, "reconciliationReport": report}

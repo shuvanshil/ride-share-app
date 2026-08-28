@@ -611,7 +611,7 @@ function renderPassengerWalletsTable() {
                                         </div>
                                         <div>
                                             <div class="font-weight-bold">${p.name || 'Passenger'}</div>
-                                            <div class="text-secondary small font-monospace">${p.userId}</div>
+                                            <div class="text-secondary small font-monospace">${p.userId || p.passengerId}</div>
                                         </div>
                                     </div>
                                 </td>
@@ -626,13 +626,13 @@ function renderPassengerWalletsTable() {
                                 </td>
                                 <td class="text-end">
                                     <div class="btn-list justify-content-end">
-                                        <button class="btn btn-outline-primary btn-sm btn-view-pass-history" data-uid="${p.userId}" data-name="${p.name || ''}" data-phone="${p.phone || ''}" data-bal="${p.balance || 0}" type="button">
+                                        <button class="btn btn-outline-primary btn-sm btn-view-pass-history" data-uid="${p.userId || p.passengerId}" data-name="${p.name || ''}" data-phone="${p.phone || ''}" data-bal="${p.balance || 0}" type="button">
                                             <i class="ti ti-history me-1"></i> Ledger
                                         </button>
-                                        <button class="btn btn-outline-success btn-sm btn-grant-pass-credit" data-uid="${p.userId}" type="button">
+                                        <button class="btn btn-outline-success btn-sm btn-grant-pass-credit" data-uid="${p.userId || p.passengerId}" type="button">
                                             <i class="ti ti-plus me-1"></i> Grant
                                         </button>
-                                        <button class="btn btn-outline-secondary btn-sm btn-reconcile-wallet" data-uid="${p.userId}" data-role="passenger" type="button" title="Audit & Reconcile">
+                                        <button class="btn btn-outline-secondary btn-sm btn-reconcile-wallet" data-uid="${p.userId || p.passengerId}" data-role="passenger" type="button" title="Audit & Reconcile">
                                             <i class="ti ti-check"></i>
                                         </button>
                                     </div>
@@ -668,9 +668,13 @@ function renderPassengerWalletsTable() {
 async function openGrantCreditModal(preselectedUserId = '') {
     const modal = document.getElementById('admin-grant-credit-modal');
     const select = document.getElementById('grant-credit-passenger-select');
+    const amountInput = document.getElementById('grant-credit-amount-input');
+    const descInput = document.getElementById('grant-credit-desc-input');
     if (!modal || !select) return;
 
     select.innerHTML = `<option value="">Loading passenger accounts...</option>`;
+    if (amountInput) amountInput.value = '';
+    if (descInput) descInput.value = 'Promotional bonus credit';
     modal.classList.remove('d-none');
 
     try {
@@ -681,12 +685,16 @@ async function openGrantCreditModal(preselectedUserId = '') {
 
         select.innerHTML = `
             <option value="">Select a passenger...</option>
-            ${cachedPassengerWallets.map(p => `
-                <option value="${p.userId}" ${p.userId === preselectedUserId ? 'selected' : ''}>
-                    ${p.name || 'Passenger'} (${p.phone || p.email || p.userId}) · Balance: ₹${p.balance || 0}
-                </option>
-            `).join('')}
+            ${cachedPassengerWallets.map(p => {
+                const uid = p.userId || p.passengerId || '';
+                return `
+                    <option value="${uid}" ${uid === preselectedUserId ? 'selected' : ''}>
+                        ${p.name || 'Passenger'} (${p.phone || p.email || uid}) · Balance: ₹${p.balance || 0}
+                    </option>
+                `;
+            }).join('')}
         `;
+        if (amountInput) setTimeout(() => amountInput.focus(), 100);
     } catch (e) {
         console.error("Error populating passengers:", e);
     }
