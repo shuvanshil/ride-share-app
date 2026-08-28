@@ -263,8 +263,7 @@ def transfer_ride_fare(
 ) -> Dict[str, Any]:
     """
     Executes an atomic passenger-to-driver ride wallet transfer.
-    Ensures transaction-safe idempotency, authoritative fare calculation,
-    and single-transaction 3-way balance & ride mutation.
+    Strictly adheres to Firestore transaction protocol: ALL document reads occur before ANY document writes.
     """
     clean_ride_id = str(ride_id).strip()[:160]
     clean_passenger_id = str(passenger_id).strip()
@@ -272,11 +271,17 @@ def transfer_ride_fare(
 
     ride_ref = db.collection("rides").document(clean_ride_id)
     idemp_ref = db.collection("rideWalletPayments").document(idemp_key)
+    pass_wallet_ref = get_wallet_ref(db, clean_passenger_id)
+
     result_holder: Dict[str, Any] = {}
 
     @fb_firestore.transactional
     def transfer_tx(tx):
-        # 1. Transaction-safe idempotency check inside tx
+        # -----------------------------------------------------------------
+        # PHASE 1: ALL READ OPERATIONS (Must happen before ANY writes)
+        # -----------------------------------------------------------------
+
+        # 1. Read idempotency record
         existing_payment_snap = idemp_ref.get(transaction=tx)
         if existing_payment_snap.exists:
             existing = existing_payment_snap.to_dict() or {}
@@ -285,36 +290,44 @@ def transfer_ride_fare(
                 result_holder["payment"] = existing
                 return
 
-        # 2. Authoritative Ride validation
+        # 2. Read ride record
         ride_snap = ride_ref.get(transaction=tx)
         if not ride_snap.exists:
             raise ApiError("Ride not found.", 404)
         ride = ride_snap.to_dict() or {}
 
-        if str(ride.get("passenger_id") or "") != clean_passenger_id:
-            raise ApiError("Only the passenger associated with this ride can pay using wallet.", 403)
+        # 3. Read passenger wallet
+        pass_snap = pass_wallet_ref.get(transaction=tx)
+        pass_data = (pass_snap.to_dict() or {}) if pass_snap.exists else {}
 
-        driver_id = str(ride.get("driver_id") or "").strip()
+        # 4. Resolve driver ID and read driver wallet
+        driver_id = str(ride.get("driver_id") or ride.get("driverId") or "").strip()
         if not driver_id:
             raise ApiError("No driver assigned to this ride yet.", 400)
 
-        # Ride state verification
+        drv_wallet_ref = get_wallet_ref(db, driver_id)
+        drv_snap = drv_wallet_ref.get(transaction=tx)
+        drv_data = (drv_snap.to_dict() or {}) if drv_snap.exists else {}
+
+        # -----------------------------------------------------------------
+        # VALIDATIONS & CALCULATIONS
+        # -----------------------------------------------------------------
+        pass_owner_id = str(ride.get("passenger_id") or ride.get("passengerId") or "").strip()
+        if pass_owner_id != clean_passenger_id:
+            raise ApiError("Only the passenger associated with this ride can pay using wallet.", 403)
+
         ride_status = str(ride.get("status") or "").strip()
-        # Allowed payable states: started, en_route (after PIN verification), or completed with remaining fare
-        allowed_payable_statuses = {"started", "en_route", "completed"}
+        allowed_payable_statuses = {"accepted", "arrived", "started", "en_route", "completed"}
         if ride_status not in allowed_payable_statuses:
             raise ApiError(f"Ride in state '{ride_status}' is not eligible for wallet payment.", 400)
 
-        # Calculate authoritative fare in integer paise
         fare_paise = int(ride.get("farePaise") or 0)
         if fare_paise <= 0:
-            # Fallback legacy float normalization if needed
             fare_paise = inr_to_paise(ride.get("fare") or 0)
 
         if fare_paise <= 0:
             raise ApiError("Ride fare is zero or not finalized.", 400)
 
-        # Calculate all existing payments
         wallet_paid_paise = int(ride.get("walletPaidAmountPaise") or 0)
         if wallet_paid_paise <= 0 and ride.get("wallet_paid_amount"):
             wallet_paid_paise = inr_to_paise(ride.get("wallet_paid_amount") or 0)
@@ -329,67 +342,129 @@ def transfer_ride_fare(
         if remaining_fare_paise <= 0:
             raise ApiError("Ride fare is already fully paid.", 400)
 
-        # 3. Passenger wallet balance check
-        pass_wallet = get_or_create_wallet_tx(tx, db, clean_passenger_id, "passenger")
-        pass_balance_paise = int(pass_wallet.get("balancePaise", 0))
+        # Passenger balance
+        pass_balance_paise = int(pass_data.get("balancePaise") or (pass_data.get("balance", 0) * 100))
         if pass_balance_paise <= 0:
             raise ApiError("Insufficient wallet balance.", 400)
 
-        # Determine transfer amount (exact integer paise)
+        # Driver balance before
+        drv_balance_before = int(drv_data.get("balancePaise") or (drv_data.get("balance", 0) * 100))
+        drv_lifetime_credit = int(drv_data.get("lifetimeCreditPaise") or 0)
+
+        pass_lifetime_debit = int(pass_data.get("lifetimeDebitPaise") or 0)
+
+        # Transfer calculation
         max_possible_paise = min(pass_balance_paise, remaining_fare_paise)
         if requested_amount_paise is not None and requested_amount_paise > 0:
-            if requested_amount_paise > max_possible_paise:
-                transfer_paise = max_possible_paise
-            else:
-                transfer_paise = requested_amount_paise
+            transfer_paise = min(requested_amount_paise, max_possible_paise)
         else:
             transfer_paise = max_possible_paise
 
         if transfer_paise <= 0:
             raise ApiError("Calculated wallet transfer amount is zero.", 400)
 
-        # 4. Atomic 3-way mutation:
-        # a) Debit Passenger
-        pass_tx_payload, pass_tx_id = debit_wallet_tx(
-            tx=tx,
-            db=db,
-            user_id=clean_passenger_id,
-            role="passenger",
-            amount_paise=transfer_paise,
-            tx_type="RIDE_WALLET_PAYMENT",
-            reference_type="ride_fare_payment",
-            reference_id=clean_ride_id,
-            description=f"Ride fare payment for Ride #{clean_ride_id[:8]}",
-            created_by=clean_passenger_id,
-            idempotency_key=idemp_key,
-            ride_id=clean_ride_id,
-            counterparty_user_id=driver_id,
-            counterparty_name=ride.get("driver_name", "Driver"),
-        )
+        pass_balance_after = pass_balance_paise - transfer_paise
+        pass_new_lifetime_debit = pass_lifetime_debit + transfer_paise
 
-        # b) Credit Driver
-        drv_tx_payload, drv_tx_id = credit_wallet_tx(
-            tx=tx,
-            db=db,
-            user_id=driver_id,
-            role="driver",
-            amount_paise=transfer_paise,
-            tx_type="RIDE_WALLET_RECEIPT",
-            reference_type="ride_fare_payment",
-            reference_id=clean_ride_id,
-            description=f"Ride fare received for Ride #{clean_ride_id[:8]}",
-            created_by=clean_passenger_id,
-            idempotency_key=idemp_key,
-            ride_id=clean_ride_id,
-            counterparty_user_id=clean_passenger_id,
-            counterparty_name=ride.get("passenger_name", "Passenger"),
-        )
+        drv_balance_after = drv_balance_before + transfer_paise
+        drv_new_lifetime_credit = drv_lifetime_credit + transfer_paise
 
-        # c) Update Ride document
         new_wallet_paid_paise = wallet_paid_paise + transfer_paise
         new_remaining_paise = max(0, fare_paise - (new_wallet_paid_paise + cash_paid_paise))
-        is_fully_paid = new_remaining_paise == 0
+        is_fully_paid = (new_remaining_paise == 0)
 
+        pass_tx_id = f"wtx_{uuid.uuid4().hex[:16]}"
+        drv_tx_id = f"wtx_{uuid.uuid4().hex[:16]}"
+
+        # -----------------------------------------------------------------
+        # PHASE 2: ALL WRITE OPERATIONS (Committed Atomically)
+        # -----------------------------------------------------------------
+
+        # 1. Update/Set passenger wallet
+        pass_wallet_payload = {
+            "userId": clean_passenger_id,
+            "userRole": "passenger",
+            "balancePaise": pass_balance_after,
+            "lifetimeDebitPaise": pass_new_lifetime_debit,
+            "currency": "INR",
+            "status": "active",
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        if not pass_snap.exists:
+            pass_wallet_payload["lifetimeCreditPaise"] = 0
+            pass_wallet_payload["createdAt"] = fb_firestore.SERVER_TIMESTAMP
+        tx.set(pass_wallet_ref, pass_wallet_payload, merge=True)
+
+        # 2. Write passenger debit transaction record
+        pass_tx_payload = {
+            "transactionId": pass_tx_id,
+            "walletId": clean_passenger_id,
+            "userId": clean_passenger_id,
+            "userRole": "passenger",
+            "type": "RIDE_WALLET_PAYMENT",
+            "direction": "debit",
+            "amountPaise": transfer_paise,
+            "balanceBeforePaise": pass_balance_paise,
+            "balanceAfterPaise": pass_balance_after,
+            "status": "completed",
+            "referenceType": "ride_fare_payment",
+            "referenceId": clean_ride_id,
+            "rideId": clean_ride_id,
+            "counterpartyUserId": driver_id,
+            "counterpartyName": ride.get("driver_name", "Driver"),
+            "description": f"Ride fare payment for Ride #{clean_ride_id[:8]}",
+            "tags": ["Ride Payment"],
+            "idempotencyKey": idemp_key,
+            "createdBy": clean_passenger_id,
+            "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            "completedAt": fb_firestore.SERVER_TIMESTAMP,
+            "isReversed": False,
+        }
+        tx.set(db.collection("walletTransactions").document(pass_tx_id), pass_tx_payload)
+
+        # 3. Update/Set driver wallet
+        drv_wallet_payload = {
+            "userId": driver_id,
+            "userRole": "driver",
+            "balancePaise": drv_balance_after,
+            "lifetimeCreditPaise": drv_new_lifetime_credit,
+            "currency": "INR",
+            "status": "active",
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        if not drv_snap.exists:
+            drv_wallet_payload["lifetimeDebitPaise"] = 0
+            drv_wallet_payload["createdAt"] = fb_firestore.SERVER_TIMESTAMP
+        tx.set(drv_wallet_ref, drv_wallet_payload, merge=True)
+
+        # 4. Write driver credit transaction record
+        drv_tx_payload = {
+            "transactionId": drv_tx_id,
+            "walletId": driver_id,
+            "userId": driver_id,
+            "userRole": "driver",
+            "type": "RIDE_WALLET_RECEIPT",
+            "direction": "credit",
+            "amountPaise": transfer_paise,
+            "balanceBeforePaise": drv_balance_before,
+            "balanceAfterPaise": drv_balance_after,
+            "status": "completed",
+            "referenceType": "ride_fare_payment",
+            "referenceId": clean_ride_id,
+            "rideId": clean_ride_id,
+            "counterpartyUserId": clean_passenger_id,
+            "counterpartyName": ride.get("passenger_name", "Passenger"),
+            "description": f"Ride fare received for Ride #{clean_ride_id[:8]}",
+            "tags": ["Ride Receipt"],
+            "idempotencyKey": idemp_key,
+            "createdBy": clean_passenger_id,
+            "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            "completedAt": fb_firestore.SERVER_TIMESTAMP,
+            "isReversed": False,
+        }
+        tx.set(db.collection("walletTransactions").document(drv_tx_id), drv_tx_payload)
+
+        # 5. Update Ride document
         ride_updates = {
             "farePaise": fare_paise,
             "walletPaidAmountPaise": new_wallet_paid_paise,
@@ -405,7 +480,7 @@ def transfer_ride_fare(
 
         tx.update(ride_ref, ride_updates)
 
-        # d) Persist dedicated RideWalletPayment record
+        # 6. Write dedicated RideWalletPayment idempotency record
         rwp_payload = {
             "paymentId": idemp_key,
             "rideId": clean_ride_id,
@@ -429,8 +504,8 @@ def transfer_ride_fare(
         result_holder["transferAmount"] = paise_to_inr_float(transfer_paise)
         result_holder["remainingFarePaise"] = new_remaining_paise
         result_holder["remainingFare"] = paise_to_inr_float(new_remaining_paise)
-        result_holder["passengerBalancePaise"] = pass_tx_payload["balanceAfterPaise"]
-        result_holder["passengerBalance"] = paise_to_inr_float(pass_tx_payload["balanceAfterPaise"])
+        result_holder["passengerBalancePaise"] = pass_balance_after
+        result_holder["passengerBalance"] = paise_to_inr_float(pass_balance_after)
         result_holder["driverId"] = driver_id
         result_holder["passengerId"] = clean_passenger_id
         result_holder["rideId"] = clean_ride_id

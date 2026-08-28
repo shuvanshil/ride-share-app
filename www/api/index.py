@@ -36,11 +36,18 @@ class ForceCORSMiddleware(BaseHTTPMiddleware):
         else:
             try:
                 response = await call_next(request)
+            except ApiError as ae:
+                response = JSONResponse(
+                    status_code=ae.status_code,
+                    content=ae.to_payload()
+                )
             except Exception as e:
-                # Ensure even unhandled exceptions return CORS headers
+                import traceback
+                traceback.print_exc()
+                err_msg = str(e) if str(e) else "Internal server error"
                 response = JSONResponse(
                     status_code=500,
-                    content={"error": "Internal server error"}
+                    content={"error": err_msg}
                 )
 
         # Inject CORS headers into EVERY response
