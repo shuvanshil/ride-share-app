@@ -521,9 +521,7 @@ export function initAdminWalletCredit() {
     document.getElementById('admin-reverse-credit-form')?.addEventListener('submit', handleReverseCreditSubmit);
 
     // 6. Passenger History Modal
-    document.getElementById('passenger-wallet-modal-close-btn')?.addEventListener('click', () => {
-        document.getElementById('admin-passenger-wallet-modal')?.classList.add('d-none');
-    });
+    document.getElementById('passenger-wallet-modal-close-btn')?.addEventListener('click', closePassengerWalletHistoryModal);
 
     // 7. Driver Settlement Actions & Modals
     document.getElementById('admin-driver-wallet-search')?.addEventListener('input', renderDriverSettlementsTable);
@@ -675,7 +673,10 @@ async function openGrantCreditModal(preselectedUserId = '') {
     select.innerHTML = `<option value="">Loading passenger accounts...</option>`;
     if (amountInput) amountInput.value = '';
     if (descInput) descInput.value = 'Promotional bonus credit';
+
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
+    modal.classList.add('show');
 
     try {
         if (!cachedPassengerWallets.length) {
@@ -701,7 +702,12 @@ async function openGrantCreditModal(preselectedUserId = '') {
 }
 
 function closeGrantCreditModal() {
-    document.getElementById('admin-grant-credit-modal')?.classList.add('d-none');
+    const modal = document.getElementById('admin-grant-credit-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+        modal.classList.remove('show');
+    }
 }
 
 async function handleGrantCreditSubmit(e) {
@@ -740,6 +746,15 @@ async function handleGrantCreditSubmit(e) {
     });
 }
 
+function closePassengerWalletHistoryModal() {
+    const modal = document.getElementById('admin-passenger-wallet-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+        modal.classList.remove('show');
+    }
+}
+
 async function openPassengerWalletHistoryModal(userId, name, phone, balance) {
     const modal = document.getElementById('admin-passenger-wallet-modal');
     const nameEl = document.getElementById('admin-modal-passenger-name');
@@ -761,7 +776,9 @@ async function openPassengerWalletHistoryModal(userId, name, phone, balance) {
         `;
     }
 
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
+    modal.classList.add('show');
 
     try {
         const data = await adminGet(`/wallet/user/${encodeURIComponent(userId)}/transactions?limit=50`);
@@ -845,11 +862,18 @@ function openReverseCreditModal(txId, amount, recipient) {
     if (recipVal) recipVal.innerText = recipient || '--';
     if (reasonInput) reasonInput.value = '';
 
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
+    modal.classList.add('show');
 }
 
 function closeReverseCreditModal() {
-    document.getElementById('admin-reverse-credit-modal')?.classList.add('d-none');
+    const modal = document.getElementById('admin-reverse-credit-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+        modal.classList.remove('show');
+    }
 }
 
 async function handleReverseCreditSubmit(e) {
@@ -871,7 +895,7 @@ async function handleReverseCreditSubmit(e) {
             });
             showToast(res.message || "Credit reversed successfully!", "success");
             closeReverseCreditModal();
-            document.getElementById('admin-passenger-wallet-modal')?.classList.add('d-none');
+            closePassengerWalletHistoryModal();
             await loadAdminPassengerWallets();
         } catch (error) {
             console.error("Reversal failed:", error);
@@ -1091,11 +1115,18 @@ function openResolveSettlementModal(settlementId, amount, upiId) {
         }
     }
 
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
+    modal.classList.add('show');
 }
 
 function closeResolveSettlementModal() {
-    document.getElementById('admin-resolve-settlement-modal')?.classList.add('d-none');
+    const modal = document.getElementById('admin-resolve-settlement-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+        modal.classList.remove('show');
+    }
 }
 
 async function handleResolveSettlementSubmit(e) {
