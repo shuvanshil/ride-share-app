@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#064E3B">
-    <title>Weekly Payment | LiphtUp</title>
+    <title>Payment | LiphtUp</title>
     
     <link rel="icon" href="favicon.ico" sizes="any">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,7 +32,7 @@
                 <line x1="8" y1="2" x2="8" y2="6"></line>
                 <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
-            <span data-i18n="driver.weekly_payment">Weekly Payment</span>
+            <span data-i18n="driver.weekly_payment">Payment</span>
         </div>
         <button id="payments-help-btn" type="button" class="py-help-btn" aria-label="Help">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -46,9 +46,9 @@
     <!-- Initial Loading State Screen -->
     <div id="payments-loading-screen" class="d-flex flex-column align-items-center justify-content-center py-5 my-5">
         <div class="spinner-border text-success mb-3" role="status" style="width: 2.5rem; height: 2.5rem;">
-            <span class="visually-hidden">Loading weekly payment details...</span>
+            <span class="visually-hidden">Loading payment details...</span>
         </div>
-        <p class="text-muted fw-semibold small mb-0">Loading your weekly payment details...</p>
+        <p class="text-muted fw-semibold small mb-0">Loading your payment details...</p>
     </div>
 
     <!-- Main Content Container -->
@@ -100,27 +100,27 @@
             </div>
         </section>
 
-        <!-- Account Hold Top Alert (if 10+ weeks unpaid) -->
-        <div id="account-hold-banner" class="py-alert-banner hold d-none">
-            <div class="py-alert-icon">⚠️</div>
-            <div class="py-alert-text">
-                <strong data-i18n="driver.hold_title">Account Temporarily On Hold (10+ Unpaid Weeks)</strong>
-                <p data-i18n="driver.hold_desc">Your driver account is temporarily on hold because weekly fees have not been paid for 10 or more weeks. Please pay your outstanding fees below to restore your account.</p>
-            </div>
-        </div>
-
-        <!-- 2) LAST / CURRENT WEEK DETAILS CARD -->
-        <section class="py-white-card">
+            <!-- 2) CURRENT WEEK DETAILS CARD -->
+            <section class="py-white-card">
             <div class="py-card-header">
                 <div class="py-card-header-title">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <polyline points="10 9 9 9 8 9"></polyline>
+                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                        <line x1="1" y1="10" x2="23" y2="10"></line>
                     </svg>
-                    <span data-i18n="driver.last_week_details">Last/Current Week Details</span>
+                    <span data-i18n="driver.payment_details">Payment Details</span>
+                </div>
+            </div>
+
+            <!-- Dues Warning / Breakdown Section -->
+            <div id="py-dues-alert" class="py-alert-dues d-none">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <span class="py-dues-tag" data-i18n="driver.multiple_weeks_due">Multiple Weeks Due</span>
+                        <h4 id="py-dues-amount" class="py-dues-amount">₹0</h4>
+                        <p id="py-dues-desc" class="py-dues-desc mb-0">Includes current week and 0 past overdue weeks.</p>
+                    </div>
+                    <button id="py-see-all-top-btn" type="button" class="btn btn-sm btn-outline-success fw-bold px-3 py-1" style="border-radius: 8px;" data-i18n="driver.see_all">See all</button>
                 </div>
             </div>
 
@@ -128,24 +128,6 @@
                 <div class="py-detail-row">
                     <div class="py-detail-left">
                         <span class="py-row-icon green-icon">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        </span>
-                        <span data-i18n="driver.last_due_date">Last Payment Due Date</span>
-                    </div>
-                    <strong id="py-last-due-date" class="py-detail-val">23 Aug 2026 (Sun)</strong>
-                </div>
-
-                <div class="py-detail-row">
-                    <div class="py-detail-left">
-                        <span class="py-row-icon green-check-icon">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                        </span>
-                        <span data-i18n="driver.last_paid_date">Last Payment Date</span>
-                    </div>
-                    <strong id="py-last-paid-date" class="py-detail-val">19 Aug 2026, 12:48 PM</strong>
-                </div>
-
-                <div class="py-detail-row">
                     <div class="py-detail-left">
                         <span class="py-row-icon green-icon">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -360,74 +342,106 @@
             </section>
         </div>
 
-        <!-- PANE 2: DRIVER WALLET -->
-        <div id="driver-wallet-tab-content" class="driver-tab-pane d-none">
-            <!-- 1) Wallet Balance Dark Card -->
-            <section class="py-top-dark-card">
-                <div class="py-dark-card-left">
-                    <div class="py-dark-card-icon">
-                        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <!-- PANE 2: DRIVER WALLET (REDESIGNED ACCORDING TO UI REFERENCE) -->
+        <div id="driver-wallet-tab-content" class="driver-tab-pane d-none dw-wallet-wrap">
+            <!-- 1) Top Hero Dark Green Wallet Card -->
+            <section class="dw-hero-card">
+                <div class="dw-hero-left">
+                    <div class="dw-hero-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="5" width="20" height="14" rx="2"></rect>
                             <line x1="2" y1="10" x2="22" y2="10"></line>
                             <path d="M16 14h2"></path>
                         </svg>
                     </div>
-                    <div class="py-dark-card-info">
-                        <span class="py-dark-card-label" data-i18n="wallet.wallet_balance">Wallet Balance</span>
-                        <strong id="driver-wallet-balance-val" class="py-dark-card-dates fs-3">₹0</strong>
+                    <div class="dw-hero-text">
+                        <span class="dw-hero-label" data-i18n="wallet.wallet_balance">Wallet Balance</span>
+                        <strong id="driver-wallet-balance-val" class="dw-hero-balance">₹0.00</strong>
+                        <p class="dw-hero-sub" data-i18n="wallet.available_balance">Available balance</p>
                     </div>
+                </div>
+                <div class="dw-hero-arrow">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
                 </div>
             </section>
 
             <!-- 2) Next Settlement Info Card -->
-            <section class="py-white-card">
-                <div class="py-card-header">
-                    <div class="py-card-header-title">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <section class="dw-settlement-card">
+                <div class="dw-settlement-header">
+                    <div class="dw-header-icon-badge">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                             <line x1="16" y1="2" x2="16" y2="6"></line>
                             <line x1="8" y1="2" x2="8" y2="6"></line>
                             <line x1="3" y1="10" x2="21" y2="10"></line>
                         </svg>
-                        <span data-i18n="wallet.next_settlement">Next Wallet Settlement</span>
+                    </div>
+                    <h3 class="dw-settlement-title" data-i18n="wallet.next_settlement">Next Wallet Settlement</h3>
+                </div>
+
+                <div class="dw-settlement-main-row">
+                    <div class="dw-date-info">
+                        <strong id="driver-wallet-next-settlement-date" class="dw-date-val">To be scheduled</strong>
+                        <span class="dw-date-label" data-i18n="wallet.expected_settlement_date">Expected settlement date</span>
+                    </div>
+                    <div class="dw-calendar-badge-wrap">
+                        <svg viewBox="0 0 64 64" width="48" height="48" fill="none">
+                            <rect x="12" y="14" width="40" height="38" rx="8" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+                            <path d="M12 22C12 17.5817 15.5817 14 20 14H44C48.4183 14 52 17.5817 52 22V24H12V22Z" fill="#10B981"/>
+                            <rect x="20" y="10" width="4" height="8" rx="2" fill="#047857"/>
+                            <rect x="40" y="10" width="4" height="8" rx="2" fill="#047857"/>
+                            <circle cx="22" cy="31" r="2" fill="#94A3B8"/>
+                            <circle cx="32" cy="31" r="2" fill="#94A3B8"/>
+                            <circle cx="42" cy="31" r="2" fill="#94A3B8"/>
+                            <circle cx="22" cy="39" r="2" fill="#94A3B8"/>
+                            <circle cx="32" cy="39" r="2" fill="#94A3B8"/>
+                            <circle cx="42" cy="39" r="2" fill="#94A3B8"/>
+                            <circle cx="46" cy="44" r="9" fill="#10B981"/>
+                            <path d="M42.5 44L45 46.5L49.5 41.5" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
                     </div>
                 </div>
-                <div class="py-details-list">
-                    <div class="py-detail-row">
-                        <div class="py-detail-left">
-                            <span class="py-row-icon green-icon">
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            </span>
-                            <span data-i18n="wallet.expected_payment_date">Scheduled Settlement Date</span>
-                        </div>
-                        <strong id="driver-wallet-next-settlement-date" class="py-detail-val">Calculating...</strong>
+
+                <hr class="dw-divider">
+
+                <p class="dw-settlement-desc" data-i18n="wallet.settlement_auto_transfer_desc">Your earned ride wallet credits will be automatically transferred to your registered UPI ID on this date.</p>
+
+                <div class="dw-early-settle-box">
+                    <div class="dw-info-icon-wrap">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#16A34A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
                     </div>
-                </div>
-                <div class="p-3 pt-2" style="background: #f8fafc; border-top: 1px solid #f1f5f9; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px;">
-                    <div class="d-flex align-items-start gap-2 mb-2">
-                        <span class="badge bg-success-lt p-1 rounded-circle" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px;">✓</span>
-                        <p class="text-secondary small mb-0" style="line-height:1.45;">Your earned ride wallet credits will be automatically transferred directly to your registered UPI ID by the LiphtUp team on the scheduled settlement date above.</p>
-                    </div>
-                    <div class="d-flex align-items-start gap-2 pt-1 border-top" style="border-color: #e2e8f0 !important;">
-                        <span class="badge bg-primary-lt p-1 rounded-circle" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px;">ℹ</span>
-                        <p class="text-muted small mb-0" style="line-height:1.45;">Need an <strong>early settlement</strong> or have payment questions? Contact our team anytime at <a href="mailto:liphtup@gmail.com" class="fw-bold text-primary text-decoration-none">liphtup@gmail.com</a>.</p>
+                    <div class="dw-early-content">
+                        <strong class="dw-early-title" data-i18n="wallet.need_early_settlement">Need an early settlement?</strong>
+                        <p class="dw-early-sub">Contact us at <a href="mailto:lightup@gmail.com" class="dw-early-link">lightup@gmail.com</a></p>
                     </div>
                 </div>
             </section>
 
             <!-- 3) Transaction History -->
-            <section class="py-white-card">
-                <div class="py-card-header">
-                    <div class="py-card-header-title">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="1 4 1 10 7 10"></polyline>
-                            <polyline points="23 20 23 14 17 14"></polyline>
-                            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
-                        </svg>
-                        <span data-i18n="wallet.transaction_history">Transaction History</span>
+            <section class="py-white-card" style="border-radius: 20px; border: 1px solid #E5E7EB; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02); padding: 18px 20px;">
+                <div class="py-card-header d-flex justify-content-between align-items-center" style="padding-bottom: 12px;">
+                    <div class="py-card-header-title d-flex align-items-center gap-2">
+                        <span class="dw-header-icon-badge" style="width: 32px; height: 32px; border-radius: 8px;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="1 4 1 10 7 10"></polyline>
+                                <polyline points="23 20 23 14 17 14"></polyline>
+                                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+                            </svg>
+                        </span>
+                        <span class="fw-bold text-dark" style="font-size: 15px;" data-i18n="wallet.transaction_history">Transaction History</span>
                     </div>
+                    <button type="button" id="py-see-all-wallet-tx" class="btn btn-link text-decoration-none p-0 d-flex align-items-center gap-1" style="font-size: 13px; font-weight: 600; color: #059669;">
+                        <span data-i18n="driver.see_all">See all</span>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
                 </div>
-                <div id="driver-wallet-tx-list" class="p-3">
+                <div id="driver-wallet-tx-list" class="pt-0">
                     <div class="text-center py-3">
                         <div class="spinner-border spinner-border-sm text-success" role="status"></div>
                     </div>

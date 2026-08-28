@@ -476,11 +476,29 @@ async function fetchDriverWalletData() {
         const txData = await txRes.json().catch(() => ({}));
 
         if (balanceEl && walletData?.wallet) {
-            balanceEl.innerText = `₹${(walletData.wallet.balance ?? 0).toLocaleString('en-IN')}`;
+            const balNum = Number(walletData.wallet.balance ?? 0);
+            balanceEl.innerText = `₹${balNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
 
         if (nextSettleEl) {
-            nextSettleEl.innerText = settleData?.nextSettlementDate || settleData?.nextSettlementDateFormatted || 'To be scheduled';
+            const rawDate = settleData?.nextSettlementDate || settleData?.nextSettlementDateFormatted;
+            let formattedDate = 'To be scheduled';
+            if (rawDate && rawDate !== 'To be scheduled') {
+                try {
+                    const parsed = new Date(rawDate);
+                    if (!isNaN(parsed.getTime())) {
+                        const day = String(parsed.getDate()).padStart(2, '0');
+                        const month = parsed.toLocaleString('en-US', { month: 'short' });
+                        const year = parsed.getFullYear();
+                        formattedDate = `${day} ${month} ${year}`;
+                    } else {
+                        formattedDate = rawDate;
+                    }
+                } catch {
+                    formattedDate = rawDate;
+                }
+            }
+            nextSettleEl.innerText = formattedDate;
         }
 
         // Check and display driver settlement payout celebration modal if new payout resolved by admin
@@ -598,6 +616,7 @@ async function checkAndShowDriverSettlementModal() {
 // History Modal Listeners
 seeAllTopBtn?.addEventListener('click', () => historyModal?.classList.remove('d-none'));
 seeAllFullBtn?.addEventListener('click', () => historyModal?.classList.remove('d-none'));
+document.getElementById('py-see-all-wallet-tx')?.addEventListener('click', () => historyModal?.classList.remove('d-none'));
 modalCloseBtn?.addEventListener('click', () => historyModal?.classList.add('d-none'));
 historyModal?.addEventListener('click', (e) => {
     if (e.target === historyModal) historyModal.classList.add('d-none');

@@ -2208,3 +2208,214 @@ body {
     margin: 2px 0 0;
     font-size: 0.8rem;
 }
+
+/* =========================================================
+   DRIVER WALLET REDESIGN (MATCHING USER UI REFERENCE)
+   ========================================================= */
+
+.dw-wallet-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 1. Top Hero Card */
+.dw-hero-card {
+    background: linear-gradient(135deg, #064E3B 0%, #033628 100%);
+    border-radius: 20px;
+    padding: 20px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 8px 24px rgba(6, 78, 59, 0.22);
+    color: #FFFFFF;
+}
+
+.dw-hero-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.dw-hero-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.dw-hero-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.dw-hero-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 2px;
+}
+
+.dw-hero-balance {
+    font-size: 32px;
+    font-weight: 800;
+    color: #FFFFFF;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+}
+
+.dw-hero-sub {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+.dw-hero-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* 2. Settlement Card */
+.dw-settlement-card {
+    background: #FFFFFF;
+    border-radius: 20px;
+    border: 1px solid #E5E7EB;
+    padding: 20px 22px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+}
+
+.dw-settlement-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.dw-header-icon-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: #EBF9F1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.dw-settlement-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+}
+
+.dw-settlement-main-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 18px;
+    margin-bottom: 18px;
+}
+
+.dw-date-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.dw-date-val {
+    font-size: 30px;
+    font-weight: 800;
+    color: #065F46;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+}
+
+.dw-date-label {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #6B7280;
+}
+
+.dw-calendar-badge-wrap {
+    width: 78px;
+    height: 78px;
+    border-radius: 50%;
+    background: #E8F7EE;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.dw-divider {
+    border: none;
+    border-top: 1px solid #F3F4F6;
+    margin: 16px 0;
+}
+
+.dw-settlement-desc {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #1F2937;
+    font-weight: 500;
+    margin-bottom: 16px;
+}
+
+.dw-early-settle-box {
+    background: #F0FDF4;
+    border: 1px solid #DCFCE7;
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.dw-info-icon-wrap {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.dw-early-content {
+    flex: 1;
+}
+
+.dw-early-title {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 2px;
+}
+
+.dw-early-sub {
+    font-size: 13px;
+    color: #4B5563;
+    margin: 0;
+}
+
+.dw-early-link {
+    color: #059669;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.dw-early-link:hover {
+    text-decoration: underline;
+}
+
