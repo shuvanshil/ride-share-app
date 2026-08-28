@@ -948,6 +948,8 @@ function bindProfileActions() {
         }
         openAccountSheet();
     });
+}
+
 let currentActiveRidePayable = null;
 
 async function openWalletSheet() {
