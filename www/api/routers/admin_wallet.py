@@ -78,15 +78,25 @@ def _send_settlement_resolved_push(driver_id: str, amount_inr: float, upi_id: st
     try:
         app = get_admin_app()
         db = fb_firestore.client(app)
+        tokens = set()
+        
+        # Check driverPresence
         presence_snap = db.collection("driverPresence").document(driver_id).get()
-        if not presence_snap.exists:
-            return
-        driver_data = presence_snap.to_dict() or {}
-        tokens = set(driver_data.get("pushTokens") or [])
-        for detail in driver_data.get("pushTokenDetails") or []:
-            tok = (detail or {}).get("token") if isinstance(detail, dict) else None
-            if tok and isinstance(tok, str):
-                tokens.add(tok.strip())
+        if presence_snap.exists:
+            driver_data = presence_snap.to_dict() or {}
+            tokens.update(driver_data.get("pushTokens") or [])
+            for detail in driver_data.get("pushTokenDetails") or []:
+                tok = (detail or {}).get("token") if isinstance(detail, dict) else None
+                if tok and isinstance(tok, str):
+                    tokens.add(tok.strip())
+
+        # Check users doc
+        user_snap = db.collection("users").document(driver_id).get()
+        if user_snap.exists:
+            u_data = user_snap.to_dict() or {}
+            tokens.update(u_data.get("pushTokens") or [])
+            if u_data.get("fcmToken"):
+                tokens.add(str(u_data.get("fcmToken")).strip())
 
         unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
         if not unique_tokens:
@@ -132,6 +142,12 @@ def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label:
             return
         user_data = user_snap.to_dict() or {}
         tokens = set(user_data.get("pushTokens") or [])
+        for detail in user_data.get("pushTokenDetails") or []:
+            tok = (detail or {}).get("token") if isinstance(detail, dict) else None
+            if tok and isinstance(tok, str):
+                tokens.add(tok.strip())
+        if user_data.get("fcmToken"):
+            tokens.add(str(user_data.get("fcmToken")).strip())
 
         unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
         if not unique_tokens:

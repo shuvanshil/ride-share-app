@@ -50,6 +50,29 @@ def now_utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def sanitize_dict_for_json(data: Any) -> Any:
+    """Recursively replaces Firestore Sentinels and datetime objects with ISO strings so dicts are safely JSON-serializable."""
+    if isinstance(data, dict):
+        cleaned = {}
+        for k, v in data.items():
+            if hasattr(v, "__class__") and "Sentinel" in v.__class__.__name__:
+                cleaned[k] = datetime.now(timezone.utc).isoformat()
+            elif isinstance(v, (dict, list)):
+                cleaned[k] = sanitize_dict_for_json(v)
+            elif hasattr(v, "isoformat"):
+                cleaned[k] = v.isoformat()
+            else:
+                cleaned[k] = v
+        return cleaned
+    elif isinstance(data, list):
+        return [sanitize_dict_for_json(item) for item in data]
+    elif hasattr(data, "__class__") and "Sentinel" in data.__class__.__name__:
+        return datetime.now(timezone.utc).isoformat()
+    elif hasattr(data, "isoformat"):
+        return data.isoformat()
+    return data
+
+
 def get_wallet_ref(db: Any, user_id: str):
     return db.collection("wallets").document(user_id)
 
@@ -417,7 +440,7 @@ def transfer_ride_fare(
     transaction = db.transaction()
     transfer_tx(transaction)
 
-    return result_holder
+    return sanitize_dict_for_json(result_holder)
 
 
 def create_driver_settlement(
@@ -510,7 +533,7 @@ def create_driver_settlement(
         after=result_holder["settlement"],
     )
 
-    return result_holder["settlement"]
+    return sanitize_dict_for_json(result_holder["settlement"])
 
 
 def resolve_driver_settlement(
@@ -593,7 +616,7 @@ def resolve_driver_settlement(
         after=result_holder,
     )
 
-    return result_holder
+    return sanitize_dict_for_json(result_holder)
 
 
 def grant_passenger_credit(
@@ -654,7 +677,7 @@ def grant_passenger_credit(
         after=result_holder["transaction"],
     )
 
-    return result_holder["transaction"]
+    return sanitize_dict_for_json(result_holder["transaction"])
 
 
 def reverse_admin_credit(
@@ -747,7 +770,7 @@ def reverse_admin_credit(
         after=result_holder,
     )
 
-    return result_holder
+    return sanitize_dict_for_json(result_holder)
 
 
 def reconcile_wallet(db: Any, user_id: str) -> Dict[str, Any]:
@@ -782,7 +805,7 @@ def reconcile_wallet(db: Any, user_id: str) -> Dict[str, Any]:
     expected_balance_paise = computed_credits_paise - computed_debits_paise
     is_balanced = (expected_balance_paise == materialized_balance_paise)
 
-    return {
+    return sanitize_dict_for_json({
         "userId": clean_uid,
         "materializedBalancePaise": materialized_balance_paise,
         "materializedBalance": paise_to_inr_float(materialized_balance_paise),
@@ -792,8 +815,12 @@ def reconcile_wallet(db: Any, user_id: str) -> Dict[str, Any]:
         "computedDebits": paise_to_inr_float(computed_debits_paise),
         "expectedBalancePaise": expected_balance_paise,
         "expectedBalance": paise_to_inr_float(expected_balance_paise),
+        "computedBalancePaise": expected_balance_paise,
+        "computedBalance": paise_to_inr_float(expected_balance_paise),
         "isBalanced": is_balanced,
         "discrepancyPaise": materialized_balance_paise - expected_balance_paise,
         "discrepancy": paise_to_inr_float(materialized_balance_paise - expected_balance_paise),
+        "transactionCount": len(tx_docs),
         "totalTransactions": len(tx_docs),
-    }
+        "reconciledAt": now_utc_iso(),
+    })

@@ -703,7 +703,10 @@ function showTripProgressPanel(ride) {
 
                 window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment'));
                 try {
-                    const rideId = ride.id || ride.ride_id;
+                    const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideData?.id || currentPassengerRideData?.rideId || currentPassengerRideData?.ride_id || window._currentActiveRideId;
+                    if (!rideId) {
+                        throw new Error("Unable to identify active ride ID. Please refresh.");
+                    }
                     const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
                     const res = await fetch('/api/wallet/pay-current-ride', {
                         method: 'POST',
@@ -1625,7 +1628,9 @@ async function restorePassengerActiveRide() {
         if (activeRideSnap.empty) return false;
 
         const activeRideDoc = activeRideSnap.docs[0];
-        const activeRide = activeRideDoc.data();
+        const activeRide = { ...activeRideDoc.data(), id: activeRideDoc.id, rideId: activeRideDoc.id };
+        window._currentActiveRideId = activeRideDoc.id;
+        currentPassengerRideData = activeRide;
 
         console.log(`Restoring passenger active ride: ${activeRideDoc.id}`);
         showPassengerCancelButton(activeRideDoc.id);
@@ -1799,7 +1804,8 @@ function listenToRideStatusUpdates(rideId) {
 
     activeRideListener = onSnapshot(doc(db, "rides", rideId), (docSnap) => {
         if (!docSnap.exists()) return;
-        const ride = docSnap.data();
+        const ride = { ...docSnap.data(), id: docSnap.id, rideId: docSnap.id };
+        window._currentActiveRideId = docSnap.id;
         currentPassengerRideData = ride;
 
         if (ACTIVE_RIDE_STATUSES.includes(ride.status)) {
