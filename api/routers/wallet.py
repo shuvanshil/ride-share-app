@@ -143,7 +143,7 @@ def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: f
                     title=title,
                     body=body_text,
                     sound="default",
-                    channel_id="liphtup_driver_channel",
+                    channel_id="ride_requests",
                 ),
             ),
             apns=fb_messaging.ApnsConfig(
@@ -164,10 +164,10 @@ def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: f
                 ),
             ),
         )
-        fb_messaging.send_each_for_multicast(message, app=app)
-    except Exception:  # noqa: BLE001
-        # Push notification failure must NEVER invalidate the committed financial transaction
-        pass
+        resp = fb_messaging.send_each_for_multicast(message, app=app)
+        print(f"[PUSH] Sent driver wallet payment push to {len(unique_tokens)} tokens (success: {resp.success_count}, failed: {resp.failure_count})")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[PUSH_ERROR] Driver wallet payment push failed: {exc}")
 
 
 @router.get("")

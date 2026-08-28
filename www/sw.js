@@ -159,20 +159,23 @@ function getRideNotificationUrl(data = {}) {
         }
     }
     const rideId = data.rideId || data.ride_id || "";
-    const url = new URL("/driver.html", BASE_URL);
-    if (rideId) url.searchParams.set("rideId", rideId);
-    url.searchParams.set("from", "push");
-    return url.href;
+    if (rideId) {
+        const url = new URL("/driver.html", BASE_URL);
+        url.searchParams.set("rideId", rideId);
+        url.searchParams.set("from", "push");
+        return url.href;
+    }
+    return new URL("/index.html", BASE_URL).href;
 }
 
 function showRideNotification(payload = {}) {
     const data = payload.data || {};
     const notification = payload.notification || {};
-    const title = notification.title || data.title || "New LiphtUp ride request";
-    const body = notification.body || data.body || "Open LiphtUp to view and accept this ride.";
+    const title = notification.title || data.title || "LiphtUp Alert";
+    const body = notification.body || data.body || "You have a new update in LiphtUp.";
 
     const targetUrl = getRideNotificationUrl(data);
-    const tag = data.rideId ? `liphtup-ride-${data.rideId}` : (data.requestId ? `liphtup-req-${data.requestId}` : "liphtup-general");
+    const tag = data.tag || (data.rideId ? `liphtup-ride-${data.rideId}` : (data.requestId ? `liphtup-req-${data.requestId}` : "liphtup-general"));
 
     return self.registration.showNotification(title, {
         body,
@@ -196,22 +199,32 @@ messaging.onBackgroundMessage((payload) => {
     showRideNotification(payload);
 });
 
+self.addEventListener("push", (event) => {
+    if (!event.data) return;
+    try {
+        const payload = event.data.json();
+        event.waitUntil(showRideNotification(payload));
+    } catch (e) {
+        try {
+            const text = event.data.text();
+            event.waitUntil(showRideNotification({ notification: { body: text } }));
+        } catch (err) {
+            console.warn("Service worker push event error:", err);
+        }
+    }
+});
+
 self.addEventListener("notificationclick", (event) => {
     event.notification.close();
-    const targetUrl = event.notification.data?.url || new URL("/driver.html?from=push", BASE_URL).href;
+    const targetUrl = event.notification.data?.url || new URL("/index.html", BASE_URL).href;
 
     event.waitUntil((async () => {
         const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
         const sameOriginClient = clientList.find((client) => new URL(client.url).origin === self.location.origin);
         if (sameOriginClient) {
             await sameOriginClient.focus();
-            if (targetUrl.includes("services")) {
+            if (targetUrl) {
                 await sameOriginClient.navigate(targetUrl);
-            } else if (event.notification.data?.rideId) {
-                sameOriginClient.postMessage({
-                    type: "OPEN_DRIVER_RIDE",
-                    rideId: event.notification.data?.rideId || ""
-                });
             }
             return;
         }

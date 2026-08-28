@@ -140,7 +140,7 @@ def _send_settlement_resolved_push(driver_id: str, amount_inr: float, upi_id: st
                     title=title,
                     body=body_text,
                     sound="default",
-                    channel_id="liphtup_wallet_channel",
+                    channel_id="ride_requests",
                 ),
             ),
             apns=fb_messaging.ApnsConfig(
@@ -160,9 +160,10 @@ def _send_settlement_resolved_push(driver_id: str, amount_inr: float, upi_id: st
                 ),
             ),
         )
-        fb_messaging.send_each_for_multicast(message, app=app)
-    except Exception:  # noqa: BLE001
-        pass
+        resp = fb_messaging.send_each_for_multicast(message, app=app)
+        print(f"[PUSH] Sent driver settlement push to {len(unique_tokens)} tokens (success: {resp.success_count}, failed: {resp.failure_count})")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[PUSH_ERROR] Driver settlement push failed: {exc}")
 
 
 def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label: str):
@@ -207,6 +208,7 @@ def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label:
 
         unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
         if not unique_tokens:
+            print(f"[PUSH] No registered push tokens found for passenger {passenger_id}")
             return
 
         message = fb_messaging.MulticastMessage(
@@ -219,7 +221,7 @@ def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label:
                     title=title,
                     body=body_text,
                     sound="default",
-                    channel_id="liphtup_wallet_channel",
+                    channel_id="ride_requests",
                 ),
             ),
             apns=fb_messaging.ApnsConfig(
@@ -239,9 +241,10 @@ def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label:
                 ),
             ),
         )
-        fb_messaging.send_each_for_multicast(message, app=app)
-    except Exception:  # noqa: BLE001
-        pass
+        resp = fb_messaging.send_each_for_multicast(message, app=app)
+        print(f"[PUSH] Sent passenger credit push to {len(unique_tokens)} tokens (success: {resp.success_count}, failed: {resp.failure_count})")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[PUSH_ERROR] Passenger credit push failed: {exc}")
 
 
 # =====================================================================

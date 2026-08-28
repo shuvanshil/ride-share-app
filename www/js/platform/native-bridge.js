@@ -94,24 +94,18 @@
         }
 
         // --- Push Notification Handlers (Global) ---------------------------------
+        // --- Push Notification Handlers (Global) ---------------------------------
         if (Push) {
-            // These listeners stay active for the entire session and handle
-            // notifications even if registerPushNotifications hasn't been called yet.
             Push.addListener('pushNotificationReceived', function (notification) {
                 console.log('[native-bridge] push received:', notification);
             });
 
             Push.addListener('pushNotificationActionPerformed', function (notification) {
                 console.log('[native-bridge] push action:', notification);
-                var role = (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.getUserRole === 'function')
-                    ? window.LiphtUpNativeStatus.getUserRole()
-                    : '';
-                if (role && role !== 'driver') {
-                    console.log('[native-bridge] Ignoring push notification action for non-driver role:', role);
-                    return;
-                }
-                var data = notification.notification.data;
-                if (data && data.rideId) {
+                var data = (notification && notification.notification && notification.notification.data) || {};
+                if (data.url) {
+                    window.location.href = data.url;
+                } else if (data.rideId) {
                     window.location.href = '/driver.html?rideId=' + data.rideId + '&from=push';
                 }
             });
@@ -127,19 +121,6 @@
             registerPushNotifications: function () {
                 if (!Push) return Promise.reject(new Error("push-unsupported"));
 
-                // Sync check via injected Android interface
-                var firebaseReady = false;
-                if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.isFirebaseReady === 'function') {
-                    firebaseReady = window.LiphtUpNativeStatus.isFirebaseReady();
-                } else if (window.LIPHTUP_NATIVE_FIREBASE_READY === true) {
-                    firebaseReady = true;
-                }
-
-                if (!firebaseReady) {
-                    console.warn('[native-bridge] skip push.register: Firebase config (google-services.json) is missing.');
-                    return Promise.reject(new Error("firebase-config-missing"));
-                }
-
                 return Push.checkPermissions().then(function (perm) {
                     if (perm.receive !== 'granted') {
                         return Push.requestPermissions();
@@ -151,23 +132,17 @@
                     }
 
                     return new Promise(function (resolve, reject) {
-                        // Clear previous registration listeners before adding new one for this request
                         Push.removeAllListeners();
 
-                        // RE-ADD the global handlers because removeAllListeners wipes them
                         Push.addListener('pushNotificationReceived', function (notification) {
                             console.log('[native-bridge] push received:', notification);
                         });
                         Push.addListener('pushNotificationActionPerformed', function (notification) {
-                            var role = (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.getUserRole === 'function')
-                                ? window.LiphtUpNativeStatus.getUserRole()
-                                : '';
-                            if (role && role !== 'driver') {
-                                console.log('[native-bridge] Ignoring push action for non-driver role:', role);
-                                return;
-                            }
-                            var data = notification.notification.data;
-                            if (data && data.rideId) {
+                            console.log('[native-bridge] push action:', notification);
+                            var data = (notification && notification.notification && notification.notification.data) || {};
+                            if (data.url) {
+                                window.location.href = data.url;
+                            } else if (data.rideId) {
                                 window.location.href = '/driver.html?rideId=' + data.rideId + '&from=push';
                             }
                         });
@@ -194,55 +169,25 @@
             }
         };
 
-        // --- Hardware back button -------------------------------------------------
-        // Prevents the app from closing randomly. Only exits if on the home page.
-        if (Plugins.App && Plugins.App.addListener) {
-            Plugins.App.addListener('backButton', function (event) {
-                var path = window.location.pathname;
-                var isHome = path === '/' || path === '/index.html' || path.endsWith('/index.html');
-
-                if (isHome) {
-                    Plugins.App.exitApp();
-                } else if (event && event.canGoBack) {
-                    window.history.back();
-                } else {
-                    // Safe fallback: go home instead of exiting
-                    window.location.href = '/index.html';
-                }
-            });
-        }
-
-        // --- UI & Status Bar -------------------------------------------------------
-        // Delayed significantly (500ms) to ensure the WebView has finished its
-        // initial layout before we touch window flags, reducing SurfaceFlinger
-        // InputPolicyFlags contention errors on some Android versions.
-        setTimeout(function() {
-            if (Plugins.StatusBar) {
-                if (Plugins.StatusBar.setOverlaysWebView) {
-                    Plugins.StatusBar.setOverlaysWebView({ overlay: true }).catch(function () {});
-                }
-                Plugins.StatusBar.setBackgroundColor({ color: '#1A7A2E' }).catch(function () {});
-                Plugins.StatusBar.setStyle({ style: 'DARK' }).catch(function () {});
-            }
-
-            if (Plugins.SplashScreen && Plugins.SplashScreen.hide) {
-                Plugins.SplashScreen.hide().catch(function () {});
-            }
-        }, 500);
-
-        // --- Push Notification Channel ---------------------------------------------
+        // --- Push Notification Channels (Android 8.0+) ---------------------------
         if (Plugins.PushNotifications && Plugins.PushNotifications.createChannel) {
-            Plugins.PushNotifications.createChannel({
-                id: 'ride_requests',
-                name: 'Ride requests',
-                description: 'New ride request alerts for drivers',
-                importance: 5,
-                visibility: 1,
-                sound: 'default',
-                vibration: true,
-                lights: true
-            }).catch(function (error) {
-                console.warn('[native-bridge] push channel failed:', error);
+            var channels = [
+                { id: 'ride_requests', name: 'Ride Requests & Alerts', importance: 5 },
+                { id: 'liphtup_wallet_channel', name: 'Wallet & Credits', importance: 5 },
+                { id: 'liphtup_driver_channel', name: 'Driver Updates', importance: 5 },
+                { id: 'default', name: 'LiphtUp Notifications', importance: 5 }
+            ];
+            channels.forEach(function(ch) {
+                Plugins.PushNotifications.createChannel({
+                    id: ch.id,
+                    name: ch.name,
+                    description: ch.name,
+                    importance: ch.importance,
+                    visibility: 1,
+                    sound: 'default',
+                    vibration: true,
+                    lights: true
+                }).catch(function () {});
             });
         }
     });

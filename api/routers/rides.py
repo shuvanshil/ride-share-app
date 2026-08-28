@@ -1386,6 +1386,7 @@ def save_driver_push_token(
             else datetime.fromtimestamp(0, timezone.utc)
         )
         update = {
+            "fcmToken": body.token,
             "pushTokens": fb_firestore.ArrayUnion([body.token]),
             "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
             "notificationPermission": "granted",
@@ -1423,6 +1424,7 @@ def save_passenger_push_token(
             "updatedAt": datetime.now(timezone.utc),
         }
         update = {
+            "fcmToken": body.token,
             "pushTokens": fb_firestore.ArrayUnion([body.token]),
             "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
             "notificationPermission": "granted",

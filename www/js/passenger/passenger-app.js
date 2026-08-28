@@ -46,6 +46,27 @@ const passengerSearchStartTimes = {};
 let currentPassengerRideId = null;
 let currentPassengerRideData = null;
 
+let cachedPassengerWalletBalance = null;
+let isFetchingWalletBalance = false;
+
+function fetchPassengerWalletBalance(callback) {
+    const user = auth.currentUser;
+    if (!user || isFetchingWalletBalance) return;
+    isFetchingWalletBalance = true;
+    user.getIdToken().then(token => {
+        return fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    }).then(res => res.json()).then(data => {
+        if (data?.ok && data?.wallet) {
+            cachedPassengerWalletBalance = Number(data.wallet.balance || 0);
+            if (typeof callback === 'function') callback(cachedPassengerWalletBalance);
+        }
+    }).catch(e => {
+        console.warn("Failed to check wallet balance:", e);
+    }).finally(() => {
+        isFetchingWalletBalance = false;
+    });
+}
+
 let currentSearchRadiusMeters = DEFAULT_SEARCH_RADIUS_METERS;
 let searchStateInterval = null;
 let searchDotsCycle = 0;
@@ -674,32 +695,26 @@ function showTripProgressPanel(ride) {
                 walletBox.classList.add('d-none');
             }
         } else if (isOnboard && remainingPaise > 0) {
-            // IMPORTANT: Start hidden — only reveal after async balance check confirms balance > 0
-            walletBox.classList.add('d-none');
-            walletPayBtn?.classList.add('d-none');
-
-            const user = auth.currentUser;
-            if (user) {
-                user.getIdToken().then(token => {
-                    return fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-                }).then(res => res.json()).then(data => {
-                    if (data?.ok && data?.wallet) {
-                        const bal = data.wallet.balance || 0;
-                        if (bal > 0) {
-                            walletBox.classList.remove('d-none');
-                            walletPaidBadge?.classList.add('d-none');
-                            walletPayBtn?.classList.remove('d-none');
-                            if (walletAvailText) walletAvailText.innerText = `${t('wallet.title')}: ₹${bal.toLocaleString('en-IN')}`;
-                            if (walletPayBtn) {
-                                walletPayBtn.disabled = false;
-                                walletPayBtn.innerText = t('wallet.use_wallet_credits');
-                            }
-                        }
-                        // else: balance is 0 — keep hidden
+            if (cachedPassengerWalletBalance === null) {
+                // Fetch in background once without flickering
+                fetchPassengerWalletBalance(() => {
+                    if (currentPassengerRideData) {
+                        showTripProgressPanel(currentPassengerRideData);
                     }
-                }).catch(e => {
-                    console.warn("Failed to check wallet balance:", e);
                 });
+            }
+
+            if (cachedPassengerWalletBalance !== null && cachedPassengerWalletBalance > 0) {
+                walletBox.classList.remove('d-none');
+                walletPaidBadge?.classList.add('d-none');
+                walletPayBtn?.classList.remove('d-none');
+                if (walletAvailText) walletAvailText.innerText = `${t('wallet.title')}: ₹${cachedPassengerWalletBalance.toLocaleString('en-IN')}`;
+                if (walletPayBtn) {
+                    walletPayBtn.disabled = false;
+                    walletPayBtn.innerText = t('wallet.use_wallet_credits');
+                }
+            } else {
+                walletBox.classList.add('d-none');
             }
 
             if (walletPayBtn) {
@@ -709,10 +724,12 @@ function showTripProgressPanel(ride) {
                     const token = await curUser.getIdToken();
                     const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
                     const walletData = await walletRes.json().catch(() => ({}));
-                    const userBal = walletData?.wallet?.balance || 0;
+                    const userBal = Number(walletData?.wallet?.balance || 0);
+                    cachedPassengerWalletBalance = userBal;
 
                     if (userBal <= 0) {
                         walletBox.classList.add('d-none');
+                        await showAlert(t('wallet.insufficient_balance'));
                         return;
                     }
 
@@ -741,10 +758,12 @@ function showTripProgressPanel(ride) {
                         const data = await res.json().catch(() => ({}));
                         if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
 
+                        const result = data.result || {};
+                        cachedPassengerWalletBalance = Math.max(0, userBal - (result.transferAmount || spendAmt));
+
                         // Immediately hide wallet pay section — Firestore snapshot will re-render with updated data
                         walletBox.classList.add('d-none');
 
-                        const result = data.result || {};
                         await showAlert(t('wallet.payment_success_desc', {
                             amount: result.transferAmount,
                             remaining: result.remainingFare
