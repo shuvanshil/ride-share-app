@@ -51,6 +51,7 @@ class CreateSettlementRequest(BaseModel):
 
 
 class ResolveSettlementRequest(BaseModel):
+    settlementId: Optional[str] = Field(default=None, max_length=160)
     adminNote: Optional[str] = Field(default="", max_length=500)
 
 
@@ -609,26 +610,29 @@ def admin_update_settlement_config(
     clean_date = body.nextSettlementDate.strip()
 
     doc_ref = db.collection("systemSettings").document("driverSettlementConfig")
-    payload = {
+    doc_ref.set({
         "nextSettlementDate": clean_date,
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         "updatedByAdminEmail": admin_email,
         "updatedByAdminUid": admin_user.get("uid"),
-    }
-    doc_ref.set(payload, merge=True)
+    }, merge=True)
 
     write_audit_log(
         admin_user=admin_user,
         action="driver_settlement_config_updated",
         target_type="systemSettings",
         target_id="driverSettlementConfig",
-        after=payload,
+        after={"nextSettlementDate": clean_date, "updatedByAdminEmail": admin_email},
     )
 
     return {
         "ok": True,
         "message": "Driver settlement schedule updated successfully.",
-        "config": payload,
+        "config": {
+            "nextSettlementDate": clean_date,
+            "updatedByAdminEmail": admin_email,
+            "updatedByAdminUid": admin_user.get("uid"),
+        },
         "nextSettlementDate": clean_date,
     }
 

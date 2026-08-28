@@ -15,6 +15,7 @@ import { share, copyToClipboard } from '../platform/share.js';
 import { getCurrentPosition } from '../platform/geolocation.js';
 import { schedulePrompt as triggerRideFeedback } from './passenger-feedback.js';
 import { t } from '../shared/i18n.js';
+import { registerForPush, sendTokenToBackend } from '../platform/notifications.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -660,15 +661,23 @@ function showTripProgressPanel(ride) {
 
         const isOnboard = (ride.status === "started" || ride.status === "en_route") || Boolean(ride.pinVerifiedAt);
 
-        if (remainingPaise === 0 && walletPaidPaise > 0) {
-            walletBox.classList.remove('d-none');
-            walletPaidBadge?.classList.remove('d-none');
-            if (walletPaidText) {
-                walletPaidText.innerText = t('wallet.paid_via_wallet_no_cash', { amount: walletPaidAmount });
+        if (remainingPaise === 0 || walletPaidPaise >= farePaise) {
+            // Entire fare already paid — always hide the pay button & box (show confirmation badge if wallet was used)
+            if (walletPaidPaise > 0) {
+                walletBox.classList.remove('d-none');
+                walletPaidBadge?.classList.remove('d-none');
+                walletPayBtn?.classList.add('d-none');
+                if (walletPaidText) {
+                    walletPaidText.innerText = t('wallet.paid_via_wallet_no_cash', { amount: walletPaidAmount });
+                }
+            } else {
+                walletBox.classList.add('d-none');
             }
-            walletPayBtn?.classList.add('d-none');
         } else if (isOnboard && remainingPaise > 0) {
-            // Check balance - ONLY show if balance > 0
+            // IMPORTANT: Start hidden — only reveal after async balance check confirms balance > 0
+            walletBox.classList.add('d-none');
+            walletPayBtn?.classList.add('d-none');
+
             const user = auth.currentUser;
             if (user) {
                 user.getIdToken().then(token => {
@@ -681,74 +690,73 @@ function showTripProgressPanel(ride) {
                             walletPaidBadge?.classList.add('d-none');
                             walletPayBtn?.classList.remove('d-none');
                             if (walletAvailText) walletAvailText.innerText = `${t('wallet.title')}: ₹${bal.toLocaleString('en-IN')}`;
-                            walletPayBtn.disabled = false;
-                            walletPayBtn.innerText = t('wallet.use_wallet_credits');
-                        } else {
-                            // Balance is 0 - hide wallet card & button completely
-                            walletBox.classList.add('d-none');
+                            if (walletPayBtn) {
+                                walletPayBtn.disabled = false;
+                                walletPayBtn.innerText = t('wallet.use_wallet_credits');
+                            }
                         }
-                    } else {
-                        walletBox.classList.add('d-none');
+                        // else: balance is 0 — keep hidden
                     }
                 }).catch(e => {
                     console.warn("Failed to check wallet balance:", e);
-                    walletBox.classList.add('d-none');
                 });
-            } else {
-                walletBox.classList.add('d-none');
             }
 
-            walletPayBtn.onclick = async () => {
-                const curUser = auth.currentUser;
-                if (!curUser) return;
-                const token = await curUser.getIdToken();
-                const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-                const walletData = await walletRes.json().catch(() => ({}));
-                const userBal = walletData?.wallet?.balance || 0;
+            if (walletPayBtn) {
+                walletPayBtn.onclick = async () => {
+                    const curUser = auth.currentUser;
+                    if (!curUser) return;
+                    const token = await curUser.getIdToken();
+                    const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+                    const walletData = await walletRes.json().catch(() => ({}));
+                    const userBal = walletData?.wallet?.balance || 0;
 
-                if (userBal <= 0) {
-                    walletBox.classList.add('d-none');
-                    await showAlert(t('wallet.insufficient_balance'));
-                    return;
-                }
-
-                const spendAmt = Math.min(remainingFare, userBal);
-                const remAfter = Math.max(0, remainingFare - spendAmt);
-                const confirmed = await showConfirm(
-                    `${t('wallet.pay_from_wallet_confirm', { amount: spendAmt })}\n\n` +
-                    `${t('wallet.deduct_confirm_desc', { amount: spendAmt })}\n` +
-                    `${t('wallet.remaining_fare_after_pay', { amount: remAfter })}`,
-                    { okText: t('common.confirm'), cancelText: t('common.cancel') }
-                );
-                if (!confirmed) return;
-
-                window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment'));
-                try {
-                    const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideData?.id || currentPassengerRideData?.rideId || currentPassengerRideData?.ride_id || window._currentActiveRideId;
-                    if (!rideId) {
-                        throw new Error("Unable to identify active ride ID. Please refresh.");
+                    if (userBal <= 0) {
+                        walletBox.classList.add('d-none');
+                        return;
                     }
-                    const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
-                    const res = await fetch('/api/wallet/pay-current-ride', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ rideId, idempotencyKey })
-                    });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
 
-                    const result = data.result || {};
-                    await showAlert(t('wallet.payment_success_desc', {
-                        amount: result.transferAmount,
-                        remaining: result.remainingFare
-                    }));
-                } catch (err) {
-                    console.error("Wallet payment error:", err);
-                    await showAlert(err.message || t('common.error_occurred'));
-                } finally {
-                    window.LiphtUpLoading?.hidePageLoader?.({ force: true });
-                }
-            };
+                    const spendAmt = Math.min(remainingFare, userBal);
+                    const remAfter = Math.max(0, remainingFare - spendAmt);
+                    const confirmed = await showConfirm(
+                        `${t('wallet.pay_from_wallet_confirm', { amount: spendAmt })}\n\n` +
+                        `${t('wallet.deduct_confirm_desc', { amount: spendAmt })}\n` +
+                        `${t('wallet.remaining_fare_after_pay', { amount: remAfter })}`,
+                        { okText: t('common.confirm'), cancelText: t('common.cancel') }
+                    );
+                    if (!confirmed) return;
+
+                    window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment'));
+                    try {
+                        const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideData?.id || currentPassengerRideData?.rideId || currentPassengerRideData?.ride_id || window._currentActiveRideId;
+                        if (!rideId) {
+                            throw new Error("Unable to identify active ride ID. Please refresh.");
+                        }
+                        const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
+                        const res = await fetch('/api/wallet/pay-current-ride', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ rideId, idempotencyKey })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
+
+                        // Immediately hide wallet pay section — Firestore snapshot will re-render with updated data
+                        walletBox.classList.add('d-none');
+
+                        const result = data.result || {};
+                        await showAlert(t('wallet.payment_success_desc', {
+                            amount: result.transferAmount,
+                            remaining: result.remainingFare
+                        }));
+                    } catch (err) {
+                        console.error("Wallet payment error:", err);
+                        await showAlert(err.message || t('common.error_occurred'));
+                    } finally {
+                        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+                    }
+                };
+            }
         } else {
             walletBox.classList.add('d-none');
         }
@@ -1629,6 +1637,14 @@ window.addEventListener('user-session-ready', (e) => {
 
     // User is a passenger; map initializations happen through map.js automatically
     console.log("Passenger architecture mapped via map.js pipeline context.");
+
+    // Register push notifications for passenger wallet credits & ride updates
+    registerForPush().then(result => {
+        if (result.ok && result.token) {
+            sendTokenToBackend(result.token).catch(() => {});
+        }
+    }).catch(() => {});
+
     if (!hasPassengerLifecycleSurface()) {
         return;
     }

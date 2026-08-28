@@ -57,6 +57,30 @@ AUTO_NO_SHOW_COOLDOWN_SECONDS = 15 * 60  # 15 minutes cooldown after repeated no
 MAX_AUTO_NO_SHOW_THRESHOLD = 3
 
 
+def _safe_ride_dict(ride: dict[str, Any]) -> dict[str, Any]:
+    """Strip Firestore Sentinel and non-JSON-serializable types from a ride dict for API responses."""
+    safe: dict[str, Any] = {}
+    for k, v in ride.items():
+        if hasattr(v, "isoformat"):
+            # DatetimeWithNanoseconds or datetime — convert to ISO string
+            safe[k] = v.isoformat()
+        elif isinstance(v, dict):
+            safe[k] = _safe_ride_dict(v)
+        elif isinstance(v, list):
+            safe[k] = [
+                _safe_ride_dict(item) if isinstance(item, dict) else
+                (item.isoformat() if hasattr(item, "isoformat") else item)
+                for item in v
+                if not hasattr(item, "_sentinel")
+            ]
+        elif hasattr(v, "_sentinel") or type(v).__name__ in ("Sentinel", "Increment"):
+            # Firestore SERVER_TIMESTAMP, Increment — skip, will be set server-side
+            pass
+        else:
+            safe[k] = v
+    return safe
+
+
 class RideCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1122,7 +1146,7 @@ def transition_driver_ride(
             db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
             if availability_status == "searching":
                 _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
-        return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": result}
+        return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": _safe_ride_dict(result)}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
