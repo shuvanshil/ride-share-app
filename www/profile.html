@@ -804,19 +804,18 @@
     </div>
 
     <!-- ============ WALLET VIEW MODAL / SHEET ============ -->
-    <div id="profile-wallet-modal" class="profile-subpage-modal d-none" role="dialog" aria-modal="true" aria-labelledby="profile-wallet-title">
-        <div class="profile-subpage-card">
-            <header class="profile-subpage-head">
-                <button type="button" class="profile-subpage-back-btn" id="profile-wallet-back-btn" aria-label="Close Wallet">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M19 12H5M12 19l-7-7 7-7"/>
-                    </svg>
-                </button>
-                <h2 id="profile-wallet-title" class="profile-subpage-title" data-i18n="wallet.title">Wallet</h2>
-                <div style="width:24px;"></div>
+    <div id="profile-wallet-modal" class="profile-edit-layer d-none" role="dialog" aria-modal="true" aria-labelledby="profile-wallet-title">
+        <button id="profile-wallet-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close wallet"></button>
+        <section class="profile-edit-sheet" style="max-height: 90dvh;">
+            <header class="profile-edit-head">
+                <div>
+                    <span class="profile-role-badge" data-i18n="wallet.badge">Credits</span>
+                    <h2 id="profile-wallet-title" data-i18n="wallet.title">Wallet</h2>
+                </div>
+                <button id="profile-wallet-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
             </header>
 
-            <div class="profile-wallet-body">
+            <div class="profile-wallet-body" style="padding: 16px 18px 30px; overflow-y: auto;">
                 <!-- Balance Dark Card -->
                 <div class="wallet-balance-hero-card">
                     <div class="wallet-balance-top">
@@ -864,7 +863,7 @@
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 
     <!-- ============ CELEBRATION MODAL (NEW CREDIT RECEIVED) ============ -->

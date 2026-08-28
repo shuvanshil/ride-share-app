@@ -865,8 +865,8 @@ function bindProfileActions() {
     document.getElementById('profile-privacy-close-btn')?.addEventListener('click', closePrivacySheet);
     document.getElementById('profile-privacy-backdrop')?.addEventListener('click', closePrivacySheet);
     document.getElementById('profile-safety-close-btn')?.addEventListener('click', closeSafetySheet);
-    document.getElementById('profile-safety-backdrop')?.addEventListener('click', closeSafetySheet);
-    document.getElementById('profile-wallet-back-btn')?.addEventListener('click', closeWalletSheet);
+    document.getElementById('profile-wallet-close-btn')?.addEventListener('click', closeWalletSheet);
+    document.getElementById('profile-wallet-backdrop')?.addEventListener('click', closeWalletSheet);
     document.getElementById('profile-wallet-pay-ride-btn')?.addEventListener('click', payRideFromWalletShortcut);
     document.getElementById('profile-terms-close-btn').addEventListener('click', closeTermsSheet);
     document.getElementById('profile-terms-backdrop').addEventListener('click', closeTermsSheet);
