@@ -78,7 +78,7 @@ def _format_transaction_for_client(data: Dict[str, Any], user_role: str) -> Dict
 
 
 def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: float, remaining_fare_inr: float):
-    """Dispatches background push notification to driver after wallet payment commits."""
+    """Dispatches background push and in-app notification to driver after wallet payment commits."""
     try:
         app = get_admin_app()
         db = fb_firestore.client(app)
@@ -97,28 +97,60 @@ def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: f
         if user_snap.exists:
             u_data = user_snap.to_dict() or {}
             tokens.update(u_data.get("pushTokens") or [])
+            for detail in u_data.get("pushTokenDetails") or []:
+                tok = (detail or {}).get("token") if isinstance(detail, dict) else None
+                if tok and isinstance(tok, str):
+                    tokens.add(tok.strip())
             if u_data.get("fcmToken"):
                 tokens.add(str(u_data.get("fcmToken")).strip())
+
+        title = "Wallet Payment Received"
+        body_text = f"The passenger paid ₹{amount_inr:g} using wallet credits. Remaining ride fare: ₹{remaining_fare_inr:g}."
+        notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=wallet_push"
+        data_payload = {
+            "type": "wallet_payment_received",
+            "rideId": ride_id,
+            "title": title,
+            "body": body_text,
+            "amount": str(amount_inr),
+            "remainingFare": str(remaining_fare_inr),
+            "url": notification_url,
+        }
+
+        # 1. Save in-app notification document for driver
+        try:
+            db.collection("users").document(driver_id).collection("inAppNotifications").document().set({
+                "title": title,
+                "body": body_text,
+                "data": data_payload,
+                "read": False,
+                "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
 
         unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
         if not unique_tokens:
             return
 
-        title = "Wallet Payment Received"
-        body_text = f"The passenger paid ₹{amount_inr:g} using wallet credits. Remaining ride fare: ₹{remaining_fare_inr:g}."
-        notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=wallet_push"
-
         message = fb_messaging.MulticastMessage(
             tokens=unique_tokens,
-            data={
-                "type": "wallet_payment_received",
-                "rideId": ride_id,
-                "title": title,
-                "body": body_text,
-                "amount": str(amount_inr),
-                "remainingFare": str(remaining_fare_inr),
-                "url": notification_url,
-            },
+            notification=fb_messaging.Notification(title=title, body=body_text),
+            data={**{k: str(v) for k, v in data_payload.items()}},
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body_text,
+                    sound="default",
+                    channel_id="liphtup_driver_channel",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1)
+                )
+            ),
             webpush=fb_messaging.WebpushConfig(
                 headers={"Urgency": "high", "TTL": "300"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),

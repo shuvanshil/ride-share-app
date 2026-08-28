@@ -1231,6 +1231,62 @@ function renderLifecycleState(status, rideData = currentRide) {
         </div>
     `;
 
+    const totalFarePaise = Number(currentRide.farePaise) || Math.round(parseFloat(currentRide.fare || 0) * 100);
+    const walletPaidPaise = Number(currentRide.walletPaidAmountPaise) || Math.round(parseFloat(currentRide.wallet_paid_amount || 0) * 100);
+    const cashPaidPaise = Number(currentRide.cashPaidAmountPaise || 0);
+    const remainingFarePaise = (currentRide.remainingFarePaise !== undefined) ? Number(currentRide.remainingFarePaise) : Math.max(0, totalFarePaise - (walletPaidPaise + cashPaidPaise));
+
+    const totalFare = totalFarePaise / 100.0;
+    const walletPaidAmount = walletPaidPaise / 100.0;
+    const remainingFare = remainingFarePaise / 100.0;
+
+    let farePaymentCardHtml = "";
+    if (walletPaidAmount > 0) {
+        if (remainingFare === 0) {
+            farePaymentCardHtml = `
+                <div class="at-card" style="background: #ecfdf5; border: 1.5px solid #10b981; border-radius: 14px; padding: 14px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #10b981; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; flex-shrink: 0;">✓</div>
+                        <div>
+                            <strong style="color: #065f46; font-size: 15px; display: block;">Ride Fully Paid via Wallet Credits</strong>
+                            <span style="color: #047857; font-size: 13px;">₹${walletPaidAmount.toLocaleString('en-IN')} credited to your Driver Wallet</span>
+                        </div>
+                    </div>
+                    <div style="background: #ffffff; border-radius: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #d1fae5;">
+                        <span style="color: #475569; font-weight: 600; font-size: 13px;">Cash To Collect:</span>
+                        <strong style="color: #059669; font-size: 18px;">₹0.00 (No cash needed)</strong>
+                    </div>
+                </div>
+            `;
+        } else {
+            farePaymentCardHtml = `
+                <div class="at-card" style="background: #eff6ff; border: 1.5px solid #3b82f6; border-radius: 14px; padding: 14px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: #3b82f6; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; flex-shrink: 0;">₹</div>
+                        <div>
+                            <strong style="color: #1e40af; font-size: 15px; display: block;">Partial Wallet Payment Received</strong>
+                            <span style="color: #2563eb; font-size: 13px;">₹${walletPaidAmount.toLocaleString('en-IN')} credited to your Driver Wallet</span>
+                        </div>
+                    </div>
+                    <div style="background: #ffffff; border-radius: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bfdbfe;">
+                        <div>
+                            <span style="color: #64748b; font-size: 12px; display: block;">Total Fare: ₹${totalFare.toLocaleString('en-IN')}</span>
+                            <span style="color: #1e293b; font-weight: 700; font-size: 13px;">Remaining Cash to Collect:</span>
+                        </div>
+                        <strong style="color: #dc2626; font-size: 20px;">₹${remainingFare.toLocaleString('en-IN')}</strong>
+                    </div>
+                </div>
+            `;
+        }
+    } else {
+        farePaymentCardHtml = `
+            <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: #475569; font-weight: 600; font-size: 14px;">Total Trip Fare:</span>
+                <strong style="font-size: 18px; color: #0f172a;">₹${totalFare.toLocaleString('en-IN')}</strong>
+            </div>
+        `;
+    }
+
     const cancelCardHtml = `
         <div class="at-cancel-card-wrap">
             <button type="button" id="driver-service-cancel-btn" class="gy-btn gy-btn-danger-outline w-100 py-2.5 fw-bold" style="border-radius: 12px; font-size: 14px;">
@@ -1242,6 +1298,7 @@ function renderLifecycleState(status, rideData = currentRide) {
     lifecycleDetails.innerHTML = `
         ${passengerCardHtml}
         ${statusBannerHtml}
+        ${farePaymentCardHtml}
         ${routeCardHtml}
         ${pinVerificationCardHtml}
         ${cancelCardHtml}
@@ -2305,6 +2362,7 @@ function startActiveRideListener() {
 
     const requestedRideId = new URLSearchParams(window.location.search).get("rideId");
 
+    let lastObservedWalletPaidPaise = 0;
     const activeRideQuery = query(
         collection(db, "rides"),
         where("driver_id", "==", currentUser.uid),
@@ -2313,6 +2371,7 @@ function startActiveRideListener() {
 
     activeRideUnsubscribe = onSnapshot(activeRideQuery, async (snapshot) => {
         if (snapshot.empty) {
+            lastObservedWalletPaidPaise = 0;
             if (currentRideId) {
                 try {
                     const rideSnap = await getDoc(doc(db, "rides", currentRideId));
@@ -2337,7 +2396,24 @@ function startActiveRideListener() {
             ? snapshot.docs.find((rideDoc) => rideDoc.id === currentRideId)
             : null;
         const activeRideDoc = requestedRide || existingRide || snapshot.docs[0];
-        renderActiveRideState(activeRideDoc.id, activeRideDoc.data());
+        const rideData = activeRideDoc.data() || {};
+
+        // Detect new wallet payment during active trip
+        const currentWalletPaidPaise = Number(rideData.walletPaidAmountPaise) || Math.round(parseFloat(rideData.wallet_paid_amount || 0) * 100);
+        if (lastObservedWalletPaidPaise > 0 && currentWalletPaidPaise > lastObservedWalletPaidPaise) {
+            const addedInr = (currentWalletPaidPaise - lastObservedWalletPaidPaise) / 100.0;
+            const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, (Number(rideData.farePaise) || 0) - currentWalletPaidPaise);
+            const remainingInr = remainingFarePaise / 100.0;
+            showAlert(`Passenger paid ₹${addedInr.toLocaleString('en-IN')} with wallet credits! Updated cash to collect: ₹${remainingInr.toLocaleString('en-IN')}`);
+        } else if (lastObservedWalletPaidPaise === 0 && currentWalletPaidPaise > 0 && currentRideId === activeRideDoc.id) {
+            const totalPaidInr = currentWalletPaidPaise / 100.0;
+            const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, (Number(rideData.farePaise) || 0) - currentWalletPaidPaise);
+            const remainingInr = remainingFarePaise / 100.0;
+            showAlert(`Passenger paid ₹${totalPaidInr.toLocaleString('en-IN')} with wallet credits! Updated cash to collect: ₹${remainingInr.toLocaleString('en-IN')}`);
+        }
+        lastObservedWalletPaidPaise = currentWalletPaidPaise;
+
+        renderActiveRideState(activeRideDoc.id, rideData);
     }, (error) => {
         console.error("Driver active ride listener failed:", error);
         showRouteWarning("Could not sync the active ride. Check your connection; live GPS remains active.");

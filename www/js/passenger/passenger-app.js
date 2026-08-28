@@ -621,8 +621,29 @@ function showTripProgressPanel(ride) {
     if (pickupEl) pickupEl.innerText = ride.pickup_display_address || ride.pickup_name || "Pickup location";
     if (dropEl) dropEl.innerText = ride.drop_display_address || ride.drop_name || "Destination";
 
+    const availWrapper = document.getElementById('availability-card-wrapper');
+    if (availWrapper) availWrapper.classList.add('d-none');
+
     const fareEl = document.getElementById('trip-progress-fare');
-    if (fareEl) fareEl.innerText = Number.isFinite(Number(ride.fare)) ? `₹${ride.fare}` : "₹0";
+    const farePaise = Number(ride.farePaise) || Math.round(Number(ride.fare || 0) * 100);
+    const walletPaidPaise = Number(ride.walletPaidAmountPaise) || Math.round(Number(ride.wallet_paid_amount || 0) * 100);
+    const cashPaidPaise = Number(ride.cashPaidAmountPaise || 0);
+    const remainingPaise = (ride.remainingFarePaise !== undefined) ? Number(ride.remainingFarePaise) : Math.max(0, farePaise - (walletPaidPaise + cashPaidPaise));
+    const remainingFare = remainingPaise / 100.0;
+    const walletPaidAmount = walletPaidPaise / 100.0;
+    const totalFare = farePaise / 100.0;
+
+    if (fareEl) {
+        if (walletPaidAmount > 0) {
+            if (remainingFare === 0) {
+                fareEl.innerHTML = `<span class="badge bg-success text-white py-1 px-2">₹0 Cash (Paid via Wallet)</span>`;
+            } else {
+                fareEl.innerHTML = `<span class="text-decoration-line-through text-muted small me-1">₹${totalFare}</span> <strong class="text-success">₹${remainingFare}</strong> <span class="badge bg-success-subtle text-success ms-1 small">₹${walletPaidAmount} paid</span>`;
+            }
+        } else {
+            fareEl.innerText = Number.isFinite(totalFare) ? `₹${totalFare}` : "₹0";
+        }
+    }
 
     // --- Active Ride Wallet Payment Component ---
     const walletBox = document.getElementById('trip-progress-wallet-box');
@@ -633,13 +654,6 @@ function showTripProgressPanel(ride) {
     const walletPayBtn = document.getElementById('trip-progress-wallet-pay-btn');
 
     if (walletBox) {
-        const farePaise = Number(ride.farePaise) || Math.round(Number(ride.fare || 0) * 100);
-        const walletPaidPaise = Number(ride.walletPaidAmountPaise) || Math.round(Number(ride.wallet_paid_amount || 0) * 100);
-        const cashPaidPaise = Number(ride.cashPaidAmountPaise || 0);
-        const remainingPaise = (ride.remainingFarePaise !== undefined) ? Number(ride.remainingFarePaise) : Math.max(0, farePaise - (walletPaidPaise + cashPaidPaise));
-        const remainingFare = remainingPaise / 100.0;
-        const walletPaidAmount = walletPaidPaise / 100.0;
-
         if (walletRemainingFareText) {
             walletRemainingFareText.innerText = `₹${remainingFare.toLocaleString('en-IN')}`;
         }
@@ -654,11 +668,7 @@ function showTripProgressPanel(ride) {
             }
             walletPayBtn?.classList.add('d-none');
         } else if (isOnboard && remainingPaise > 0) {
-            walletBox.classList.remove('d-none');
-            walletPaidBadge?.classList.add('d-none');
-            walletPayBtn?.classList.remove('d-none');
-
-            // Fetch live balance
+            // Check balance - ONLY show if balance > 0
             const user = auth.currentUser;
             if (user) {
                 user.getIdToken().then(token => {
@@ -666,16 +676,26 @@ function showTripProgressPanel(ride) {
                 }).then(res => res.json()).then(data => {
                     if (data?.ok && data?.wallet) {
                         const bal = data.wallet.balance || 0;
-                        if (walletAvailText) walletAvailText.innerText = `${t('wallet.title')}: ₹${bal.toLocaleString('en-IN')}`;
-                        if (bal <= 0) {
-                            walletPayBtn.disabled = true;
-                            walletPayBtn.innerText = t('wallet.insufficient_balance');
-                        } else {
+                        if (bal > 0) {
+                            walletBox.classList.remove('d-none');
+                            walletPaidBadge?.classList.add('d-none');
+                            walletPayBtn?.classList.remove('d-none');
+                            if (walletAvailText) walletAvailText.innerText = `${t('wallet.title')}: ₹${bal.toLocaleString('en-IN')}`;
                             walletPayBtn.disabled = false;
                             walletPayBtn.innerText = t('wallet.use_wallet_credits');
+                        } else {
+                            // Balance is 0 - hide wallet card & button completely
+                            walletBox.classList.add('d-none');
                         }
+                    } else {
+                        walletBox.classList.add('d-none');
                     }
-                }).catch(e => console.warn("Failed to check wallet balance:", e));
+                }).catch(e => {
+                    console.warn("Failed to check wallet balance:", e);
+                    walletBox.classList.add('d-none');
+                });
+            } else {
+                walletBox.classList.add('d-none');
             }
 
             walletPayBtn.onclick = async () => {
@@ -687,6 +707,7 @@ function showTripProgressPanel(ride) {
                 const userBal = walletData?.wallet?.balance || 0;
 
                 if (userBal <= 0) {
+                    walletBox.classList.add('d-none');
                     await showAlert(t('wallet.insufficient_balance'));
                     return;
                 }
@@ -860,8 +881,13 @@ function updateAvailabilityIndicator(freeDriversCount = 0) {
     const scheduleShortcut = document.getElementById('availability-schedule-shortcut');
     if (!card || !statusName || !subtext) return;
 
-    if (cardWrapper && window.latestFareQuote) {
-        cardWrapper.classList.remove('d-none');
+    if (cardWrapper) {
+        const hasActiveRide = Boolean(window._currentActiveRideId || (currentPassengerRideData && ACTIVE_RIDE_STATUSES.includes(currentPassengerRideData.status)));
+        if (hasActiveRide) {
+            cardWrapper.classList.add('d-none');
+        } else if (window.latestFareQuote) {
+            cardWrapper.classList.remove('d-none');
+        }
     }
 
     card.classList.remove('is-high', 'is-moderate', 'is-low');

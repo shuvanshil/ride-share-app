@@ -74,7 +74,7 @@ def _mask_upi(upi: Optional[str]) -> str:
 
 
 def _send_settlement_resolved_push(driver_id: str, amount_inr: float, upi_id: str):
-    """Dispatches background push notification to driver after settlement resolution."""
+    """Dispatches background push and in-app notification to driver after settlement resolution."""
     try:
         app = get_admin_app()
         db = fb_firestore.client(app)
@@ -95,26 +95,58 @@ def _send_settlement_resolved_push(driver_id: str, amount_inr: float, upi_id: st
         if user_snap.exists:
             u_data = user_snap.to_dict() or {}
             tokens.update(u_data.get("pushTokens") or [])
+            for detail in u_data.get("pushTokenDetails") or []:
+                tok = (detail or {}).get("token") if isinstance(detail, dict) else None
+                if tok and isinstance(tok, str):
+                    tokens.add(tok.strip())
             if u_data.get("fcmToken"):
                 tokens.add(str(u_data.get("fcmToken")).strip())
+
+        title = "Wallet Settlement Paid!"
+        body_text = f"₹{amount_inr:g} has been successfully settled and paid to your registered UPI ID ({upi_id})."
+        notification_url = f"{APP_BASE_URL}/driver-payments.html?tab=wallet"
+        data_payload = {
+            "type": "driver_settlement_resolved",
+            "title": title,
+            "body": body_text,
+            "amount": str(amount_inr),
+            "url": notification_url,
+        }
+
+        # 1. Always record in-app notification document
+        try:
+            db.collection("users").document(driver_id).collection("inAppNotifications").document().set({
+                "title": title,
+                "body": body_text,
+                "data": data_payload,
+                "read": False,
+                "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
 
         unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
         if not unique_tokens:
             return
 
-        title = "Wallet Payment Sent"
-        body_text = f"₹{amount_inr:g} has been marked as paid to your registered UPI account ({upi_id})."
-        notification_url = f"{APP_BASE_URL}/driver-payments.html?tab=wallet"
-
         message = fb_messaging.MulticastMessage(
             tokens=unique_tokens,
-            data={
-                "type": "driver_settlement_resolved",
-                "title": title,
-                "body": body_text,
-                "amount": str(amount_inr),
-                "url": notification_url,
-            },
+            notification=fb_messaging.Notification(title=title, body=body_text),
+            data={**{k: str(v) for k, v in data_payload.items()}},
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body_text,
+                    sound="default",
+                    channel_id="liphtup_wallet_channel",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1)
+                )
+            ),
             webpush=fb_messaging.WebpushConfig(
                 headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),
@@ -133,7 +165,7 @@ def _send_settlement_resolved_push(driver_id: str, amount_inr: float, upi_id: st
 
 
 def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label: str):
-    """Dispatches background push notification to passenger after credit grant."""
+    """Dispatches background push and in-app notification to passenger after credit grant."""
     try:
         app = get_admin_app()
         db = fb_firestore.client(app)
@@ -149,23 +181,51 @@ def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label:
         if user_data.get("fcmToken"):
             tokens.add(str(user_data.get("fcmToken")).strip())
 
+        title = "Wallet Credit Received!"
+        body_text = f"You received ₹{amount_inr:g} {tag_label} wallet credits! Thank you for riding with LiphtUp."
+        notification_url = f"{APP_BASE_URL}/profile.html?open=wallet"
+        data_payload = {
+            "type": "passenger_credit_received",
+            "title": title,
+            "body": body_text,
+            "amount": str(amount_inr),
+            "url": notification_url,
+        }
+
+        # 1. Always record in-app notification document
+        try:
+            db.collection("users").document(passenger_id).collection("inAppNotifications").document().set({
+                "title": title,
+                "body": body_text,
+                "data": data_payload,
+                "read": False,
+                "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
+
         unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
         if not unique_tokens:
             return
 
-        title = "Wallet Credit Received!"
-        body_text = f"You received ₹{amount_inr:g} {tag_label} wallet credits! Thank you for riding with LiphtUp."
-        notification_url = f"{APP_BASE_URL}/profile.html?open=wallet"
-
         message = fb_messaging.MulticastMessage(
             tokens=unique_tokens,
-            data={
-                "type": "passenger_credit_received",
-                "title": title,
-                "body": body_text,
-                "amount": str(amount_inr),
-                "url": notification_url,
-            },
+            notification=fb_messaging.Notification(title=title, body=body_text),
+            data={**{k: str(v) for k, v in data_payload.items()}},
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body_text,
+                    sound="default",
+                    channel_id="liphtup_wallet_channel",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1)
+                )
+            ),
             webpush=fb_messaging.WebpushConfig(
                 headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),
