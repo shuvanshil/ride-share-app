@@ -131,6 +131,7 @@ def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: f
 
 
 @router.get("")
+@router.get("/")
 def get_user_wallet(auth_user: Dict[str, Any] = Depends(current_user)) -> Dict[str, Any]:
     """Retrieve the authenticated user's wallet profile and spendable balance."""
     uid = auth_user["uid"]
