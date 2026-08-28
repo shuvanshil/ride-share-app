@@ -35,16 +35,45 @@ public class PushNotificationService extends FirebaseMessagingService {
             return;
         }
 
-        // Check if message contains a data payload.
-        if (!remoteMessage.getData().isEmpty()) {
-            Log.d(TAG, "Message data payload: " + remoteMessage.getData());
-            handleDataMessage(remoteMessage.getData());
+        String title = null;
+        String body = null;
+        String rideId = null;
+        String url = null;
+
+        if (dataMap != null && !dataMap.isEmpty()) {
+            Log.d(TAG, "Message data payload: " + dataMap);
+            if ("NEW_PASSENGER_AVAILABLE".equals(msgType)) {
+                rideId = dataMap.get("rideId");
+                String passengerName = dataMap.get("passengerName");
+                String pickupLocation = dataMap.get("pickupLocation");
+                String estimatedEarning = dataMap.get("estimatedEarning");
+
+                title = "New Ride Request!";
+                StringBuilder bodyBuilder = new StringBuilder();
+                if (passengerName != null) bodyBuilder.append("Passenger: ").append(passengerName).append("\n");
+                if (pickupLocation != null) bodyBuilder.append("Pickup: ").append(pickupLocation).append("\n");
+                if (estimatedEarning != null) bodyBuilder.append("Fare: ₹").append(estimatedEarning);
+                body = bodyBuilder.toString();
+            } else {
+                title = dataMap.get("title");
+                body = dataMap.get("body");
+                rideId = dataMap.get("rideId");
+                url = dataMap.get("url");
+            }
         }
 
-        // Check if message contains a notification payload.
         if (remoteMessage.getNotification() != null) {
             Log.d(TAG, "Message Notification Body: " + remoteMessage.getNotification().getBody());
-            showNotification(remoteMessage.getNotification().getTitle(), remoteMessage.getNotification().getBody(), null);
+            if (title == null || title.isEmpty()) {
+                title = remoteMessage.getNotification().getTitle();
+            }
+            if (body == null || body.isEmpty()) {
+                body = remoteMessage.getNotification().getBody();
+            }
+        }
+
+        if (title != null && body != null) {
+            showNotification(title, body, rideId, url);
         }
     }
 
@@ -60,38 +89,16 @@ public class PushNotificationService extends FirebaseMessagingService {
         return "passenger".equalsIgnoreCase(role.trim());
     }
 
-    private void handleDataMessage(Map<String, String> data) {
-        String type = data.get("type");
-        if ("NEW_PASSENGER_AVAILABLE".equals(type)) {
-            String rideId = data.get("rideId");
-            String passengerName = data.get("passengerName");
-            String pickupLocation = data.get("pickupLocation");
-            String estimatedEarning = data.get("estimatedEarning");
-
-            String title = "New Ride Request!";
-            StringBuilder body = new StringBuilder();
-            if (passengerName != null) body.append("Passenger: ").append(passengerName).append("\n");
-            if (pickupLocation != null) body.append("Pickup: ").append(pickupLocation).append("\n");
-            if (estimatedEarning != null) body.append("Fare: ₹").append(estimatedEarning);
-
-            showNotification(title, body.toString(), rideId);
-        } else {
-            // Generic fallback for other data messages
-            String title = data.get("title");
-            String body = data.get("body");
-            if (title != null && body != null) {
-                showNotification(title, body, data.get("rideId"));
-            }
-        }
-    }
-
-    private void showNotification(String title, String body, String rideId) {
+    private void showNotification(String title, String body, String rideId, String url) {
         createNotificationChannel();
 
         Intent intent = new Intent(this, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        if (rideId != null) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        if (rideId != null && !rideId.isEmpty()) {
             intent.putExtra("rideId", rideId);
+        }
+        if (url != null && !url.isEmpty()) {
+            intent.putExtra("url", url);
         }
         
         // requestCode should be unique if multiple notifications are shown

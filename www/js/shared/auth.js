@@ -209,6 +209,15 @@ onAuthStateChanged(auth, async (user) => {
         // Always dispatch session ready so role and events are synced on all pages
         dispatchSessionReady(profile);
 
+        // Auto-register push notification token for all logged in users (passenger / driver)
+        import('../platform/notifications.js').then(({ registerForPush, sendTokenToBackend }) => {
+            registerForPush().then((res) => {
+                if (res?.ok && res.token) {
+                    sendTokenToBackend(res.token).catch(() => {});
+                }
+            }).catch(() => {});
+        }).catch(() => {});
+
         // Only perform automatic routing/redirects if we are on the entry page (index.html)
         const path = window.location.pathname;
         const isEntryPage = path === "/" || path === "" || path.includes('index.html');

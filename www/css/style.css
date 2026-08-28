@@ -9506,9 +9506,9 @@ gmp-internal-camera-control,
 .wallet-celebration-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.65);
     backdrop-filter: blur(4px);
-    z-index: 1060;
+    z-index: 3500;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -9516,6 +9516,8 @@ gmp-internal-camera-control,
 }
 
 .wallet-celebration-card {
+    position: relative;
+    z-index: 3501;
     background: #FFFFFF;
     border-radius: 24px;
     padding: 28px 24px;

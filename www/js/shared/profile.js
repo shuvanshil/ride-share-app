@@ -123,6 +123,10 @@ function renderProfileSummary(profile = {}) {
     if (paymentsRow) {
         paymentsRow.classList.toggle('d-none', !isDriver);
     }
+    const walletRow = document.getElementById('profile-menu-wallet-row');
+    if (walletRow) {
+        walletRow.classList.toggle('d-none', isDriver);
+    }
 }
 
 function cacheProfile(profile) {
@@ -993,9 +997,14 @@ async function loadWalletData() {
 
         // Active ride payable banner
         if (wallet.activeRidePayable && wallet.activeRidePayable.remainingFare > 0 && wallet.balance > 0) {
-            currentActiveRidePayable = wallet.activeRidePayable;
+            currentActiveRidePayable = { ...wallet.activeRidePayable, walletBalance: wallet.balance };
+            const spendAmt = Math.min(wallet.activeRidePayable.remainingFare, wallet.balance);
             if (rideDesc) {
-                rideDesc.innerText = t('wallet.remaining_ride_fare', { amount: wallet.activeRidePayable.remainingFare });
+                rideDesc.innerText = `${t('wallet.remaining_ride_fare', { amount: wallet.activeRidePayable.remainingFare })} (₹${spendAmt} wallet available)`;
+            }
+            const payRideBtn = document.getElementById('profile-wallet-pay-ride-btn');
+            if (payRideBtn) {
+                payRideBtn.innerText = `Use ₹${spendAmt} Wallet Credits`;
             }
             if (rideCard) rideCard.classList.remove('d-none');
         } else {
@@ -1090,9 +1099,14 @@ async function loadWalletTransactions() {
 async function payRideFromWalletShortcut() {
     if (!currentActiveRidePayable || !currentAuthUser) return;
     const ride = currentActiveRidePayable;
+    const walletBalance = Number(ride.walletBalance || 0);
+    const spendAmt = Math.min(ride.remainingFare, walletBalance);
+    const remAfter = Math.max(0, ride.remainingFare - spendAmt);
 
     const confirmed = await showConfirm(
-        `${t('wallet.pay_from_wallet_confirm', { amount: Math.min(ride.remainingFare, ride.remainingFare) })}\n\n${t('wallet.deduct_confirm_desc', { amount: Math.min(ride.remainingFare, ride.remainingFare) })}`,
+        `${t('wallet.pay_from_wallet_confirm', { amount: spendAmt })}\n\n` +
+        `${t('wallet.deduct_confirm_desc', { amount: spendAmt })}\n` +
+        `${t('wallet.remaining_fare_after_pay', { amount: remAfter })}`,
         { okText: t('common.confirm'), cancelText: t('common.cancel') }
     );
     if (!confirmed) return;
@@ -1240,7 +1254,11 @@ onAuthStateChanged(auth, async (user) => {
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('open') === 'wallet' || urlParams.get('tab') === 'wallet') {
-        openWalletSheet();
+        if (currentProfile?.role === 'driver') {
+            window.location.replace('/driver-payments.html?tab=wallet');
+        } else {
+            openWalletSheet();
+        }
     }
 });
 

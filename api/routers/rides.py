@@ -1408,7 +1408,7 @@ def save_passenger_push_token(
     body: DriverPushTokenBody,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Store a push token for the authenticated passenger's account."""
+    """Store a push token for the authenticated user/passenger's account."""
     uid = str(user.get("uid") or "").strip()
     if not uid:
         raise ApiError("Authenticated user identity is missing.", 401)
@@ -1416,8 +1416,6 @@ def save_passenger_push_token(
         raise ApiError("Push permission is not granted.", 400)
     try:
         db = fb_firestore.client(get_admin_app())
-        profile = db.collection("users").document(uid).get().to_dict() or {}
-        _require_role(profile, "passenger", "Only passengers can register passenger push tokens.")
         token_detail = {
             "token": body.token,
             "userAgent": body.userAgent,
@@ -1433,6 +1431,10 @@ def save_passenger_push_token(
         }
         db.collection("users").document(uid).set(update, merge=True)
         return {"ok": True}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        raise ApiError("Could not register passenger push token.", 503)
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
