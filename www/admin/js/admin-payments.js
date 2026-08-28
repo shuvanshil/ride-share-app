@@ -450,4 +450,690 @@ export function initAdminPayments() {
     document.getElementById('manual-pay-close-btn')?.addEventListener('click', closeManualPayModal);
     document.getElementById('manual-pay-cancel-btn')?.addEventListener('click', closeManualPayModal);
     document.getElementById('admin-manual-pay-form')?.addEventListener('submit', handleSaveManualPayment);
+
+    // Initialize Wallet Credit Admin UI
+    initAdminWalletCredit();
+}
+
+// =========================================================================
+// WALLET CREDIT ADMIN PORTAL
+// =========================================================================
+
+let cachedPassengerWallets = [];
+let cachedDriverSettlements = [];
+
+export function initAdminWalletCredit() {
+    // 1. Top Tabs (Service Fee vs Wallet Credit)
+    const tabServiceFee = document.getElementById('admin-tab-btn-service-fee');
+    const tabWalletCredit = document.getElementById('admin-tab-btn-wallet-credit');
+    const paneServiceFee = document.getElementById('admin-pane-service-fee');
+    const paneWalletCredit = document.getElementById('admin-pane-wallet-credit');
+
+    tabServiceFee?.addEventListener('click', () => {
+        tabServiceFee.classList.add('active');
+        tabWalletCredit?.classList.remove('active');
+        paneServiceFee?.classList.remove('d-none');
+        paneWalletCredit?.classList.add('d-none');
+    });
+
+    tabWalletCredit?.addEventListener('click', () => {
+        tabWalletCredit.classList.add('active');
+        tabServiceFee?.classList.remove('active');
+        paneWalletCredit?.classList.remove('d-none');
+        paneServiceFee?.classList.add('d-none');
+        loadAdminPassengerWallets();
+    });
+
+    // 2. Sub Tabs (Passenger vs Driver)
+    const subtabPassenger = document.getElementById('admin-subtab-passenger');
+    const subtabDriver = document.getElementById('admin-subtab-driver');
+    const viewPassenger = document.getElementById('admin-wallet-passenger-view');
+    const viewDriver = document.getElementById('admin-wallet-driver-view');
+
+    subtabPassenger?.addEventListener('click', () => {
+        subtabPassenger.classList.add('active');
+        subtabDriver?.classList.remove('active');
+        viewPassenger?.classList.remove('d-none');
+        viewDriver?.classList.add('d-none');
+        loadAdminPassengerWallets();
+    });
+
+    subtabDriver?.addEventListener('click', () => {
+        subtabDriver.classList.add('active');
+        subtabPassenger?.classList.remove('active');
+        viewDriver?.classList.remove('d-none');
+        viewPassenger?.classList.add('d-none');
+        loadAdminDriverSettlements();
+    });
+
+    // 3. Passenger Search
+    document.getElementById('admin-passenger-search')?.addEventListener('input', renderPassengerWalletsTable);
+
+    // 4. Grant Credit Modal
+    document.getElementById('admin-open-grant-credit-btn')?.addEventListener('click', openGrantCreditModal);
+    document.getElementById('grant-credit-close-btn')?.addEventListener('click', closeGrantCreditModal);
+    document.getElementById('grant-credit-cancel-btn')?.addEventListener('click', closeGrantCreditModal);
+    document.getElementById('admin-grant-credit-form')?.addEventListener('submit', handleGrantCreditSubmit);
+
+    // 5. Reverse Credit Modal
+    document.getElementById('reverse-credit-close-btn')?.addEventListener('click', closeReverseCreditModal);
+    document.getElementById('reverse-credit-cancel-btn')?.addEventListener('click', closeReverseCreditModal);
+    document.getElementById('admin-reverse-credit-form')?.addEventListener('submit', handleReverseCreditSubmit);
+
+    // 6. Passenger History Modal
+    document.getElementById('passenger-wallet-modal-close-btn')?.addEventListener('click', () => {
+        document.getElementById('admin-passenger-wallet-modal')?.classList.add('d-none');
+    });
+
+    // 7. Driver Settlement Actions & Modals
+    document.getElementById('admin-driver-wallet-search')?.addEventListener('input', renderDriverSettlementsTable);
+    document.getElementById('admin-save-settlement-date-btn')?.addEventListener('click', handleSaveSettlementDate);
+    document.getElementById('resolve-settlement-close-btn')?.addEventListener('click', closeResolveSettlementModal);
+    document.getElementById('resolve-settlement-cancel-btn')?.addEventListener('click', closeResolveSettlementModal);
+    document.getElementById('admin-resolve-settlement-form')?.addEventListener('submit', handleResolveSettlementSubmit);
+    document.getElementById('copy-driver-upi-btn')?.addEventListener('click', () => {
+        const upiVal = document.getElementById('resolve-driver-upi-val')?.value;
+        if (upiVal) {
+            navigator.clipboard?.writeText(upiVal);
+            showToast("UPI ID copied to clipboard!", "info");
+        }
+    });
+}
+
+// --- PASSENGER CREDIT MANAGEMENT ---
+
+export async function loadAdminPassengerWallets() {
+    const container = document.getElementById('admin-passengers-wallet-table-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="card shadow-xs border-0 text-center py-5">
+            <div class="spinner-border text-success mx-auto mb-2" role="status"></div>
+            <div class="text-secondary small">Loading passenger wallets...</div>
+        </div>
+    `;
+
+    try {
+        const data = await adminGet('/wallet/passengers');
+        cachedPassengerWallets = data.passengers || [];
+        renderPassengerWalletsTable();
+    } catch (error) {
+        console.error("Error loading passenger wallets:", error);
+        container.innerHTML = `
+            <div class="card shadow-xs border-0 text-center py-5">
+                <div class="text-danger small">${error.message || "Failed to load passenger wallets"}</div>
+            </div>
+        `;
+    }
+}
+
+function renderPassengerWalletsTable() {
+    const container = document.getElementById('admin-passengers-wallet-table-container');
+    if (!container) return;
+
+    const query = (document.getElementById('admin-passenger-search')?.value || '').toLowerCase().trim();
+    const filtered = cachedPassengerWallets.filter(p => {
+        if (!query) return true;
+        const name = (p.name || '').toLowerCase();
+        const phone = (p.phone || '').toLowerCase();
+        const email = (p.email || '').toLowerCase();
+        return name.includes(query) || phone.includes(query) || email.includes(query);
+    });
+
+    if (!filtered.length) {
+        container.innerHTML = `
+            <div class="card shadow-xs border-0 text-center py-5">
+                <p class="text-secondary mb-0">No passenger wallets found.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="card shadow-xs border-0">
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Passenger</th>
+                            <th>Contact</th>
+                            <th>Wallet Balance</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filtered.map(p => `
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar avatar-sm rounded-circle me-2 bg-primary-lt text-primary fw-bold">
+                                            ${(p.name || 'P').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div class="font-weight-bold">${p.name || 'Passenger'}</div>
+                                            <div class="text-secondary small font-monospace">${p.userId}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div>${p.phone || '--'}</div>
+                                    <div class="text-secondary small">${p.email || '--'}</div>
+                                </td>
+                                <td>
+                                    <span class="badge ${p.balance > 0 ? 'bg-success-lt text-success' : 'bg-secondary-lt text-secondary'} font-weight-bold fs-6">
+                                        ₹${(p.balance ?? 0).toLocaleString('en-IN')}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-list justify-content-end">
+                                        <button class="btn btn-outline-primary btn-sm btn-view-pass-history" data-uid="${p.userId}" data-name="${p.name || ''}" data-phone="${p.phone || ''}" data-bal="${p.balance || 0}" type="button">
+                                            <i class="ti ti-history me-1"></i> Ledger
+                                        </button>
+                                        <button class="btn btn-outline-success btn-sm btn-grant-pass-credit" data-uid="${p.userId}" type="button">
+                                            <i class="ti ti-plus me-1"></i> Grant
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm btn-reconcile-wallet" data-uid="${p.userId}" data-role="passenger" type="button" title="Audit & Reconcile">
+                                            <i class="ti ti-check"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    // Attach row button events
+    container.querySelectorAll('.btn-view-pass-history').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openPassengerWalletHistoryModal(btn.dataset.uid, btn.dataset.name, btn.dataset.phone, btn.dataset.bal);
+        });
+    });
+
+    container.querySelectorAll('.btn-grant-pass-credit').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openGrantCreditModal(btn.dataset.uid);
+        });
+    });
+
+    container.querySelectorAll('.btn-reconcile-wallet').forEach(btn => {
+        btn.addEventListener('click', () => {
+            handleReconcileWallet(btn.dataset.uid, btn.dataset.role, btn);
+        });
+    });
+}
+
+async function openGrantCreditModal(preselectedUserId = '') {
+    const modal = document.getElementById('admin-grant-credit-modal');
+    const select = document.getElementById('grant-credit-passenger-select');
+    if (!modal || !select) return;
+
+    select.innerHTML = `<option value="">Loading passenger accounts...</option>`;
+    modal.classList.remove('d-none');
+
+    try {
+        if (!cachedPassengerWallets.length) {
+            const data = await adminGet('/wallet/passengers');
+            cachedPassengerWallets = data.passengers || [];
+        }
+
+        select.innerHTML = `
+            <option value="">Select a passenger...</option>
+            ${cachedPassengerWallets.map(p => `
+                <option value="${p.userId}" ${p.userId === preselectedUserId ? 'selected' : ''}>
+                    ${p.name || 'Passenger'} (${p.phone || p.email || p.userId}) · Balance: ₹${p.balance || 0}
+                </option>
+            `).join('')}
+        `;
+    } catch (e) {
+        console.error("Error populating passengers:", e);
+    }
+}
+
+function closeGrantCreditModal() {
+    document.getElementById('admin-grant-credit-modal')?.classList.add('d-none');
+}
+
+async function handleGrantCreditSubmit(e) {
+    e.preventDefault();
+    const select = document.getElementById('grant-credit-passenger-select');
+    const amountInput = document.getElementById('grant-credit-amount-input');
+    const tagSelect = document.getElementById('grant-credit-tag-select');
+    const descInput = document.getElementById('grant-credit-desc-input');
+    const submitBtn = document.getElementById('grant-credit-submit-btn');
+
+    const passengerId = select?.value;
+    const amount = parseFloat(amountInput?.value || '0');
+    const tag = tagSelect?.value || 'Bonus';
+    const description = descInput?.value?.trim() || 'Promotional credit';
+
+    if (!passengerId || amount <= 0) {
+        showToast("Please select a passenger and valid credit amount.", "warning");
+        return;
+    }
+
+    await withButtonSpinner(submitBtn, async () => {
+        try {
+            const res = await adminPost('/wallet/passenger/grant-credit', {
+                passengerId,
+                amount,
+                tags: [tag],
+                description
+            });
+            showToast(res.message || "Credits granted successfully!", "success");
+            closeGrantCreditModal();
+            await loadAdminPassengerWallets();
+        } catch (error) {
+            console.error("Grant credit error:", error);
+            showToast(error.message || "Failed to grant credits", "error");
+        }
+    });
+}
+
+async function openPassengerWalletHistoryModal(userId, name, phone, balance) {
+    const modal = document.getElementById('admin-passenger-wallet-modal');
+    const nameEl = document.getElementById('admin-modal-passenger-name');
+    const phoneEl = document.getElementById('admin-modal-passenger-phone');
+    const balEl = document.getElementById('admin-modal-passenger-balance');
+    const tableContainer = document.getElementById('admin-modal-tx-table-container');
+
+    if (!modal) return;
+    if (nameEl) nameEl.innerText = name || 'Passenger';
+    if (phoneEl) phoneEl.innerText = phone || userId;
+    if (balEl) balEl.innerText = `₹${parseFloat(balance || 0).toLocaleString('en-IN')}`;
+
+    if (tableContainer) {
+        tableContainer.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <div class="text-secondary small mt-1">Loading ledger transactions...</div>
+            </div>
+        `;
+    }
+
+    modal.classList.remove('d-none');
+
+    try {
+        const data = await adminGet(`/wallet/user/${encodeURIComponent(userId)}/transactions?limit=50`);
+        const txs = data.transactions || [];
+
+        if (!txs.length) {
+            tableContainer.innerHTML = `<p class="text-secondary text-center py-3 mb-0">No transactions recorded for this wallet.</p>`;
+            return;
+        }
+
+        tableContainer.innerHTML = `
+            <table class="table table-sm table-vcenter">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type / Description</th>
+                        <th>Amount</th>
+                        <th>Balance After</th>
+                        <th>Status</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${txs.map(tx => {
+                        const isCredit = tx.direction === 'credit';
+                        const sign = isCredit ? '+' : '-';
+                        const isReversible = tx.isReversible && !tx.isReversed;
+                        const dateStr = tx.createdAt ? new Date(tx.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+                        return `
+                            <tr>
+                                <td class="text-secondary small">${dateStr}</td>
+                                <td>
+                                    <strong>${tx.description || tx.transactionType}</strong>
+                                    ${tx.tags && tx.tags.length ? `
+                                        <div class="mt-0.5">${tx.tags.map(tg => `<span class="badge bg-success-subtle text-success me-1 px-1.5 py-0.5" style="font-size:9px;">${tg}</span>`).join('')}</div>
+                                    ` : ''}
+                                </td>
+                                <td class="${isCredit ? 'text-success font-weight-bold' : 'text-dark'}">${sign}₹${(tx.amount ?? 0).toLocaleString('en-IN')}</td>
+                                <td class="text-secondary font-monospace small">₹${(tx.balanceAfter ?? 0).toLocaleString('en-IN')}</td>
+                                <td>
+                                    <span class="badge ${tx.isReversed ? 'bg-danger-subtle text-danger' : (isCredit ? 'bg-success-subtle text-success' : 'bg-light text-secondary')}">
+                                        ${tx.isReversed ? 'Reversed' : tx.status}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    ${isReversible ? `
+                                        <button class="btn btn-outline-danger btn-xs btn-trigger-reversal" data-txid="${tx.transactionId}" data-amt="${tx.amount}" data-user="${name || userId}" type="button">
+                                            <i class="ti ti-rotate-2"></i> Reverse
+                                        </button>
+                                    ` : (tx.amount > 1000 && isCredit ? '<small class="text-muted">Non-reversible</small>' : '--')}
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+
+        tableContainer.querySelectorAll('.btn-trigger-reversal').forEach(btn => {
+            btn.addEventListener('click', () => {
+                openReverseCreditModal(btn.dataset.txid, btn.dataset.amt, btn.dataset.user);
+            });
+        });
+    } catch (error) {
+        console.error("Error loading transactions:", error);
+        tableContainer.innerHTML = `<p class="text-danger text-center py-3 mb-0">${error.message || "Failed to load transactions"}</p>`;
+    }
+}
+
+function openReverseCreditModal(txId, amount, recipient) {
+    const modal = document.getElementById('admin-reverse-credit-modal');
+    const txIdInput = document.getElementById('reverse-tx-id-input');
+    const amtVal = document.getElementById('reverse-amount-val');
+    const recipVal = document.getElementById('reverse-recipient-val');
+    const reasonInput = document.getElementById('reverse-reason-input');
+
+    if (!modal) return;
+    if (txIdInput) txIdInput.value = txId;
+    if (amtVal) amtVal.innerText = `₹${parseFloat(amount || 0).toLocaleString('en-IN')}`;
+    if (recipVal) recipVal.innerText = recipient || '--';
+    if (reasonInput) reasonInput.value = '';
+
+    modal.classList.remove('d-none');
+}
+
+function closeReverseCreditModal() {
+    document.getElementById('admin-reverse-credit-modal')?.classList.add('d-none');
+}
+
+async function handleReverseCreditSubmit(e) {
+    e.preventDefault();
+    const txId = document.getElementById('reverse-tx-id-input')?.value;
+    const reason = document.getElementById('reverse-reason-input')?.value?.trim();
+    const submitBtn = document.getElementById('reverse-credit-submit-btn');
+
+    if (!txId || !reason) {
+        showToast("Please enter a reason for reversal.", "warning");
+        return;
+    }
+
+    await withButtonSpinner(submitBtn, async () => {
+        try {
+            const res = await adminPost('/wallet/passenger/reverse-credit', {
+                transactionId: txId,
+                reason
+            });
+            showToast(res.message || "Credit reversed successfully!", "success");
+            closeReverseCreditModal();
+            document.getElementById('admin-passenger-wallet-modal')?.classList.add('d-none');
+            await loadAdminPassengerWallets();
+        } catch (error) {
+            console.error("Reversal failed:", error);
+            showToast(error.message || "Failed to reverse credit", "error");
+        }
+    });
+}
+
+// --- DRIVER CREDIT MANAGEMENT ---
+
+export async function loadAdminDriverSettlements() {
+    const container = document.getElementById('admin-drivers-settlement-table-container');
+    const dateInput = document.getElementById('admin-driver-settlement-date-input');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="card shadow-xs border-0 text-center py-5">
+            <div class="spinner-border text-success mx-auto mb-2" role="status"></div>
+            <div class="text-secondary small">Loading driver settlement accounts...</div>
+        </div>
+    `;
+
+    try {
+        const [configData, summaryData] = await Promise.all([
+            adminGet('/wallet/driver/settlement-config'),
+            adminGet('/wallet/driver/settlements-summary')
+        ]);
+
+        if (dateInput && configData?.nextSettlementDate) {
+            dateInput.value = configData.nextSettlementDate;
+        }
+
+        cachedDriverSettlements = summaryData.driverSettlements || [];
+        renderDriverSettlementsTable();
+    } catch (error) {
+        console.error("Error loading driver settlements:", error);
+        container.innerHTML = `
+            <div class="card shadow-xs border-0 text-center py-5">
+                <div class="text-danger small">${error.message || "Failed to load driver settlements"}</div>
+            </div>
+        `;
+    }
+}
+
+function renderDriverSettlementsTable() {
+    const container = document.getElementById('admin-drivers-settlement-table-container');
+    if (!container) return;
+
+    const query = (document.getElementById('admin-driver-wallet-search')?.value || '').toLowerCase().trim();
+    const filtered = cachedDriverSettlements.filter(d => {
+        if (!query) return true;
+        const name = (d.name || '').toLowerCase();
+        const phone = (d.phone || '').toLowerCase();
+        const upi = (d.upiId || '').toLowerCase();
+        return name.includes(query) || phone.includes(query) || upi.includes(query);
+    });
+
+    if (!filtered.length) {
+        container.innerHTML = `
+            <div class="card shadow-xs border-0 text-center py-5">
+                <p class="text-secondary mb-0">No driver accounts found.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="card shadow-xs border-0">
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Driver</th>
+                            <th>Contact &amp; UPI ID</th>
+                            <th>Wallet Balance</th>
+                            <th>Settlement Status</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filtered.map(d => {
+                            const hasActive = Boolean(d.activeSettlement);
+                            const hasBalance = d.balance > 0;
+
+                            return `
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar avatar-sm rounded-circle me-2 bg-success-lt text-success fw-bold">
+                                                ${(d.name || 'D').charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <div class="font-weight-bold">${d.name || 'Driver'}</div>
+                                                <div class="text-secondary small font-monospace">${d.driverId}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div>${d.phone || '--'}</div>
+                                        <div class="text-success small font-monospace">${d.upiId || '<span class="text-danger">No UPI Registered</span>'}</div>
+                                    </td>
+                                    <td>
+                                        <strong class="h4 mb-0 text-dark">₹${(d.balance ?? 0).toLocaleString('en-IN')}</strong>
+                                    </td>
+                                    <td>
+                                        ${hasActive ? `
+                                            <span class="badge bg-warning-lt text-warning p-1.5">
+                                                <i class="ti ti-clock me-1"></i> Active (₹${d.activeSettlement.settlementAmount})
+                                            </span>
+                                        ` : (hasBalance ? `
+                                            <span class="badge bg-success-subtle text-success p-1.5">
+                                                Ready to Settle
+                                            </span>
+                                        ` : `
+                                            <span class="badge bg-light text-secondary p-1.5">
+                                                Zero Balance
+                                            </span>
+                                        `)}
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-list justify-content-end">
+                                            ${hasActive ? `
+                                                <button class="btn btn-warning btn-sm btn-resolve-settlement" data-id="${d.activeSettlement.settlementId}" data-amt="${d.activeSettlement.settlementAmount}" data-upi="${d.activeSettlement.upiIdSnapshot || d.upiId || ''}" type="button">
+                                                    <i class="ti ti-check me-1"></i> Resolve
+                                                </button>
+                                            ` : `
+                                                <button class="btn btn-outline-success btn-sm btn-open-settlement" data-id="${d.driverId}" ${!hasBalance ? 'disabled' : ''} type="button">
+                                                    <i class="ti ti-file-dollar me-1"></i> Open Settle
+                                                </button>
+                                            `}
+                                            <button class="btn btn-outline-secondary btn-sm btn-reconcile-wallet" data-uid="${d.driverId}" data-role="driver" type="button" title="Audit & Reconcile">
+                                                <i class="ti ti-check"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    container.querySelectorAll('.btn-open-settlement').forEach(btn => {
+        btn.addEventListener('click', () => handleCreateSettlement(btn.dataset.id, btn));
+    });
+
+    container.querySelectorAll('.btn-resolve-settlement').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openResolveSettlementModal(btn.dataset.id, btn.dataset.amt, btn.dataset.upi);
+        });
+    });
+
+    container.querySelectorAll('.btn-reconcile-wallet').forEach(btn => {
+        btn.addEventListener('click', () => {
+            handleReconcileWallet(btn.dataset.uid, btn.dataset.role, btn);
+        });
+    });
+}
+
+async function handleSaveSettlementDate() {
+    const input = document.getElementById('admin-driver-settlement-date-input');
+    const btn = document.getElementById('admin-save-settlement-date-btn');
+    const dateVal = input?.value;
+
+    if (!dateVal) {
+        showToast("Please choose a valid settlement date.", "warning");
+        return;
+    }
+
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminPost('/wallet/driver/settlement-config', { nextSettlementDate: dateVal });
+            showToast(res.message || "Settlement date updated successfully!", "success");
+        } catch (e) {
+            console.error("Save settlement date failed:", e);
+            showToast(e.message || "Failed to update settlement date", "error");
+        }
+    });
+}
+
+async function handleCreateSettlement(driverId, btn) {
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminPost('/wallet/driver/create-settlement', { driverId });
+            showToast(`Settlement created for ₹${res.settlement?.settlementAmount}!`, "success");
+            await loadAdminDriverSettlements();
+        } catch (e) {
+            console.error("Create settlement failed:", e);
+            showToast(e.message || "Failed to create settlement", "error");
+        }
+    });
+}
+
+function openResolveSettlementModal(settlementId, amount, upiId) {
+    const modal = document.getElementById('admin-resolve-settlement-modal');
+    const idInput = document.getElementById('resolve-settlement-id-input');
+    const amtVal = document.getElementById('resolve-settlement-amount-val');
+    const upiVal = document.getElementById('resolve-driver-upi-val');
+    const qrImg = document.getElementById('resolve-settlement-qr-img');
+    const noteInput = document.getElementById('resolve-admin-note-input');
+
+    if (!modal) return;
+    if (idInput) idInput.value = settlementId;
+    if (amtVal) amtVal.innerText = `₹${parseFloat(amount || 0).toLocaleString('en-IN')}`;
+    if (upiVal) upiVal.value = upiId || 'No UPI ID';
+    if (noteInput) noteInput.value = '';
+
+    if (qrImg) {
+        if (upiId) {
+            const upiString = encodeURIComponent(`upi://pay?pa=${upiId}&pn=DriverSettlement&am=${amount}&cu=INR`);
+            qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
+            qrImg.classList.remove('d-none');
+        } else {
+            qrImg.classList.add('d-none');
+        }
+    }
+
+    modal.classList.remove('d-none');
+}
+
+function closeResolveSettlementModal() {
+    document.getElementById('admin-resolve-settlement-modal')?.classList.add('d-none');
+}
+
+async function handleResolveSettlementSubmit(e) {
+    e.preventDefault();
+    const settlementId = document.getElementById('resolve-settlement-id-input')?.value;
+    const adminNote = document.getElementById('resolve-admin-note-input')?.value?.trim();
+    const submitBtn = document.getElementById('resolve-settlement-submit-btn');
+
+    if (!settlementId || !adminNote) {
+        showToast("Please enter an administrative reference / UTR note.", "warning");
+        return;
+    }
+
+    const confirmed = await showTablerConfirm("Confirm that you have completed the manual UPI / Bank transfer and want to mark this settlement as RESOLVED?", {
+        title: "Confirm Settlement Resolution",
+        variant: "primary",
+        confirmText: "Mark as Resolved"
+    });
+    if (!confirmed) return;
+
+    await withButtonSpinner(submitBtn, async () => {
+        try {
+            const res = await adminPost('/wallet/driver/resolve-settlement', { settlementId, adminNote });
+            showToast(`Settlement resolved! Deducted ₹${res.settlement?.settledAmount}.`, "success");
+            closeResolveSettlementModal();
+            await loadAdminDriverSettlements();
+        } catch (e) {
+            console.error("Resolve settlement failed:", e);
+            showToast(e.message || "Failed to resolve settlement", "error");
+        }
+    });
+}
+
+async function handleReconcileWallet(userId, role, btn) {
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminGet(`/wallet/reconcile/${encodeURIComponent(userId)}`);
+            const rep = res.reconciliationReport || {};
+            if (rep.isBalanced) {
+                showToast(`✅ Wallet is in PERFECT BALANCE: Materialized ₹${rep.materializedBalance} matches calculated ₹${rep.expectedBalance}.`, "success");
+            } else {
+                showToast(`⚠️ DISCREPANCY DETECTED: Materialized ₹${rep.materializedBalance} vs Expected ₹${rep.expectedBalance}. Discrepancy: ₹${rep.discrepancy}.`, "error");
+            }
+        } catch (e) {
+            console.error("Reconciliation failed:", e);
+            showToast(e.message || "Failed to reconcile wallet", "error");
+        }
+    });
 }

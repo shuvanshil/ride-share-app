@@ -215,6 +215,40 @@
                                     </div>
                                 </div>
 
+                                <!-- Active Ride Wallet Payment Card -->
+                                <div id="trip-progress-wallet-box" class="trip-progress-wallet-box d-none mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="wallet-badge-mini">
+                                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                                                    <line x1="2" y1="10" x2="22" y2="10"></line>
+                                                    <path d="M16 14h2"></path>
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <strong class="d-block text-dark" style="font-size:12px;" data-i18n="wallet.title">Wallet</strong>
+                                                <span class="text-muted" style="font-size:11px;" id="trip-wallet-avail-text">Balance: ₹0</span>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted d-block" style="font-size:10px;" data-i18n="services.fare">Fare</small>
+                                            <strong class="text-dark" style="font-size:12px;" id="trip-wallet-remaining-fare-text">₹0</strong>
+                                        </div>
+                                    </div>
+                                    <div id="trip-progress-wallet-paid-badge" class="badge bg-success-subtle text-success p-2 w-100 mb-2 text-start d-none" style="font-size:11px; white-space: normal; line-height: 1.4;">
+                                        <span class="webicon webicon-safety-check me-1" aria-hidden="true"></span>
+                                        <span id="trip-progress-wallet-paid-text">Paid via Wallet · No cash needed</span>
+                                    </div>
+                                    <button type="button" id="trip-progress-wallet-pay-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold d-flex align-items-center justify-content-center gap-2" style="border-radius:10px; font-size:13px;">
+                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                                            <line x1="2" y1="10" x2="22" y2="10"></line>
+                                        </svg>
+                                        <span data-i18n="wallet.use_wallet_credits">Use Wallet Credits</span>
+                                    </button>
+                                </div>
+
                                 <div class="trip-details-actions">
                                     <div class="d-flex gap-2 mb-2">
                                         <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline flex-fill" type="button">

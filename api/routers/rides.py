@@ -1053,13 +1053,28 @@ def transition_driver_ride(
                 updates.update({"status": next_status, "pinVerifiedAt": fb_firestore.SERVER_TIMESTAMP, "startedAt": fb_firestore.SERVER_TIMESTAMP})
             elif action == "complete":
                 fare_adjustment = _driver_fare_adjustment(ride, action)
-                updates.update({
+                final_fare_val = fare_adjustment["final_fare"]
+                final_fare_paise = int(round(float(final_fare_val) * 100))
+                wallet_paid_paise = int(ride.get("walletPaidAmountPaise") or int(round(float(ride.get("wallet_paid_amount") or 0) * 100)))
+                cash_paid_paise = int(ride.get("cashPaidAmountPaise") or 0)
+                rem_fare_paise = max(0, final_fare_paise - (wallet_paid_paise + cash_paid_paise))
+                is_fully_paid = rem_fare_paise == 0
+
+                complete_updates = {
                     "status": next_status,
                     "completedAt": fb_firestore.SERVER_TIMESTAMP,
-                    "fare": fare_adjustment["final_fare"],
+                    "fare": final_fare_val,
+                    "farePaise": final_fare_paise,
+                    "walletPaidAmountPaise": wallet_paid_paise,
+                    "remainingFarePaise": rem_fare_paise,
+                    "remaining_fare": round(rem_fare_paise / 100.0, 2),
                     "fare_adjustment": fare_adjustment,
                     "fareFinalizedAt": fb_firestore.SERVER_TIMESTAMP,
-                })
+                }
+                if is_fully_paid:
+                    complete_updates["payment_status"] = "paid"
+                    complete_updates["paymentConfirmedAt"] = fb_firestore.SERVER_TIMESTAMP
+                updates.update(complete_updates)
             elif action == "cancel":
                 fare_adjustment = _driver_fare_adjustment(ride, action)
                 updates.update({

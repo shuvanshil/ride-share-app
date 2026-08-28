@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .core.errors import ApiError
-from .routers import account, admin, auth, google, notify, otp, rides
+from .routers import account, admin, admin_wallet, auth, google, notify, otp, rides, wallet
 from .routers import driver_payments
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
@@ -90,6 +90,8 @@ app.include_router(driver_payments.admin_router)
 app.include_router(notify.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(rides.router, prefix="/api")
+app.include_router(wallet.router, prefix="/api")
+app.include_router(admin_wallet.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 
 # Continuous background thread for scheduled ride activation & matching sweep

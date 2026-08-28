@@ -473,119 +473,236 @@
 
                     <!-- Payments -->
                     <section id="section-payments" class="admin-section d-none">
-                        <div class="page-header d-print-none mb-3">
-                            <div class="row align-items-center gap-2">
-                                <div class="col">
-                                    <div class="page-pretitle">Finance</div>
-                                    <h2 class="page-title h2 fw-bold">Driver Weekly Payments</h2>
-                                </div>
-                                <div class="col-auto ms-auto d-flex flex-wrap gap-2 align-items-center">
-                                    <button id="admin-reset-all-payments-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" type="button">
-                                        <i class="ti ti-refresh"></i> Reset All Payments
-                                    </button>
-                                    <button id="admin-open-pause-modal-btn" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" type="button">
-                                        <i class="ti ti-player-pause"></i> Pause Settings
-                                    </button>
-                                    <button id="admin-open-manual-pay-btn" class="btn btn-primary btn-sm d-flex align-items-center gap-1" type="button">
-                                        <i class="ti ti-plus"></i> Record Payment Manually
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Pause Status Banner -->
-                        <div id="admin-pause-status-strip" class="alert alert-info alert-dismissible d-none shadow-xs border-info mb-3" role="alert">
-                            <div class="d-flex align-items-center">
-                                <i class="ti ti-sun alert-icon text-info me-3" style="font-size: 1.8rem;"></i>
-                                <div class="flex-fill">
-                                    <h4 id="admin-pause-status-title" class="alert-title fw-bold mb-1">Weekly Driver Payments Currently PAUSED</h4>
-                                    <div id="admin-pause-status-sub" class="text-secondary small">Range: --</div>
-                                </div>
-                                <button id="admin-quick-end-pause-btn" class="btn btn-outline-danger btn-sm ms-3" type="button">
-                                    End Pause Early
-                                </button>
-                            </div>
-                        </div>
-
+                        <!-- Top Tabs: Service Fee Payment vs Wallet Credit -->
                         <div class="card mb-3 border-0 shadow-xs">
-                            <div class="card-body p-3">
-                                <div class="row g-2 align-items-center">
-                                    <div class="col-auto">
-                                        <select id="admin-payment-status-filter" class="form-select form-select-sm w-auto">
-                                            <option value="">All statuses</option>
-                                            <option value="submitted" selected>Pending verification</option>
-                                            <option value="approved">Approved</option>
-                                            <option value="declined">Declined</option>
-                                        </select>
+                            <div class="card-body p-2">
+                                <ul class="nav nav-pills" id="admin-payments-top-tabs" role="tablist">
+                                    <li class="nav-item">
+                                        <button class="nav-link active fw-bold" id="admin-tab-btn-service-fee" type="button">
+                                            <i class="ti ti-receipt me-1"></i> Service Fee Payment
+                                        </button>
+                                    </li>
+                                    <li class="nav-item">
+                                        <button class="nav-link fw-bold" id="admin-tab-btn-wallet-credit" type="button">
+                                            <i class="ti ti-wallet me-1"></i> Wallet Credit
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- 1) Service Fee Payment Sub-pane -->
+                        <div id="admin-pane-service-fee">
+                            <div class="page-header d-print-none mb-3">
+                                <div class="row align-items-center gap-2">
+                                    <div class="col">
+                                        <div class="page-pretitle">Finance</div>
+                                        <h2 class="page-title h2 fw-bold">Driver Weekly Payments</h2>
                                     </div>
-                                    <div class="col-auto">
+                                    <div class="col-auto ms-auto d-flex flex-wrap gap-2 align-items-center">
+                                        <button id="admin-reset-all-payments-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" type="button">
+                                            <i class="ti ti-refresh"></i> Reset All Payments
+                                        </button>
+                                        <button id="admin-open-pause-modal-btn" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" type="button">
+                                            <i class="ti ti-player-pause"></i> Pause Settings
+                                        </button>
+                                        <button id="admin-open-manual-pay-btn" class="btn btn-primary btn-sm d-flex align-items-center gap-1" type="button">
+                                            <i class="ti ti-plus"></i> Record Payment Manually
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pause Status Banner -->
+                            <div id="admin-pause-status-strip" class="alert alert-info alert-dismissible d-none shadow-xs border-info mb-3" role="alert">
+                                <div class="d-flex align-items-center">
+                                    <i class="ti ti-sun alert-icon text-info me-3" style="font-size: 1.8rem;"></i>
+                                    <div class="flex-fill">
+                                        <h4 id="admin-pause-status-title" class="alert-title fw-bold mb-1">Weekly Driver Payments Currently PAUSED</h4>
+                                        <div id="admin-pause-status-sub" class="text-secondary small">Range: --</div>
+                                    </div>
+                                    <button id="admin-quick-end-pause-btn" class="btn btn-outline-danger btn-sm ms-3" type="button">
+                                        End Pause Early
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="card mb-3 border-0 shadow-xs">
+                                <div class="card-body p-3">
+                                    <div class="row g-2 align-items-center">
+                                        <div class="col-auto">
+                                            <select id="admin-payment-status-filter" class="form-select form-select-sm w-auto">
+                                                <option value="">All statuses</option>
+                                                <option value="submitted" selected>Pending verification</option>
+                                                <option value="approved">Approved</option>
+                                                <option value="declined">Declined</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-auto">
+                                            <div class="input-icon">
+                                                <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                                                <input type="text" id="admin-payment-search" class="form-control form-control-sm" placeholder="Search driver name/phone...">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row row-cards mb-3">
+                                <div class="col-sm-4">
+                                    <div class="card card-sm border-0 shadow-xs">
+                                        <div class="card-body">
+                                            <div class="row align-items-center">
+                                                <div class="col-auto">
+                                                    <span class="bg-warning-lt text-warning avatar">
+                                                        <i class="ti ti-clock"></i>
+                                                    </span>
+                                                </div>
+                                                <div class="col">
+                                                    <div id="admin-kpi-pending-count" class="h1 mb-0 font-weight-bold text-warning">0</div>
+                                                    <div class="text-secondary small">Pending Verification</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-4">
+                                    <div class="card card-sm border-0 shadow-xs">
+                                        <div class="card-body">
+                                            <div class="row align-items-center">
+                                                <div class="col-auto">
+                                                    <span class="bg-success-lt text-success avatar">
+                                                        <i class="ti ti-circle-check"></i>
+                                                    </span>
+                                                </div>
+                                                <div class="col">
+                                                    <div id="admin-kpi-approved-count" class="h1 mb-0 font-weight-bold text-success">0</div>
+                                                    <div class="text-secondary small">Approved Payments</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-4">
+                                    <div class="card card-sm border-0 shadow-xs">
+                                        <div class="card-body">
+                                            <div class="row align-items-center">
+                                                <div class="col-auto">
+                                                    <span class="bg-danger-lt text-danger avatar">
+                                                        <i class="ti ti-circle-x"></i>
+                                                    </span>
+                                                </div>
+                                                <div class="col">
+                                                    <div id="admin-kpi-declined-count" class="h1 mb-0 font-weight-bold text-danger">0</div>
+                                                    <div class="text-secondary small">Declined Submissions</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="admin-payments-table-container">
+                                <div class="card shadow-xs border-0 text-center py-5">
+                                    <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+                                    <div class="text-secondary small">Loading payment submissions...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2) Wallet Credit Sub-pane -->
+                        <div id="admin-pane-wallet-credit" class="d-none">
+                            <div class="page-header d-print-none mb-3">
+                                <div class="row align-items-center gap-2">
+                                    <div class="col">
+                                        <div class="page-pretitle">Finance &amp; Credits</div>
+                                        <h2 class="page-title h2 fw-bold">Platform Wallet Management</h2>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sub-navigation: Passenger Credit Management vs Driver Credit Management -->
+                            <div class="card mb-3 border-0 shadow-xs">
+                                <div class="card-body p-2">
+                                    <ul class="nav nav-tabs border-0" id="admin-wallet-sub-tabs">
+                                        <li class="nav-item">
+                                            <button class="nav-link active fw-bold" id="admin-subtab-passenger" type="button">
+                                                <i class="ti ti-user me-1 text-primary"></i> Passenger Credit Management
+                                            </button>
+                                        </li>
+                                        <li class="nav-item">
+                                            <button class="nav-link fw-bold" id="admin-subtab-driver" type="button">
+                                                <i class="ti ti-steering-wheel me-1 text-success"></i> Driver Credit Management
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- PASSENGER CREDIT MANAGEMENT VIEW -->
+                            <div id="admin-wallet-passenger-view">
+                                <div class="card mb-3 border-0 shadow-xs">
+                                    <div class="card-body p-3">
+                                        <div class="row g-2 align-items-center">
+                                            <div class="col">
+                                                <div class="input-icon">
+                                                    <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                                                    <input type="text" id="admin-passenger-search" class="form-control form-control-sm" placeholder="Search passenger name/phone/email...">
+                                                </div>
+                                            </div>
+                                            <div class="col-auto">
+                                                <button id="admin-open-grant-credit-btn" class="btn btn-success btn-sm d-flex align-items-center gap-1" type="button">
+                                                    <i class="ti ti-gift"></i> Grant Promotional Credit
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="admin-passengers-wallet-table-container">
+                                    <div class="card shadow-xs border-0 text-center py-5">
+                                        <div class="spinner-border text-success mx-auto mb-2" role="status"></div>
+                                        <div class="text-secondary small">Loading passenger wallets...</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- DRIVER CREDIT MANAGEMENT VIEW -->
+                            <div id="admin-wallet-driver-view" class="d-none">
+                                <!-- Configurable Settlement Date Card -->
+                                <div class="card mb-3 border-0 shadow-xs">
+                                    <div class="card-body p-3">
+                                        <div class="row g-2 align-items-center">
+                                            <div class="col-auto">
+                                                <i class="ti ti-calendar-event text-success" style="font-size:1.6rem;"></i>
+                                            </div>
+                                            <div class="col">
+                                                <strong class="d-block">Next Scheduled Driver Settlement Date</strong>
+                                                <span class="text-secondary small">Configured date displayed in driver wallet portal</span>
+                                            </div>
+                                            <div class="col-auto d-flex gap-2 align-items-center">
+                                                <input type="date" id="admin-driver-settlement-date-input" class="form-control form-control-sm" style="width:160px;">
+                                                <button id="admin-save-settlement-date-btn" class="btn btn-primary btn-sm" type="button">Save Date</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3 border-0 shadow-xs">
+                                    <div class="card-body p-3">
                                         <div class="input-icon">
                                             <span class="input-icon-addon"><i class="ti ti-search"></i></span>
-                                            <input type="text" id="admin-payment-search" class="form-control form-control-sm" placeholder="Search driver name/phone...">
+                                            <input type="text" id="admin-driver-wallet-search" class="form-control form-control-sm" placeholder="Search driver name/phone/UPI...">
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div class="row row-cards mb-3">
-                            <div class="col-sm-4">
-                                <div class="card card-sm border-0 shadow-xs">
-                                    <div class="card-body">
-                                        <div class="row align-items-center">
-                                            <div class="col-auto">
-                                                <span class="bg-warning-lt text-warning avatar">
-                                                    <i class="ti ti-clock"></i>
-                                                </span>
-                                            </div>
-                                            <div class="col">
-                                                <div id="admin-kpi-pending-count" class="h1 mb-0 font-weight-bold text-warning">0</div>
-                                                <div class="text-secondary small">Pending Verification</div>
-                                            </div>
-                                        </div>
+                                <div id="admin-drivers-settlement-table-container">
+                                    <div class="card shadow-xs border-0 text-center py-5">
+                                        <div class="spinner-border text-success mx-auto mb-2" role="status"></div>
+                                        <div class="text-secondary small">Loading driver settlement accounts...</div>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="col-sm-4">
-                                <div class="card card-sm border-0 shadow-xs">
-                                    <div class="card-body">
-                                        <div class="row align-items-center">
-                                            <div class="col-auto">
-                                                <span class="bg-success-lt text-success avatar">
-                                                    <i class="ti ti-circle-check"></i>
-                                                </span>
-                                            </div>
-                                            <div class="col">
-                                                <div id="admin-kpi-approved-count" class="h1 mb-0 font-weight-bold text-success">0</div>
-                                                <div class="text-secondary small">Approved Payments</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-sm-4">
-                                <div class="card card-sm border-0 shadow-xs">
-                                    <div class="card-body">
-                                        <div class="row align-items-center">
-                                            <div class="col-auto">
-                                                <span class="bg-danger-lt text-danger avatar">
-                                                    <i class="ti ti-circle-x"></i>
-                                                </span>
-                                            </div>
-                                            <div class="col">
-                                                <div id="admin-kpi-declined-count" class="h1 mb-0 font-weight-bold text-danger">0</div>
-                                                <div class="text-secondary small">Declined Submissions</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="admin-payments-table-container">
-                            <div class="card shadow-xs border-0 text-center py-5">
-                                <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
-                                <div class="text-secondary small">Loading payment submissions...</div>
                             </div>
                         </div>
                     </section>
@@ -744,6 +861,164 @@
                     <div class="modal-footer d-flex flex-column gap-2">
                         <button type="submit" id="pause-save-btn" class="btn btn-primary w-100">Save Pause Settings</button>
                         <button type="button" id="pause-clear-btn" class="btn btn-outline-danger w-100">End / Clear Pause</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Grant Passenger Credit -->
+    <div id="admin-grant-credit-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">
+                        <i class="ti ti-gift me-2 text-success"></i>Grant Promotional Credit
+                    </h5>
+                    <button id="grant-credit-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <form id="admin-grant-credit-form">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Passenger Account</label>
+                            <select id="grant-credit-passenger-select" class="form-select" required>
+                                <option value="">Loading passenger accounts...</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Credit Amount (₹)</label>
+                            <input type="number" step="0.01" min="1" id="grant-credit-amount-input" class="form-control" placeholder="e.g. 50.00" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Promotional Tag</label>
+                            <select id="grant-credit-tag-select" class="form-select" required>
+                                <option value="Bonus" selected>Bonus</option>
+                                <option value="Thank you credit">Thank you credit</option>
+                                <option value="WOW passenger credit">WOW passenger credit</option>
+                                <option value="Welcome credit">Welcome credit</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Description / Note</label>
+                            <input type="text" id="grant-credit-desc-input" class="form-control" placeholder="e.g. Promotional credit for loyalty" value="Promotional bonus credit">
+                        </div>
+                    </div>
+                    <div class="modal-footer d-flex gap-2">
+                        <button type="button" id="grant-credit-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
+                        <button type="submit" id="grant-credit-submit-btn" class="btn btn-success flex-fill">Grant Credits</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Reverse Admin Credit (> ₹1,000 only) -->
+    <div id="admin-reverse-credit-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold text-danger">
+                        <i class="ti ti-rotate-2 me-2"></i>Reverse Admin Credit
+                    </h5>
+                    <button id="reverse-credit-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <form id="admin-reverse-credit-form">
+                    <input type="hidden" id="reverse-tx-id-input">
+                    <div class="modal-body">
+                        <div class="alert alert-warning small mb-3">
+                            <i class="ti ti-alert-triangle me-1"></i> Credits of ₹1,000.00 or less cannot be reversed. Full reversal only if passenger has sufficient balance without becoming negative.
+                        </div>
+                        <div class="mb-2">
+                            <strong>Original Amount:</strong> <span id="reverse-amount-val" class="fw-bold text-dark">₹0.00</span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Recipient:</strong> <span id="reverse-recipient-val" class="text-dark">--</span>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Reason for Reversal</label>
+                            <input type="text" id="reverse-reason-input" class="form-control" placeholder="e.g. Granted by error" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer d-flex gap-2">
+                        <button type="button" id="reverse-credit-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
+                        <button type="submit" id="reverse-credit-submit-btn" class="btn btn-danger flex-fill">Confirm Reversal</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: View Passenger Wallet History -->
+    <div id="admin-passenger-wallet-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">
+                        <i class="ti ti-history me-2 text-primary"></i>Passenger Wallet History
+                    </h5>
+                    <button id="passenger-wallet-modal-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded">
+                        <div>
+                            <strong id="admin-modal-passenger-name" class="h4 mb-0 d-block">Passenger</strong>
+                            <small id="admin-modal-passenger-phone" class="text-muted">--</small>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted d-block">Current Balance</small>
+                            <strong id="admin-modal-passenger-balance" class="h3 mb-0 text-success">₹0.00</strong>
+                        </div>
+                    </div>
+                    <div id="admin-modal-tx-table-container" class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <div class="text-center py-4">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Resolve Driver Settlement Drawer / Dialog -->
+    <div id="admin-resolve-settlement-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">
+                        <i class="ti ti-building-bank me-2 text-success"></i>Resolve Driver UPI Settlement
+                    </h5>
+                    <button id="resolve-settlement-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <form id="admin-resolve-settlement-form">
+                    <input type="hidden" id="resolve-settlement-id-input">
+                    <div class="modal-body">
+                        <div class="p-3 bg-success-lt rounded mb-3 text-center">
+                            <small class="text-secondary d-block font-weight-semibold">Captured Settlement Amount</small>
+                            <strong id="resolve-settlement-amount-val" class="h2 text-success mb-0">₹0.00</strong>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Driver UPI ID (Snapshot)</label>
+                            <div class="input-group">
+                                <input type="text" id="resolve-driver-upi-val" class="form-control" readonly>
+                                <button class="btn btn-outline-secondary" type="button" id="copy-driver-upi-btn" title="Copy UPI ID">
+                                    <i class="ti ti-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-center mb-3">
+                            <img id="resolve-settlement-qr-img" src="" alt="Driver UPI QR" style="width:180px; height:180px; border-radius:12px; border:1px solid #E2E8F0; padding:6px;">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold">Admin Bank/UPI Reference Note</label>
+                            <input type="text" id="resolve-admin-note-input" class="form-control" placeholder="e.g. UTR #123456789 or Bank Ref" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer d-flex gap-2">
+                        <button type="button" id="resolve-settlement-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
+                        <button type="submit" id="resolve-settlement-submit-btn" class="btn btn-success flex-fill">Mark as Resolved</button>
                     </div>
                 </form>
             </div>

@@ -430,6 +430,108 @@ function setupRealtimeListener(uid) {
     }
 }
 
+// --- Tab Switching Logic ---
+const serviceFeeTabBtn = document.getElementById('tab-btn-service-fee');
+const walletTabBtn = document.getElementById('tab-btn-wallet');
+const serviceFeeContent = document.getElementById('driver-service-fee-tab-content');
+const walletContent = document.getElementById('driver-wallet-tab-content');
+
+function switchDriverTab(targetTab) {
+    if (targetTab === 'wallet') {
+        serviceFeeTabBtn?.classList.remove('active');
+        walletTabBtn?.classList.add('active');
+        serviceFeeContent?.classList.add('d-none');
+        walletContent?.classList.remove('d-none');
+        fetchDriverWalletData();
+    } else {
+        walletTabBtn?.classList.remove('active');
+        serviceFeeTabBtn?.classList.add('active');
+        walletContent?.classList.add('d-none');
+        serviceFeeContent?.classList.remove('d-none');
+    }
+}
+
+serviceFeeTabBtn?.addEventListener('click', () => switchDriverTab('service-fee'));
+walletTabBtn?.addEventListener('click', () => switchDriverTab('wallet'));
+
+async function fetchDriverWalletData() {
+    if (!currentAuthUser) return;
+    const balanceEl = document.getElementById('driver-wallet-balance-val');
+    const nextSettleEl = document.getElementById('driver-wallet-next-settlement-date');
+    const txListEl = document.getElementById('driver-wallet-tx-list');
+
+    try {
+        const token = await getAuthToken();
+        if (!token) return;
+
+        // 1. Fetch balance & settlement info in parallel
+        const [walletRes, settleRes, txRes] = await Promise.all([
+            fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
+            fetch('/api/wallet/driver/settlement-info', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
+            fetch('/api/wallet/transactions?limit=30', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
+        ]);
+
+        const walletData = await walletRes.json().catch(() => ({}));
+        const settleData = await settleRes.json().catch(() => ({}));
+        const txData = await txRes.json().catch(() => ({}));
+
+        if (balanceEl && walletData?.wallet) {
+            balanceEl.innerText = `₹${(walletData.wallet.balance ?? 0).toLocaleString('en-IN')}`;
+        }
+
+        if (nextSettleEl) {
+            nextSettleEl.innerText = settleData?.nextSettlementDateFormatted || 'Every Monday';
+        }
+
+        if (txListEl) {
+            const txs = txData?.transactions || [];
+            if (!txs.length) {
+                txListEl.innerHTML = `
+                    <div class="text-center py-4 text-muted">
+                        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="mb-2">
+                            <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                            <line x1="2" y1="10" x2="22" y2="10"></line>
+                        </svg>
+                        <p class="small mb-0" data-i18n="wallet.no_transactions">${t('wallet.no_transactions', 'No transactions yet')}</p>
+                    </div>
+                `;
+            } else {
+                txListEl.innerHTML = txs.map(tx => {
+                    const isCredit = tx.direction === 'credit';
+                    const sign = isCredit ? '+' : '-';
+                    const amtColor = isCredit ? '#16A34A' : '#1F2937';
+                    const statusLabel = tx.isReversed ? t('wallet.reversed', 'Reversed') : (tx.status === 'completed' ? t('wallet.completed', 'Completed') : tx.status);
+                    const dateStr = tx.createdAt ? new Date(tx.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+                    return `
+                        <div class="d-flex justify-content-between align-items-center py-2.5 border-bottom" style="padding: 10px 0;">
+                            <div class="d-flex align-items-center gap-2">
+                                <div style="width:32px; height:32px; border-radius:8px; background:${isCredit ? '#DCFCE7' : '#F3F4F6'}; display:flex; align-items:center; justify-content:center;">
+                                    ${isCredit ? `
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#16A34A" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                                    ` : `
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6B7280" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                                    `}
+                                </div>
+                                <div>
+                                    <strong class="d-block text-dark" style="font-size:12.5px;">${tx.description || t('wallet.title', 'Wallet')}</strong>
+                                    <small class="text-muted" style="font-size:11px;">${dateStr}</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <strong style="font-size:13px; color:${amtColor};">${sign}₹${(tx.amount ?? 0).toLocaleString('en-IN')}</strong>
+                                <span class="badge ${tx.isReversed ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} d-block mt-0.5" style="font-size:9px;">${statusLabel}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+    } catch (err) {
+        console.error('Error fetching driver wallet:', err);
+    }
+}
+
 // History Modal Listeners
 seeAllTopBtn?.addEventListener('click', () => historyModal?.classList.remove('d-none'));
 seeAllFullBtn?.addEventListener('click', () => historyModal?.classList.remove('d-none'));
@@ -460,6 +562,11 @@ onAuthStateChanged(auth, (user) => {
     currentAuthUser = user;
     fetchPaymentStatus();
     setupRealtimeListener(user.uid);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('tab') === 'wallet') {
+        switchDriverTab('wallet');
+    }
 });
 
 window.addEventListener('languageChanged', () => {

@@ -828,6 +828,7 @@ function bindProfileActions() {
     document.querySelector('[data-action="rides"]')?.addEventListener('click', () => {
         window.navigateToPage('history.html');
     });
+    document.querySelector('[data-action="wallet"]')?.addEventListener('click', openWalletSheet);
     document.querySelector('[data-action="payments"]')?.addEventListener('click', () => {
         window.navigateToPage('driver-payments.html');
     });
@@ -865,6 +866,8 @@ function bindProfileActions() {
     document.getElementById('profile-privacy-backdrop')?.addEventListener('click', closePrivacySheet);
     document.getElementById('profile-safety-close-btn')?.addEventListener('click', closeSafetySheet);
     document.getElementById('profile-safety-backdrop')?.addEventListener('click', closeSafetySheet);
+    document.getElementById('profile-wallet-back-btn')?.addEventListener('click', closeWalletSheet);
+    document.getElementById('profile-wallet-pay-ride-btn')?.addEventListener('click', payRideFromWalletShortcut);
     document.getElementById('profile-terms-close-btn').addEventListener('click', closeTermsSheet);
     document.getElementById('profile-terms-backdrop').addEventListener('click', closeTermsSheet);
     document.getElementById('profile-account-close-btn').addEventListener('click', closeAccountSheet);
@@ -879,7 +882,9 @@ function bindProfileActions() {
         button.addEventListener('click', () => openShareChannel(button.dataset.shareChannel));
     });
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !aboutLayer.classList.contains('d-none')) {
+        if (event.key === 'Escape' && !document.getElementById('profile-wallet-modal')?.classList.contains('d-none')) {
+            closeWalletSheet();
+        } else if (event.key === 'Escape' && !aboutLayer.classList.contains('d-none')) {
             closeAboutSheet();
         } else if (event.key === 'Escape' && !contactLayer.classList.contains('d-none')) {
             closeContactSheet();
@@ -943,6 +948,224 @@ function bindProfileActions() {
         }
         openAccountSheet();
     });
+let currentActiveRidePayable = null;
+
+async function openWalletSheet() {
+    if (!currentAuthUser) {
+        window.location.href = '/login.html';
+        return;
+    }
+    const walletModal = document.getElementById('profile-wallet-modal');
+    if (!walletModal) return;
+    walletModal.classList.remove('d-none');
+    document.body.classList.add('profile-wallet-open');
+    await loadWalletData();
+    checkAndShowCelebration();
+}
+
+function closeWalletSheet() {
+    const walletModal = document.getElementById('profile-wallet-modal');
+    if (walletModal) walletModal.classList.add('d-none');
+    document.body.classList.remove('profile-wallet-open');
+}
+
+async function loadWalletData() {
+    if (!currentAuthUser) return;
+    const balanceEl = document.getElementById('profile-wallet-balance-val');
+    const listEl = document.getElementById('profile-wallet-tx-list');
+    const rideCard = document.getElementById('profile-wallet-active-ride-card');
+    const rideDesc = document.getElementById('profile-wallet-active-ride-desc');
+
+    try {
+        const idToken = await currentAuthUser.getIdToken();
+        const res = await fetch('/api/wallet', {
+            headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to load wallet');
+
+        const wallet = data.wallet || {};
+        if (balanceEl) {
+            balanceEl.innerText = `₹${(wallet.balance ?? 0).toLocaleString('en-IN')}`;
+        }
+
+        // Active ride payable banner
+        if (wallet.activeRidePayable && wallet.activeRidePayable.remainingFare > 0 && wallet.balance > 0) {
+            currentActiveRidePayable = wallet.activeRidePayable;
+            if (rideDesc) {
+                rideDesc.innerText = t('wallet.remaining_ride_fare', { amount: wallet.activeRidePayable.remainingFare });
+            }
+            if (rideCard) rideCard.classList.remove('d-none');
+        } else {
+            currentActiveRidePayable = null;
+            if (rideCard) rideCard.classList.add('d-none');
+        }
+
+        // Load transaction history
+        await loadWalletTransactions();
+    } catch (error) {
+        console.error('Wallet load error:', error);
+        if (listEl) {
+            listEl.innerHTML = `<div class="wallet-empty-state"><p class="text-danger small">${error.message || t('common.error_occurred')}</p></div>`;
+        }
+    }
+}
+
+async function loadWalletTransactions() {
+    if (!currentAuthUser) return;
+    const listEl = document.getElementById('profile-wallet-tx-list');
+    if (!listEl) return;
+
+    try {
+        const idToken = await currentAuthUser.getIdToken();
+        const res = await fetch('/api/wallet/transactions?limit=30', {
+            headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to load transactions');
+
+        const txs = data.transactions || [];
+        if (!txs.length) {
+            listEl.innerHTML = `
+                <div class="wallet-empty-state">
+                    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="mb-2">
+                        <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                        <line x1="2" y1="10" x2="22" y2="10"></line>
+                    </svg>
+                    <strong class="d-block text-dark small">${t('wallet.no_transactions')}</strong>
+                    <p class="text-muted small mb-0">${t('wallet.no_transactions_desc')}</p>
+                </div>
+            `;
+            return;
+        }
+
+        listEl.innerHTML = txs.map(tx => {
+            const isCredit = tx.direction === 'credit';
+            const sign = isCredit ? '+' : '-';
+            const amtClass = isCredit ? 'text-success' : 'text-dark';
+            const statusLabel = tx.isReversed ? t('wallet.reversed') : (tx.status === 'completed' ? t('wallet.completed') : tx.status);
+            const statusBadgeClass = tx.isReversed ? 'bg-danger-subtle text-danger' : (isCredit ? 'bg-success-subtle text-success' : 'bg-light text-secondary');
+            const dateStr = tx.createdAt ? new Date(tx.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+            
+            return `
+                <div class="wallet-tx-card">
+                    <div class="wallet-tx-icon ${isCredit ? 'credit' : 'debit'}">
+                        ${isCredit ? `
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="19" x2="12" y2="5"></line>
+                                <polyline points="5 12 12 5 19 12"></polyline>
+                            </svg>
+                        ` : `
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#DC2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <polyline points="19 12 12 19 5 12"></polyline>
+                            </svg>
+                        `}
+                    </div>
+                    <div class="wallet-tx-details">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong class="wallet-tx-desc">${tx.description || t('wallet.title')}</strong>
+                            <strong class="wallet-tx-amt ${amtClass}">${sign}₹${(tx.amount ?? 0).toLocaleString('en-IN')}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="wallet-tx-date">${dateStr}</span>
+                            <span class="badge ${statusBadgeClass} rounded-pill px-2 py-1 small" style="font-size:10px;">${statusLabel}</span>
+                        </div>
+                        ${tx.tags && tx.tags.length ? `
+                            <div class="wallet-tx-tags mt-1">
+                                ${tx.tags.map(tag => `<span class="badge bg-success-subtle text-success me-1" style="font-size:9px;">${tag}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error rendering transactions:', err);
+    }
+}
+
+async function payRideFromWalletShortcut() {
+    if (!currentActiveRidePayable || !currentAuthUser) return;
+    const ride = currentActiveRidePayable;
+
+    const confirmed = await showConfirm(
+        `${t('wallet.pay_from_wallet_confirm', { amount: Math.min(ride.remainingFare, ride.remainingFare) })}\n\n${t('wallet.deduct_confirm_desc', { amount: Math.min(ride.remainingFare, ride.remainingFare) })}`,
+        { okText: t('common.confirm'), cancelText: t('common.cancel') }
+    );
+    if (!confirmed) return;
+
+    window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment'));
+    try {
+        const idToken = await currentAuthUser.getIdToken();
+        const idempotencyKey = `rwp_${ride.rideId}_shortcut_${Date.now()}`;
+        const res = await fetch('/api/wallet/pay-current-ride', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            body: JSON.stringify({ rideId: ride.rideId, idempotencyKey })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Payment failed.');
+
+        const result = data.result || {};
+        await showAlert(t('wallet.payment_success_desc', {
+            amount: result.transferAmount,
+            remaining: result.remainingFare
+        }));
+        await loadWalletData();
+    } catch (error) {
+        console.error('Shortcut payment failed:', error);
+        await showAlert(error.message || t('common.error_occurred'));
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
+
+async function checkAndShowCelebration() {
+    if (!currentAuthUser) return;
+    try {
+        const idToken = await currentAuthUser.getIdToken();
+        const res = await fetch('/api/wallet/unacknowledged-credits', {
+            headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) return;
+
+        const credits = data.unacknowledgedCredits || [];
+        if (!credits.length) return;
+
+        const firstCredit = credits[0];
+        const modal = document.getElementById('profile-wallet-celebration-modal');
+        const amtVal = document.getElementById('wallet-celebration-amount-val');
+        const tagsContainer = document.getElementById('wallet-celebration-tags');
+        const dismissBtn = document.getElementById('wallet-celebration-dismiss-btn');
+
+        if (!modal) return;
+
+        if (amtVal) amtVal.innerText = `+₹${(firstCredit.amount ?? 0).toLocaleString('en-IN')}`;
+        if (tagsContainer) {
+            tagsContainer.innerHTML = (firstCredit.tags || ['Bonus']).map(tg => `<span class="badge bg-success-subtle text-success me-1 px-2 py-1">${tg}</span>`).join('');
+        }
+
+        modal.classList.remove('d-none');
+
+        const handleDismiss = async () => {
+            modal.classList.add('d-none');
+            dismissBtn?.removeEventListener('click', handleDismiss);
+            try {
+                await fetch('/api/wallet/acknowledge-credit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+                    body: JSON.stringify({ transactionId: firstCredit.transactionId })
+                });
+            } catch (e) {
+                console.warn('Acknowledge failed:', e);
+            }
+        };
+        dismissBtn?.addEventListener('click', handleDismiss, { once: true });
+    } catch (e) {
+        console.warn('Celebration check error:', e);
+    }
 }
 
 bindProfileActions();
@@ -1011,6 +1234,11 @@ onAuthStateChanged(auth, async (user) => {
         };
         renderProfileSummary(currentProfile);
         hideInitialLoader();
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('open') === 'wallet' || urlParams.get('tab') === 'wallet') {
+        openWalletSheet();
     }
 });
 

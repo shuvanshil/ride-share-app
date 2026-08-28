@@ -2171,18 +2171,52 @@ async function completeRideJob() {
 
     try {
         const result = await transitionRideThroughBackend(completedRideId, "complete");
-        const finalFare = parseFloat(result.ride?.fare || currentRide?.fare || 0);
-        finalFareEl.innerText = formatFareAmount(finalFare);
+        const rideData = result.ride || currentRide || {};
+        const totalFarePaise = Number(rideData.farePaise) || Math.round(parseFloat(rideData.fare || 0) * 100);
+        const walletPaidPaise = Number(rideData.walletPaidAmountPaise) || Math.round(parseFloat(rideData.wallet_paid_amount || 0) * 100);
+        const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, totalFarePaise - walletPaidPaise);
 
-        const driverUPI = currentUser.upiId;
-        if (driverUPI) {
-            const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${finalFare}&cu=INR`);
-            upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
-            upiQrImage.classList.remove('d-none');
-        } else {
-            upiQrImage.src = "";
+        const totalFare = totalFarePaise / 100.0;
+        const walletPaidAmount = walletPaidPaise / 100.0;
+        const remainingFare = remainingFarePaise / 100.0;
+
+        const breakdownBox = document.getElementById('driver-wallet-breakdown-box');
+        const breakdownText = document.getElementById('driver-wallet-breakdown-text');
+        const paymentTitle = document.getElementById('driver-service-payment-title');
+        const paymentSubtitle = document.getElementById('driver-service-payment-subtitle');
+
+        if (remainingFare === 0 && walletPaidAmount > 0) {
+            // Fully paid via wallet!
+            finalFareEl.innerText = formatFareAmount(0);
+            if (paymentTitle) paymentTitle.innerText = t('wallet.payment_success', 'Ride Paid via Wallet');
+            if (paymentSubtitle) paymentSubtitle.innerText = t('wallet.paid_via_wallet_no_cash', { amount: walletPaidAmount });
+            if (breakdownBox) {
+                breakdownBox.classList.remove('d-none');
+                if (breakdownText) breakdownText.innerText = `Full fare (₹${totalFare}) paid via passenger wallet credits and added to your wallet. No cash collection needed.`;
+            }
             upiQrImage.classList.add('d-none');
-            await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
+        } else {
+            // Cash / UPI collection required for remaining fare
+            finalFareEl.innerText = formatFareAmount(remainingFare);
+            if (walletPaidAmount > 0) {
+                if (breakdownBox) {
+                    breakdownBox.classList.remove('d-none');
+                    if (breakdownText) breakdownText.innerText = `Total: ₹${totalFare} | Paid via Wallet: ₹${walletPaidAmount} | Collect: ₹${remainingFare}`;
+                }
+            } else {
+                if (breakdownBox) breakdownBox.classList.add('d-none');
+            }
+
+            const driverUPI = currentUser.upiId;
+            if (driverUPI) {
+                const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${remainingFare}&cu=INR`);
+                upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
+                upiQrImage.classList.remove('d-none');
+            } else {
+                upiQrImage.src = "";
+                upiQrImage.classList.add('d-none');
+                await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
+            }
         }
 
         paymentModal.classList.remove('d-none');

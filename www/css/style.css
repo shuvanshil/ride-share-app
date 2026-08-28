@@ -9309,5 +9309,303 @@ gmp-internal-camera-control,
     pointer-events: none !important;
 }
 
+/* =========================================================================
+   WALLET CREDIT SYSTEM STYLES
+   ========================================================================= */
 
+/* Hero Dark Card for Wallet Balance */
+.wallet-balance-hero-card {
+    background: linear-gradient(135deg, #064E3B 0%, #047857 100%);
+    border-radius: 18px;
+    padding: 22px;
+    color: #FFFFFF;
+    box-shadow: 0 4px 14px rgba(6, 78, 59, 0.25);
+    margin-bottom: 18px;
+}
 
+.wallet-balance-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.wallet-balance-icon-wrap {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wallet-balance-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.wallet-balance-amount {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+    margin-bottom: 4px;
+}
+
+.wallet-balance-sub {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.75);
+    margin-bottom: 0;
+}
+
+/* Active Ride Shortcut Card in Wallet View */
+.wallet-active-ride-card {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.wallet-active-ride-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wallet-active-ride-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: #DCFCE7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wallet-active-ride-info strong {
+    display: block;
+    font-size: 13px;
+    color: #166534;
+}
+
+.wallet-active-ride-info small {
+    font-size: 11.5px;
+    color: #15803D;
+}
+
+.wallet-pay-ride-action-btn {
+    background: #16A34A;
+    color: #FFFFFF;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 9px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+}
+
+.wallet-pay-ride-action-btn:hover {
+    background: #15803D;
+}
+
+/* Transaction History Section */
+.wallet-tx-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.wallet-tx-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1F2937;
+    margin-bottom: 0;
+}
+
+.wallet-tx-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wallet-tx-card {
+    background: #FFFFFF;
+    border: 1px solid #F3F4F6;
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: box-shadow 0.15s;
+}
+
+.wallet-tx-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.wallet-tx-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wallet-tx-icon.credit {
+    background: #DCFCE7;
+}
+
+.wallet-tx-icon.debit {
+    background: #FEE2E2;
+}
+
+.wallet-tx-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.wallet-tx-desc {
+    font-size: 13px;
+    color: #1F2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wallet-tx-amt {
+    font-size: 13.5px;
+    flex-shrink: 0;
+}
+
+.wallet-tx-date {
+    font-size: 11px;
+    color: #9CA3AF;
+}
+
+.wallet-empty-state {
+    text-align: center;
+    padding: 40px 16px;
+}
+
+/* Celebration Modal (New Credit Received) */
+.wallet-celebration-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 1060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.wallet-celebration-card {
+    background: #FFFFFF;
+    border-radius: 24px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    animation: celebrationPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes celebrationPop {
+    0% { transform: scale(0.85); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.wallet-celebration-graphic {
+    margin-bottom: 14px;
+}
+
+.wallet-celebration-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #1F2937;
+    margin-bottom: 6px;
+}
+
+.wallet-celebration-amount {
+    font-size: 34px;
+    font-weight: 900;
+    color: #16A34A;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+}
+
+.wallet-celebration-tags {
+    margin-bottom: 12px;
+}
+
+.wallet-celebration-desc {
+    font-size: 13px;
+    color: #6B7280;
+    margin-bottom: 20px;
+}
+
+/* Driver Payments Tab Switcher */
+.driver-payment-tabs {
+    display: flex;
+    gap: 6px;
+    background: #F3F4F6;
+    padding: 4px;
+    border-radius: 12px;
+}
+
+.driver-tab-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 10px 12px;
+    border-radius: 9px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #4B5563;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.driver-tab-btn.active {
+    background: #FFFFFF;
+    color: #064E3B;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Active Ride Wallet Component in Services.html */
+.trip-progress-wallet-box {
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
+    padding: 12px 14px;
+}
+
+.wallet-badge-mini {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: #DCFCE7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

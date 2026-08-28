@@ -168,9 +168,12 @@
     <div id="driver-service-payment-view" class="modal-layer d-none">
         <div class="receipt-card">
             <div class="success-mark">Rs</div>
-            <h4 data-i18n="driver.collect_fare_title">Collect Your Fare</h4>
-            <p data-i18n="driver.upi_qr_notice">Show this screen to the passenger for easy collection.</p>
+            <h4 id="driver-service-payment-title" data-i18n="driver.collect_fare_title">Collect Your Fare</h4>
+            <p id="driver-service-payment-subtitle" data-i18n="driver.upi_qr_notice">Show this screen to the passenger for easy collection.</p>
             <div class="price-total" id="driver-service-final-fare">Rs 0.00</div>
+            <div id="driver-wallet-breakdown-box" class="badge bg-success-subtle text-success p-2 w-100 mb-2 text-start d-none" style="font-size:12px; white-space: normal; line-height: 1.4;">
+                <span id="driver-wallet-breakdown-text"></span>
+            </div>
             <p id="driver-service-fare-note" class="fare-adjustment-note d-none"></p>
             <div class="qr-frame">
                 <img id="driver-service-upi-qr-image" src="" alt="UPI QR Code">

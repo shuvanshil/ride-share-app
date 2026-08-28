@@ -57,6 +57,17 @@
                 <span data-i18n="history.title">My Rides</span>
                 <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
             </button>
+            <button id="profile-menu-wallet-row" class="profile-menu-row" type="button" data-action="wallet">
+                <span class="profile-menu-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#1A7A2E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                        <line x1="2" y1="10" x2="22" y2="10"></line>
+                        <path d="M16 14h2"></path>
+                    </svg>
+                </span>
+                <span data-i18n="wallet.title">Wallet</span>
+                <span class="webicon webicon-view-more profile-menu-more" aria-hidden="true"></span>
+            </button>
             <button id="profile-menu-payments-row" class="profile-menu-row d-none" type="button" data-action="payments">
                 <span class="profile-menu-icon"><span class="webicon webicon-payments" aria-hidden="true"></span></span>
                 <span data-i18n="driver.weekly_payment">Payments</span>
@@ -790,6 +801,89 @@
                 </section>
             </article>
         </section>
+    </div>
+
+    <!-- ============ WALLET VIEW MODAL / SHEET ============ -->
+    <div id="profile-wallet-modal" class="profile-subpage-modal d-none" role="dialog" aria-modal="true" aria-labelledby="profile-wallet-title">
+        <div class="profile-subpage-card">
+            <header class="profile-subpage-head">
+                <button type="button" class="profile-subpage-back-btn" id="profile-wallet-back-btn" aria-label="Close Wallet">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                </button>
+                <h2 id="profile-wallet-title" class="profile-subpage-title" data-i18n="wallet.title">Wallet</h2>
+                <div style="width:24px;"></div>
+            </header>
+
+            <div class="profile-wallet-body">
+                <!-- Balance Dark Card -->
+                <div class="wallet-balance-hero-card">
+                    <div class="wallet-balance-top">
+                        <div class="wallet-balance-icon-wrap">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                                <line x1="2" y1="10" x2="22" y2="10"></line>
+                                <path d="M16 14h2"></path>
+                            </svg>
+                        </div>
+                        <span class="wallet-balance-label" data-i18n="wallet.wallet_balance">Wallet Balance</span>
+                    </div>
+                    <div class="wallet-balance-amount" id="profile-wallet-balance-val">₹0</div>
+                    <p class="wallet-balance-sub" data-i18n="wallet.available_credits">Available Wallet Credits</p>
+                </div>
+
+                <!-- Active Ride Payable Shortcut Banner -->
+                <div id="profile-wallet-active-ride-card" class="wallet-active-ride-card d-none">
+                    <div class="wallet-active-ride-left">
+                        <div class="wallet-active-ride-badge">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#166534" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11.2 2 11.6 2 12v4c0 .6.4 1 1 1h2"/>
+                                <circle cx="7" cy="17" r="2"/>
+                                <circle cx="17" cy="17" r="2"/>
+                            </svg>
+                        </div>
+                        <div class="wallet-active-ride-info">
+                            <strong data-i18n="wallet.pay_current_ride">Pay for Your Current Ride</strong>
+                            <small id="profile-wallet-active-ride-desc">Remaining fare: ₹0</small>
+                        </div>
+                    </div>
+                    <button type="button" id="profile-wallet-pay-ride-btn" class="wallet-pay-ride-action-btn" data-i18n="wallet.use_wallet_credits">Use Wallet Credits</button>
+                </div>
+
+                <!-- Transaction History Header -->
+                <div class="wallet-tx-header-row">
+                    <h3 class="wallet-tx-title" data-i18n="wallet.transaction_history">Transaction History</h3>
+                </div>
+
+                <!-- Transaction History List Container -->
+                <div id="profile-wallet-tx-list" class="wallet-tx-list">
+                    <div class="wallet-tx-loading">
+                        <div class="spinner-border spinner-border-sm text-success" role="status"></div>
+                        <span class="ms-2" data-i18n="common.loading">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ CELEBRATION MODAL (NEW CREDIT RECEIVED) ============ -->
+    <div id="profile-wallet-celebration-modal" class="wallet-celebration-backdrop d-none" role="dialog" aria-modal="true">
+        <div class="wallet-celebration-card">
+            <div class="wallet-celebration-graphic">
+                <svg viewBox="0 0 64 64" width="64" height="64" fill="none">
+                    <circle cx="32" cy="32" r="30" fill="#DCFCE7"/>
+                    <path d="M32 12v8M18 18l5.6 5.6M46 18l-5.6 5.6M12 32h8M44 32h8M22 46l4-4M42 46l-4-4" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"/>
+                    <rect x="20" y="24" width="24" height="18" rx="3" fill="#166534" stroke="#15803D" stroke-width="2"/>
+                    <circle cx="32" cy="33" r="3" fill="#FEF08A"/>
+                </svg>
+            </div>
+            <h3 class="wallet-celebration-title" data-i18n="wallet.credit_received_title">Wallet Credit Received!</h3>
+            <div class="wallet-celebration-amount" id="wallet-celebration-amount-val">+₹0</div>
+            <div id="wallet-celebration-tags" class="wallet-celebration-tags"></div>
+            <p class="wallet-celebration-desc" data-i18n="wallet.thank_you_riding">Thank you for riding with us!</p>
+            <button type="button" id="wallet-celebration-dismiss-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold" style="border-radius:12px;" data-i18n="wallet.awesome">Awesome</button>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
