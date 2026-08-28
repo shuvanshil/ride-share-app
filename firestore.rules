@@ -188,10 +188,38 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // System Settings (e.g. driver payment pause configuration):
+    // System Settings (e.g. driver payment pause configuration, driver settlement date):
     // Read-only for authenticated users, writes managed via FastAPI Admin SDK.
     match /systemSettings/{settingId} {
       allow read: if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    // Platform Wallets:
+    // Users can read their own materialized wallet balance; writes are server-only through FastAPI.
+    match /wallets/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // Immutable Wallet Transactions Ledger:
+    // Users can read their own ledger transactions; writes are server-only through FastAPI.
+    match /walletTransactions/{txId} {
+      allow read: if signedIn() && (resource == null || ('userId' in resource.data && resource.data.userId == request.auth.uid) || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // Ride Wallet Payments:
+    // Participants and admins can view payment records; writes are server-only through FastAPI.
+    match /rideWalletPayments/{paymentId} {
+      allow read: if signedIn() && (resource == null || ('passengerId' in resource.data && resource.data.passengerId == request.auth.uid) || ('driverId' in resource.data && resource.data.driverId == request.auth.uid) || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // Driver Wallet Settlements:
+    // Drivers can view their own settlements, admins can view all; writes are server-only through FastAPI.
+    match /driverSettlements/{settlementId} {
+      allow read: if signedIn() && (resource == null || ('driverId' in resource.data && resource.data.driverId == request.auth.uid) || isAdmin());
       allow create, update, delete: if false;
     }
 
