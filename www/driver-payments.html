@@ -495,6 +495,25 @@
         </div>
     </div>
 
+    <!-- ============ DRIVER WALLET SETTLEMENT CELEBRATION MODAL ============ -->
+    <div id="driver-wallet-celebration-modal" class="wallet-celebration-backdrop d-none" role="dialog" aria-modal="true">
+        <div class="wallet-celebration-card">
+            <div class="wallet-celebration-graphic">
+                <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#16A34A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" stroke="#DCFCE7" fill="#DCFCE7"></circle>
+                    <path d="M8 12l3 3 6-6" stroke="#16A34A" stroke-width="2.8"></path>
+                </svg>
+            </div>
+            <h3 class="wallet-celebration-title" id="driver-celebration-title">Wallet Settlement Transferred!</h3>
+            <div class="wallet-celebration-amount" id="driver-celebration-amount-val">+₹0</div>
+            <div id="driver-celebration-tags" class="wallet-celebration-tags">
+                <span class="badge bg-success-subtle text-success px-2 py-1">Direct Bank / UPI Transfer</span>
+            </div>
+            <p class="wallet-celebration-desc" id="driver-celebration-desc">Admin has processed your payout and transferred it to your registered UPI ID. Your wallet balance has been settled.</p>
+            <button type="button" id="driver-celebration-dismiss-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold" style="border-radius:12px;" data-i18n="wallet.awesome">Awesome</button>
+        </div>
+    </div>
+
     <script type="module" src="js/driver/driver-payments.js?v=2.1.0"></script>
     <script type="module" src="js/shared/i18n.js"></script>
 </body>

@@ -1153,9 +1153,9 @@ function syncGlobalDriverMarkerVisibility() {
     if (!window.mapInstance) return;
 
     if (assignedDriverTrackingDriverId) {
-        globalDriverMarkers.forEach((existing, driverId) => {
-            const shouldShow = (driverId === assignedDriverTrackingDriverId);
-            existing.marker?.setMap?.(shouldShow ? window.mapInstance : null);
+        // When a specific driver has been assigned, hide all other global vehicle icons
+        globalDriverMarkers.forEach((existing) => {
+            existing.marker?.setMap?.(null);
         });
         if (vehicleLegendElement) {
             vehicleLegendElement.classList.add("d-none");
@@ -1211,6 +1211,172 @@ function syncGlobalDriverMarkerVisibility() {
 
 function setGlobalDriverMarkerVisibility(driverId, existing) {
     syncGlobalDriverMarkerVisibility();
+}
+
+function adjustForMarkerOverlap(position, heading, driverId = "") {
+    if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return position;
+
+    let adjustedLat = position.lat;
+    let adjustedLng = position.lng;
+
+    // 1. Dispersion / De-conflict against other co-located vehicle markers on the map
+    if (driverId && globalDriverMarkers.size > 1 && !assignedDriverTrackingDriverId) {
+        const CO_LOCATED_RADIUS_METERS = 35;
+        const DISPERSION_RADIUS_METERS = 26;
+        const nearbyIds = [];
+
+        globalDriverMarkers.forEach((otherData, otherId) => {
+            const raw = otherData.rawPosition || otherData.marker?.getPosition?.();
+            if (!raw) return;
+            const pt = typeof raw.lat === "function" ? { lat: raw.lat(), lng: raw.lng() } : raw;
+            if (calculateDistanceMeters(position, pt) <= CO_LOCATED_RADIUS_METERS) {
+                nearbyIds.push(otherId);
+            }
+        });
+
+        if (!nearbyIds.includes(driverId)) nearbyIds.push(driverId);
+
+        if (nearbyIds.length > 1) {
+            nearbyIds.sort(); // Stable deterministic ordering to eliminate jitter
+            const index = nearbyIds.indexOf(driverId);
+            if (index >= 0) {
+                const angle = (index / nearbyIds.length) * 2 * Math.PI;
+                const earthRadius = 6371000;
+                const deltaLat = (DISPERSION_RADIUS_METERS * Math.cos(angle) / earthRadius) * (180 / Math.PI);
+                const deltaLng = (DISPERSION_RADIUS_METERS * Math.sin(angle) / (earthRadius * Math.cos(position.lat * Math.PI / 180))) * (180 / Math.PI);
+                adjustedLat += deltaLat;
+                adjustedLng += deltaLng;
+            }
+        }
+    }
+
+    const currentPos = { lat: adjustedLat, lng: adjustedLng };
+
+    // 2. Avoid stacking directly over passenger pickup pin or destination pin
+    const passengerPos = userMarker?.getPosition?.()
+        ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() }
+        : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null);
+
+    const destPos = destinationMarker?.getPosition?.()
+        ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() }
+        : null;
+
+    const checkPoints = [passengerPos, destPos].filter(Boolean);
+    const OVERLAP_MIN_METERS = 20;
+
+    for (const targetPt of checkPoints) {
+        const dist = calculateDistanceMeters(currentPos, targetPt);
+        if (dist < OVERLAP_MIN_METERS) {
+            const offsetBearing = ((heading != null ? heading : 90) + 90) % 360;
+            const offsetRad = (offsetBearing * Math.PI) / 180;
+            const earthRadius = 6371000;
+            const shiftMeters = 24 - dist;
+            const deltaLat = (shiftMeters * Math.cos(offsetRad)) / earthRadius * (180 / Math.PI);
+            const deltaLng = (shiftMeters * Math.sin(offsetRad)) / (earthRadius * Math.cos(currentPos.lat * Math.PI / 180)) * (180 / Math.PI);
+            return {
+                lat: currentPos.lat + deltaLat,
+                lng: currentPos.lng + deltaLng
+            };
+        }
+    }
+
+    return currentPos;
+}
+
+function resolveDriverRenderState(existing, rawPosition, driver, routePath = [], driverId = "") {
+    if (existing && existing.lastRoutePathRef !== routePath) {
+        existing.routeMatchIndex = -1;
+        existing.lastRoutePathRef = routePath;
+    }
+
+    let position = rawPosition;
+    let heading = getDriverDocumentHeading(driver);
+
+    // Only perform route snapping if an active valid route path is provided
+    if (Array.isArray(routePath) && routePath.length >= 2) {
+        const lastIndex = Number.isInteger(existing?.routeMatchIndex) ? existing.routeMatchIndex : -1;
+        const match = matchPositionToRoute(rawPosition, routePath, lastIndex);
+
+        if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
+            if (existing) existing.routeMatchIndex = match.index;
+            position = match.point;
+            if (match.heading != null) {
+                heading = match.heading;
+            }
+        } else if (existing) {
+            existing.routeMatchIndex = -1;
+        }
+    } else if (existing) {
+        existing.routeMatchIndex = -1;
+    }
+
+    const previousPosition = existing?.marker?.getPosition?.();
+    if (previousPosition) {
+        const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
+        const moveDist = calculateDistanceMeters(previous, rawPosition);
+        if (moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
+            const motionBearing = calculateBearing(previous, rawPosition);
+            if (motionBearing != null) {
+                if (heading != null) {
+                    const diff = Math.abs(shortestHeadingDelta(heading, motionBearing));
+                    if (diff > 110) {
+                        heading = motionBearing;
+                    } else {
+                        heading = smoothHeading(existing?.heading, motionBearing, 0.4);
+                    }
+                } else {
+                    heading = motionBearing;
+                }
+            }
+        }
+    }
+
+    // Determine target pointing (Passenger pickup vs Destination)
+    const isAssigned = (driver?.driverId && driver.driverId === assignedDriverTrackingDriverId) || (existing?.isAssigned);
+    if (isAssigned || assignedDriverTrackingDriverId) {
+        const isTripStarted = Boolean(driver?.status === "in_trip" || driver?.rideStatus === "in_trip" || driver?.status === "completed_payment");
+        const targetPt = isTripStarted
+            ? (destinationMarker?.getPosition?.() ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() } : null)
+            : (userMarker?.getPosition?.() ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() } : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null));
+
+        if (targetPt && calculateDistanceMeters(position, targetPt) > 5) {
+            const targetBearing = calculateBearing(position, targetPt);
+            if (targetBearing != null && heading == null) {
+                heading = targetBearing;
+            }
+        }
+    }
+
+    const resolvedDriverId = driverId || driver?.driverId || driver?.id || "";
+    const finalHeading = smoothHeading(existing?.heading, heading, 0.45);
+    const finalPosition = adjustForMarkerOverlap(position, finalHeading, resolvedDriverId);
+
+    return { position: finalPosition, heading: finalHeading };
+}
+
+function updateVehicleMarkerLegend() {
+    const counts = { bike: 0, auto: 0, total: 0 };
+    const activeDrivers = [];
+    globalDriverMarkers.forEach((markerData) => {
+        const vehicleType = markerData.vehicleType || "auto";
+        counts[vehicleType] = (counts[vehicleType] || 0) + 1;
+        counts.total += 1;
+        activeDrivers.push(markerData);
+    });
+
+    if (vehicleLegendElement && vehicleLegendElement.parentElement) {
+        vehicleLegendElement.remove();
+        vehicleLegendElement = null;
+    }
+
+    window.dispatchEvent(new CustomEvent("nearby-drivers-updated", {
+        detail: {
+            bikeCount: counts.bike,
+            autoCount: counts.auto,
+            totalCount: counts.total,
+            drivers: activeDrivers
+        }
+    }));
 }
 
 function clearPickupMarker() {
@@ -1543,105 +1709,6 @@ function getDriverDocumentHeading(driver) {
     );
 }
 
-function adjustForMarkerOverlap(position, heading) {
-    if (!position) return position;
-
-    const passengerPos = userMarker?.getPosition?.()
-        ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() }
-        : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null);
-
-    const destPos = destinationMarker?.getPosition?.()
-        ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() }
-        : null;
-
-    const checkPoints = [passengerPos, destPos].filter(Boolean);
-    const OVERLAP_MIN_METERS = 25; // 25 meters threshold for overlapping icons
-
-    for (const targetPt of checkPoints) {
-        const dist = calculateDistanceMeters(position, targetPt);
-        if (dist < OVERLAP_MIN_METERS) {
-            const offsetBearing = ((heading != null ? heading : 90) + 90) % 360;
-            const offsetRad = (offsetBearing * Math.PI) / 180;
-            const earthRadius = 6371000;
-            const shiftMeters = 30 - dist;
-            const deltaLat = (shiftMeters * Math.cos(offsetRad)) / earthRadius * (180 / Math.PI);
-            const deltaLng = (shiftMeters * Math.sin(offsetRad)) / (earthRadius * Math.cos(position.lat * Math.PI / 180)) * (180 / Math.PI);
-            return {
-                lat: position.lat + deltaLat,
-                lng: position.lng + deltaLng
-            };
-        }
-    }
-
-    return position;
-}
-
-function resolveDriverRenderState(existing, rawPosition, driver, routePath = []) {
-    if (existing && existing.lastRoutePathRef !== routePath) {
-        existing.routeMatchIndex = -1;
-        existing.lastRoutePathRef = routePath;
-    }
-
-    let position = rawPosition;
-    let heading = getDriverDocumentHeading(driver);
-
-    const lastIndex = Number.isInteger(existing?.routeMatchIndex) ? existing.routeMatchIndex : -1;
-    const match = matchPositionToRoute(rawPosition, routePath, lastIndex);
-
-    if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
-        if (existing) existing.routeMatchIndex = match.index;
-        position = match.point;
-        if (match.heading != null) {
-            heading = match.heading;
-        }
-    } else if (existing) {
-        existing.routeMatchIndex = -1;
-    }
-
-    const previousPosition = existing?.marker?.getPosition?.();
-    if (previousPosition) {
-        const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
-        const moveDist = calculateDistanceMeters(previous, rawPosition);
-        if (moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
-            const motionBearing = calculateBearing(previous, rawPosition);
-            if (motionBearing != null) {
-                if (heading != null) {
-                    const diff = Math.abs(shortestHeadingDelta(heading, motionBearing));
-                    if (diff > 110) {
-                        heading = motionBearing;
-                    } else {
-                        heading = smoothHeading(existing?.heading, motionBearing, 0.4);
-                    }
-                } else {
-                    heading = motionBearing;
-                }
-            }
-        }
-    }
-
-    // Determine target pointing (Passenger pickup vs Destination)
-    const isAssigned = (driver?.driverId && driver.driverId === assignedDriverTrackingDriverId) || (existing?.isAssigned);
-    if (isAssigned || assignedDriverTrackingDriverId) {
-        const isTripStarted = Boolean(driver?.status === "in_trip" || driver?.rideStatus === "in_trip" || driver?.status === "completed_payment");
-        const targetPt = isTripStarted
-            ? (destinationMarker?.getPosition?.() ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() } : null)
-            : (userMarker?.getPosition?.() ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() } : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null));
-
-        if (targetPt && calculateDistanceMeters(position, targetPt) > 5) {
-            const targetBearing = calculateBearing(position, targetPt);
-            if (targetBearing != null && heading == null) {
-                heading = targetBearing;
-            }
-        }
-    }
-
-    const finalHeading = smoothHeading(existing?.heading, heading, 0.45);
-    const finalPosition = adjustForMarkerOverlap(position, finalHeading);
-
-    return { position: finalPosition, heading: finalHeading };
-}
-
-function updateVehicleMarkerLegend() {
     const counts = { bike: 0, auto: 0, total: 0 };
     const activeDrivers = [];
     globalDriverMarkers.forEach((markerData) => {
@@ -1783,6 +1850,14 @@ function isLiveDriverVisible(driver) {
 function upsertGlobalDriverMarker(driverId, driver) {
     if (!window.mapInstance) return;
 
+    if (assignedDriverTrackingDriverId) {
+        const existing = globalDriverMarkers.get(driverId);
+        if (existing) {
+            existing.marker?.setMap?.(null);
+        }
+        return;
+    }
+
     const location = driver.driverLocation || {};
     const rawPosition = {
         lat: Number(location.lat),
@@ -1790,11 +1865,12 @@ function upsertGlobalDriverMarker(driverId, driver) {
     };
     const vehicleType = inferDriverVehicleType(driver);
     const existing = globalDriverMarkers.get(driverId);
-    const { position, heading } = resolveDriverRenderState(existing, rawPosition, driver, driver.activeRoutePath || []);
+    // For idle drivers, avoid snapping to stale historic routes to prevent position jittering
+    const { position, heading } = resolveDriverRenderState(existing, rawPosition, driver, [], driverId);
 
     if (!existing) {
         const marker = new RotatingVehicleMarker({
-            map: assignedDriverTrackingDriverId && driverId !== assignedDriverTrackingDriverId ? null : window.mapInstance,
+            map: assignedDriverTrackingDriverId ? null : window.mapInstance,
             position,
             title: `${driver.name || "Online Driver"} - ${vehicleType}`,
             vehicleType,
@@ -1806,6 +1882,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
             marker,
             vehicleType,
             heading,
+            rawPosition,
             routeMatchIndex: -1,
             animationFrame: null,
             coastFrame: null,
@@ -1818,6 +1895,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
         return;
     }
 
+    existing.rawPosition = rawPosition;
     setGlobalDriverMarkerVisibility(driverId, existing);
     animateGlobalDriverMarker(existing, position, heading);
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
@@ -1987,12 +2065,11 @@ async function handleAssignedDriverLocation(event) {
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
     const existing = activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
-    const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath);
+    const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath, driverId);
     applyPassengerNavigationCamera(position, heading);
 
     if (existingGlobal) {
-        setGlobalDriverMarkerVisibility(driverId, existingGlobal);
-        existingGlobal.marker.setLiveTracked?.(false);
+        existingGlobal.marker?.setMap?.(null);
     }
 
     if (!activeDriverMarker) {

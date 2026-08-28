@@ -334,11 +334,14 @@ def pay_current_ride(
 
 @router.get("/unacknowledged-credits")
 def get_unacknowledged_credits(auth_user: Dict[str, Any] = Depends(current_user)) -> Dict[str, Any]:
-    """Retrieve newly granted promotional credits for passenger celebration modal."""
+    """Retrieve newly granted promotional credits or driver settlement payouts for celebration modals."""
     uid = auth_user["uid"]
+    role = auth_user.get("role", "passenger")
     db = get_firestore()
 
-    # Fetch passenger completed admin credits
+    unacknowledged: List[Dict[str, Any]] = []
+
+    # 1. Fetch unacknowledged ADMIN_CREDIT transactions (for passengers & general users)
     admin_credits = list(
         db.collection("walletTransactions")
         .where("userId", "==", uid)
@@ -346,17 +349,37 @@ def get_unacknowledged_credits(auth_user: Dict[str, Any] = Depends(current_user)
         .where("status", "==", "completed")
         .stream()
     )
-
-    unacknowledged: List[Dict[str, Any]] = []
     for doc in admin_credits:
         d = doc.to_dict() or {}
         tx_id = d.get("transactionId")
         if not tx_id:
             continue
-        # Check acknowledgement doc
         ack_snap = db.collection("walletCreditAcknowledgements").document(f"ack_{uid}_{tx_id}").get()
         if not ack_snap.exists:
-            unacknowledged.append(_format_transaction_for_client(d, "passenger"))
+            formatted = _format_transaction_for_client(d, role)
+            formatted["modalType"] = "admin_credit"
+            unacknowledged.append(formatted)
+
+    # 2. If driver, also fetch unacknowledged DRIVER_SETTLEMENT transactions
+    if role == "driver":
+        driver_settlements = list(
+            db.collection("walletTransactions")
+            .where("userId", "==", uid)
+            .where("type", "==", "DRIVER_SETTLEMENT")
+            .where("status", "==", "completed")
+            .stream()
+        )
+        for doc in driver_settlements:
+            d = doc.to_dict() or {}
+            tx_id = d.get("transactionId")
+            if not tx_id:
+                continue
+            ack_snap = db.collection("walletCreditAcknowledgements").document(f"ack_{uid}_{tx_id}").get()
+            if not ack_snap.exists:
+                formatted = _format_transaction_for_client(d, "driver")
+                formatted["modalType"] = "driver_settlement"
+                formatted["settlementAmount"] = formatted.get("amount", 0)
+                unacknowledged.append(formatted)
 
     return {
         "ok": True,
@@ -402,9 +425,10 @@ def get_driver_settlement_info(auth_user: Dict[str, Any] = Depends(current_user)
     if wallet_snap.exists:
         balance_paise = int((wallet_snap.to_dict() or {}).get("balancePaise", 0))
 
-    # 2. Next settlement date config
+    # 2. Next settlement date config from systemSettings
     cfg_snap = db.collection("systemSettings").document("driverSettlementConfig").get()
-    next_date = (cfg_snap.to_dict() or {}).get("nextSettlementDate") if cfg_snap.exists else None
+    cfg_data = (cfg_snap.to_dict() or {}) if cfg_snap.exists else {}
+    next_date = cfg_data.get("nextSettlementDate") or "To be scheduled"
 
     # 3. Driver settlement records
     settlements = list(
@@ -436,7 +460,8 @@ def get_driver_settlement_info(auth_user: Dict[str, Any] = Depends(current_user)
         "ok": True,
         "availableBalancePaise": balance_paise,
         "availableBalance": paise_to_inr_float(balance_paise),
-        "nextSettlementDate": next_date or "To be scheduled",
+        "nextSettlementDate": next_date,
+        "nextSettlementDateFormatted": next_date,
         "activeSettlement": active_settlement,
         "settlements": settlement_list,
     }

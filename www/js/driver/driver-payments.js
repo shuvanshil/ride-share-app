@@ -480,8 +480,11 @@ async function fetchDriverWalletData() {
         }
 
         if (nextSettleEl) {
-            nextSettleEl.innerText = settleData?.nextSettlementDateFormatted || 'Every Monday';
+            nextSettleEl.innerText = settleData?.nextSettlementDate || settleData?.nextSettlementDateFormatted || 'To be scheduled';
         }
+
+        // Check and display driver settlement payout celebration modal if new payout resolved by admin
+        checkAndShowDriverSettlementModal();
 
         if (txListEl) {
             const txs = txData?.transactions || [];
@@ -529,6 +532,66 @@ async function fetchDriverWalletData() {
         }
     } catch (err) {
         console.error('Error fetching driver wallet:', err);
+    }
+}
+
+async function checkAndShowDriverSettlementModal() {
+    if (!currentAuthUser) return;
+    try {
+        const token = await getAuthToken();
+        if (!token) return;
+
+        const res = await fetch('/api/wallet/unacknowledged-credits', {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) return;
+
+        const list = data.unacknowledgedCredits || [];
+        if (!list.length) return;
+
+        const item = list[0];
+        const modal = document.getElementById('driver-wallet-celebration-modal');
+        const titleEl = document.getElementById('driver-celebration-title');
+        const amtVal = document.getElementById('driver-celebration-amount-val');
+        const descEl = document.getElementById('driver-celebration-desc');
+        const dismissBtn = document.getElementById('driver-celebration-dismiss-btn');
+
+        if (!modal) return;
+
+        const isSettlement = item.modalType === 'driver_settlement' || item.type === 'DRIVER_SETTLEMENT';
+        if (titleEl) {
+            titleEl.innerText = isSettlement ? "Wallet Settlement Transferred!" : "Wallet Credit Received!";
+        }
+        if (amtVal) {
+            amtVal.innerText = `₹${(item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN')}`;
+        }
+        if (descEl) {
+            descEl.innerText = isSettlement
+                ? `Admin has approved and transferred ₹${(item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN')} directly to your registered UPI ID. Your wallet balance has been settled.`
+                : `₹${(item.amount ?? 0).toLocaleString('en-IN')} credit has been added to your Driver Wallet.`;
+        }
+
+        modal.classList.remove('d-none');
+
+        if (dismissBtn) {
+            dismissBtn.onclick = async () => {
+                modal.classList.add('d-none');
+                try {
+                    const idToken = await currentAuthUser.getIdToken();
+                    await fetch('/api/wallet/acknowledge-credit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+                        body: JSON.stringify({ transactionId: item.transactionId })
+                    });
+                } catch (ackErr) {
+                    console.warn('Driver settlement ack error:', ackErr);
+                }
+                fetchDriverWalletData();
+            };
+        }
+    } catch (e) {
+        console.warn('Driver settlement modal check error:', e);
     }
 }
 
