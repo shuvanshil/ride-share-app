@@ -1158,9 +1158,21 @@ async function checkAndShowCelebration() {
 
         if (!modal) return;
 
-        if (amtVal) amtVal.innerText = `+₹${(firstCredit.amount ?? 0).toLocaleString('en-IN')}`;
-        if (tagsContainer) {
-            tagsContainer.innerHTML = (firstCredit.tags || ['Bonus']).map(tg => `<span class="badge bg-success-subtle text-success me-1 px-2 py-1">${tg}</span>`).join('');
+        const isSettlement = firstCredit.modalType === 'driver_settlement' || firstCredit.type === 'DRIVER_SETTLEMENT';
+        const titleEl = modal.querySelector('h4');
+        const descEl = modal.querySelector('p');
+
+        if (isSettlement) {
+            if (titleEl) titleEl.innerText = "Wallet Settlement Transferred!";
+            if (amtVal) amtVal.innerText = `₹${(firstCredit.settlementAmount ?? firstCredit.amount ?? 0).toLocaleString('en-IN')}`;
+            if (tagsContainer) tagsContainer.innerHTML = `<span class="badge bg-success-subtle text-success me-1 px-2 py-1">UPI Settlement</span>`;
+            if (descEl) descEl.innerText = `Admin has approved and transferred ₹${(firstCredit.settlementAmount ?? firstCredit.amount ?? 0).toLocaleString('en-IN')} to your UPI ID. Your wallet balance has been settled.`;
+        } else {
+            if (titleEl) titleEl.innerText = "Wallet Credit Received!";
+            if (amtVal) amtVal.innerText = `+₹${(firstCredit.amount ?? 0).toLocaleString('en-IN')}`;
+            if (tagsContainer) {
+                tagsContainer.innerHTML = (firstCredit.tags || ['Bonus']).map(tg => `<span class="badge bg-success-subtle text-success me-1 px-2 py-1">${tg}</span>`).join('');
+            }
         }
 
         modal.classList.remove('d-none');

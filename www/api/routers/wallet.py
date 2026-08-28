@@ -336,7 +336,6 @@ def pay_current_ride(
 def get_unacknowledged_credits(auth_user: Dict[str, Any] = Depends(current_user)) -> Dict[str, Any]:
     """Retrieve newly granted promotional credits or driver settlement payouts for celebration modals."""
     uid = auth_user["uid"]
-    role = auth_user.get("role", "passenger")
     db = get_firestore()
 
     unacknowledged: List[Dict[str, Any]] = []
@@ -356,30 +355,29 @@ def get_unacknowledged_credits(auth_user: Dict[str, Any] = Depends(current_user)
             continue
         ack_snap = db.collection("walletCreditAcknowledgements").document(f"ack_{uid}_{tx_id}").get()
         if not ack_snap.exists:
-            formatted = _format_transaction_for_client(d, role)
+            formatted = _format_transaction_for_client(d, "passenger")
             formatted["modalType"] = "admin_credit"
             unacknowledged.append(formatted)
 
-    # 2. If driver, also fetch unacknowledged DRIVER_SETTLEMENT transactions
-    if role == "driver":
-        driver_settlements = list(
-            db.collection("walletTransactions")
-            .where("userId", "==", uid)
-            .where("type", "==", "DRIVER_SETTLEMENT")
-            .where("status", "==", "completed")
-            .stream()
-        )
-        for doc in driver_settlements:
-            d = doc.to_dict() or {}
-            tx_id = d.get("transactionId")
-            if not tx_id:
-                continue
-            ack_snap = db.collection("walletCreditAcknowledgements").document(f"ack_{uid}_{tx_id}").get()
-            if not ack_snap.exists:
-                formatted = _format_transaction_for_client(d, "driver")
-                formatted["modalType"] = "driver_settlement"
-                formatted["settlementAmount"] = formatted.get("amount", 0)
-                unacknowledged.append(formatted)
+    # 2. Fetch unacknowledged DRIVER_SETTLEMENT transactions (for driver payouts)
+    driver_settlements = list(
+        db.collection("walletTransactions")
+        .where("userId", "==", uid)
+        .where("type", "==", "DRIVER_SETTLEMENT")
+        .where("status", "==", "completed")
+        .stream()
+    )
+    for doc in driver_settlements:
+        d = doc.to_dict() or {}
+        tx_id = d.get("transactionId")
+        if not tx_id:
+            continue
+        ack_snap = db.collection("walletCreditAcknowledgements").document(f"ack_{uid}_{tx_id}").get()
+        if not ack_snap.exists:
+            formatted = _format_transaction_for_client(d, "driver")
+            formatted["modalType"] = "driver_settlement"
+            formatted["settlementAmount"] = formatted.get("amount", 0)
+            unacknowledged.append(formatted)
 
     return {
         "ok": True,

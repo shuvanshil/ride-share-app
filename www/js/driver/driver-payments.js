@@ -1,6 +1,6 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { collection, doc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { showAlert } from '../shared/dialog.js';
 import { t } from '../shared/i18n.js';
 
@@ -425,6 +425,14 @@ function setupRealtimeListener(uid) {
         }, (err) => {
             console.warn("Realtime payment listener error:", err);
         });
+
+        // Realtime wallet listener for instant balance updates and settlement celebration
+        onSnapshot(doc(db, 'wallets', uid), () => {
+            fetchDriverWalletData();
+            checkAndShowDriverSettlementModal();
+        }, (err) => {
+            console.warn("Realtime wallet listener error:", err);
+        });
     } catch (e) {
         console.warn("Could not attach Firestore realtime listener:", e);
     }
@@ -643,6 +651,7 @@ onAuthStateChanged(auth, (user) => {
     }
     currentAuthUser = user;
     fetchPaymentStatus();
+    checkAndShowDriverSettlementModal();
     setupRealtimeListener(user.uid);
 
     const urlParams = new URLSearchParams(window.location.search);

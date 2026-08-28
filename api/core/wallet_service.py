@@ -518,6 +518,92 @@ def transfer_ride_fare(
     return sanitize_dict_for_json(result_holder)
 
 
+def resolve_driver_full_wallet_balance(
+    db: Any,
+    driver_id: str,
+    admin_user: Dict[str, Any],
+    admin_note: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Atomically creates and resolves a settlement for the ENTIRE current wallet balance of a driver.
+    Debits the full balance, resets it to zero, and records the settlement & transaction.
+    """
+    import time
+    clean_driver_id = str(driver_id).strip()
+    admin_uid = admin_user.get("uid", "admin")
+    admin_email = admin_user.get("email", "admin@liphtup.in")
+
+    wallet_ref = db.collection("wallets").document(clean_driver_id)
+    user_ref = db.collection("users").document(clean_driver_id)
+    result_holder: Dict[str, Any] = {}
+
+    @fb_firestore.transactional
+    def full_resolve_tx(tx):
+        w_snap = wallet_ref.get(transaction=tx)
+        if not w_snap.exists:
+            raise ApiError("Driver wallet not found.", 404)
+        w_data = w_snap.to_dict() or {}
+        current_balance_paise = int(w_data.get("balancePaise", 0))
+        if current_balance_paise <= 0:
+            raise ApiError("Driver wallet balance is zero; no settlement needed.", 400)
+
+        u_snap = user_ref.get(transaction=tx)
+        u_data = (u_snap.to_dict() or {}) if u_snap.exists else {}
+        upi_id = u_data.get("upiId") or "Direct Bank/UPI"
+
+        settlement_id = f"stl_{clean_driver_id[:8]}_{int(time.time())}"
+        settlement_ref = db.collection("driverSettlements").document(settlement_id)
+
+        # Debit FULL balance
+        tx_payload, tx_id = debit_wallet_tx(
+            tx=tx,
+            db=db,
+            user_id=clean_driver_id,
+            role="driver",
+            amount_paise=current_balance_paise,
+            tx_type="DRIVER_SETTLEMENT",
+            reference_type="driver_settlement",
+            reference_id=settlement_id,
+            description=f"Manual UPI settlement paid to {upi_id}",
+            created_by=admin_email,
+        )
+
+        settlement_doc = {
+            "settlementId": settlement_id,
+            "driverId": clean_driver_id,
+            "driverName": u_data.get("name", "Driver"),
+            "driverPhone": u_data.get("phone", ""),
+            "upiIdSnapshot": upi_id,
+            "settlementAmountPaise": current_balance_paise,
+            "settlementAmount": paise_to_inr_float(current_balance_paise),
+            "status": "resolved",
+            "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            "createdByAdminUid": admin_uid,
+            "createdByAdminEmail": admin_email,
+            "resolvedAt": fb_firestore.SERVER_TIMESTAMP,
+            "resolvedByAdminUid": admin_uid,
+            "resolvedByAdminEmail": admin_email,
+            "walletTransactionId": tx_id,
+            "adminNote": (admin_note or "").strip()[:500],
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        tx.set(settlement_ref, settlement_doc)
+
+        result_holder["settlementId"] = settlement_id
+        result_holder["driverId"] = clean_driver_id
+        result_holder["settledAmountPaise"] = current_balance_paise
+        result_holder["settledAmount"] = paise_to_inr_float(current_balance_paise)
+        result_holder["remainingDriverBalancePaise"] = 0
+        result_holder["remainingDriverBalance"] = 0.0
+        result_holder["upiIdSnapshot"] = upi_id
+        result_holder["transactionId"] = tx_id
+
+    transaction = db.transaction()
+    full_resolve_tx(transaction)
+
+    return sanitize_dict_for_json(result_holder)
+
+
 def create_driver_settlement(
     db: Any,
     driver_id: str,

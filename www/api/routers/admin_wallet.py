@@ -24,6 +24,7 @@ from ..core.wallet_service import (
     inr_to_paise,
     paise_to_inr_float,
     reconcile_wallet,
+    resolve_driver_full_wallet_balance,
     resolve_driver_settlement,
     reverse_admin_credit,
 )
@@ -52,6 +53,7 @@ class CreateSettlementRequest(BaseModel):
 
 class ResolveSettlementRequest(BaseModel):
     settlementId: Optional[str] = Field(default=None, max_length=160)
+    driverId: Optional[str] = Field(default=None, max_length=160)
     adminNote: Optional[str] = Field(default="", max_length=500)
 
 
@@ -556,20 +558,30 @@ def admin_resolve_settlement(
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
     """
-    Atomically resolves a driver settlement by deducting EXACT captured settlement amount.
-    New driver earnings received after creation remain untouched.
+    Atomically resolves a driver settlement.
+    If driverId is provided, resolves the entire available wallet balance.
+    If settlementId is provided, resolves that specific settlement.
     """
+    driver_id = body.driverId
     target_id = settlement_id or body.settlementId
-    if not target_id:
-        raise ApiError("Settlement ID is required.", 400)
-
     db = get_firestore()
-    result = resolve_driver_settlement(
-        db=db,
-        settlement_id=target_id,
-        admin_user=admin_user,
-        admin_note=body.adminNote,
-    )
+
+    if driver_id:
+        result = resolve_driver_full_wallet_balance(
+            db=db,
+            driver_id=driver_id,
+            admin_user=admin_user,
+            admin_note=body.adminNote,
+        )
+    elif target_id:
+        result = resolve_driver_settlement(
+            db=db,
+            settlement_id=target_id,
+            admin_user=admin_user,
+            admin_note=body.adminNote,
+        )
+    else:
+        raise ApiError("Either driverId or settlementId is required.", 400)
 
     # Dispatches background push notification to driver
     _send_settlement_resolved_push(
@@ -580,7 +592,7 @@ def admin_resolve_settlement(
 
     return {
         "ok": True,
-        "message": f"Settlement #{target_id} marked as resolved. ₹{result['settledAmount']:g} deducted from driver wallet.",
+        "message": f"Settlement marked as resolved. ₹{result['settledAmount']:g} transferred and deducted from driver wallet.",
         "result": result,
         "settlement": result,
     }

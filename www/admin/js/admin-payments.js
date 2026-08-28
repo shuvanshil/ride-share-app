@@ -977,8 +977,7 @@ function renderDriverSettlementsTable() {
                     </thead>
                     <tbody>
                         ${filtered.map(d => {
-                            const hasActive = Boolean(d.activeSettlement);
-                            const hasBalance = d.balance > 0;
+                            const hasBalance = (d.balance || 0) > 0;
 
                             return `
                                 <tr>
@@ -998,34 +997,24 @@ function renderDriverSettlementsTable() {
                                         <div class="text-success small font-monospace">${d.upiId || '<span class="text-danger">No UPI Registered</span>'}</div>
                                     </td>
                                     <td>
-                                        <strong class="h4 mb-0 text-dark">₹${(d.balance ?? 0).toLocaleString('en-IN')}</strong>
+                                        <strong class="h4 mb-0 text-dark">₹${(d.balance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                                     </td>
                                     <td>
-                                        ${hasActive ? `
-                                            <span class="badge bg-warning-lt text-warning p-1.5">
-                                                <i class="ti ti-clock me-1"></i> Active (₹${d.activeSettlement.settlementAmount})
-                                            </span>
-                                        ` : (hasBalance ? `
+                                        ${hasBalance ? `
                                             <span class="badge bg-success-subtle text-success p-1.5">
                                                 Ready to Settle
                                             </span>
                                         ` : `
                                             <span class="badge bg-light text-secondary p-1.5">
-                                                Zero Balance
+                                                Settled / Zero Balance
                                             </span>
-                                        `)}
+                                        `}
                                     </td>
                                     <td class="text-end">
                                         <div class="btn-list justify-content-end">
-                                            ${hasActive ? `
-                                                <button class="btn btn-warning btn-sm btn-resolve-settlement" data-id="${d.activeSettlement.settlementId}" data-amt="${d.activeSettlement.settlementAmount}" data-upi="${d.activeSettlement.upiIdSnapshot || d.upiId || ''}" type="button">
-                                                    <i class="ti ti-check me-1"></i> Resolve
-                                                </button>
-                                            ` : `
-                                                <button class="btn btn-outline-success btn-sm btn-open-settlement" data-id="${d.driverId}" ${!hasBalance ? 'disabled' : ''} type="button">
-                                                    <i class="ti ti-file-dollar me-1"></i> Open Settle
-                                                </button>
-                                            `}
+                                            <button class="btn btn-success btn-sm btn-resolve-settlement" data-driver-id="${d.driverId}" data-amt="${d.balance || 0}" data-upi="${d.upiId || ''}" ${!hasBalance ? 'disabled' : ''} type="button">
+                                                <i class="ti ti-check me-1"></i> Resolve
+                                            </button>
                                             <button class="btn btn-outline-secondary btn-sm btn-reconcile-wallet" data-uid="${d.driverId}" data-role="driver" type="button" title="Audit & Reconcile">
                                                 <i class="ti ti-check"></i>
                                             </button>
@@ -1040,13 +1029,9 @@ function renderDriverSettlementsTable() {
         </div>
     `;
 
-    container.querySelectorAll('.btn-open-settlement').forEach(btn => {
-        btn.addEventListener('click', () => handleCreateSettlement(btn.dataset.id, btn));
-    });
-
     container.querySelectorAll('.btn-resolve-settlement').forEach(btn => {
         btn.addEventListener('click', () => {
-            openResolveSettlementModal(btn.dataset.id, btn.dataset.amt, btn.dataset.upi);
+            openResolveSettlementModal(btn.dataset.driverId, btn.dataset.amt, btn.dataset.upi);
         });
     });
 
@@ -1078,21 +1063,9 @@ async function handleSaveSettlementDate() {
     });
 }
 
-async function handleCreateSettlement(driverId, btn) {
-    await withButtonSpinner(btn, async () => {
-        try {
-            const res = await adminPost('/wallet/driver/create-settlement', { driverId });
-            showToast(`Settlement created for ₹${res.settlement?.settlementAmount}!`, "success");
-            await loadAdminDriverSettlements();
-        } catch (e) {
-            console.error("Create settlement failed:", e);
-            showToast(e.message || "Failed to create settlement", "error");
-        }
-    });
-}
-
-function openResolveSettlementModal(settlementId, amount, upiId) {
+function openResolveSettlementModal(driverId, amount, upiId) {
     const modal = document.getElementById('admin-resolve-settlement-modal');
+    const driverIdInput = document.getElementById('resolve-driver-id-input');
     const idInput = document.getElementById('resolve-settlement-id-input');
     const amtVal = document.getElementById('resolve-settlement-amount-val');
     const upiVal = document.getElementById('resolve-driver-upi-val');
@@ -1100,13 +1073,14 @@ function openResolveSettlementModal(settlementId, amount, upiId) {
     const noteInput = document.getElementById('resolve-admin-note-input');
 
     if (!modal) return;
-    if (idInput) idInput.value = settlementId;
-    if (amtVal) amtVal.innerText = `₹${parseFloat(amount || 0).toLocaleString('en-IN')}`;
+    if (driverIdInput) driverIdInput.value = driverId || '';
+    if (idInput) idInput.value = '';
+    if (amtVal) amtVal.innerText = `₹${parseFloat(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (upiVal) upiVal.value = upiId || 'No UPI ID';
-    if (noteInput) noteInput.value = '';
+    if (noteInput) noteInput.value = 'UPI transfer completed';
 
     if (qrImg) {
-        if (upiId) {
+        if (upiId && parseFloat(amount || 0) > 0) {
             const upiString = encodeURIComponent(`upi://pay?pa=${upiId}&pn=DriverSettlement&am=${amount}&cu=INR`);
             qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
             qrImg.classList.remove('d-none');
@@ -1131,26 +1105,20 @@ function closeResolveSettlementModal() {
 
 async function handleResolveSettlementSubmit(e) {
     e.preventDefault();
+    const driverId = document.getElementById('resolve-driver-id-input')?.value;
     const settlementId = document.getElementById('resolve-settlement-id-input')?.value;
-    const adminNote = document.getElementById('resolve-admin-note-input')?.value?.trim();
+    const adminNote = document.getElementById('resolve-admin-note-input')?.value?.trim() || 'UPI transfer completed';
     const submitBtn = document.getElementById('resolve-settlement-submit-btn');
 
-    if (!settlementId || !adminNote) {
-        showToast("Please enter an administrative reference / UTR note.", "warning");
+    if (!driverId && !settlementId) {
+        showToast("Driver ID or Settlement ID is missing.", "warning");
         return;
     }
 
-    const confirmed = await showTablerConfirm("Confirm that you have completed the manual UPI / Bank transfer and want to mark this settlement as RESOLVED?", {
-        title: "Confirm Settlement Resolution",
-        variant: "primary",
-        confirmText: "Mark as Resolved"
-    });
-    if (!confirmed) return;
-
     await withButtonSpinner(submitBtn, async () => {
         try {
-            const res = await adminPost('/wallet/driver/resolve-settlement', { settlementId, adminNote });
-            showToast(`Settlement resolved! Deducted ₹${res.settlement?.settledAmount}.`, "success");
+            const res = await adminPost('/wallet/driver/resolve-settlement', { driverId, settlementId, adminNote });
+            showToast(`Settlement resolved! Deducted ₹${res.settlement?.settledAmount}. Wallet reset to zero.`, "success");
             closeResolveSettlementModal();
             await loadAdminDriverSettlements();
         } catch (e) {
