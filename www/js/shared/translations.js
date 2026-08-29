@@ -371,6 +371,10 @@ export const TRANSLATIONS = {
             "share_trip_status": "Share Trip Status",
             "cancel_ride_request": "Cancel Ride Request",
             "safe_secure_rides": "Safe, secure and reliable rides",
+            "scheduled_ride_active": "Scheduled Ride Active",
+            "pending_queue_active": "Notify Alert Active",
+            "expires_in_prefix": "Expires in",
+            "min_suffix": "min",
             "pickup_pin_label": "Pickup PIN"
         },
         "history": {
@@ -1245,6 +1249,10 @@ export const TRANSLATIONS = {
             "share_trip_status": "ট্রিপের স্থিতি শেয়ার করুন",
             "cancel_ride_request": "রাইডের অনুরোধ বাতিল করুন",
             "safe_secure_rides": "নিরাপদ, সুরক্ষিত এবং নির্ভরযোগ্য রাইড",
+            "scheduled_ride_active": "নির্ধারিত রাইড সক্রিয়",
+            "pending_queue_active": "নোটিফাই অ্যালার্ট সক্রিয়",
+            "expires_in_prefix": "মেয়াদ শেষ হতে বাকি",
+            "min_suffix": "মি.",
             "pickup_pin_label": "পিকআপ পিন"
         },
         "history": {

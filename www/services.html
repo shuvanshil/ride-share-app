@@ -435,28 +435,76 @@
                         </div>
                     </section>
 
-                    <!-- Feature 3: Pending Queue State Card -->
+                    <!-- Feature 3: Pending Queue / Drivers Available State Card -->
                     <section id="pending-active-card" class="pending-active-card d-none">
                         <div class="pending-active-header">
                             <span class="pending-badge-pill">
-                                <span class="webicon webicon-notify" style="width: 14px; height: 14px;"></span> <span data-i18n="services.pending_queue_active">Notify Alert Active</span>
+                                <svg class="pending-bell-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                                </svg>
+                                <span id="pending-mode-badge-label" data-i18n="services.pending_queue_active">Notify Alert Active</span>
                             </span>
-                            <small id="pending-expires-in" style="font-size: 11px; color: #64748B;">Expires in 25 min</small>
-                        </div>
-                        <div class="pending-active-body">
-                            <strong id="pending-mode-title" data-i18n="services.pending_queue_desc">Looking for available drivers...</strong>
-                            <p id="pending-mode-desc" data-i18n="services.pending_queue_desc">We're watching for drivers in your area and will notify you the moment one is available.</p>
-                            <div id="pending-driver-available-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
-                                <button id="pending-rebook-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold" style="font-size: 13px;" type="button" data-i18n="services.pending_driver_available_prompt">Yes, start the search.</button>
+                            <div class="pending-timer-wrap">
+                                <span class="pending-clock-icon-circle">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <polyline points="12 6 12 12 16 14"/>
+                                    </svg>
+                                </span>
+                                <span id="pending-expires-in" class="pending-expires-text">Expires in <strong class="pending-min-highlight">25 min</strong></span>
                             </div>
-                            <div id="pending-schedule-timeout-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
-                                <p style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 8px;" data-i18n="services.pending_schedule_timeout">
-                                    No driver was found within 10 minutes of your scheduled time. Would you like to update your scheduled time by 15 minutes or cancel for now?
-                                </p>
-                                <div class="d-flex gap-2">
-                                    <button id="pending-extend-15min-btn" class="gy-btn gy-btn-primary py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button" data-i18n="services.extend_15min">+15 Min Update</button>
-                                    <button id="pending-timeout-cancel-btn" class="btn btn-outline-danger py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button" data-i18n="common.cancel">Cancel</button>
+                        </div>
+
+                        <div class="pending-active-middle-row">
+                            <div class="pending-info-col">
+                                <div class="pending-title-group">
+                                    <div class="pending-group-icon-box">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                            <circle cx="9" cy="7" r="4"/>
+                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                        </svg>
+                                    </div>
+                                    <h4 id="pending-mode-title" class="pending-mode-title" data-i18n="services.drivers_available_title">Drivers are available!</h4>
                                 </div>
+                                <p id="pending-mode-desc" class="pending-mode-desc" data-i18n="services.drivers_available_sub">Some drivers are now available for your ride. Would you like to start the searching again?</p>
+                            </div>
+                            <div class="pending-illustration-col">
+                                <div class="pending-backdrop-glow">
+                                    <div class="pending-pin-graphic">
+                                        <svg width="22" height="22" viewBox="0 0 24 24" fill="#7C3AED">
+                                            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <img src="assets/vehicle-markers/auto-card.png" alt="Auto" class="pending-auto-graphic">
+                            </div>
+                        </div>
+
+                        <div id="pending-driver-available-prompt" class="pending-action-area">
+                            <button id="pending-rebook-btn" class="pending-search-action-btn" type="button">
+                                <span class="pending-btn-icon-box">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="11" cy="11" r="8"/>
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                    </svg>
+                                </span>
+                                <span id="pending-rebook-btn-text" data-i18n="services.yes_start_search">Yes, start the search.</span>
+                                <svg class="pending-btn-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M9 18l6-6-6-6"/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div id="pending-schedule-timeout-prompt" class="d-none mt-3 pt-2" style="border-top: 1px solid #E2E8F0;">
+                            <p style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 8px;" data-i18n="services.pending_schedule_timeout">
+                                No driver was found within 10 minutes of your scheduled time. Would you like to update your scheduled time by 15 minutes or cancel for now?
+                            </p>
+                            <div class="d-flex gap-2">
+                                <button id="pending-extend-15min-btn" class="gy-btn gy-btn-primary py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button" data-i18n="services.extend_15min">+15 Min Update</button>
+                                <button id="pending-timeout-cancel-btn" class="btn btn-outline-danger py-1 px-3 w-auto" style="font-size: 12px; height: auto;" type="button" data-i18n="common.cancel">Cancel</button>
                             </div>
                         </div>
                     </section>

@@ -1266,8 +1266,10 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
     }
 }
 
-function showPendingActiveCard(mode = "notify_only", activatesAt = null) {
+function showPendingActiveCard(mode = "notify_only", activatesAt = null, createdAt = null, expiresAt = null) {
     const pendingCard = document.getElementById('pending-active-card');
+    const badgeLabel = document.getElementById('pending-mode-badge-label');
+    const expiresEl = document.getElementById('pending-expires-in');
     const titleEl = document.getElementById('pending-mode-title');
     const descEl = document.getElementById('pending-mode-desc');
     const requestBtn = document.getElementById('request-ride-btn');
@@ -1278,13 +1280,34 @@ function showPendingActiveCard(mode = "notify_only", activatesAt = null) {
     if (requestBtn) requestBtn.classList.add('d-none');
     if (cancelBtn) cancelBtn.classList.remove('d-none');
 
-    if (mode === "schedule" && activatesAt) {
+    const isSchedule = mode === "schedule";
+    if (badgeLabel) {
+        badgeLabel.innerText = isSchedule ? t('services.scheduled_ride_active', "Scheduled Ride Active") : t('services.pending_queue_active', "Notify Alert Active");
+    }
+
+    if (expiresEl) {
+        let expireMs = 0;
+        if (expiresAt) {
+            expireMs = getTimestampMs(expiresAt);
+        } else if (createdAt) {
+            const createdMs = getTimestampMs(createdAt);
+            expireMs = createdMs + (30 * 60 * 1000);
+        } else if (activatesAt) {
+            expireMs = getTimestampMs(activatesAt);
+        } else {
+            expireMs = Date.now() + (25 * 60 * 1000);
+        }
+        const remMin = Math.max(1, Math.ceil((expireMs - Date.now()) / 60000));
+        expiresEl.innerHTML = `${t('services.expires_in_prefix', 'Expires in')} <strong class="pending-min-highlight">${remMin} ${t('services.min_suffix', 'min')}</strong>`;
+    }
+
+    if (isSchedule && activatesAt) {
         const parsedDt = parseDateValue(activatesAt);
         const timeStr = parsedDt ? parsedDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
         if (titleEl) titleEl.innerText = timeStr ? `${t('services.scheduled_for', 'Scheduled for')} ${timeStr}` : t('services.scheduled_ride', "Scheduled Ride");
-        if (descEl) descEl.innerText = t('services.scheduled_ride_desc', "We'll automatically connect you with nearby drivers at your scheduled time.");
+        if (descEl) descEl.innerText = t('services.scheduled_ride_search_desc', "We'll check for available drivers starting at your scheduled time.");
     } else {
-        if (titleEl) titleEl.innerText = t('services.waiting_for_next_driver', "Waiting for next available driver");
+        if (titleEl) titleEl.innerText = t('services.looking_for_drivers', "Looking for available drivers...");
         if (descEl) descEl.innerText = t('services.monitoring_drivers_desc', "We are actively monitoring for newly available drivers in your pickup area.");
     }
 
@@ -2457,7 +2480,7 @@ function listenToPendingRequestUpdates(requestId) {
                 showAlert("Your waiting request has expired. No drivers became available in time.");
             }
         } else {
-            showPendingActiveCard(data.mode, data.activatesAt);
+            showPendingActiveCard(data.mode, data.activatesAt, data.createdAt, data.expiresAt);
             const timeoutPrompt = document.getElementById('pending-schedule-timeout-prompt');
             const availablePrompt = document.getElementById('pending-driver-available-prompt');
 
@@ -2512,11 +2535,11 @@ function listenToPendingRequestUpdates(requestId) {
 
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
-                const rebookBtn = document.getElementById('pending-rebook-btn');
+                const rebookBtnText = document.getElementById('pending-rebook-btn-text');
 
                 if (titleEl) titleEl.innerText = t('services.drivers_available_title', "Drivers are available!");
-                if (descEl) descEl.innerText = t('services.drivers_available_sub', "Some drivers are now available for your ride, would you like to start the searching again?");
-                if (rebookBtn) rebookBtn.innerText = t('services.yes_start_search', "Yes, start the search.");
+                if (descEl) descEl.innerText = t('services.drivers_available_sub', "Some drivers are now available for your ride. Would you like to start the searching again?");
+                if (rebookBtnText) rebookBtnText.innerText = t('services.yes_start_search', "Yes, start the search.");
                 
                 if (availablePrompt) availablePrompt.classList.remove('d-none');
                 if (timeoutPrompt) timeoutPrompt.classList.add('d-none');
@@ -2525,8 +2548,8 @@ function listenToPendingRequestUpdates(requestId) {
                 
                 const titleEl = document.getElementById('pending-mode-title');
                 const descEl = document.getElementById('pending-mode-desc');
-                const rebookBtn = document.getElementById('pending-rebook-btn');
-                if (rebookBtn) rebookBtn.innerText = t('services.yes_start_search', "Yes, start the search.");
+                const rebookBtnText = document.getElementById('pending-rebook-btn-text');
+                if (rebookBtnText) rebookBtnText.innerText = t('services.yes_start_search', "Yes, start the search.");
 
                 if (isScheduledMode) {
                     const parsedDt = parseDateValue(data.activatesAt);
@@ -2535,7 +2558,7 @@ function listenToPendingRequestUpdates(requestId) {
                     if (descEl) descEl.innerText = t('services.scheduled_ride_search_desc', "We'll check for available drivers starting at your scheduled time.");
                 } else {
                     if (titleEl) titleEl.innerText = t('services.looking_for_drivers', "Looking for available drivers...");
-                    if (descEl) descEl.innerText = t('services.pending_queue_desc', "We're watching for drivers in your area and will notify you the moment one is available.");
+                    if (descEl) descEl.innerText = t('services.monitoring_drivers_desc', "We are actively monitoring for newly available drivers in your pickup area.");
                 }
                 
                 if (availablePrompt) availablePrompt.classList.add('d-none');
