@@ -940,7 +940,6 @@ function showTripProgressPanel(ride) {
             }
         }
     }
-    }
 }
 
 async function openPassengerRideWalletModal(rideObj) {
