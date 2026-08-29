@@ -1234,21 +1234,65 @@ function renderLifecycleState(status, rideData = currentRide) {
     const totalFarePaise = Number(currentRide.farePaise) || Math.round(parseFloat(currentRide.fare || 0) * 100);
     const walletPaidPaise = Number(currentRide.walletPaidAmountPaise) || Math.round(parseFloat(currentRide.wallet_paid_amount || 0) * 100);
     const cashPaidPaise = Number(currentRide.cashPaidAmountPaise || 0);
-    const remainingFarePaise = (currentRide.remainingFarePaise !== undefined) ? Number(currentRide.remainingFarePaise) : Math.max(0, totalFarePaise - (walletPaidPaise + cashPaidPaise));
+    const couponApplied = currentRide.couponApplied;
+    const couponDiscountPaise = couponApplied 
+        ? (Number(couponApplied.discountPaise) || Math.round(parseFloat(couponApplied.discountAmount || 0) * 100)) 
+        : (Number(currentRide.couponDiscountAmountPaise) || 0);
+
+    const remainingFarePaise = (currentRide.remainingFarePaise !== undefined) 
+        ? Number(currentRide.remainingFarePaise) 
+        : Math.max(0, totalFarePaise - (walletPaidPaise + cashPaidPaise + couponDiscountPaise));
 
     const totalFare = totalFarePaise / 100.0;
     const walletPaidAmount = walletPaidPaise / 100.0;
+    const couponDiscountAmount = couponDiscountPaise / 100.0;
     const remainingFare = remainingFarePaise / 100.0;
 
     let farePaymentCardHtml = "";
-    if (walletPaidAmount > 0) {
+    if (couponDiscountAmount > 0) {
         if (remainingFare === 0) {
             farePaymentCardHtml = `
                 <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div style="color: #0284c7; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+                        <i class="ti ti-ticket me-1"></i> Coupon (${couponApplied?.code || 'Promo'}): ₹${couponDiscountAmount.toLocaleString('en-IN')} Platform Subsidy (added to your wallet)
+                    </div>
+                    <div style="font-size: 16px; font-weight: 700; color: #16a34a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+                        New fare to collect: ₹0 (Fully covered by platform)
+                    </div>
+                </div>
+            `;
+        } else {
+            farePaymentCardHtml = `
+                <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div style="color: #0284c7; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+                        <i class="ti ti-ticket me-1"></i> Coupon (${couponApplied?.code || 'Promo'}): ₹${couponDiscountAmount.toLocaleString('en-IN')} Platform Subsidy (added to your wallet)
+                    </div>
+                    <div style="font-size: 16px; font-weight: 700; color: #0f172a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
+                        New fare to collect: ₹${remainingFare.toLocaleString('en-IN')}
+                    </div>
+                </div>
+            `;
+        }
+    } else if (walletPaidAmount > 0) {
+        if (remainingFare === 0) {
+            farePaymentCardHtml = `
+                <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
+                    </div>
                     <div style="color: #475569; font-size: 14px; margin-bottom: 6px;">
                         Passenger paid ₹${walletPaidAmount.toLocaleString('en-IN')} via wallet credit (added to your wallet).
                     </div>
-                    <div style="font-size: 16px; font-weight: 700; color: #16a34a;">
+                    <div style="font-size: 16px; font-weight: 700; color: #16a34a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
                         New fare to collect: ₹0 (Fully paid)
                     </div>
                 </div>
@@ -1256,10 +1300,14 @@ function renderLifecycleState(status, rideData = currentRide) {
         } else {
             farePaymentCardHtml = `
                 <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
+                    </div>
                     <div style="color: #475569; font-size: 14px; margin-bottom: 6px;">
                         Passenger paid ₹${walletPaidAmount.toLocaleString('en-IN')} via wallet credit (added to your wallet).
                     </div>
-                    <div style="font-size: 16px; font-weight: 700; color: #0f172a;">
+                    <div style="font-size: 16px; font-weight: 700; color: #0f172a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
                         New fare to collect: ₹${remainingFare.toLocaleString('en-IN')}
                     </div>
                 </div>
@@ -2365,6 +2413,7 @@ function startActiveRideListener() {
     const requestedRideId = new URLSearchParams(window.location.search).get("rideId");
 
     let lastObservedWalletPaidPaise = 0;
+    let lastObservedCouponDiscountPaise = 0;
     const activeRideQuery = query(
         collection(db, "rides"),
         where("driver_id", "==", currentUser.uid),
@@ -2374,6 +2423,7 @@ function startActiveRideListener() {
     activeRideUnsubscribe = onSnapshot(activeRideQuery, async (snapshot) => {
         if (snapshot.empty) {
             lastObservedWalletPaidPaise = 0;
+            lastObservedCouponDiscountPaise = 0;
             if (currentRideId) {
                 try {
                     const rideSnap = await getDoc(doc(db, "rides", currentRideId));
@@ -2414,6 +2464,19 @@ function startActiveRideListener() {
             showAlert(`Passenger paid ₹${totalPaidInr.toLocaleString('en-IN')} with wallet credits! Updated cash to collect: ₹${remainingInr.toLocaleString('en-IN')}`);
         }
         lastObservedWalletPaidPaise = currentWalletPaidPaise;
+
+        // Detect coupon promotion applied during active trip
+        const couponApplied = rideData.couponApplied;
+        const currentCouponDiscountPaise = couponApplied 
+            ? (Number(couponApplied.discountPaise) || Math.round(parseFloat(couponApplied.discountAmount || 0) * 100)) 
+            : (Number(rideData.couponDiscountAmountPaise) || 0);
+        if (lastObservedCouponDiscountPaise === 0 && currentCouponDiscountPaise > 0 && currentRideId === activeRideDoc.id) {
+            const discInr = currentCouponDiscountPaise / 100.0;
+            const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, (Number(rideData.farePaise) || 0) - currentCouponDiscountPaise);
+            const remainingInr = remainingFarePaise / 100.0;
+            showAlert(`Promotion Applied! ₹${discInr.toLocaleString('en-IN')} platform subsidy added to your wallet! Updated cash to collect: ₹${remainingInr.toLocaleString('en-IN')}`);
+        }
+        lastObservedCouponDiscountPaise = currentCouponDiscountPaise;
 
         renderActiveRideState(activeRideDoc.id, rideData);
     }, (error) => {

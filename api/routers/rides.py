@@ -1081,7 +1081,13 @@ def transition_driver_ride(
                 final_fare_paise = int(round(float(final_fare_val) * 100))
                 wallet_paid_paise = int(ride.get("walletPaidAmountPaise") or int(round(float(ride.get("wallet_paid_amount") or 0) * 100)))
                 cash_paid_paise = int(ride.get("cashPaidAmountPaise") or 0)
-                rem_fare_paise = max(0, final_fare_paise - (wallet_paid_paise + cash_paid_paise))
+                coupon_applied = ride.get("couponApplied") or {}
+                coupon_discount_paise = int(
+                    coupon_applied.get("discountPaise")
+                    or ride.get("couponDiscountAmountPaise")
+                    or int(round(float(coupon_applied.get("discountAmount") or 0) * 100))
+                )
+                rem_fare_paise = max(0, final_fare_paise - (wallet_paid_paise + cash_paid_paise + coupon_discount_paise))
                 is_fully_paid = rem_fare_paise == 0
 
                 complete_updates = {
@@ -1113,6 +1119,8 @@ def transition_driver_ride(
             tx.update(ride_ref, updates)
 
             result.update(ride)
+            if action == "complete":
+                result.update(complete_updates)
             result["status"] = next_status
             if action in {"complete", "cancel"}:
                 result["fare"] = fare_adjustment["final_fare"]

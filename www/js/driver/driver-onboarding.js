@@ -1470,22 +1470,48 @@ async function completeRideJob() {
 
     const completedRideId = currentlyAssignedRideId;
     try {
-        const result = await transitionRideThroughBackend(completedRideId, "complete");
-        const finalFare = parseFloat(result.ride?.fare || activeDriverRideData?.fare || 0);
+        const rideData = result.ride || activeDriverRideData || {};
+        const totalFarePaise = Number(rideData.farePaise) || Math.round(parseFloat(rideData.fare || 0) * 100);
+        const walletPaidPaise = Number(rideData.walletPaidAmountPaise) || Math.round(parseFloat(rideData.wallet_paid_amount || 0) * 100);
+        const couponApplied = rideData.couponApplied;
+        const couponDiscountPaise = couponApplied 
+            ? (Number(couponApplied.discountPaise) || Math.round(parseFloat(couponApplied.discountAmount || 0) * 100)) 
+            : (Number(rideData.couponDiscountAmountPaise) || 0);
+
+        const remainingFarePaise = (rideData.remainingFarePaise !== undefined) 
+            ? Number(rideData.remainingFarePaise) 
+            : Math.max(0, totalFarePaise - (walletPaidPaise + couponDiscountPaise));
+
+        const walletPaidAmount = walletPaidPaise / 100.0;
+        const couponDiscountAmount = couponDiscountPaise / 100.0;
+        const remainingFare = remainingFarePaise / 100.0;
+
         pendingDriverPaymentRideId = completedRideId;
-        document.getElementById('driver-final-fare').innerText = formatFareAmount(finalFare);
+        const finalFareEl = document.getElementById('driver-final-fare');
+        if (finalFareEl) finalFareEl.innerText = formatFareAmount(remainingFare);
 
         const driverUPI = currentUser.upiId;
         const upiQrImage = document.getElementById('upi-qr-image');
 
-        if (driverUPI) {
-            const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${finalFare}&cu=INR`);
-            upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
-            upiQrImage.classList.remove('d-none');
+        if (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0)) {
+            if (upiQrImage) {
+                upiQrImage.src = "";
+                upiQrImage.classList.add('d-none');
+            }
+        } else if (driverUPI && remainingFare > 0) {
+            const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${remainingFare}&cu=INR`);
+            if (upiQrImage) {
+                upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
+                upiQrImage.classList.remove('d-none');
+            }
         } else {
-            upiQrImage.src = "";
-            upiQrImage.classList.add('d-none');
-            await showAlert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+            if (upiQrImage) {
+                upiQrImage.src = "";
+                upiQrImage.classList.add('d-none');
+            }
+            if (remainingFare > 0) {
+                await showAlert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+            }
         }
 
         document.getElementById('driver-payment-view').classList.remove('d-none');
