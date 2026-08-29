@@ -2433,8 +2433,15 @@ function listenToPendingRequestUpdates(requestId) {
                 if (availablePrompt) availablePrompt.classList.add('d-none');
             } else if (data.lastNotifiedAt) {
                 const notifiedSec = data.lastNotifiedAt.seconds || data.lastNotifiedAt;
+                const alertKey = `${requestId}_${notifiedSec}`;
                 
-                if (lastKnownNotifiedAt !== undefined && notifiedSec !== lastKnownNotifiedAt) {
+                if (!window._shownPendingAlertKeys) {
+                    window._shownPendingAlertKeys = new Set();
+                }
+
+                if (!window._shownPendingAlertKeys.has(alertKey)) {
+                    window._shownPendingAlertKeys.add(alertKey);
+
                     if (navigator.vibrate) {
                         try { navigator.vibrate([200, 100, 200]); } catch (e) {}
                     }

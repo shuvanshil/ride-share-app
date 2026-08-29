@@ -2223,6 +2223,8 @@ def _match_pending_requests_for_driver(
         d_lng = drop.get("lng") or p_lng
 
         if mode in {"notify_only", "notify"}:
+            if data.get("lastNotifiedAt"):
+                continue
             doc.reference.update({
                 "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
@@ -2249,6 +2251,8 @@ def _match_pending_requests_for_driver(
         if mode == "schedule":
             # Schedule mode: only search AFTER scheduled activation time
             if not act_time or now < act_time:
+                continue
+            if data.get("lastNotifiedAt"):
                 continue
 
             doc.reference.update({
@@ -2396,6 +2400,8 @@ def _match_pending_requests_for_driver(
             return req_id
 
         elif mode == "notify_only":
+            if data.get("lastNotifiedAt"):
+                continue
             # Never dispatch to individual driver; only notify passenger
             doc.reference.update({
                 "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
