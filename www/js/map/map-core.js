@@ -1709,30 +1709,6 @@ function getDriverDocumentHeading(driver) {
     );
 }
 
-    const counts = { bike: 0, auto: 0, total: 0 };
-    const activeDrivers = [];
-    globalDriverMarkers.forEach((markerData) => {
-        const vehicleType = markerData.vehicleType || "auto";
-        counts[vehicleType] = (counts[vehicleType] || 0) + 1;
-        counts.total += 1;
-        activeDrivers.push(markerData);
-    });
-
-    if (vehicleLegendElement && vehicleLegendElement.parentElement) {
-        vehicleLegendElement.remove();
-        vehicleLegendElement = null;
-    }
-
-    window.dispatchEvent(new CustomEvent("nearby-drivers-updated", {
-        detail: {
-            bikeCount: counts.bike,
-            autoCount: counts.auto,
-            totalCount: counts.total,
-            drivers: activeDrivers
-        }
-    }));
-}
-
 function stopDriverMarkerCoast(existing) {
     if (existing.coastFrame) {
         cancelAnimationFrame(existing.coastFrame);
