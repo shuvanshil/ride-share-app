@@ -534,15 +534,10 @@ function bindTripProgressPanel() {
         });
     }
 
-    const walletOpenBtn = document.getElementById('trip-wallet-open-btn');
-    if (walletOpenBtn) {
-        walletOpenBtn.addEventListener('click', () => {
-            const profileLink = document.querySelector('a[href*="profile"]');
-            if (profileLink) {
-                profileLink.click();
-            } else if (typeof window.openPassengerWalletModal === 'function') {
-                window.openPassengerWalletModal();
-            }
+    const walletBox = document.getElementById('trip-progress-wallet-box');
+    if (walletBox) {
+        walletBox.addEventListener('click', () => {
+            openPassengerRideWalletModal();
         });
     }
 }
@@ -731,8 +726,6 @@ function showTripProgressPanel(ride) {
     const walletActionBtnText = document.getElementById('trip-wallet-action-btn-text');
 
     if (walletBox) {
-        const isOnboard = (ride.status === "started" || ride.status === "en_route") || Boolean(ride.pinVerifiedAt);
-
         if (cachedPassengerWalletBalance === null) {
             fetchPassengerWalletBalance(() => {
                 if (currentPassengerRideData) {
@@ -746,90 +739,158 @@ function showTripProgressPanel(ride) {
             walletAvailText.innerText = `${t('wallet.available_balance', 'Available balance')}: ₹${availBal.toLocaleString('en-IN')}`;
         }
 
+        walletBox.classList.remove('d-none');
+
         if (walletPaidAmount > 0) {
-            walletBox.classList.remove('d-none');
             walletAppliedBox?.classList.remove('d-none');
             if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${walletPaidAmount.toLocaleString('en-IN')}`;
             if (walletStatusNote) walletStatusNote.innerText = t('wallet.applied_to_ride', "Applied to this ride");
 
-            if (remainingPaise === 0) {
+            if (remainingFare === 0) {
                 walletPayBtn?.classList.add('d-none');
             } else {
                 walletPayBtn?.classList.remove('d-none');
                 if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.change', "Change");
             }
-        } else if (isOnboard && remainingPaise > 0 && availBal > 0) {
-            walletBox.classList.remove('d-none');
+        } else if (remainingFare > 0 && availBal > 0) {
             walletAppliedBox?.classList.remove('d-none');
             const suggestedAmt = Math.min(availBal, remainingFare);
             if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
             if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
             walletPayBtn?.classList.remove('d-none');
             if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
-        } else if (availBal > 0) {
-            walletBox.classList.remove('d-none');
-            walletAppliedBox?.classList.add('d-none');
         } else {
-            walletBox.classList.add('d-none');
+            walletAppliedBox?.classList.add('d-none');
         }
 
         if (walletPayBtn) {
-            walletPayBtn.onclick = async () => {
-                const curUser = auth.currentUser;
-                if (!curUser) return;
-                const token = await curUser.getIdToken();
-                const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-                const walletData = await walletRes.json().catch(() => ({}));
-                const userBal = Number(walletData?.wallet?.balance || 0);
-                cachedPassengerWalletBalance = userBal;
-
-                if (userBal <= 0) {
-                    walletBox.classList.add('d-none');
-                    await showAlert(t('wallet.insufficient_balance'));
-                    return;
-                }
-
-                const spendAmt = Math.min(remainingFare, userBal);
-                const remAfter = Math.max(0, remainingFare - spendAmt);
-                const confirmed = await showConfirm(
-                    `${t('wallet.pay_from_wallet_confirm', { amount: spendAmt })}\n\n` +
-                    `${t('wallet.deduct_confirm_desc', { amount: spendAmt })}\n` +
-                    `${t('wallet.remaining_fare_after_pay', { amount: remAfter })}`,
-                    { okText: t('common.confirm'), cancelText: t('common.cancel') }
-                );
-                if (!confirmed) return;
-
-                window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment'));
-                try {
-                    const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideData?.id || currentPassengerRideData?.rideId || currentPassengerRideData?.ride_id || window._currentActiveRideId;
-                    if (!rideId) {
-                        throw new Error("Unable to identify active ride ID. Please refresh.");
-                    }
-                    const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
-                    const res = await fetch('/api/wallet/pay-current-ride', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ rideId, idempotencyKey })
-                    });
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
-
-                    const result = data.result || {};
-                    cachedPassengerWalletBalance = Math.max(0, userBal - (result.transferAmount || spendAmt));
-
-                    await showAlert(t('wallet.payment_success_desc', {
-                        amount: result.transferAmount,
-                        remaining: result.remainingFare
-                    }));
-                } catch (err) {
-                    console.error("Wallet payment error:", err);
-                    await showAlert(err.message || t('common.error_occurred'));
-                } finally {
-                    window.LiphtUpLoading?.hidePageLoader?.({ force: true });
-                }
+            walletPayBtn.onclick = (e) => {
+                e.stopPropagation();
+                openPassengerRideWalletModal(ride);
             };
         }
     }
+}
+
+async function openPassengerRideWalletModal(rideObj) {
+    const modal = document.getElementById('trip-wallet-pay-modal');
+    if (!modal) return;
+
+    const ride = rideObj || currentPassengerRideData || window.currentActiveRideData;
+    if (!ride) {
+        await showAlert(t('common.error_occurred', "No active ride found."));
+        return;
+    }
+
+    const curUser = auth.currentUser;
+    if (!curUser) return;
+
+    window.LiphtUpLoading?.showPageLoader?.(t('wallet.title', "Wallet"));
+    try {
+        const token = await curUser.getIdToken();
+        const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+        const walletData = await walletRes.json().catch(() => ({}));
+        const userBal = Number(walletData?.wallet?.balance || 0);
+        cachedPassengerWalletBalance = userBal;
+
+        const farePaise = Number(ride.farePaise) || Math.round(Number(ride.fare || 0) * 100);
+        const walletPaidPaise = Number(ride.walletPaidAmountPaise) || Math.round(Number(ride.wallet_paid_amount || 0) * 100);
+        const cashPaidPaise = Number(ride.cashPaidAmountPaise || 0);
+        const remainingPaise = (ride.remainingFarePaise !== undefined) ? Number(ride.remainingFarePaise) : Math.max(0, farePaise - (walletPaidPaise + cashPaidPaise));
+        const remainingFare = remainingPaise / 100.0;
+        const totalFare = farePaise / 100.0;
+
+        const origEl = document.getElementById('trip-modal-original-fare');
+        const remEl = document.getElementById('trip-modal-remaining-fare');
+        const balEl = document.getElementById('trip-modal-wallet-balance');
+        const spendEl = document.getElementById('trip-modal-spend-amount');
+        const afterText = document.getElementById('trip-modal-fare-after-text');
+        const applyBox = document.getElementById('trip-modal-credit-apply-box');
+        const zeroNotice = document.getElementById('trip-modal-zero-balance-notice');
+        const confirmBtn = document.getElementById('trip-modal-confirm-pay-btn');
+
+        if (origEl) origEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
+        if (remEl) remEl.innerText = `₹${remainingFare.toLocaleString('en-IN')}`;
+        if (balEl) balEl.innerText = `₹${userBal.toLocaleString('en-IN')}`;
+
+        if (remainingFare <= 0) {
+            if (applyBox) applyBox.classList.add('d-none');
+            if (zeroNotice) {
+                zeroNotice.innerText = t('wallet.paid_via_wallet_no_cash', { amount: totalFare });
+                zeroNotice.className = "alert alert-success py-2 px-3 mb-3";
+                zeroNotice.classList.remove('d-none');
+            }
+            if (confirmBtn) confirmBtn.classList.add('d-none');
+        } else if (userBal <= 0) {
+            if (applyBox) applyBox.classList.add('d-none');
+            if (zeroNotice) {
+                zeroNotice.innerText = t('wallet.insufficient_balance', "You do not have any wallet credits available.");
+                zeroNotice.className = "alert alert-warning py-2 px-3 mb-3";
+                zeroNotice.classList.remove('d-none');
+            }
+            if (confirmBtn) confirmBtn.classList.add('d-none');
+        } else {
+            const spendAmt = Math.min(remainingFare, userBal);
+            const remAfter = Math.max(0, remainingFare - spendAmt);
+
+            if (applyBox) applyBox.classList.remove('d-none');
+            if (spendEl) spendEl.innerText = `₹${spendAmt.toLocaleString('en-IN')}`;
+            if (afterText) {
+                afterText.innerText = remAfter === 0 
+                    ? t('wallet.fare_fully_covered', "Fare will be fully covered by wallet credits!")
+                    : `${t('wallet.remaining_fare_label', 'Remaining to Pay')}: ₹${remAfter.toLocaleString('en-IN')}`;
+            }
+            if (zeroNotice) zeroNotice.classList.add('d-none');
+            if (confirmBtn) {
+                confirmBtn.classList.remove('d-none');
+                confirmBtn.innerText = t('wallet.confirm_payment', "Confirm & Apply Credits");
+                confirmBtn.onclick = async () => {
+                    closeModalById('trip-wallet-pay-modal');
+                    window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment', "Processing payment..."));
+                    try {
+                        const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideId || window._currentActiveRideId;
+                        if (!rideId) throw new Error("Unable to identify active ride ID. Please refresh.");
+
+                        const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
+                        const res = await fetch('/api/wallet/pay-current-ride', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ rideId, idempotencyKey })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
+
+                        const result = data.result || {};
+                        cachedPassengerWalletBalance = Math.max(0, userBal - (result.transferAmount || spendAmt));
+
+                        if (currentPassengerRideData) {
+                            currentPassengerRideData.walletPaidAmountPaise = (currentPassengerRideData.walletPaidAmountPaise || 0) + Math.round(Number(result.transferAmount || spendAmt) * 100);
+                            currentPassengerRideData.remainingFarePaise = Math.round(Number(result.remainingFare !== undefined ? result.remainingFare : remAfter) * 100);
+                            showTripProgressPanel(currentPassengerRideData);
+                        }
+
+                        await showAlert(t('wallet.payment_success_desc', {
+                            amount: result.transferAmount || spendAmt,
+                            remaining: result.remainingFare !== undefined ? result.remainingFare : remAfter
+                        }));
+                    } catch (err) {
+                        console.error("Wallet payment error:", err);
+                        await showAlert(err.message || t('common.error_occurred'));
+                    } finally {
+                        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+                    }
+                };
+            }
+        }
+
+        modal.classList.remove('d-none');
+    } catch (err) {
+        console.error("Error opening wallet modal:", err);
+        await showAlert(err.message || t('common.error_occurred'));
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
 }
 
 function hideTripProgressPanel() {
@@ -2214,6 +2275,10 @@ const handleCancelRideAction = async () => {
 };
 addOptionalClickListener('cancel-ride-request-btn', handleCancelRideAction);
 addOptionalClickListener('search-cancel-ride-request-btn', handleCancelRideAction);
+
+addOptionalClickListener('trip-wallet-modal-close-btn', () => closeModalById('trip-wallet-pay-modal'));
+addOptionalClickListener('trip-modal-cancel-btn', () => closeModalById('trip-wallet-pay-modal'));
+addOptionalClickListener('trip-wallet-modal-backdrop', () => closeModalById('trip-wallet-pay-modal'));
 
 // Availability Card Info & Popover
 addOptionalClickListener('availability-info-btn', () => {

@@ -301,18 +301,6 @@
                                         </button>
                                     </div>
                                 </div>
-
-                                <!-- 7. Cancel Ride Request Button -->
-                                <button id="cancel-ride-request-btn" class="trip-cancel-pill-btn d-none" type="button">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                                    <span data-i18n="services.cancel_ride_request">Cancel Ride Request</span>
-                                </button>
-
-                                <!-- 8. Bottom Trust Badge -->
-                                <div class="trip-trust-badge">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#4B5563"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-                                    <span data-i18n="services.safe_secure_rides">Safe, secure and reliable rides</span>
-                                </div>
                             </div>
                         </section>
                     </section>
@@ -511,7 +499,7 @@
 
                     <section class="services-ride-actions">
                         <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button" data-i18n="services.select_destination">Select a destination</button>
-                        <button id="search-cancel-ride-request-btn" class="gy-btn-cancel-outline mt-2 d-none" type="button">
+                        <button id="cancel-ride-request-btn" class="gy-btn-cancel-outline mt-2 d-none" type="button">
                             <span class="webicon webicon-trash" style="width: 18px; height: 18px;"></span> <span data-i18n="services.cancel_request">Cancel Ride Request</span>
                         </button>
                         <div class="safety-assurance-tag">
@@ -520,6 +508,52 @@
                         </div>
                         <p id="services-action-hint" class="d-none">Search, driver assignment, PIN verification, tracking, and completion happen here.</p>
                     </section>
+
+                    <!-- Modal: Active Ride Wallet Pay Modal -->
+                    <div id="trip-wallet-pay-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="trip-wallet-modal-title">
+                        <div class="custom-flow-backdrop" id="trip-wallet-modal-backdrop"></div>
+                        <div class="custom-flow-card">
+                            <button type="button" class="custom-flow-close-btn" id="trip-wallet-modal-close-btn" aria-label="Close dialog">&times;</button>
+                            <div class="custom-flow-header">
+                                <div class="custom-flow-badge badge-green">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M16 14h2"/></svg>
+                                </div>
+                                <h3 id="trip-wallet-modal-title" class="custom-flow-title" data-i18n="wallet.use_wallet_credits">Use Wallet Credits</h3>
+                                <p class="custom-flow-subtitle" data-i18n="wallet.deduct_confirm_sub">Apply your available wallet credits to reduce your ride fare.</p>
+                            </div>
+                            <div class="custom-flow-body">
+                                <div class="p-3 mb-3 rounded-3" style="background: #F8FAFC; border: 1px solid #E2E8F0;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted" style="font-size: 13px;" data-i18n="services.original_fare">Original fare</span>
+                                        <strong id="trip-modal-original-fare" style="font-size: 14px; color: #0F172A;">₹0</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="text-muted" style="font-size: 13px;" data-i18n="wallet.remaining_fare_label">Remaining to Pay</span>
+                                        <strong id="trip-modal-remaining-fare" style="font-size: 14px; color: #DC2626;">₹0</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center pt-2" style="border-top: 1px dashed #CBD5E1;">
+                                        <span class="text-muted" style="font-size: 13px;" data-i18n="wallet.available_balance">Available balance</span>
+                                        <strong id="trip-modal-wallet-balance" style="font-size: 14px; color: #16A34A;">₹0</strong>
+                                    </div>
+                                </div>
+
+                                <div id="trip-modal-credit-apply-box" class="p-3 mb-3 rounded-3 text-center" style="background: #F0FDF4; border: 1px solid #BBF7D0;">
+                                    <span class="d-block text-success fw-semibold" style="font-size: 12px; text-transform: uppercase;" data-i18n="wallet.applied_to_ride">Applied to this ride</span>
+                                    <span id="trip-modal-spend-amount" class="d-block fw-bold text-success my-1" style="font-size: 26px;">₹0</span>
+                                    <small id="trip-modal-fare-after-text" class="text-muted" style="font-size: 12px;">Remaining cash to pay driver: ₹0</small>
+                                </div>
+
+                                <div id="trip-modal-zero-balance-notice" class="alert alert-warning py-2 px-3 d-none mb-3" style="font-size: 13px;" data-i18n="wallet.insufficient_balance">
+                                    You do not have any wallet credits available.
+                                </div>
+
+                                <div class="custom-flow-actions">
+                                    <button type="button" id="trip-modal-cancel-btn" class="gy-btn gy-btn-outline" data-i18n="common.cancel">Cancel</button>
+                                    <button type="button" id="trip-modal-confirm-pay-btn" class="gy-btn gy-btn-primary" style="background: #16A34A; border-color: #16A34A;" data-i18n="wallet.confirm_payment">Confirm & Apply Credits</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Modals for 4 Options -->
                     <!-- Option 1: Try Again Modal -->

@@ -5312,6 +5312,20 @@ body.profile-editor-open {
 }
 
 /* 5. Wallet Card */
+.trip-wallet-card-block {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.trip-wallet-card-block:hover {
+    border-color: #CBD5E1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.trip-wallet-card-block:active {
+    transform: scale(0.99);
+}
+
 .trip-wallet-head-row {
     display: flex;
     align-items: center;

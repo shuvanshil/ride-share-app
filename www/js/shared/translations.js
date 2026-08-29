@@ -882,7 +882,11 @@ export const TRANSLATIONS = {
             "available_to_use": "Available to use",
             "use_credits": "Use Credits",
             "change": "Change",
-            "wallet_credits_applied_notice": "Wallet credits are applied first. You can change the amount."
+            "wallet_credits_applied_notice": "Wallet credits are applied first. You can change the amount.",
+            "remaining_fare_label": "Remaining to Pay",
+            "confirm_payment": "Confirm & Apply Credits",
+            "deduct_confirm_sub": "Apply your available wallet credits to reduce your ride fare.",
+            "fare_fully_covered": "Fare will be fully covered by wallet credits!"
         }
     },
     "bn": {
@@ -1760,7 +1764,11 @@ export const TRANSLATIONS = {
             "available_to_use": "ব্যবহারের জন্য উপলব্ধ",
             "use_credits": "ক্রেডিট ব্যবহার করুন",
             "change": "পরিবর্তন",
-            "wallet_credits_applied_notice": "ওয়ালেট ক্রেডিট প্রথমে প্রয়োগ করা হয়। আপনি পরিমাণ পরিবর্তন করতে পারেন।"
+            "wallet_credits_applied_notice": "ওয়ালেট ক্রেডিট প্রথমে প্রয়োগ করা হয়। আপনি পরিমাণ পরিবর্তন করতে পারেন।",
+            "remaining_fare_label": "পরিশোধের বাকি",
+            "confirm_payment": "নিশ্চিত করুন ও ক্রেডিট ব্যবহার করুন",
+            "deduct_confirm_sub": "আপনার রাইডের ভাড়া কমাতে ওয়ালেট ক্রেডিট ব্যবহার করুন।",
+            "fare_fully_covered": "রাইডের সম্পূর্ণ ভাড়া ওয়ালেট ক্রেডিট দিয়ে পরিশোধ হবে!"
         }
     }
 };
