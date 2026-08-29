@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20260828-v1";
+export const TRANSLATIONS_VERSION = "20260829-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -887,6 +887,24 @@ export const TRANSLATIONS = {
             "confirm_payment": "Confirm & Apply Credits",
             "deduct_confirm_sub": "Apply your available wallet credits to reduce your ride fare.",
             "fare_fully_covered": "Fare will be fully covered by wallet credits!"
+        },
+        "coupons": {
+            "title": "Coupons",
+            "apply_coupon": "Apply Coupon",
+            "save_on_ride": "Save on this ride with a coupon",
+            "apply": "APPLY",
+            "suggested": "Suggested:",
+            "coupon_discount": "Coupon discount",
+            "celebration_title": "Coupon Applied!",
+            "you_saved": "You saved",
+            "on_this_ride": "on this ride",
+            "updated_fare_is": "Your updated fare is",
+            "enter_valid_code": "Please enter a valid coupon code.",
+            "apply_failed": "We couldn't apply the coupon. Please try again.",
+            "already_used": "You have already used this coupon on an earlier ride.",
+            "inactive_or_invalid": "Coupon code is invalid, expired, or inactive.",
+            "not_eligible": "You are not eligible for this coupon promotion.",
+            "ride_already_has_coupon": "A coupon has already been applied to this active ride."
         }
     },
     "bn": {
@@ -1769,6 +1787,24 @@ export const TRANSLATIONS = {
             "confirm_payment": "নিশ্চিত করুন ও ক্রেডিট ব্যবহার করুন",
             "deduct_confirm_sub": "আপনার রাইডের ভাড়া কমাতে ওয়ালেট ক্রেডিট ব্যবহার করুন।",
             "fare_fully_covered": "রাইডের সম্পূর্ণ ভাড়া ওয়ালেট ক্রেডিট দিয়ে পরিশোধ হবে!"
+        },
+        "coupons": {
+            "title": "কুপন",
+            "apply_coupon": "কুপন প্রয়োগ করুন",
+            "save_on_ride": "কুপন দিয়ে এই রাইডে ছাড় পান",
+            "apply": "প্রয়োগ করুন",
+            "suggested": "পরামর্শ:",
+            "coupon_discount": "কুপন ছাড়",
+            "celebration_title": "কুপন প্রয়োগ সম্পন্ন!",
+            "you_saved": "আপনি সাশ্রয় করেছেন",
+            "on_this_ride": "এই রাইডে",
+            "updated_fare_is": "আপনার সংশোধিত ভাড়া",
+            "enter_valid_code": "অনুগ্রহ করে একটি বৈধ কুপন কোড লিখুন।",
+            "apply_failed": "কুপন প্রয়োগ করা যায়নি। অনুগ্রহ করে পুনরায় চেষ্টা করুন।",
+            "already_used": "আপনি ইতিমধ্যে পূর্বের রাইডে এই কুপনটি ব্যবহার করেছেন।",
+            "inactive_or_invalid": "কুপন কোডটি অবৈধ, মেয়াদোত্তীর্ণ অথবা নিষ্ক্রিয়।",
+            "not_eligible": "আপনি এই কুপন প্রচারের জন্য যোগ্য নন।",
+            "ride_already_has_coupon": "এই রাইডে ইতিমধ্যে একটি কুপন প্রয়োগ করা হয়েছে।"
         }
     }
 };

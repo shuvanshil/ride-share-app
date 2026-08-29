@@ -7,6 +7,7 @@ import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
 import { initAdminPayments, loadAdminPayments } from "./admin-payments.js";
 import { loadPermissions, initPermissionsModal } from "./admin-permissions.js";
+import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -75,6 +76,7 @@ function applyRolePermissions(role) {
     const hideManagerRestricted = currentAdminRole === "manager";
 
     $("nav-item-permissions")?.classList.toggle("d-none", hidePermissions);
+    $("nav-item-coupons")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-passengers")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-ride-history")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-analytics")?.classList.toggle("d-none", hideManagerRestricted);
@@ -116,6 +118,7 @@ watchAdminAuth(async (user) => {
         loadSection("dashboard");
         refreshSafetyBadge();
         initAdminPayments();
+        initAdminCoupons();
         initPermissionsModal();
         startSosRealtimeAlerts();
         if (!feedStarted) {
@@ -165,6 +168,7 @@ async function handleAdminLogin() {
             loadSection("dashboard");
             refreshSafetyBadge();
             initAdminPayments();
+            initAdminCoupons();
             initPermissionsModal();
             startSosRealtimeAlerts();
             if (!feedStarted) {
@@ -304,6 +308,7 @@ function loadSection(name) {
     if (name === "dashboard") loadDashboard();
     if (name === "drivers") loadDrivers(true);
     if (name === "payments") loadAdminPayments();
+    if (name === "coupons") loadAdminCoupons();
     if (name === "safety") loadSafety();
     if (name === "ride-history") loadHistory(true);
     if (name === "passengers") loadPassengers(true);

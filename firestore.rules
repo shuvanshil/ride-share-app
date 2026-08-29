@@ -223,6 +223,24 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Platform Coupons:
+    // Authenticated users can read active coupons; admins can read all; all writes are server-only through FastAPI.
+    match /coupons/{couponId} {
+      allow read: if signedIn() && (resource == null || resource.data.status == 'active' || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // Immutable Coupon Redemptions Audit Ledger:
+    // Passengers read their own redemptions, drivers read assigned ride redemptions, admins read all; writes are server-only.
+    match /couponRedemptions/{redemptionId} {
+      allow read: if signedIn()
+        && (resource == null
+          || ('passengerId' in resource.data && resource.data.passengerId == request.auth.uid)
+          || ('driverId' in resource.data && resource.data.driverId == request.auth.uid)
+          || isAdmin());
+      allow create, update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

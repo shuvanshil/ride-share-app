@@ -231,6 +231,13 @@
                                         <span class="text-muted" data-i18n="services.original_fare">Original fare</span>
                                         <span class="trip-fare-val fw-semibold" id="trip-fare-original">₹0</span>
                                     </div>
+                                    <div class="trip-fare-row trip-fare-discount-row d-none" id="trip-fare-coupon-discount-row">
+                                        <span class="d-flex align-items-center gap-2 text-success">
+                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                                            <span id="trip-fare-coupon-label">Coupon discount</span>
+                                        </span>
+                                        <span class="text-success fw-bold" id="trip-fare-coupon-discount">- ₹0</span>
+                                    </div>
                                     <div class="trip-fare-row trip-fare-discount-row d-none" id="trip-fare-wallet-discount-row">
                                         <span class="d-flex align-items-center gap-2 text-success">
                                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M16 14h2"/></svg>
@@ -246,9 +253,48 @@
                                             <del class="trip-fare-original-del d-none" id="trip-fare-original-del">₹0</del>
                                         </div>
                                     </div>
+                                    <div class="trip-fare-tax-badge mt-2">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                                        <span data-i18n="services.all_prices_inclusive">All prices are inclusive of taxes and fees</span>
+                                    </div>
                                 </div>
 
-                                <!-- 5. Wallet Section Card -->
+                                <!-- 5. Apply Coupon Section Card (Shown when passenger has eligible coupon) -->
+                                <div class="trip-card-block trip-coupon-card-block d-none" id="trip-progress-coupon-box">
+                                    <div class="trip-coupon-header">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="trip-coupon-icon-box">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                                            </div>
+                                            <div>
+                                                <strong class="d-block trip-coupon-title" data-i18n="coupons.apply_coupon">Apply Coupon</strong>
+                                                <span class="trip-coupon-desc" data-i18n="coupons.save_on_ride">Save on this ride with a coupon</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Coupon Input Group -->
+                                    <div class="trip-coupon-input-group mt-2">
+                                        <div class="position-relative flex-fill">
+                                            <input type="text" id="trip-coupon-input" class="trip-coupon-input" placeholder="ENTER CODE" maxlength="30" autocomplete="off" spellcheck="false">
+                                        </div>
+                                        <button type="button" id="trip-coupon-apply-btn" class="trip-coupon-apply-btn">
+                                            <span id="trip-coupon-btn-label" data-i18n="coupons.apply">APPLY</span>
+                                            <span id="trip-coupon-btn-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                        </button>
+                                    </div>
+
+                                    <!-- Suggested Coupon Quick Select Pill -->
+                                    <div id="trip-suggested-coupon-box" class="trip-suggested-coupon-box d-none mt-2">
+                                        <span class="trip-suggested-label" data-i18n="coupons.suggested">Suggested:</span>
+                                        <button type="button" id="trip-suggested-coupon-btn" class="trip-suggested-coupon-pill"></button>
+                                    </div>
+
+                                    <!-- Feedback / Error message container -->
+                                    <div id="trip-coupon-msg-box" class="trip-coupon-msg-box alert py-2 px-3 mt-2 d-none"></div>
+                                </div>
+
+                                <!-- 6. Wallet Section Card (Hidden when coupon is eligible) -->
                                 <div class="trip-card-block trip-wallet-card-block" id="trip-progress-wallet-box">
                                     <div class="trip-wallet-head-row">
                                         <div class="d-flex align-items-center gap-2">
@@ -552,6 +598,30 @@
                                     <button type="button" id="trip-modal-confirm-pay-btn" class="gy-btn gy-btn-primary" style="background: #16A34A; border-color: #16A34A;" data-i18n="wallet.confirm_payment">Confirm & Apply Credits</button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal: Passenger Coupon Applied Celebration Modal -->
+                    <div id="passenger-coupon-celebration-modal" class="custom-flow-modal d-none" role="dialog" aria-modal="true" aria-labelledby="coupon-celebration-title">
+                        <div class="custom-flow-backdrop" id="coupon-celebration-backdrop"></div>
+                        <div class="custom-flow-card text-center p-4">
+                            <button type="button" class="custom-flow-close-btn" id="coupon-celebration-close-btn" aria-label="Close dialog">&times;</button>
+                            <div class="coupon-celebration-icon-wrap mb-3">
+                                <div class="coupon-celebration-badge">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                        <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <h3 class="fw-bold mb-2 text-dark" id="coupon-celebration-title" data-i18n="coupons.celebration_title">Coupon Applied!</h3>
+                            <p class="text-success fw-bold mb-1" style="font-size: 18px;" id="coupon-celebration-saved-text">You saved ₹0 on this ride.</p>
+                            <p class="text-muted small mb-3" id="coupon-celebration-fare-text">Your updated fare is ₹0.</p>
+                            <div class="coupon-applied-code-pill mb-3" id="coupon-celebration-code-pill">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                                <strong id="coupon-celebration-code-text">CODE</strong>
+                            </div>
+                            <button type="button" id="coupon-celebration-done-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold" style="background: #16A34A; border-color: #16A34A;" data-i18n="common.done">Got It</button>
                         </div>
                     </div>
 

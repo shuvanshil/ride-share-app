@@ -321,6 +321,10 @@ def transfer_ride_fare(
         if ride_status not in allowed_payable_statuses:
             raise ApiError(f"Ride in state '{ride_status}' is not eligible for wallet payment.", 400)
 
+        # Mutual exclusivity check: Reject if coupon already applied
+        if ride.get("couponApplied"):
+            raise ApiError("A promotional coupon has already been applied to this ride. Coupon and wallet credits cannot be combined.", 400)
+
         fare_paise = int(ride.get("farePaise") or 0)
         if fare_paise <= 0:
             fare_paise = inr_to_paise(ride.get("fare") or 0)

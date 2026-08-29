@@ -22,7 +22,19 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .core.errors import ApiError
-from .routers import account, admin, admin_wallet, auth, google, notify, otp, rides, wallet
+from .routers import (
+    account,
+    admin,
+    admin_coupons,
+    admin_wallet,
+    auth,
+    coupons,
+    google,
+    notify,
+    otp,
+    rides,
+    wallet,
+)
 from .routers import driver_payments
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
@@ -116,6 +128,10 @@ app.include_router(rides.router, prefix="/api")
 app.include_router(rides.router)
 app.include_router(wallet.router, prefix="/api")
 app.include_router(wallet.router)
+app.include_router(coupons.router, prefix="/api")
+app.include_router(coupons.router)
+app.include_router(admin_coupons.router, prefix="/api")
+app.include_router(admin_coupons.router)
 app.include_router(admin_wallet.router, prefix="/api")
 app.include_router(admin_wallet.router)
 app.include_router(admin.router, prefix="/api")

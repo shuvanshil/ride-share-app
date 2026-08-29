@@ -49,6 +49,11 @@ let currentPassengerRideData = null;
 let cachedPassengerWalletBalance = null;
 let isFetchingWalletBalance = false;
 
+let cachedEligibleCoupons = null;
+let cachedSuggestedCoupon = null;
+let isFetchingEligibleCoupons = false;
+let lastCouponCheckedRideId = null;
+
 function fetchPassengerWalletBalance(callback) {
     const user = auth.currentUser;
     if (!user || isFetchingWalletBalance) return;
@@ -64,6 +69,28 @@ function fetchPassengerWalletBalance(callback) {
         console.warn("Failed to check wallet balance:", e);
     }).finally(() => {
         isFetchingWalletBalance = false;
+    });
+}
+
+function fetchEligibleCouponsForRide(rideId, callback) {
+    const user = auth.currentUser;
+    if (!user || isFetchingEligibleCoupons || !rideId) return;
+    isFetchingEligibleCoupons = true;
+    user.getIdToken().then(token => {
+        return fetch(`/api/coupons/eligible?rideId=${encodeURIComponent(rideId)}`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+        });
+    }).then(res => res.json()).then(data => {
+        if (data?.ok) {
+            cachedEligibleCoupons = data.eligibleCoupons || [];
+            cachedSuggestedCoupon = data.suggestedCoupon || null;
+            lastCouponCheckedRideId = rideId;
+            if (typeof callback === 'function') callback(data);
+        }
+    }).catch(e => {
+        console.warn("Failed to fetch eligible coupons:", e);
+    }).finally(() => {
+        isFetchingEligibleCoupons = false;
     });
 }
 
@@ -688,7 +715,11 @@ function showTripProgressPanel(ride) {
     const farePaise = Number(ride.farePaise) || Math.round(Number(ride.fare || 0) * 100);
     const walletPaidPaise = Number(ride.walletPaidAmountPaise) || Math.round(Number(ride.wallet_paid_amount || 0) * 100);
     const cashPaidPaise = Number(ride.cashPaidAmountPaise || 0);
-    const remainingPaise = (ride.remainingFarePaise !== undefined) ? Number(ride.remainingFarePaise) : Math.max(0, farePaise - (walletPaidPaise + cashPaidPaise));
+    const couponApplied = ride.couponApplied;
+    const couponDiscountPaise = couponApplied ? (Number(couponApplied.discountPaise) || Math.round(Number(couponApplied.discountAmount || 0) * 100)) : 0;
+    const couponDiscountAmount = couponDiscountPaise / 100.0;
+
+    const remainingPaise = (ride.remainingFarePaise !== undefined) ? Number(ride.remainingFarePaise) : Math.max(0, farePaise - (walletPaidPaise + cashPaidPaise + couponDiscountPaise));
     const remainingFare = remainingPaise / 100.0;
     const walletPaidAmount = walletPaidPaise / 100.0;
     const totalFare = farePaise / 100.0;
@@ -697,26 +728,53 @@ function showTripProgressPanel(ride) {
     const fareOrigEl = document.getElementById('trip-fare-original');
     const fareCurrentEl = document.getElementById('trip-fare-current');
     const fareOrigDelEl = document.getElementById('trip-fare-original-del');
-    const fareDiscountRow = document.getElementById('trip-fare-wallet-discount-row');
-    const fareDiscountVal = document.getElementById('trip-fare-wallet-discount');
+    const fareCouponRow = document.getElementById('trip-fare-coupon-discount-row');
+    const fareCouponLabel = document.getElementById('trip-fare-coupon-label');
+    const fareCouponDiscount = document.getElementById('trip-fare-coupon-discount');
+    const fareWalletRow = document.getElementById('trip-fare-wallet-discount-row');
+    const fareWalletDiscount = document.getElementById('trip-fare-wallet-discount');
 
     if (fareOrigEl) fareOrigEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
 
-    if (walletPaidAmount > 0) {
-        if (fareDiscountRow) fareDiscountRow.classList.remove('d-none');
-        if (fareDiscountVal) fareDiscountVal.innerText = `- ₹${walletPaidAmount.toLocaleString('en-IN')}`;
+    if (couponDiscountAmount > 0) {
+        if (fareCouponRow) fareCouponRow.classList.remove('d-none');
+        if (fareCouponLabel) fareCouponLabel.innerText = `${t('coupons.coupon_discount', 'Coupon discount')} (${couponApplied.code || 'COUPON'})`;
+        if (fareCouponDiscount) fareCouponDiscount.innerText = `- ₹${couponDiscountAmount.toLocaleString('en-IN')}`;
+        if (fareWalletRow) fareWalletRow.classList.add('d-none');
+        if (fareCurrentEl) fareCurrentEl.innerText = `₹${remainingFare.toLocaleString('en-IN')}`;
+        if (fareOrigDelEl) {
+            fareOrigDelEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
+            fareOrigDelEl.classList.remove('d-none');
+        }
+    } else if (walletPaidAmount > 0) {
+        if (fareCouponRow) fareCouponRow.classList.add('d-none');
+        if (fareWalletRow) fareWalletRow.classList.remove('d-none');
+        if (fareWalletDiscount) fareWalletDiscount.innerText = `- ₹${walletPaidAmount.toLocaleString('en-IN')}`;
         if (fareCurrentEl) fareCurrentEl.innerText = `₹${remainingFare.toLocaleString('en-IN')}`;
         if (fareOrigDelEl) {
             fareOrigDelEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
             fareOrigDelEl.classList.remove('d-none');
         }
     } else {
-        if (fareDiscountRow) fareDiscountRow.classList.add('d-none');
+        if (fareCouponRow) fareCouponRow.classList.add('d-none');
+        if (fareWalletRow) fareWalletRow.classList.add('d-none');
         if (fareCurrentEl) fareCurrentEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
         if (fareOrigDelEl) fareOrigDelEl.classList.add('d-none');
     }
 
-    // 5. Active Ride Wallet Card binding (only shown after PIN verification is done, and not shown when balance is 0)
+    // 5. Active Ride Coupon & Wallet Components (Mutual Exclusivity)
+    const isPinVerified = Boolean(ride.pinVerifiedAt) || ride.status === "started" || ride.status === "en_route";
+    const rideId = ride.id || ride.rideId || ride.ride_id || currentPassengerRideId;
+
+    const couponBox = document.getElementById('trip-progress-coupon-box');
+    const couponInput = document.getElementById('trip-coupon-input');
+    const couponApplyBtn = document.getElementById('trip-coupon-apply-btn');
+    const couponBtnLabel = document.getElementById('trip-coupon-btn-label');
+    const couponBtnSpinner = document.getElementById('trip-coupon-btn-spinner');
+    const suggestedBox = document.getElementById('trip-suggested-coupon-box');
+    const suggestedBtn = document.getElementById('trip-suggested-coupon-btn');
+    const couponMsgBox = document.getElementById('trip-coupon-msg-box');
+
     const walletBox = document.getElementById('trip-progress-wallet-box');
     const walletAvailText = document.getElementById('trip-wallet-avail-text');
     const walletAppliedBox = document.getElementById('trip-wallet-applied-box');
@@ -725,57 +783,163 @@ function showTripProgressPanel(ride) {
     const walletPayBtn = document.getElementById('trip-progress-wallet-pay-btn');
     const walletActionBtnText = document.getElementById('trip-wallet-action-btn-text');
 
-    if (walletBox) {
-        if (cachedPassengerWalletBalance === null) {
-            fetchPassengerWalletBalance(() => {
+    if (isPinVerified && !couponApplied && walletPaidAmount <= 0 && rideId) {
+        if (lastCouponCheckedRideId !== rideId && !isFetchingEligibleCoupons) {
+            fetchEligibleCouponsForRide(rideId, () => {
                 if (currentPassengerRideData) {
                     showTripProgressPanel(currentPassengerRideData);
                 }
             });
         }
+    }
 
-        const isPinVerified = Boolean(ride.pinVerifiedAt) || ride.status === "started" || ride.status === "en_route";
-        const availBal = cachedPassengerWalletBalance !== null ? cachedPassengerWalletBalance : 0;
+    const hasEligibleCoupons = Boolean(isPinVerified && Array.isArray(cachedEligibleCoupons) && cachedEligibleCoupons.length > 0 && !couponApplied && walletPaidAmount <= 0);
 
-        if (!isPinVerified || (availBal <= 0 && walletPaidAmount <= 0)) {
-            // The wallet option is only shown after PIN verification is done, and hidden when balance is 0
-            walletBox.classList.add('d-none');
-        } else {
-            walletBox.classList.remove('d-none');
+    // CASE A: Eligible for coupon -> Show Coupon Box, Hide Wallet Box
+    if (hasEligibleCoupons) {
+        if (couponBox) {
+            couponBox.classList.remove('d-none');
 
-            if (walletAvailText) {
-                walletAvailText.innerText = `${t('wallet.available_balance', 'Available balance')}: ₹${availBal.toLocaleString('en-IN')}`;
-            }
-
-            if (walletPaidAmount > 0) {
-                walletAppliedBox?.classList.remove('d-none');
-                if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${walletPaidAmount.toLocaleString('en-IN')}`;
-                if (walletStatusNote) walletStatusNote.innerText = t('wallet.applied_to_ride', "Applied to this ride");
-
-                if (remainingFare === 0) {
-                    walletPayBtn?.classList.add('d-none');
-                } else {
-                    walletPayBtn?.classList.remove('d-none');
-                    if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.change', "Change");
+            // Populate suggested coupon
+            if (cachedSuggestedCoupon && suggestedBox && suggestedBtn) {
+                suggestedBox.classList.remove('d-none');
+                suggestedBtn.innerText = cachedSuggestedCoupon.code;
+                suggestedBtn.onclick = () => {
+                    if (couponInput) {
+                        couponInput.value = cachedSuggestedCoupon.code;
+                        couponInput.focus();
+                    }
+                };
+                if (couponInput && !couponInput.value.trim()) {
+                    couponInput.value = cachedSuggestedCoupon.code;
                 }
-            } else if (remainingFare > 0 && availBal > 0) {
-                walletAppliedBox?.classList.remove('d-none');
-                const suggestedAmt = Math.min(availBal, remainingFare);
-                if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
-                if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
-                walletPayBtn?.classList.remove('d-none');
-                if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
-            } else {
-                walletAppliedBox?.classList.add('d-none');
+            } else if (suggestedBox) {
+                suggestedBox.classList.add('d-none');
             }
 
-            if (walletPayBtn) {
-                walletPayBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    openPassengerRideWalletModal(ride);
+            if (couponApplyBtn) {
+                couponApplyBtn.onclick = async () => {
+                    const enteredCode = (couponInput?.value || "").trim().toUpperCase();
+                    if (!enteredCode) {
+                        if (couponMsgBox) {
+                            couponMsgBox.className = "trip-coupon-msg-box alert alert-warning py-2 px-3 mt-2";
+                            couponMsgBox.innerText = t('coupons.enter_valid_code', "Please enter a valid coupon code.");
+                            couponMsgBox.classList.remove('d-none');
+                        }
+                        return;
+                    }
+
+                    couponApplyBtn.disabled = true;
+                    couponBtnLabel?.classList.add('d-none');
+                    couponBtnSpinner?.classList.remove('d-none');
+                    if (couponMsgBox) couponMsgBox.classList.add('d-none');
+
+                    try {
+                        const curUser = auth.currentUser;
+                        if (!curUser) throw new Error("Please log in to apply coupons.");
+                        const token = await curUser.getIdToken();
+                        const idempotencyKey = `cr_${rideId}_${enteredCode}_${Date.now()}`;
+                        const applyRes = await fetch('/api/coupons/apply', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ rideId, code: enteredCode, idempotencyKey }),
+                        });
+                        const applyData = await applyRes.json().catch(() => ({}));
+                        if (!applyRes.ok || !applyData.ok) {
+                            throw new Error(applyData.error || t('coupons.apply_failed', "We couldn't apply the coupon. Please try again."));
+                        }
+
+                        const redemption = applyData.result || {};
+                        const discountAmt = redemption.discountAmount || (redemption.discountPaise ? redemption.discountPaise / 100.0 : 0);
+                        const newRemaining = redemption.remainingFare !== undefined ? redemption.remainingFare : Math.max(0, totalFare - discountAmt);
+
+                        if (currentPassengerRideData) {
+                            currentPassengerRideData.couponApplied = {
+                                code: enteredCode,
+                                discountAmount: discountAmt,
+                                discountPaise: Math.round(discountAmt * 100),
+                                remainingFare: newRemaining,
+                                remainingFarePaise: Math.round(newRemaining * 100),
+                            };
+                            currentPassengerRideData.remainingFarePaise = Math.round(newRemaining * 100);
+                            cachedEligibleCoupons = [];
+                            showTripProgressPanel(currentPassengerRideData);
+                        }
+
+                        // Display Celebration Modal
+                        openCouponCelebrationModal(enteredCode, discountAmt, newRemaining);
+                    } catch (err) {
+                        console.error("Coupon apply error:", err);
+                        if (couponMsgBox) {
+                            couponMsgBox.className = "trip-coupon-msg-box alert alert-danger py-2 px-3 mt-2";
+                            couponMsgBox.innerText = err.message || t('common.error_occurred');
+                            couponMsgBox.classList.remove('d-none');
+                        }
+                    } finally {
+                        couponApplyBtn.disabled = false;
+                        couponBtnLabel?.classList.remove('d-none');
+                        couponBtnSpinner?.classList.add('d-none');
+                    }
                 };
             }
         }
+        if (walletBox) walletBox.classList.add('d-none');
+    } else {
+        // Hide coupon box if not eligible or already applied
+        if (couponBox) couponBox.classList.add('d-none');
+
+        // CASE B: Not eligible for coupon -> Show Wallet Box if wallet balance > 0 (and no coupon applied)
+        if (walletBox) {
+            if (cachedPassengerWalletBalance === null) {
+                fetchPassengerWalletBalance(() => {
+                    if (currentPassengerRideData) {
+                        showTripProgressPanel(currentPassengerRideData);
+                    }
+                });
+            }
+
+            const availBal = cachedPassengerWalletBalance !== null ? cachedPassengerWalletBalance : 0;
+
+            if (!isPinVerified || (availBal <= 0 && walletPaidAmount <= 0) || couponApplied) {
+                walletBox.classList.add('d-none');
+            } else {
+                walletBox.classList.remove('d-none');
+
+                if (walletAvailText) {
+                    walletAvailText.innerText = `${t('wallet.available_balance', 'Available balance')}: ₹${availBal.toLocaleString('en-IN')}`;
+                }
+
+                if (walletPaidAmount > 0) {
+                    walletAppliedBox?.classList.remove('d-none');
+                    if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${walletPaidAmount.toLocaleString('en-IN')}`;
+                    if (walletStatusNote) walletStatusNote.innerText = t('wallet.applied_to_ride', "Applied to this ride");
+
+                    if (remainingFare === 0) {
+                        walletPayBtn?.classList.add('d-none');
+                    } else {
+                        walletPayBtn?.classList.remove('d-none');
+                        if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.change', "Change");
+                    }
+                } else if (remainingFare > 0 && availBal > 0) {
+                    walletAppliedBox?.classList.remove('d-none');
+                    const suggestedAmt = Math.min(availBal, remainingFare);
+                    if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
+                    if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
+                    walletPayBtn?.classList.remove('d-none');
+                    if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
+                } else {
+                    walletAppliedBox?.classList.add('d-none');
+                }
+
+                if (walletPayBtn) {
+                    walletPayBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        openPassengerRideWalletModal(ride);
+                    };
+                }
+            }
+        }
+    }
     }
 }
 
@@ -898,6 +1062,20 @@ async function openPassengerRideWalletModal(rideObj) {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
 }
+
+function openCouponCelebrationModal(code, savedAmount, updatedFare) {
+    const modal = document.getElementById('passenger-coupon-celebration-modal');
+    if (!modal) return;
+
+    const savedEl = document.getElementById('coupon-celebration-saved-text');
+    const fareEl = document.getElementById('coupon-celebration-fare-text');
+    const codeEl = document.getElementById('coupon-celebration-code-text');
+
+    if (savedEl) savedEl.innerText = `${t('coupons.you_saved', 'You saved')} ₹${savedAmount.toLocaleString('en-IN')} ${t('coupons.on_this_ride', 'on this ride')}.`;
+    if (fareEl) fareEl.innerText = `${t('coupons.updated_fare_is', 'Your updated fare is')} ₹${updatedFare.toLocaleString('en-IN')}.`;
+    if (codeEl) codeEl.innerText = code;
+
+    modal.classList.remove('d-none');
 }
 
 function hideTripProgressPanel() {
@@ -985,6 +1163,14 @@ function resetPassengerBookingUi(options = {}) {
     hideTripProgressPanel();
     setPassengerDestinationLocked(false);
     setPassengerServiceLocked(false);
+
+    cachedEligibleCoupons = null;
+    cachedSuggestedCoupon = null;
+    lastCouponCheckedRideId = null;
+    const couponInput = document.getElementById('trip-coupon-input');
+    if (couponInput) couponInput.value = '';
+    const couponMsgBox = document.getElementById('trip-coupon-msg-box');
+    if (couponMsgBox) couponMsgBox.classList.add('d-none');
 
     const requestBtn = document.getElementById('request-ride-btn');
     const dropInput = document.getElementById('drop-input');
@@ -2286,6 +2472,10 @@ addOptionalClickListener('search-cancel-ride-request-btn', handleCancelRideActio
 addOptionalClickListener('trip-wallet-modal-close-btn', () => closeModalById('trip-wallet-pay-modal'));
 addOptionalClickListener('trip-modal-cancel-btn', () => closeModalById('trip-wallet-pay-modal'));
 addOptionalClickListener('trip-wallet-modal-backdrop', () => closeModalById('trip-wallet-pay-modal'));
+
+addOptionalClickListener('coupon-celebration-close-btn', () => closeModalById('passenger-coupon-celebration-modal'));
+addOptionalClickListener('coupon-celebration-backdrop', () => closeModalById('passenger-coupon-celebration-modal'));
+addOptionalClickListener('coupon-celebration-done-btn', () => closeModalById('passenger-coupon-celebration-modal'));
 
 // Availability Card Info & Popover
 addOptionalClickListener('availability-info-btn', () => {

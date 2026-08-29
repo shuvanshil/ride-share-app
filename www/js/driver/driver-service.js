@@ -2218,7 +2218,11 @@ async function completeRideJob() {
         const rideData = result.ride || currentRide || {};
         const totalFarePaise = Number(rideData.farePaise) || Math.round(parseFloat(rideData.fare || 0) * 100);
         const walletPaidPaise = Number(rideData.walletPaidAmountPaise) || Math.round(parseFloat(rideData.wallet_paid_amount || 0) * 100);
-        const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, totalFarePaise - walletPaidPaise);
+        const couponApplied = rideData.couponApplied;
+        const couponDiscountPaise = couponApplied ? (Number(couponApplied.discountPaise) || Math.round(parseFloat(couponApplied.discountAmount || 0) * 100)) : 0;
+        const couponDiscountAmount = couponDiscountPaise / 100.0;
+
+        const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, totalFarePaise - (walletPaidPaise + couponDiscountPaise));
 
         const totalFare = totalFarePaise / 100.0;
         const walletPaidAmount = walletPaidPaise / 100.0;
@@ -2229,20 +2233,31 @@ async function completeRideJob() {
         const paymentTitle = document.getElementById('driver-service-payment-title');
         const paymentSubtitle = document.getElementById('driver-service-payment-subtitle');
 
-        if (remainingFare === 0 && walletPaidAmount > 0) {
-            // Fully paid via wallet!
+        if (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0)) {
+            // Fully paid via wallet or platform coupon!
             finalFareEl.innerText = formatFareAmount(0);
-            if (paymentTitle) paymentTitle.innerText = t('wallet.payment_success', 'Ride Paid via Wallet');
-            if (paymentSubtitle) paymentSubtitle.innerText = t('wallet.paid_via_wallet_no_cash', { amount: walletPaidAmount });
+            if (paymentTitle) paymentTitle.innerText = t('wallet.payment_success', 'Ride Fully Covered');
+            if (paymentSubtitle) paymentSubtitle.innerText = couponDiscountAmount > 0 
+                ? `Fare of ₹${totalFare} covered by platform promotion and credited to your wallet.` 
+                : t('wallet.paid_via_wallet_no_cash', { amount: walletPaidAmount });
             if (breakdownBox) {
                 breakdownBox.classList.remove('d-none');
-                if (breakdownText) breakdownText.innerText = `Full fare (₹${totalFare}) paid via passenger wallet credits and added to your wallet. No cash collection needed.`;
+                if (breakdownText) {
+                    breakdownText.innerText = couponDiscountAmount > 0 
+                        ? `Full fare (₹${totalFare}) covered by promotional subsidy and added to your wallet. No cash collection needed.`
+                        : `Full fare (₹${totalFare}) paid via passenger wallet credits and added to your wallet. No cash collection needed.`;
+                }
             }
             upiQrImage.classList.add('d-none');
         } else {
             // Cash / UPI collection required for remaining fare
             finalFareEl.innerText = formatFareAmount(remainingFare);
-            if (walletPaidAmount > 0) {
+            if (couponDiscountAmount > 0) {
+                if (breakdownBox) {
+                    breakdownBox.classList.remove('d-none');
+                    if (breakdownText) breakdownText.innerText = `Fare Updated: ₹${couponDiscountAmount} promotional adjustment applied. Amount to collect: ₹${remainingFare}`;
+                }
+            } else if (walletPaidAmount > 0) {
                 if (breakdownBox) {
                     breakdownBox.classList.remove('d-none');
                     if (breakdownText) breakdownText.innerText = `Total: ₹${totalFare} | Paid via Wallet: ₹${walletPaidAmount} | Collect: ₹${remainingFare}`;
