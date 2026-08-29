@@ -1631,12 +1631,13 @@ class UserLocationMarkerOverlay {
     stopRipple() {
         if (this.rippleWrap) {
             this.rippleWrap.classList.add("is-hidden");
+            this.rippleWrap.style.display = "none";
         }
         if (this.bubbleCard) {
             this.bubbleCard.classList.add("is-faded");
-            setTimeout(() => {
-                if (this.bubbleCard) this.bubbleCard.remove();
-            }, 600);
+            this.bubbleCard.style.display = "none";
+            this.bubbleCard.remove();
+            this.bubbleCard = null;
         }
     }
 
@@ -3494,17 +3495,31 @@ window.addEventListener("locations-swapped", async (event) => {
     }
 });
 
-// Turn off passenger marker ripple and "This is you!" card once driver accepts
+// Expand map, show navigation toggle, and turn off passenger marker ripple & "You are here" tag once driver is assigned
 window.addEventListener("driver-assigned", () => {
+    document.getElementById("services-map-card")?.classList.add("is-expanded");
+    document.getElementById("services-map-card")?.classList.add("is-active-trip");
     userMarker?.stopRipple?.();
+    const mapContainer = document.getElementById("map-container");
+    if (mapContainer) ensurePassengerNavToggleButton(mapContainer);
 });
 window.addEventListener("ride-status-updated", (event) => {
     const status = event.detail?.status || event.detail?.ride?.status;
-    if (["accepted", "arrived", "started", "en_route", "completed"].includes(status)) {
+    if (["accepted", "arrived", "started", "en_route"].includes(status)) {
+        document.getElementById("services-map-card")?.classList.add("is-expanded");
+        document.getElementById("services-map-card")?.classList.add("is-active-trip");
+        userMarker?.stopRipple?.();
+        const mapContainer = document.getElementById("map-container");
+        if (mapContainer) ensurePassengerNavToggleButton(mapContainer);
+    } else if (["completed", "cancelled"].includes(status)) {
+        document.getElementById("services-map-card")?.classList.remove("is-expanded");
+        document.getElementById("services-map-card")?.classList.remove("is-active-trip");
         userMarker?.stopRipple?.();
     }
 });
 window.addEventListener("ride-completed-clear-map", () => {
+    document.getElementById("services-map-card")?.classList.remove("is-expanded");
+    document.getElementById("services-map-card")?.classList.remove("is-active-trip");
     userMarker?.stopRipple?.();
 });
 

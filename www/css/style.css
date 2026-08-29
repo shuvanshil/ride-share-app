@@ -4904,11 +4904,15 @@ body.profile-editor-open {
    "choose your ride" flow. */
 .services-page.trip-live .services-title-block,
 .services-page.trip-live .services-location-card,
+.services-page.trip-live .quick-location-chips-row,
+.services-page.trip-live #quick-location-chips-row,
+.services-page.trip-live #chip-saved-places-btn,
+.services-page.trip-live .services-section-divider,
 .services-page.trip-live #ride-service-options,
 .services-page.trip-live .services-fare-pill,
 .services-page.trip-live #request-ride-btn,
 .services-page.trip-live #services-map-card .services-map-head {
-    display: none;
+    display: none !important;
 }
 
 .trip-live-heading {
@@ -4932,9 +4936,11 @@ body.profile-editor-open {
     flex-direction: column;
 }
 
-.services-page.trip-live .services-map-frame {
+.services-page.trip-live .services-map-frame,
+.services-page.trip-live #map-container {
     aspect-ratio: auto;
-    height: 60vh;
+    height: 55vh !important;
+    min-height: 380px !important;
     flex: 0 0 auto;
 }
 
@@ -8711,18 +8717,35 @@ body.profile-editor-open {
 }
 
 /* Hide navigation toggle & vehicle legend when map is in minimized state */
-#services-map-card:not(.is-expanded) #passenger-nav-toggle-btn,
-#services-map-card:not(.is-expanded) .passenger-nav-toggle-btn,
-#services-map-card:not(.is-expanded) .vehicle-marker-legend {
+#services-map-card:not(.is-expanded):not(.is-active-trip) #passenger-nav-toggle-btn,
+#services-map-card:not(.is-expanded):not(.is-active-trip) .passenger-nav-toggle-btn,
+#services-map-card:not(.is-expanded):not(.is-active-trip) .vehicle-marker-legend {
     display: none !important;
 }
 
-/* Show Navigation Mode Toggle Icon once destination is selected & map is expanded */
+/* Show Navigation Mode Toggle Icon once destination is selected, map is expanded, or trip is live */
 #services-map-card.is-expanded #passenger-nav-toggle-btn,
-#services-map-card.is-expanded .passenger-nav-toggle-btn {
+#services-map-card.is-expanded .passenger-nav-toggle-btn,
+#services-map-card.is-active-trip #passenger-nav-toggle-btn,
+#services-map-card.is-active-trip .passenger-nav-toggle-btn,
+.services-page.trip-live #passenger-nav-toggle-btn,
+.services-page.trip-live .passenger-nav-toggle-btn {
     display: grid !important;
     opacity: 1 !important;
     visibility: visible !important;
+}
+
+/* Hide "You are here" text & wobble bubble during active trip or when driver is assigned */
+.services-page.trip-live .user-location-bubble-card,
+.services-page.trip-live .user-location-ripple-wrap,
+#services-map-card.is-active-trip .user-location-bubble-card,
+#services-map-card.is-active-trip .user-location-ripple-wrap,
+#services-map-card.is-expanded .user-location-bubble-card,
+#services-map-card.is-expanded .user-location-ripple-wrap {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 
 /* Wobble Animation for "You are here" pickup pin (Centered over green pin) */

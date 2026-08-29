@@ -538,13 +538,27 @@ function sanitizeAvatarSrc(photoUrl) {
 function showTripProgressPanel(ride) {
     const dashboardView = document.getElementById('dashboard-view');
     const panel = document.getElementById('trip-progress-panel');
+    const mapCard = document.getElementById('services-map-card');
+    const chipsRow = document.getElementById('quick-location-chips-row');
+    const savedPlacesBtn = document.getElementById('chip-saved-places-btn');
     if (!dashboardView || !panel) return;
 
     bindTripProgressPanel();
     dashboardView.classList.add('trip-live');
+    if (mapCard) {
+        mapCard.classList.add('is-expanded');
+        mapCard.classList.add('is-active-trip');
+    }
+    if (chipsRow) chipsRow.classList.add('d-none');
+    if (savedPlacesBtn) savedPlacesBtn.classList.add('d-none');
+
     panel.classList.remove('d-none');
 
-    // Requirement 5: Passenger ride-details card must be expanded by default for every newly accepted/active ride
+    // Notify map and shared services that a driver is assigned and trip is live
+    window.dispatchEvent(new CustomEvent('driver-assigned', { detail: { ride } }));
+    window.dispatchEvent(new CustomEvent('ride-status-updated', { detail: { ride, status: ride.status } }));
+
+    // Requirement: Passenger ride-details card must be expanded by default for every newly accepted/active ride
     if (!panel.dataset.userToggled) {
         panel.classList.add('is-expanded');
         const handle = document.getElementById('trip-progress-handle');
@@ -785,7 +799,18 @@ function showTripProgressPanel(ride) {
 function hideTripProgressPanel() {
     const dashboardView = document.getElementById('dashboard-view');
     const panel = document.getElementById('trip-progress-panel');
+    const mapCard = document.getElementById('services-map-card');
+    const chipsRow = document.getElementById('quick-location-chips-row');
+    const savedPlacesBtn = document.getElementById('chip-saved-places-btn');
+
     dashboardView?.classList.remove('trip-live');
+    if (mapCard) {
+        mapCard.classList.remove('is-expanded');
+        mapCard.classList.remove('is-active-trip');
+    }
+    if (chipsRow) chipsRow.classList.remove('d-none');
+    if (savedPlacesBtn) savedPlacesBtn.classList.remove('d-none');
+
     if (!panel) return;
     delete panel.dataset.userToggled;
     panel.classList.add('d-none');
