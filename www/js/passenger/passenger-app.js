@@ -716,7 +716,7 @@ function showTripProgressPanel(ride) {
         if (fareOrigDelEl) fareOrigDelEl.classList.add('d-none');
     }
 
-    // 5. Active Ride Wallet Card binding
+    // 5. Active Ride Wallet Card binding (only shown after PIN verification is done, and not shown when balance is 0)
     const walletBox = document.getElementById('trip-progress-wallet-box');
     const walletAvailText = document.getElementById('trip-wallet-avail-text');
     const walletAppliedBox = document.getElementById('trip-wallet-applied-box');
@@ -734,40 +734,47 @@ function showTripProgressPanel(ride) {
             });
         }
 
+        const isPinVerified = Boolean(ride.pinVerifiedAt) || ride.status === "started" || ride.status === "en_route";
         const availBal = cachedPassengerWalletBalance !== null ? cachedPassengerWalletBalance : 0;
-        if (walletAvailText) {
-            walletAvailText.innerText = `${t('wallet.available_balance', 'Available balance')}: ₹${availBal.toLocaleString('en-IN')}`;
-        }
 
-        walletBox.classList.remove('d-none');
-
-        if (walletPaidAmount > 0) {
-            walletAppliedBox?.classList.remove('d-none');
-            if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${walletPaidAmount.toLocaleString('en-IN')}`;
-            if (walletStatusNote) walletStatusNote.innerText = t('wallet.applied_to_ride', "Applied to this ride");
-
-            if (remainingFare === 0) {
-                walletPayBtn?.classList.add('d-none');
-            } else {
-                walletPayBtn?.classList.remove('d-none');
-                if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.change', "Change");
-            }
-        } else if (remainingFare > 0 && availBal > 0) {
-            walletAppliedBox?.classList.remove('d-none');
-            const suggestedAmt = Math.min(availBal, remainingFare);
-            if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
-            if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
-            walletPayBtn?.classList.remove('d-none');
-            if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
+        if (!isPinVerified || (availBal <= 0 && walletPaidAmount <= 0)) {
+            // The wallet option is only shown after PIN verification is done, and hidden when balance is 0
+            walletBox.classList.add('d-none');
         } else {
-            walletAppliedBox?.classList.add('d-none');
-        }
+            walletBox.classList.remove('d-none');
 
-        if (walletPayBtn) {
-            walletPayBtn.onclick = (e) => {
-                e.stopPropagation();
-                openPassengerRideWalletModal(ride);
-            };
+            if (walletAvailText) {
+                walletAvailText.innerText = `${t('wallet.available_balance', 'Available balance')}: ₹${availBal.toLocaleString('en-IN')}`;
+            }
+
+            if (walletPaidAmount > 0) {
+                walletAppliedBox?.classList.remove('d-none');
+                if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${walletPaidAmount.toLocaleString('en-IN')}`;
+                if (walletStatusNote) walletStatusNote.innerText = t('wallet.applied_to_ride', "Applied to this ride");
+
+                if (remainingFare === 0) {
+                    walletPayBtn?.classList.add('d-none');
+                } else {
+                    walletPayBtn?.classList.remove('d-none');
+                    if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.change', "Change");
+                }
+            } else if (remainingFare > 0 && availBal > 0) {
+                walletAppliedBox?.classList.remove('d-none');
+                const suggestedAmt = Math.min(availBal, remainingFare);
+                if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
+                if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
+                walletPayBtn?.classList.remove('d-none');
+                if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
+            } else {
+                walletAppliedBox?.classList.add('d-none');
+            }
+
+            if (walletPayBtn) {
+                walletPayBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    openPassengerRideWalletModal(ride);
+                };
+            }
         }
     }
 }
