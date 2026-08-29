@@ -40,7 +40,7 @@ function setCouponFilter(filter) {
 
 export async function loadAdminCoupons() {
     try {
-        const res = await adminGet("/admin/coupons");
+        const res = await adminGet("/coupons");
         if (!res || !res.ok) {
             throw new Error(res?.error || "Failed to load coupons");
         }
@@ -191,7 +191,7 @@ function renderCouponsTable() {
 
 async function handleToggleStatus(couponId, currentStatus) {
     const isActivating = currentStatus !== "active";
-    const endpoint = isActivating ? `/admin/coupons/${couponId}/activate` : `/admin/coupons/${couponId}/deactivate`;
+    const endpoint = isActivating ? `/coupons/${couponId}/activate` : `/coupons/${couponId}/deactivate`;
     try {
         const res = await adminPost(endpoint, {});
         if (!res || !res.ok) throw new Error(res?.error || "Failed to update coupon status");
@@ -214,7 +214,7 @@ async function handleDeleteCoupon(couponId, code) {
     if (!confirmed) return;
 
     try {
-        const res = await adminDelete(`/admin/coupons/${couponId}`);
+        const res = await adminDelete(`/coupons/${couponId}`);
         if (!res || !res.ok) throw new Error(res?.error || "Failed to archive coupon");
         toast(`Coupon ${code} archived successfully`, "success");
         await loadAdminCoupons();
@@ -275,7 +275,7 @@ async function handleCreateCouponSubmit(e) {
             status: "active",
         };
 
-        const res = await adminPost("/admin/coupons", payload);
+        const res = await adminPost("/coupons", payload);
         if (!res || !res.ok) {
             throw new Error(res?.error || "Failed to create coupon");
         }
@@ -307,7 +307,7 @@ async function openRedemptionsModal(couponId, code) {
     modal.classList.remove("d-none");
 
     try {
-        const res = await adminGet(`/admin/coupons/${couponId}/redemptions`);
+        const res = await adminGet(`/coupons/${couponId}/redemptions`);
         if (!res || !res.ok) throw new Error(res?.error || "Failed to load redemptions");
 
         const redemptions = res.redemptions || [];
