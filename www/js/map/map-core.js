@@ -1216,16 +1216,19 @@ function setGlobalDriverMarkerVisibility(driverId, existing) {
 const PASSENGER_MAX_PLAUSIBLE_SPEED_MPS = 45; // ~162 km/h
 const PASSENGER_OUTLIER_CONFIRM_RADIUS_METERS = 60;
 let passengerDriverPendingOutlier = null;
+// performance.now() based - tracks time between accepted fixes for speed calculation
 let passengerDriverLastAcceptedFixAt = null;
-let passengerDriverLastAcceptedTimestamp = 0;
+// epoch ms based - for ordering Firestore timestamps
+let passengerDriverLastAcceptedEpochMs = 0;
 
-function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp = 0) {
-    if (sourceTimestamp > 0) {
-        if (sourceTimestamp < passengerDriverLastAcceptedTimestamp) {
+function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs = 0) {
+    // Reject stale out-of-order Firestore packets using wall-clock epoch ms
+    if (sourceTimestampEpochMs > 0) {
+        if (sourceTimestampEpochMs < passengerDriverLastAcceptedEpochMs) {
             // Reject stale out-of-order packet
             return null;
         }
-        passengerDriverLastAcceptedTimestamp = sourceTimestamp;
+        passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
     }
 
     const current = activeDriverMarker?.marker?.getPosition?.();
@@ -1255,6 +1258,7 @@ function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp
     }
 
     passengerDriverPendingOutlier = rawPosition;
+    // Return last known position to hold the marker in place
     return lastKnown;
 }
 
@@ -1825,9 +1829,15 @@ function upsertGlobalDriverMarker(driverId, driver) {
     if (!window.mapInstance) return;
 
     if (assignedDriverTrackingDriverId) {
+        // When a specific driver is assigned, remove ALL idle global markers (including this one)
+        // The assigned driver is tracked exclusively via the activeDriverMarker / handleAssignedDriverLocation pipeline
         const existing = globalDriverMarkers.get(driverId);
         if (existing) {
+            if (existing.animationFrame) cancelAnimationFrame(existing.animationFrame);
+            stopDriverMarkerCoast(existing);
             existing.marker?.setMap?.(null);
+            removeMarker(existing.marker);
+            globalDriverMarkers.delete(driverId);
         }
         return;
     }
@@ -1844,7 +1854,7 @@ function upsertGlobalDriverMarker(driverId, driver) {
 
     if (!existing) {
         const marker = new RotatingVehicleMarker({
-            map: assignedDriverTrackingDriverId ? null : window.mapInstance,
+            map: window.mapInstance,
             position,
             title: `${driver.name || "Online Driver"} - ${vehicleType}`,
             vehicleType,
@@ -1863,7 +1873,6 @@ function upsertGlobalDriverMarker(driverId, driver) {
             lastFixAt: performance.now(),
             speedMetersPerSecond: 0
         });
-        marker.setLiveTracked?.(driverId === assignedDriverTrackingDriverId);
         setGlobalDriverMarkerVisibility(driverId, globalDriverMarkers.get(driverId));
         updateVehicleMarkerLegend();
         return;
@@ -1873,7 +1882,6 @@ function upsertGlobalDriverMarker(driverId, driver) {
     setGlobalDriverMarkerVisibility(driverId, existing);
     animateGlobalDriverMarker(existing, position, heading);
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
-    existing.marker.setLiveTracked?.(driverId === assignedDriverTrackingDriverId);
     if (existing.vehicleType !== vehicleType) {
         existing.marker.setVehicleType?.(vehicleType);
         existing.marker.setIcon?.(createDriverMarkerIcon(driver));
@@ -1919,7 +1927,7 @@ function clearActiveDriverMarker() {
     activeDriverMarker = null;
     passengerDriverPendingOutlier = null;
     passengerDriverLastAcceptedFixAt = null;
-    passengerDriverLastAcceptedTimestamp = 0;
+    passengerDriverLastAcceptedEpochMs = 0;
     assignedDriverTrackingDriverId = "";
     passengerFirstRouteFitComplete = false;
     resetPassengerCameraToOverview();
@@ -2039,7 +2047,14 @@ async function handleAssignedDriverLocation(event) {
     const driverId = detail.driver_id || detail.driverId || "assigned";
     assignedDriverTrackingDriverId = driverId;
     syncGlobalDriverMarkerVisibility();
-    clearRouteAndDestination();
+
+    // Clear pre-booking route/destination only ONCE on initial marker creation (before marker exists)
+    // Do NOT clear on every tick — that destroys destinationMarker every GPS update causing heading jitter
+    if (!activeDriverMarker) {
+        clearRouteAndDestination();
+    }
+
+    // Ensure destination marker is placed or kept, never destroyed during live tracking
     upsertRideDestinationMarker(detail);
 
     if (target) {
@@ -2052,12 +2067,8 @@ async function handleAssignedDriverLocation(event) {
         });
     }
 
+    // Remove the assigned driver from global idle markers map (they are tracked separately now)
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
-    const existing = activeDriverMarker;
-    const routePath = target ? activeDriverRouteState.routePath : [];
-    const { position, heading } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
-    applyPassengerNavigationCamera(position, heading);
-
     if (existingGlobal) {
         if (existingGlobal.animationFrame) cancelAnimationFrame(existingGlobal.animationFrame);
         stopDriverMarkerCoast(existingGlobal);
@@ -2065,6 +2076,11 @@ async function handleAssignedDriverLocation(event) {
         removeMarker(existingGlobal.marker);
         globalDriverMarkers.delete(driverId);
     }
+
+    const existing = activeDriverMarker;
+    const routePath = target ? activeDriverRouteState.routePath : [];
+    const { position, heading } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
+    applyPassengerNavigationCamera(position, heading);
 
     if (!activeDriverMarker) {
         activeDriverMarker = {
