@@ -15,15 +15,56 @@ export function initAdminCoupons() {
     document.getElementById("admin-coupon-filter-inactive")?.addEventListener("click", () => setCouponFilter("inactive"));
 
     // Create Modal triggers
-    document.getElementById("btn-open-create-coupon")?.addEventListener("click", openCreateCouponModal);
-    document.getElementById("btn-close-create-coupon")?.addEventListener("click", closeCreateCouponModal);
-    document.getElementById("btn-cancel-create-coupon")?.addEventListener("click", closeCreateCouponModal);
+    const openBtn = document.getElementById("btn-open-create-coupon");
+    if (openBtn) {
+        openBtn.onclick = (e) => {
+            e.preventDefault();
+            openCreateCouponModal();
+        };
+    }
+    const closeBtn = document.getElementById("btn-close-create-coupon");
+    if (closeBtn) {
+        closeBtn.onclick = (e) => {
+            e.preventDefault();
+            closeCreateCouponModal();
+        };
+    }
+    const cancelBtn = document.getElementById("btn-cancel-create-coupon");
+    if (cancelBtn) {
+        cancelBtn.onclick = (e) => {
+            e.preventDefault();
+            closeCreateCouponModal();
+        };
+    }
+
+    // Modal backdrop click to dismiss
+    const createModal = document.getElementById("modal-create-coupon");
+    if (createModal) {
+        createModal.onclick = (e) => {
+            if (e.target === createModal) closeCreateCouponModal();
+        };
+    }
 
     // Form submit
-    document.getElementById("form-create-coupon")?.addEventListener("submit", handleCreateCouponSubmit);
+    const form = document.getElementById("form-create-coupon");
+    if (form) {
+        form.onsubmit = handleCreateCouponSubmit;
+    }
 
-    // Redemptions Modal
-    document.getElementById("btn-close-coupon-redemptions")?.addEventListener("click", closeRedemptionsModal);
+    // Redemptions Modal triggers
+    const closeRedemptionsBtn = document.getElementById("btn-close-coupon-redemptions");
+    if (closeRedemptionsBtn) {
+        closeRedemptionsBtn.onclick = (e) => {
+            e.preventDefault();
+            closeRedemptionsModal();
+        };
+    }
+    const redemptionsModal = document.getElementById("modal-view-coupon-redemptions");
+    if (redemptionsModal) {
+        redemptionsModal.onclick = (e) => {
+            if (e.target === redemptionsModal) closeRedemptionsModal();
+        };
+    }
 }
 
 function setCouponFilter(filter) {
@@ -39,6 +80,7 @@ function setCouponFilter(filter) {
 }
 
 export async function loadAdminCoupons() {
+    initAdminCoupons();
     try {
         const res = await adminGet("/coupons");
         if (!res || !res.ok) {
@@ -225,13 +267,25 @@ async function handleDeleteCoupon(couponId, code) {
 }
 
 function openCreateCouponModal() {
+    const modal = document.getElementById("modal-create-coupon");
+    if (!modal) return;
     const form = document.getElementById("form-create-coupon");
     if (form) form.reset();
-    document.getElementById("modal-create-coupon")?.classList.remove("d-none");
+    modal.style.display = "block";
+    modal.classList.remove("d-none");
+    modal.classList.add("show");
+    setTimeout(() => {
+        document.getElementById("input-coupon-code")?.focus();
+    }, 50);
 }
 
 function closeCreateCouponModal() {
-    document.getElementById("modal-create-coupon")?.classList.add("d-none");
+    const modal = document.getElementById("modal-create-coupon");
+    if (modal) {
+        modal.style.display = "none";
+        modal.classList.add("d-none");
+        modal.classList.remove("show");
+    }
 }
 
 async function handleCreateCouponSubmit(e) {
@@ -304,7 +358,9 @@ async function openRedemptionsModal(couponId, code) {
         tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">Loading redemptions...</td></tr>`;
     }
 
+    modal.style.display = "block";
     modal.classList.remove("d-none");
+    modal.classList.add("show");
 
     try {
         const res = await adminGet(`/coupons/${couponId}/redemptions`);
@@ -338,5 +394,10 @@ async function openRedemptionsModal(couponId, code) {
 }
 
 function closeRedemptionsModal() {
-    document.getElementById("modal-view-coupon-redemptions")?.classList.add("d-none");
+    const modal = document.getElementById("modal-view-coupon-redemptions");
+    if (modal) {
+        modal.style.display = "none";
+        modal.classList.add("d-none");
+        modal.classList.remove("show");
+    }
 }
