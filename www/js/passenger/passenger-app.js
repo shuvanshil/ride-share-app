@@ -509,15 +509,42 @@ function bindTripProgressPanel() {
 
     const handle = document.getElementById('trip-progress-handle');
     const panel = document.getElementById('trip-progress-panel');
-    if (!handle || !panel) return;
+    if (handle && panel) {
+        handle.addEventListener('click', () => {
+            panel.dataset.userToggled = 'true';
+            const expanded = panel.classList.toggle('is-expanded');
+            handle.setAttribute('aria-expanded', String(expanded));
+            const subtext = document.getElementById('trip-progress-status-subtext');
+            if (subtext) {
+                subtext.innerText = expanded ? t('services.hide_details', "Hide details") : t('services.view_details', "View details");
+            }
+        });
+    }
 
-    handle.addEventListener('click', () => {
-        panel.dataset.userToggled = 'true';
-        const expanded = panel.classList.toggle('is-expanded');
-        handle.setAttribute('aria-expanded', String(expanded));
-        const subtext = document.getElementById('trip-progress-status-subtext');
-        if (subtext) subtext.innerText = expanded ? "Tap to hide details" : "Tap for details";
-    });
+    const moreToggle = document.getElementById('trip-more-options-toggle');
+    const moreBody = document.getElementById('trip-more-options-body');
+    const moreLabel = document.getElementById('trip-more-options-label');
+    if (moreToggle && moreBody) {
+        moreToggle.addEventListener('click', () => {
+            const isHidden = moreBody.classList.toggle('d-none');
+            moreToggle.setAttribute('aria-expanded', String(!isHidden));
+            if (moreLabel) {
+                moreLabel.innerText = !isHidden ? t('services.hide_options', "Hide options") : t('services.more_options', "More options");
+            }
+        });
+    }
+
+    const walletOpenBtn = document.getElementById('trip-wallet-open-btn');
+    if (walletOpenBtn) {
+        walletOpenBtn.addEventListener('click', () => {
+            const profileLink = document.querySelector('a[href*="profile"]');
+            if (profileLink) {
+                profileLink.click();
+            } else if (typeof window.openPassengerWalletModal === 'function') {
+                window.openPassengerWalletModal();
+            }
+        });
+    }
 }
 
 function sanitizeAvatarSrc(photoUrl) {
@@ -622,20 +649,23 @@ function showTripProgressPanel(ride) {
         const avatarSrc = sanitizeAvatarSrc(driverPhoto);
 
         driverBox.innerHTML = `
-            <div class="driver-avatar-wrap">
-                <img src="${avatarSrc}" alt="${driverName}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%239CA3AF%22%3E%3Cpath d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22/%3E%3C/svg%3E'">
-                <div class="driver-verified-check">✓</div>
+            <div class="trip-driver-left">
+                <div class="trip-driver-avatar-wrap">
+                    <img src="${avatarSrc}" alt="${driverName}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%239CA3AF%22%3E%3Cpath d=%22M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z%22/%3E%3C/svg%3E'">
+                    <div class="trip-driver-avatar-check">✓</div>
+                </div>
+                <div class="trip-driver-info">
+                    <span class="trip-driver-verified-tag">✓ ${t('services.verified_driver', 'Verified Driver')}</span>
+                    <h4 class="trip-driver-name">${driverName}</h4>
+                    <div class="trip-driver-vehicle-meta">${serviceLabel} • ${vehicleModel}<br>${vehicleNumber}</div>
+                </div>
             </div>
-            <div class="driver-info-main">
-                <span class="verified-badge">✓ Verified Driver</span>
-                <strong>${driverName}</strong>
-                <div class="driver-vehicle-info">${serviceLabel} · ${vehicleModel} · ${vehicleNumber}</div>
-            </div>
-            <div class="driver-action-side">
-                <img src="assets/vehicle-markers/${vehicleType}-marker.png" class="driver-vehicle-image" alt="${vehicleType}">
+            <div class="trip-driver-right">
+                <img src="assets/vehicle-markers/${vehicleType}-marker.png" class="trip-vehicle-graphic" alt="${vehicleType}">
                 ${driverPhone ? `
-                    <a href="tel:${driverPhone}" class="call-driver-btn-compact">
-                         <span class="webicon webicon-call" style="width:14px;height:14px;"></span> Call
+                    <a href="tel:${driverPhone}" class="trip-call-driver-btn" id="trip-driver-call-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        <span>${t('services.call', 'Call')}</span>
                     </a>
                 ` : ""}
             </div>
@@ -654,13 +684,12 @@ function showTripProgressPanel(ride) {
     // Populate locations
     const pickupEl = document.getElementById('trip-progress-pickup-name');
     const dropEl = document.getElementById('trip-progress-drop-name');
-    if (pickupEl) pickupEl.innerText = ride.pickup_display_address || ride.pickup_name || "Pickup location";
-    if (dropEl) dropEl.innerText = ride.drop_display_address || ride.drop_name || "Destination";
+    if (pickupEl) pickupEl.innerText = ride.pickup_display_address || ride.pickup_name || t('services.pickup_location', "Pickup location");
+    if (dropEl) dropEl.innerText = ride.drop_display_address || ride.drop_name || t('services.destination', "Destination");
 
     const availWrapper = document.getElementById('availability-card-wrapper');
     if (availWrapper) availWrapper.classList.add('d-none');
 
-    const fareEl = document.getElementById('trip-progress-fare');
     const farePaise = Number(ride.farePaise) || Math.round(Number(ride.fare || 0) * 100);
     const walletPaidPaise = Number(ride.walletPaidAmountPaise) || Math.round(Number(ride.wallet_paid_amount || 0) * 100);
     const cashPaidPaise = Number(ride.cashPaidAmountPaise || 0);
@@ -669,129 +698,136 @@ function showTripProgressPanel(ride) {
     const walletPaidAmount = walletPaidPaise / 100.0;
     const totalFare = farePaise / 100.0;
 
-    if (fareEl) {
-        if (walletPaidAmount > 0) {
-            if (remainingFare === 0) {
-                fareEl.innerHTML = `<span class="badge bg-success text-white py-1 px-2">₹0 Cash (Paid via Wallet)</span>`;
-            } else {
-                fareEl.innerHTML = `<span class="text-decoration-line-through text-muted small me-1">₹${totalFare}</span> <strong class="text-success">₹${remainingFare}</strong> <span class="badge bg-success-subtle text-success ms-1 small">₹${walletPaidAmount} paid</span>`;
-            }
-        } else {
-            fareEl.innerText = Number.isFinite(totalFare) ? `₹${totalFare}` : "₹0";
+    // 4. Fare summary card binding
+    const fareOrigEl = document.getElementById('trip-fare-original');
+    const fareCurrentEl = document.getElementById('trip-fare-current');
+    const fareOrigDelEl = document.getElementById('trip-fare-original-del');
+    const fareDiscountRow = document.getElementById('trip-fare-wallet-discount-row');
+    const fareDiscountVal = document.getElementById('trip-fare-wallet-discount');
+
+    if (fareOrigEl) fareOrigEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
+
+    if (walletPaidAmount > 0) {
+        if (fareDiscountRow) fareDiscountRow.classList.remove('d-none');
+        if (fareDiscountVal) fareDiscountVal.innerText = `- ₹${walletPaidAmount.toLocaleString('en-IN')}`;
+        if (fareCurrentEl) fareCurrentEl.innerText = `₹${remainingFare.toLocaleString('en-IN')}`;
+        if (fareOrigDelEl) {
+            fareOrigDelEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
+            fareOrigDelEl.classList.remove('d-none');
         }
+    } else {
+        if (fareDiscountRow) fareDiscountRow.classList.add('d-none');
+        if (fareCurrentEl) fareCurrentEl.innerText = `₹${totalFare.toLocaleString('en-IN')}`;
+        if (fareOrigDelEl) fareOrigDelEl.classList.add('d-none');
     }
 
-    // --- Active Ride Wallet Payment Component ---
+    // 5. Active Ride Wallet Card binding
     const walletBox = document.getElementById('trip-progress-wallet-box');
     const walletAvailText = document.getElementById('trip-wallet-avail-text');
-    const walletRemainingFareText = document.getElementById('trip-wallet-remaining-fare-text');
-    const walletPaidBadge = document.getElementById('trip-progress-wallet-paid-badge');
-    const walletPaidText = document.getElementById('trip-progress-wallet-paid-text');
+    const walletAppliedBox = document.getElementById('trip-wallet-applied-box');
+    const walletBadgeAmount = document.getElementById('trip-wallet-badge-amount');
+    const walletStatusNote = document.getElementById('trip-wallet-status-note');
     const walletPayBtn = document.getElementById('trip-progress-wallet-pay-btn');
+    const walletActionBtnText = document.getElementById('trip-wallet-action-btn-text');
 
     if (walletBox) {
-        if (walletRemainingFareText) {
-            walletRemainingFareText.innerText = `₹${remainingFare.toLocaleString('en-IN')}`;
-        }
-
         const isOnboard = (ride.status === "started" || ride.status === "en_route") || Boolean(ride.pinVerifiedAt);
 
-        if (remainingPaise === 0 || walletPaidPaise >= farePaise) {
-            // Entire fare already paid — always hide the pay button & box (show confirmation badge if wallet was used)
-            if (walletPaidPaise > 0) {
-                walletBox.classList.remove('d-none');
-                walletPaidBadge?.classList.remove('d-none');
+        if (cachedPassengerWalletBalance === null) {
+            fetchPassengerWalletBalance(() => {
+                if (currentPassengerRideData) {
+                    showTripProgressPanel(currentPassengerRideData);
+                }
+            });
+        }
+
+        const availBal = cachedPassengerWalletBalance !== null ? cachedPassengerWalletBalance : 0;
+        if (walletAvailText) {
+            walletAvailText.innerText = `${t('wallet.available_balance', 'Available balance')}: ₹${availBal.toLocaleString('en-IN')}`;
+        }
+
+        if (walletPaidAmount > 0) {
+            walletBox.classList.remove('d-none');
+            walletAppliedBox?.classList.remove('d-none');
+            if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${walletPaidAmount.toLocaleString('en-IN')}`;
+            if (walletStatusNote) walletStatusNote.innerText = t('wallet.applied_to_ride', "Applied to this ride");
+
+            if (remainingPaise === 0) {
                 walletPayBtn?.classList.add('d-none');
-                if (walletPaidText) {
-                    walletPaidText.innerText = t('wallet.paid_via_wallet_no_cash', { amount: walletPaidAmount });
-                }
             } else {
-                walletBox.classList.add('d-none');
-            }
-        } else if (isOnboard && remainingPaise > 0) {
-            if (cachedPassengerWalletBalance === null) {
-                // Fetch in background once without flickering
-                fetchPassengerWalletBalance(() => {
-                    if (currentPassengerRideData) {
-                        showTripProgressPanel(currentPassengerRideData);
-                    }
-                });
-            }
-
-            if (cachedPassengerWalletBalance !== null && cachedPassengerWalletBalance > 0) {
-                walletBox.classList.remove('d-none');
-                walletPaidBadge?.classList.add('d-none');
                 walletPayBtn?.classList.remove('d-none');
-                if (walletAvailText) walletAvailText.innerText = `${t('wallet.title')}: ₹${cachedPassengerWalletBalance.toLocaleString('en-IN')}`;
-                if (walletPayBtn) {
-                    walletPayBtn.disabled = false;
-                    walletPayBtn.innerText = t('wallet.use_wallet_credits');
-                }
-            } else {
-                walletBox.classList.add('d-none');
+                if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.change', "Change");
             }
-
-            if (walletPayBtn) {
-                walletPayBtn.onclick = async () => {
-                    const curUser = auth.currentUser;
-                    if (!curUser) return;
-                    const token = await curUser.getIdToken();
-                    const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-                    const walletData = await walletRes.json().catch(() => ({}));
-                    const userBal = Number(walletData?.wallet?.balance || 0);
-                    cachedPassengerWalletBalance = userBal;
-
-                    if (userBal <= 0) {
-                        walletBox.classList.add('d-none');
-                        await showAlert(t('wallet.insufficient_balance'));
-                        return;
-                    }
-
-                    const spendAmt = Math.min(remainingFare, userBal);
-                    const remAfter = Math.max(0, remainingFare - spendAmt);
-                    const confirmed = await showConfirm(
-                        `${t('wallet.pay_from_wallet_confirm', { amount: spendAmt })}\n\n` +
-                        `${t('wallet.deduct_confirm_desc', { amount: spendAmt })}\n` +
-                        `${t('wallet.remaining_fare_after_pay', { amount: remAfter })}`,
-                        { okText: t('common.confirm'), cancelText: t('common.cancel') }
-                    );
-                    if (!confirmed) return;
-
-                    window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment'));
-                    try {
-                        const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideData?.id || currentPassengerRideData?.rideId || currentPassengerRideData?.ride_id || window._currentActiveRideId;
-                        if (!rideId) {
-                            throw new Error("Unable to identify active ride ID. Please refresh.");
-                        }
-                        const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
-                        const res = await fetch('/api/wallet/pay-current-ride', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                            body: JSON.stringify({ rideId, idempotencyKey })
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
-
-                        const result = data.result || {};
-                        cachedPassengerWalletBalance = Math.max(0, userBal - (result.transferAmount || spendAmt));
-
-                        // Immediately hide wallet pay section — Firestore snapshot will re-render with updated data
-                        walletBox.classList.add('d-none');
-
-                        await showAlert(t('wallet.payment_success_desc', {
-                            amount: result.transferAmount,
-                            remaining: result.remainingFare
-                        }));
-                    } catch (err) {
-                        console.error("Wallet payment error:", err);
-                        await showAlert(err.message || t('common.error_occurred'));
-                    } finally {
-                        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
-                    }
-                };
-            }
+        } else if (isOnboard && remainingPaise > 0 && availBal > 0) {
+            walletBox.classList.remove('d-none');
+            walletAppliedBox?.classList.remove('d-none');
+            const suggestedAmt = Math.min(availBal, remainingFare);
+            if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
+            if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
+            walletPayBtn?.classList.remove('d-none');
+            if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
+        } else if (availBal > 0) {
+            walletBox.classList.remove('d-none');
+            walletAppliedBox?.classList.add('d-none');
         } else {
             walletBox.classList.add('d-none');
+        }
+
+        if (walletPayBtn) {
+            walletPayBtn.onclick = async () => {
+                const curUser = auth.currentUser;
+                if (!curUser) return;
+                const token = await curUser.getIdToken();
+                const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+                const walletData = await walletRes.json().catch(() => ({}));
+                const userBal = Number(walletData?.wallet?.balance || 0);
+                cachedPassengerWalletBalance = userBal;
+
+                if (userBal <= 0) {
+                    walletBox.classList.add('d-none');
+                    await showAlert(t('wallet.insufficient_balance'));
+                    return;
+                }
+
+                const spendAmt = Math.min(remainingFare, userBal);
+                const remAfter = Math.max(0, remainingFare - spendAmt);
+                const confirmed = await showConfirm(
+                    `${t('wallet.pay_from_wallet_confirm', { amount: spendAmt })}\n\n` +
+                    `${t('wallet.deduct_confirm_desc', { amount: spendAmt })}\n` +
+                    `${t('wallet.remaining_fare_after_pay', { amount: remAfter })}`,
+                    { okText: t('common.confirm'), cancelText: t('common.cancel') }
+                );
+                if (!confirmed) return;
+
+                window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment'));
+                try {
+                    const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideData?.id || currentPassengerRideData?.rideId || currentPassengerRideData?.ride_id || window._currentActiveRideId;
+                    if (!rideId) {
+                        throw new Error("Unable to identify active ride ID. Please refresh.");
+                    }
+                    const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
+                    const res = await fetch('/api/wallet/pay-current-ride', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ rideId, idempotencyKey })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
+
+                    const result = data.result || {};
+                    cachedPassengerWalletBalance = Math.max(0, userBal - (result.transferAmount || spendAmt));
+
+                    await showAlert(t('wallet.payment_success_desc', {
+                        amount: result.transferAmount,
+                        remaining: result.remainingFare
+                    }));
+                } catch (err) {
+                    console.error("Wallet payment error:", err);
+                    await showAlert(err.message || t('common.error_occurred'));
+                } finally {
+                    window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+                }
+            };
         }
     }
 }
@@ -851,6 +887,8 @@ function showPassengerCancelButton(rideId) {
     currentPassengerRideId = rideId || currentPassengerRideId;
     const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
     if (cancelReqBtn) cancelReqBtn.classList.remove('d-none');
+    const searchCancelBtn = document.getElementById('search-cancel-ride-request-btn');
+    if (searchCancelBtn) searchCancelBtn.classList.remove('d-none');
     document.getElementById('passenger-safety-actions')?.classList.remove('d-none');
 }
 
@@ -859,6 +897,8 @@ function hidePassengerCancelButton() {
     currentPassengerRideData = null;
     const cancelReqBtn = document.getElementById('cancel-ride-request-btn');
     if (cancelReqBtn) cancelReqBtn.classList.add('d-none');
+    const searchCancelBtn = document.getElementById('search-cancel-ride-request-btn');
+    if (searchCancelBtn) searchCancelBtn.classList.add('d-none');
     document.getElementById('passenger-safety-actions')?.classList.add('d-none');
     setShareTripButtonState(false);
 }
@@ -2138,16 +2178,19 @@ if (document.readyState === 'loading') {
 
 addOptionalClickListener('passenger-sos-btn', () => sendPassengerSos());
 addOptionalClickListener('passenger-share-trip-btn', () => togglePassengerShareTrip());
-addOptionalClickListener('cancel-ride-request-btn', async () => {
+
+const handleCancelRideAction = async () => {
     if (activePendingRequestId) {
         await cancelPendingRideRequest();
     } else if (currentPassengerRideId) {
         await cancelRideByPassenger(currentPassengerRideId);
     } else {
         resetPassengerBookingUi();
-        await showAlert("Ride request cancelled.");
+        await showAlert(t('services.waiting_request_cancelled', "Ride request cancelled."));
     }
-});
+};
+addOptionalClickListener('cancel-ride-request-btn', handleCancelRideAction);
+addOptionalClickListener('search-cancel-ride-request-btn', handleCancelRideAction);
 
 // Availability Card Info & Popover
 addOptionalClickListener('availability-info-btn', () => {

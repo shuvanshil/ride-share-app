@@ -357,7 +357,21 @@ export const TRANSLATIONS = {
             "looking_for_drivers": "Looking for available drivers...",
             "saving_waiting_request": "Saving waiting request...",
             "updating_scheduled_time": "Updating scheduled time...",
-            "starting_search": "Starting search..."
+            "starting_search": "Starting search...",
+            "hide_details": "Hide details",
+            "view_details": "View details",
+            "verified_driver": "Verified Driver",
+            "call": "Call",
+            "fare_summary": "Fare summary",
+            "original_fare": "Original fare",
+            "current_ride_price": "Current ride price",
+            "more_options": "More options",
+            "hide_options": "Hide options",
+            "emergency_sos": "Emergency SOS",
+            "share_trip_status": "Share Trip Status",
+            "cancel_ride_request": "Cancel Ride Request",
+            "safe_secure_rides": "Safe, secure and reliable rides",
+            "pickup_pin_label": "Pickup PIN"
         },
         "history": {
             "title": "Ride History",
@@ -858,7 +872,13 @@ export const TRANSLATIONS = {
             "insufficient_balance": "Insufficient wallet balance.",
             "ride_fully_paid": "Ride fare is already fully paid.",
             "processing_payment": "Processing wallet payment...",
-            "awesome": "Awesome"
+            "awesome": "Awesome",
+            "credits_applied": "Wallet credits applied",
+            "applied_to_ride": "Applied to this ride",
+            "available_to_use": "Available to use",
+            "use_credits": "Use Credits",
+            "change": "Change",
+            "wallet_credits_applied_notice": "Wallet credits are applied first. You can change the amount."
         }
     },
     "bn": {
@@ -1211,7 +1231,21 @@ export const TRANSLATIONS = {
             "looking_for_drivers": "উপলব্ধ চালক খোঁজা হচ্ছে...",
             "saving_waiting_request": "অপেক্ষার অনুরোধ সংরক্ষণ করা হচ্ছে...",
             "updating_scheduled_time": "নির্ধারিত সময় আপডেট করা হচ্ছে...",
-            "starting_search": "অনুসন্ধান শুরু হচ্ছে..."
+            "starting_search": "অনুসন্ধান শুরু হচ্ছে...",
+            "hide_details": "বিবরণ লুকান",
+            "view_details": "বিবরণ দেখুন",
+            "verified_driver": "যাচাইকৃত চালক",
+            "call": "কল",
+            "fare_summary": "ভাড়ার বিবরণ",
+            "original_fare": "আসল ভাড়া",
+            "current_ride_price": "বর্তমান রাইডের মূল্য",
+            "more_options": "আরও বিকল্প",
+            "hide_options": "বিকল্প লুকান",
+            "emergency_sos": "জরুরী এসওএস",
+            "share_trip_status": "ট্রিপের স্থিতি শেয়ার করুন",
+            "cancel_ride_request": "রাইডের অনুরোধ বাতিল করুন",
+            "safe_secure_rides": "নিরাপদ, সুরক্ষিত এবং নির্ভরযোগ্য রাইড",
+            "pickup_pin_label": "পিকআপ পিন"
         },
         "history": {
             "title": "রাইড হিস্ট্রি",
@@ -1712,7 +1746,13 @@ export const TRANSLATIONS = {
             "insufficient_balance": "পর্যাপ্ত ওয়ালেট ব্যালেন্স নেই।",
             "ride_fully_paid": "রাইডের ভাড়া ইতিমধ্যে সম্পূর্ণ পরিশোধিত।",
             "processing_payment": "ওয়ালেট পেমেন্ট প্রসেস করা হচ্ছে...",
-            "awesome": "দারুণ"
+            "awesome": "দারুণ",
+            "credits_applied": "ওয়ালেট ক্রেডিট প্রয়োগ করা হয়েছে",
+            "applied_to_ride": "এই রাইডে প্রয়োগ করা হয়েছে",
+            "available_to_use": "ব্যবহারের জন্য উপলব্ধ",
+            "use_credits": "ক্রেডিট ব্যবহার করুন",
+            "change": "পরিবর্তন",
+            "wallet_credits_applied_notice": "ওয়ালেট ক্রেডিট প্রথমে প্রয়োগ করা হয়। আপনি পরিমাণ পরিবর্তন করতে পারেন।"
         }
     }
 };

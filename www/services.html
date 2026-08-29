@@ -175,103 +175,143 @@
                         </div>
 
                         <section id="trip-progress-panel" class="trip-progress-panel is-expanded d-none" aria-live="polite">
-                            <button id="trip-progress-handle" class="trip-progress-handle" type="button" aria-expanded="true" aria-controls="trip-progress-details">
-                                <span class="trip-progress-handle-bar" aria-hidden="true"></span>
-                                <div class="trip-progress-header">
-                                    <div class="trip-status-pill">
-                                        <span class="trip-status-dot"></span>
-                                        <span id="trip-progress-status-text" class="trip-status-text" data-i18n="services.trip_in_progress">Trip in progress</span>
-                                    </div>
-                                    <span id="trip-progress-status-subtext" class="trip-status-subtext" data-i18n="services.tap_for_details">Tap for details</span>
+                            <div class="trip-drawer-drag-pill" aria-hidden="true"></div>
+                            <div class="trip-progress-header-bar">
+                                <div class="trip-status-pill">
+                                    <span class="trip-status-dot"></span>
+                                    <span id="trip-progress-status-text" class="trip-status-text" data-i18n="services.trip_in_progress">Trip in progress</span>
                                 </div>
-                                <span class="trip-progress-handle-icon" aria-hidden="true"></span>
-                            </button>
-                            <div id="trip-progress-details" class="trip-progress-details">
-                                <div class="compact-driver-card" id="trip-progress-driver"></div>
+                                <button type="button" id="trip-progress-handle" class="trip-details-toggle-btn" aria-expanded="true" aria-controls="trip-progress-details">
+                                    <span id="trip-progress-status-subtext" data-i18n="services.hide_details">Hide details</span>
+                                    <svg class="trip-chevron-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M18 15l-6-6-6 6"/>
+                                    </svg>
+                                </button>
+                            </div>
 
+                            <div id="trip-progress-details" class="trip-progress-details">
+                                <!-- 1. Driver Profile Card -->
+                                <div class="trip-driver-card" id="trip-progress-driver"></div>
+
+                                <!-- 2. Pickup PIN Section (if verification PIN active) -->
                                 <div class="highlighted-pin-section d-none" id="trip-progress-pin-box">
                                     <div class="pin-header">
-                                        <span class="webicon webicon-safety" aria-hidden="true"></span>
-                                        <span data-i18n="services.pin_label">Pickup PIN</span>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                        <span data-i18n="services.pickup_pin_label">Pickup PIN:</span>
+                                        <strong class="pin-value-inline" id="trip-progress-pin">----</strong>
                                     </div>
-                                    <div class="pin-value" id="trip-progress-pin">----</div>
                                     <p class="pin-hint" data-i18n="services.share_pin_notice">Share this PIN only with your assigned driver.</p>
                                 </div>
 
-                                <div class="trip-locations-list">
-                                    <div class="trip-location-item">
-                                        <span class="location-marker-dot pickup"></span>
-                                        <div class="location-details">
-                                            <small data-i18n="services.pickup_location">Pickup location</small>
-                                            <strong id="trip-progress-pickup-name">Loading...</strong>
+                                <!-- 3. Location Route Card -->
+                                <div class="trip-card-block trip-locations-block">
+                                    <div class="trip-route-row">
+                                        <span class="trip-route-dot green"></span>
+                                        <div class="trip-route-text">
+                                            <small class="trip-route-label text-success" data-i18n="services.pickup_location">Pickup location</small>
+                                            <strong class="trip-route-address" id="trip-progress-pickup-name">Loading...</strong>
                                         </div>
                                     </div>
-                                    <div class="trip-location-item">
-                                        <span class="location-marker-dot drop"></span>
-                                        <div class="location-details">
-                                            <small data-i18n="services.destination">Destination</small>
-                                            <strong id="trip-progress-drop-name">Loading...</strong>
+                                    <div class="trip-route-connector-line"></div>
+                                    <div class="trip-route-row">
+                                        <span class="trip-route-dot red">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="#EF4444"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                                        </span>
+                                        <div class="trip-route-text">
+                                            <small class="trip-route-label text-danger" data-i18n="services.destination">Destination</small>
+                                            <strong class="trip-route-address" id="trip-progress-drop-name">Loading...</strong>
                                         </div>
                                     </div>
                                 </div>
 
-                                <!-- Active Ride Wallet Payment Card -->
-                                <div id="trip-progress-wallet-box" class="trip-progress-wallet-box d-none mb-3">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                <!-- 4. Fare Summary Card -->
+                                <div class="trip-card-block trip-fare-summary-block">
+                                    <h5 class="trip-card-heading" data-i18n="services.fare_summary">Fare summary</h5>
+                                    <div class="trip-fare-row">
+                                        <span class="text-muted" data-i18n="services.original_fare">Original fare</span>
+                                        <span class="trip-fare-val fw-semibold" id="trip-fare-original">₹0</span>
+                                    </div>
+                                    <div class="trip-fare-row trip-fare-discount-row d-none" id="trip-fare-wallet-discount-row">
+                                        <span class="d-flex align-items-center gap-2 text-success">
+                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M16 14h2"/></svg>
+                                            <span data-i18n="wallet.credits_applied">Wallet credits applied</span>
+                                        </span>
+                                        <span class="text-success fw-bold" id="trip-fare-wallet-discount">- ₹0</span>
+                                    </div>
+                                    <div class="trip-fare-dashed-divider"></div>
+                                    <div class="trip-fare-total-row">
+                                        <span class="trip-fare-total-label" data-i18n="services.current_ride_price">Current ride price</span>
+                                        <div class="text-end">
+                                            <div class="trip-fare-total-price" id="trip-fare-current">₹0</div>
+                                            <del class="trip-fare-original-del d-none" id="trip-fare-original-del">₹0</del>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 5. Wallet Section Card -->
+                                <div class="trip-card-block trip-wallet-card-block" id="trip-progress-wallet-box">
+                                    <div class="trip-wallet-head-row">
                                         <div class="d-flex align-items-center gap-2">
-                                            <div class="wallet-badge-mini">
-                                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-                                                    <line x1="2" y1="10" x2="22" y2="10"></line>
-                                                    <path d="M16 14h2"></path>
-                                                </svg>
+                                            <div class="trip-wallet-icon-box">
+                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M16 14h2"/></svg>
                                             </div>
                                             <div>
-                                                <strong class="d-block text-dark" style="font-size:12px;" data-i18n="wallet.title">Wallet</strong>
-                                                <span class="text-muted" style="font-size:11px;" id="trip-wallet-avail-text">Balance: ₹0</span>
+                                                <strong class="d-block trip-wallet-title" data-i18n="wallet.title">Wallet</strong>
+                                                <span class="trip-wallet-avail-text" id="trip-wallet-avail-text">Available balance: ₹0</span>
                                             </div>
                                         </div>
-                                        <div class="text-end">
-                                            <small class="text-muted d-block" style="font-size:10px;" data-i18n="services.fare">Fare</small>
-                                            <strong class="text-dark" style="font-size:12px;" id="trip-wallet-remaining-fare-text">₹0</strong>
+                                        <div class="trip-wallet-head-arrow" aria-hidden="true">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
                                         </div>
                                     </div>
-                                    <div id="trip-progress-wallet-paid-badge" class="badge bg-success-subtle text-success p-2 w-100 mb-2 text-start d-none" style="font-size:11px; white-space: normal; line-height: 1.4;">
-                                        <span class="webicon webicon-safety-check me-1" aria-hidden="true"></span>
-                                        <span id="trip-progress-wallet-paid-text">Paid via Wallet · No cash needed</span>
+
+                                    <div class="trip-wallet-applied-box" id="trip-wallet-applied-box">
+                                        <div class="trip-wallet-applied-left">
+                                            <span class="trip-wallet-amount-badge" id="trip-wallet-badge-amount">₹0</span>
+                                            <span class="trip-wallet-applied-text" id="trip-wallet-status-note" data-i18n="wallet.applied_to_ride">Applied to this ride</span>
+                                        </div>
+                                        <button type="button" id="trip-progress-wallet-pay-btn" class="trip-wallet-action-btn">
+                                            <span id="trip-wallet-action-btn-text" data-i18n="wallet.use_credits">Use Credits</span>
+                                        </button>
                                     </div>
-                                    <button type="button" id="trip-progress-wallet-pay-btn" class="gy-btn gy-btn-primary w-100 py-2 fw-bold d-flex align-items-center justify-content-center gap-2" style="border-radius:10px; font-size:13px;">
-                                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-                                            <line x1="2" y1="10" x2="22" y2="10"></line>
-                                        </svg>
-                                        <span data-i18n="wallet.use_wallet_credits">Use Wallet Credits</span>
+
+                                    <div class="trip-wallet-footnote">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                        <span data-i18n="wallet.wallet_credits_applied_notice">Wallet credits are applied first. You can change the amount.</span>
+                                    </div>
+                                </div>
+
+                                <!-- 6. More Options Collapsible Section -->
+                                <div class="trip-card-block trip-more-options-block">
+                                    <button type="button" id="trip-more-options-toggle" class="trip-more-options-header" aria-expanded="false">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="trip-more-dots">•••</span>
+                                            <span id="trip-more-options-label" data-i18n="services.more_options">More options</span>
+                                        </div>
+                                        <svg class="trip-more-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
                                     </button>
-                                </div>
-
-                                <div class="trip-details-actions">
-                                    <div class="d-flex gap-2 mb-2">
-                                        <button id="passenger-share-trip-btn" class="gy-btn gy-btn-outline flex-fill" type="button">
-                                            <span class="webicon webicon-share" aria-hidden="true"></span>
-                                            <span id="passenger-share-trip-label" data-i18n="services.share_trip">Share Trip</span>
+                                    <div id="trip-more-options-body" class="trip-more-options-body d-none">
+                                        <button id="passenger-share-trip-btn" class="trip-option-btn" type="button">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                                            <span id="passenger-share-trip-label" data-i18n="services.share_trip_status">Share Trip Status</span>
                                         </button>
-                                        <button id="passenger-sos-btn" class="gy-btn gy-btn-sos flex-fill" type="button">
-                                            <span class="webicon webicon-sos" aria-hidden="true"></span> SOS
+                                        <button id="passenger-sos-btn" class="trip-option-btn trip-option-sos" type="button">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                            <span class="text-danger fw-bold" data-i18n="services.emergency_sos">Emergency SOS</span>
                                         </button>
                                     </div>
                                 </div>
 
-                                <div class="trip-progress-row d-none">
-                                    <div class="trip-progress-fare">
-                                        <span data-i18n="services.fare">Fare</span>
-                                        <strong id="trip-progress-fare">₹0</strong>
-                                    </div>
-                                </div>
+                                <!-- 7. Cancel Ride Request Button -->
+                                <button id="cancel-ride-request-btn" class="trip-cancel-pill-btn d-none" type="button">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                    <span data-i18n="services.cancel_ride_request">Cancel Ride Request</span>
+                                </button>
 
-                                <div class="safety-assurance-tag mt-3">
-                                    <span class="webicon webicon-safety-check" aria-hidden="true"></span>
-                                    <span data-i18n="services.safety_assurance">Your safety is our priority. We monitor every trip for a safe and reliable experience.</span>
-                                    <span class="webicon webicon-view-more ms-auto" style="width: 14px; height: 14px; opacity: 0.4;"></span>
+                                <!-- 8. Bottom Trust Badge -->
+                                <div class="trip-trust-badge">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="#4B5563"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+                                    <span data-i18n="services.safe_secure_rides">Safe, secure and reliable rides</span>
                                 </div>
                             </div>
                         </section>
@@ -423,7 +463,7 @@
 
                     <section class="services-ride-actions">
                         <button id="request-ride-btn" class="gy-btn gy-btn-primary w-100" type="button" data-i18n="services.select_destination">Select a destination</button>
-                        <button id="cancel-ride-request-btn" class="gy-btn-cancel-outline mt-2 d-none" type="button">
+                        <button id="search-cancel-ride-request-btn" class="gy-btn-cancel-outline mt-2 d-none" type="button">
                             <span class="webicon webicon-trash" style="width: 18px; height: 18px;"></span> <span data-i18n="services.cancel_request">Cancel Ride Request</span>
                         </button>
                         <div class="safety-assurance-tag">
