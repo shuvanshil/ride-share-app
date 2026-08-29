@@ -1101,13 +1101,14 @@ function hideTripProgressPanel() {
 
 function dispatchPassengerDriverLocation(ride) {
     if (!ride) return;
-    const location = ride.driverLocation || (ride.driver_id ? { lat: Number(ride.pickup_lat), lng: Number(ride.pickup_lng) } : null);
+    const location = ride.driverLocation;
     if (!location || !Number.isFinite(Number(location.lat)) || !Number.isFinite(Number(location.lng))) return;
 
     window.dispatchEvent(new CustomEvent('driver-location-updated', {
         detail: {
             ...location,
             driverLocation: location,
+            driverLocationUpdatedAt: ride.driverLocationUpdatedAt || ride.lastLocationAt || ride.updatedAt,
             driver_id: ride.driver_id,
             driverId: ride.driver_id,
             driver_name: ride.driver_name,
@@ -2201,6 +2202,10 @@ requestRideButton.addEventListener('click', async () => {
 
 function listenToRideStatusUpdates(rideId) {
     if (!rideId || typeof rideId !== 'string') return;
+    if (activeRideListener) {
+        activeRideListener();
+        activeRideListener = null;
+    }
     const requestBtn = document.getElementById('request-ride-btn');
     showPassengerCancelButton(rideId);
 

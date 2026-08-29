@@ -1061,7 +1061,7 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinati
     bounds.extend(targetPosition);
     if (destinationPosition) bounds.extend(destinationPosition);
 
-    if (!passengerFirstRouteFitComplete || !passengerNavigationModeEnabled) {
+    if (!passengerFirstRouteFitComplete) {
         window.mapInstance.fitBounds(bounds, { top: 58, right: 42, bottom: 96, left: 42 });
         passengerFirstRouteFitComplete = true;
     }
@@ -1213,14 +1213,64 @@ function setGlobalDriverMarkerVisibility(driverId, existing) {
     syncGlobalDriverMarkerVisibility();
 }
 
+const PASSENGER_MAX_PLAUSIBLE_SPEED_MPS = 45; // ~162 km/h
+const PASSENGER_OUTLIER_CONFIRM_RADIUS_METERS = 60;
+let passengerDriverPendingOutlier = null;
+let passengerDriverLastAcceptedFixAt = null;
+let passengerDriverLastAcceptedTimestamp = 0;
+
+function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp = 0) {
+    if (sourceTimestamp > 0) {
+        if (sourceTimestamp < passengerDriverLastAcceptedTimestamp) {
+            // Reject stale out-of-order packet
+            return null;
+        }
+        passengerDriverLastAcceptedTimestamp = sourceTimestamp;
+    }
+
+    const current = activeDriverMarker?.marker?.getPosition?.();
+    if (!current) {
+        passengerDriverLastAcceptedFixAt = nowMs;
+        return rawPosition;
+    }
+
+    const lastKnown = { lat: current.lat(), lng: current.lng() };
+    const elapsedSeconds = passengerDriverLastAcceptedFixAt
+        ? Math.max(0.5, (nowMs - passengerDriverLastAcceptedFixAt) / 1000)
+        : 3;
+    const jumpDistanceMeters = calculateDistanceMeters(lastKnown, rawPosition);
+    const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
+
+    if (impliedSpeedMps <= PASSENGER_MAX_PLAUSIBLE_SPEED_MPS) {
+        passengerDriverPendingOutlier = null;
+        passengerDriverLastAcceptedFixAt = nowMs;
+        return rawPosition;
+    }
+
+    if (passengerDriverPendingOutlier
+        && calculateDistanceMeters(passengerDriverPendingOutlier, rawPosition) <= PASSENGER_OUTLIER_CONFIRM_RADIUS_METERS) {
+        passengerDriverPendingOutlier = null;
+        passengerDriverLastAcceptedFixAt = nowMs;
+        return rawPosition;
+    }
+
+    passengerDriverPendingOutlier = rawPosition;
+    return lastKnown;
+}
+
 function adjustForMarkerOverlap(position, heading, driverId = "") {
     if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return position;
+
+    // Never displace the assigned driver's vehicle marker during live tracking
+    if (assignedDriverTrackingDriverId) {
+        return position;
+    }
 
     let adjustedLat = position.lat;
     let adjustedLng = position.lng;
 
-    // 1. Dispersion / De-conflict against other co-located vehicle markers on the map
-    if (driverId && globalDriverMarkers.size > 1 && !assignedDriverTrackingDriverId) {
+    // 1. Dispersion / De-conflict against other co-located idle vehicle markers on the map
+    if (driverId && globalDriverMarkers.size > 1) {
         const CO_LOCATED_RADIUS_METERS = 35;
         const DISPERSION_RADIUS_METERS = 26;
         const nearbyIds = [];
@@ -1250,65 +1300,12 @@ function adjustForMarkerOverlap(position, heading, driverId = "") {
         }
     }
 
-    const currentPos = { lat: adjustedLat, lng: adjustedLng };
-
-    // 2. Avoid stacking directly over passenger pickup pin or destination pin
-    const passengerPos = userMarker?.getPosition?.()
-        ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() }
-        : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null);
-
-    const destPos = destinationMarker?.getPosition?.()
-        ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() }
-        : null;
-
-    const checkPoints = [passengerPos, destPos].filter(Boolean);
-    const OVERLAP_MIN_METERS = 20;
-
-    for (const targetPt of checkPoints) {
-        const dist = calculateDistanceMeters(currentPos, targetPt);
-        if (dist < OVERLAP_MIN_METERS) {
-            const offsetBearing = ((heading != null ? heading : 90) + 90) % 360;
-            const offsetRad = (offsetBearing * Math.PI) / 180;
-            const earthRadius = 6371000;
-            const shiftMeters = 24 - dist;
-            const deltaLat = (shiftMeters * Math.cos(offsetRad)) / earthRadius * (180 / Math.PI);
-            const deltaLng = (shiftMeters * Math.sin(offsetRad)) / (earthRadius * Math.cos(currentPos.lat * Math.PI / 180)) * (180 / Math.PI);
-            return {
-                lat: currentPos.lat + deltaLat,
-                lng: currentPos.lng + deltaLng
-            };
-        }
-    }
-
-    return currentPos;
+    return { lat: adjustedLat, lng: adjustedLng };
 }
 
 function resolveDriverRenderState(existing, rawPosition, driver, routePath = [], driverId = "") {
-    if (existing && existing.lastRoutePathRef !== routePath) {
-        existing.routeMatchIndex = -1;
-        existing.lastRoutePathRef = routePath;
-    }
-
     let position = rawPosition;
     let heading = getDriverDocumentHeading(driver);
-
-    // Only perform route snapping if an active valid route path is provided
-    if (Array.isArray(routePath) && routePath.length >= 2) {
-        const lastIndex = Number.isInteger(existing?.routeMatchIndex) ? existing.routeMatchIndex : -1;
-        const match = matchPositionToRoute(rawPosition, routePath, lastIndex);
-
-        if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
-            if (existing) existing.routeMatchIndex = match.index;
-            position = match.point;
-            if (match.heading != null) {
-                heading = match.heading;
-            }
-        } else if (existing) {
-            existing.routeMatchIndex = -1;
-        }
-    } else if (existing) {
-        existing.routeMatchIndex = -1;
-    }
 
     const previousPosition = existing?.marker?.getPosition?.();
     if (previousPosition) {
@@ -1332,9 +1329,9 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
     }
 
     // Determine target pointing (Passenger pickup vs Destination)
-    const isAssigned = (driver?.driverId && driver.driverId === assignedDriverTrackingDriverId) || (existing?.isAssigned);
-    if (isAssigned || assignedDriverTrackingDriverId) {
-        const isTripStarted = Boolean(driver?.status === "in_trip" || driver?.rideStatus === "in_trip" || driver?.status === "completed_payment");
+    const isAssigned = (driver?.driverId && driver.driverId === assignedDriverTrackingDriverId) || (existing?.isAssigned) || Boolean(assignedDriverTrackingDriverId);
+    if (isAssigned) {
+        const isTripStarted = Boolean(driver?.status === "in_trip" || driver?.rideStatus === "in_trip" || driver?.status === "started" || driver?.status === "en_route");
         const targetPt = isTripStarted
             ? (destinationMarker?.getPosition?.() ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() } : null)
             : (userMarker?.getPosition?.() ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() } : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null));
@@ -1920,6 +1917,9 @@ function clearActiveDriverMarker() {
     if (activeDriverMarker) stopDriverMarkerCoast(activeDriverMarker);
     removeMarker(activeDriverMarker?.marker);
     activeDriverMarker = null;
+    passengerDriverPendingOutlier = null;
+    passengerDriverLastAcceptedFixAt = null;
+    passengerDriverLastAcceptedTimestamp = 0;
     assignedDriverTrackingDriverId = "";
     passengerFirstRouteFitComplete = false;
     resetPassengerCameraToOverview();
@@ -1972,7 +1972,6 @@ async function refreshActiveDriverRoute(detail, position, target) {
     }
 
     activeDriverRouteState.routeRequestInFlight = true;
-    let routeRefreshed = false;
     const hadRoutePath = activeDriverRouteState.routePath.length > 0;
     try {
         const routeDetails = await fetchRoadRouteDetails(position, target);
@@ -1991,7 +1990,6 @@ async function refreshActiveDriverRoute(detail, position, target) {
         drawAssignedDriverRoute(routeDetails.routePath, position, target, destinationPosition);
         if (!hadRoutePath) assignedDriverLastDistanceKm = null;
         renderAssignedDriverTracking(routeDetails);
-        routeRefreshed = true;
     } catch (error) {
         console.warn("Assigned driver route heading lookup failed:", error);
         const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
@@ -2001,8 +1999,8 @@ async function refreshActiveDriverRoute(detail, position, target) {
         activeDriverRouteState.routeRequestInFlight = false;
         const queuedDetail = activeDriverRouteState.queuedDetail;
         activeDriverRouteState.queuedDetail = null;
-        if (queuedDetail || routeRefreshed) {
-            handleAssignedDriverLocation({ detail: queuedDetail || detail });
+        if (queuedDetail) {
+            handleAssignedDriverLocation({ detail: queuedDetail });
         }
     }
 }
@@ -2021,6 +2019,21 @@ async function handleAssignedDriverLocation(event) {
     };
     if (!Number.isFinite(rawPosition.lat) || !Number.isFinite(rawPosition.lng)) return;
 
+    const sourceTimestamp = getTimestampMs(
+        detail.driverLocationUpdatedAt 
+        || detail.lastLocationAt 
+        || detail.updatedAt 
+        || location.updatedAt 
+        || location.timestamp
+    );
+
+    const nowMs = performance.now();
+    const filteredPosition = filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp);
+    if (!filteredPosition) {
+        // Discarded stale or unconfirmed outlier
+        return;
+    }
+
     const vehicleType = inferDriverVehicleType(detail);
     const target = getActiveRideTarget(detail);
     const driverId = detail.driver_id || detail.driverId || "assigned";
@@ -2032,9 +2045,9 @@ async function handleAssignedDriverLocation(event) {
     if (target) {
         const targetKey = `${driverId}:${target.lat}:${target.lng}`;
         if (activeDriverRouteState.targetKey !== targetKey || !activeDriverRouteState.routePath.length) {
-            renderAssignedDriverTracking(null, calculateDistanceMeters(rawPosition, target) / 1000);
+            renderAssignedDriverTracking(null, calculateDistanceMeters(filteredPosition, target) / 1000);
         }
-        refreshActiveDriverRoute(detail, rawPosition, target).catch((error) => {
+        refreshActiveDriverRoute(detail, filteredPosition, target).catch((error) => {
             console.warn("Assigned driver route heading refresh failed:", error);
         });
     }
@@ -2042,11 +2055,15 @@ async function handleAssignedDriverLocation(event) {
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
     const existing = activeDriverMarker;
     const routePath = target ? activeDriverRouteState.routePath : [];
-    const { position, heading } = resolveDriverRenderState(existing, rawPosition, detail, routePath, driverId);
+    const { position, heading } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
     applyPassengerNavigationCamera(position, heading);
 
     if (existingGlobal) {
+        if (existingGlobal.animationFrame) cancelAnimationFrame(existingGlobal.animationFrame);
+        stopDriverMarkerCoast(existingGlobal);
         existingGlobal.marker?.setMap?.(null);
+        removeMarker(existingGlobal.marker);
+        globalDriverMarkers.delete(driverId);
     }
 
     if (!activeDriverMarker) {
@@ -2065,7 +2082,7 @@ async function handleAssignedDriverLocation(event) {
             routeMatchIndex: -1,
             animationFrame: null,
             coastFrame: null,
-            lastFixAt: performance.now(),
+            lastFixAt: nowMs,
             speedMetersPerSecond: 0
         };
         return;
