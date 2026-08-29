@@ -26,7 +26,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from firebase_admin import firestore as fb_firestore
 
-from .admin import write_audit_log
 from .errors import ApiError
 from .wallet_service import (
     credit_wallet_tx,

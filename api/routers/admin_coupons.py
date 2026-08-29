@@ -172,17 +172,18 @@ async def create_admin_coupon(
     doc_ref.set(coupon_doc)
 
     write_audit_log(
-        db,
-        admin_uid=admin_uid,
-        action="CREATE_COUPON",
-        target_id=coupon_id,
+        admin_user=admin,
+        action="coupon.create",
         target_type="coupon",
-        metadata={
+        target_id=coupon_id,
+        before=None,
+        after={
             "code": normalized_code,
             "discountType": payload.discountType,
             "discountValue": payload.discountValue,
             "category": payload.eligibilityCategory,
         },
+        notes=f"Created promotional coupon {normalized_code}",
     )
 
     return {
@@ -201,7 +202,6 @@ async def update_admin_coupon(
     db: Any = Depends(get_firestore),
 ):
     """Updates an existing coupon's metadata or restriction settings."""
-    admin_uid = admin["uid"]
     doc_ref = db.collection("coupons").document(coupon_id)
     snap = doc_ref.get()
     if not snap.exists:
@@ -223,12 +223,13 @@ async def update_admin_coupon(
     doc_ref.update(updates)
 
     write_audit_log(
-        db,
-        admin_uid=admin_uid,
-        action="UPDATE_COUPON",
-        target_id=coupon_id,
+        admin_user=admin,
+        action="coupon.update",
         target_type="coupon",
-        metadata=sanitize_dict_for_json(updates),
+        target_id=coupon_id,
+        before=data,
+        after=sanitize_dict_for_json(updates),
+        notes=f"Updated promotional coupon {data.get('code', coupon_id)}",
     )
 
     return {"ok": True, "message": "Coupon updated successfully."}
@@ -241,20 +242,22 @@ async def activate_coupon(
     db: Any = Depends(get_firestore),
 ):
     """Activates a coupon immediately."""
-    admin_uid = admin["uid"]
     doc_ref = db.collection("coupons").document(coupon_id)
     snap = doc_ref.get()
     if not snap.exists:
         raise ApiError("Coupon not found.", 404)
+    data = snap.to_dict() or {}
 
     doc_ref.update({"status": "active", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
 
     write_audit_log(
-        db,
-        admin_uid=admin_uid,
-        action="ACTIVATE_COUPON",
-        target_id=coupon_id,
+        admin_user=admin,
+        action="coupon.activate",
         target_type="coupon",
+        target_id=coupon_id,
+        before={"status": data.get("status")},
+        after={"status": "active"},
+        notes=f"Activated coupon {data.get('code', coupon_id)}",
     )
 
     return {"ok": True, "message": "Coupon activated."}
@@ -267,20 +270,22 @@ async def deactivate_coupon(
     db: Any = Depends(get_firestore),
 ):
     """Deactivates a coupon immediately so it cannot be newly redeemed."""
-    admin_uid = admin["uid"]
     doc_ref = db.collection("coupons").document(coupon_id)
     snap = doc_ref.get()
     if not snap.exists:
         raise ApiError("Coupon not found.", 404)
+    data = snap.to_dict() or {}
 
     doc_ref.update({"status": "inactive", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
 
     write_audit_log(
-        db,
-        admin_uid=admin_uid,
-        action="DEACTIVATE_COUPON",
-        target_id=coupon_id,
+        admin_user=admin,
+        action="coupon.deactivate",
         target_type="coupon",
+        target_id=coupon_id,
+        before={"status": data.get("status")},
+        after={"status": "inactive"},
+        notes=f"Deactivated coupon {data.get('code', coupon_id)}",
     )
 
     return {"ok": True, "message": "Coupon deactivated."}
@@ -297,7 +302,6 @@ async def delete_or_archive_coupon(
     Rejects deletion of default platform coupons.
     Soft-deletes/archives coupons to preserve audit integrity of historical redemptions.
     """
-    admin_uid = admin["uid"]
     doc_ref = db.collection("coupons").document(coupon_id)
     snap = doc_ref.get()
     if not snap.exists:
@@ -306,6 +310,8 @@ async def delete_or_archive_coupon(
 
     if data.get("source") == "default" or not data.get("isDeletable", True):
         raise ApiError("Default platform coupons (such as WELCOME, SUPER10) cannot be deleted. You can deactivate them instead.", 400)
+
+    admin_uid = admin["uid"]
 
     # Soft delete to preserve audit history
     doc_ref.update({
@@ -317,12 +323,13 @@ async def delete_or_archive_coupon(
     })
 
     write_audit_log(
-        db,
-        admin_uid=admin_uid,
-        action="DELETE_COUPON",
-        target_id=coupon_id,
+        admin_user=admin,
+        action="coupon.delete",
         target_type="coupon",
-        metadata={"code": data.get("code")},
+        target_id=coupon_id,
+        before=data,
+        after={"status": "deleted", "isDeleted": True},
+        notes=f"Archived coupon {data.get('code', coupon_id)}",
     )
 
     return {"ok": True, "message": "Coupon archived successfully."}

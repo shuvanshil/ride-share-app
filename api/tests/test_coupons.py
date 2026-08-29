@@ -1,12 +1,13 @@
 """
 Unit and Integration tests for Ride Coupon System & Platform-Funded Subsidies.
 Tests integer paise math, category eligibility, auto-suggestion priority ranking,
-atomic transactions, driver wallet promotional credits, idempotency, and mutual exclusivity.
+atomic transactions, driver wallet promotional credits, idempotency, mutual exclusivity,
+and admin coupon management CRUD operations.
 """
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from api.core.errors import ApiError
 from api.core.coupon_service import (
@@ -19,6 +20,16 @@ from api.core.coupon_service import (
     ensure_default_coupons,
 )
 from api.core.wallet_service import transfer_ride_fare
+from api.routers.admin_coupons import (
+    CreateCouponRequest,
+    UpdateCouponRequest,
+    create_admin_coupon,
+    update_admin_coupon,
+    activate_coupon,
+    deactivate_coupon,
+    delete_or_archive_coupon,
+    list_admin_coupons,
+)
 
 
 class MockDocSnapshot:
@@ -158,10 +169,11 @@ class MockFirestoreDb:
         return MockTransaction(self.store)
 
 
-class TestCouponSystem(unittest.TestCase):
+class TestCouponSystem(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.db = MockFirestoreDb()
+        self.admin = {"uid": "adm_1", "email": "admin@liphtup.in", "adminRole": "super_admin"}
 
     # 1. Normalization Tests
     def test_normalize_coupon_code(self):
@@ -443,6 +455,55 @@ class TestCouponSystem(unittest.TestCase):
             apply_coupon_to_ride_tx(self.db, "p_2", "ride_w_applied", "WELCOME", "idem_excl_w")
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("wallet", str(ctx.exception.message).lower())
+
+    # 9. Admin Operations Tests
+    async def test_admin_crud_lifecycle(self):
+        ensure_default_coupons(self.db)
+
+        # A. Create custom coupon
+        create_req = CreateCouponRequest(
+            code="FESTIVE50",
+            discountType="fixed",
+            discountValue=50.0,
+            eligibilityCategory="all_passengers",
+            description="Festive bonus",
+        )
+        with patch("api.routers.admin_coupons.write_audit_log") as mock_audit:
+            res_create = await create_admin_coupon(create_req, admin=self.admin, db=self.db)
+            self.assertTrue(res_create["ok"])
+            coupon_id = res_create["couponId"]
+            self.assertEqual(res_create["code"], "FESTIVE50")
+            mock_audit.assert_called_once()
+
+        # B. Deactivate coupon
+        with patch("api.routers.admin_coupons.write_audit_log") as mock_audit:
+            res_deact = await deactivate_coupon(coupon_id, admin=self.admin, db=self.db)
+            self.assertTrue(res_deact["ok"])
+            doc = self.db.collection("coupons").document(coupon_id).get().to_dict()
+            self.assertEqual(doc["status"], "inactive")
+            mock_audit.assert_called_once()
+
+        # C. Reactivate coupon
+        with patch("api.routers.admin_coupons.write_audit_log") as mock_audit:
+            res_act = await activate_coupon(coupon_id, admin=self.admin, db=self.db)
+            self.assertTrue(res_act["ok"])
+            doc = self.db.collection("coupons").document(coupon_id).get().to_dict()
+            self.assertEqual(doc["status"], "active")
+            mock_audit.assert_called_once()
+
+        # D. Delete/Archive coupon
+        with patch("api.routers.admin_coupons.write_audit_log") as mock_audit:
+            res_del = await delete_or_archive_coupon(coupon_id, admin=self.admin, db=self.db)
+            self.assertTrue(res_del["ok"])
+            doc = self.db.collection("coupons").document(coupon_id).get().to_dict()
+            self.assertEqual(doc["status"], "deleted")
+            self.assertTrue(doc["isDeleted"])
+            mock_audit.assert_called_once()
+
+        # E. Default coupon deletion rejection
+        with self.assertRaises(ApiError) as ctx:
+            await delete_or_archive_coupon("coupon_default_welcome", admin=self.admin, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
 
 
 if __name__ == "__main__":
