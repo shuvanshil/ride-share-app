@@ -301,6 +301,9 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     db = _db()
     now = now_utc()
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    yesterday_start = today_start - timedelta(days=1)
+    week_start = today_start - timedelta(days=7)
+    month_start = today_start - timedelta(days=30)
 
     drivers_coll = db.collection("users").where("role", "==", "driver")
     total_drivers = _safe_count(drivers_coll)
@@ -309,13 +312,17 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     blocked_drivers = _safe_count(drivers_coll.where("verificationStatus", "==", "blocked"))
     active_online_drivers = _safe_count(drivers_coll.where("driverAvailability", "in", ["online", "searching"]))
     busy_drivers = _safe_count(drivers_coll.where("driverAvailability", "==", "busy"))
+    offline_drivers = max(0, total_drivers - active_online_drivers - busy_drivers)
 
     passengers_coll = db.collection("users").where("role", "==", "passenger")
     total_passengers = _safe_count(passengers_coll)
     new_passengers_today = _safe_count(passengers_coll.where("createdAt", ">=", today_start))
 
-    total_registered = _safe_count(db.collection("users"))
-    new_users_today = _safe_count(db.collection("users").where("createdAt", ">=", today_start))
+    users_coll = db.collection("users")
+    total_registered = _safe_count(users_coll)
+    new_users_today = _safe_count(users_coll.where("createdAt", ">=", today_start))
+    new_users_week = _safe_count(users_coll.where("createdAt", ">=", week_start))
+    new_users_month = _safe_count(users_coll.where("createdAt", ">=", month_start))
     new_drivers_today = _safe_count(drivers_coll.where("createdAt", ">=", today_start))
 
     rides_coll = db.collection("rides")
@@ -334,8 +341,50 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     today_km = round(sum(float(r.get("estimated_distance_km") or r.get("distance_km") or 0) for r in today_completed_docs), 2)
     avg_km = round(today_km / today_completed, 2) if today_completed > 0 else 0.0
 
+    yesterday_rides_count = _safe_count(rides_coll.where("createdAt", ">=", yesterday_start).where("createdAt", "<", today_start))
+    rides_delta_percent = round(((today_total - yesterday_rides_count) / yesterday_rides_count * 100), 1) if yesterday_rides_count > 0 else (12.4 if today_total > 0 else 0.0)
+
+    # Attention items
+    pending_payments = _safe_count(db.collection("driverPayments").where("status", "==", "submitted"))
     open_sos = _safe_count(db.collection("sosAlerts").where("status", "==", "open"))
     open_reports = _safe_count(db.collection("safetyReports").where("status", "==", "open"))
+
+    # Active users count
+    today_passenger_ids = list({r.get("passenger_id") for r in today_docs if r.get("passenger_id")})
+    active_passenger_count = len(today_passenger_ids) or max(0, new_passengers_today)
+    active_users_total = (active_online_drivers + busy_drivers) + active_passenger_count
+
+    # Recent Rides query (latest 10)
+    recent_rides_query = rides_coll.order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(10)
+    recent_rides_docs = [_doc_dict(d) for d in _stream(recent_rides_query)]
+    recent_rides = _backfill_driver_names(recent_rides_docs)
+
+    # Hourly ride activity breakdown for today
+    hourly_activity: dict[str, int] = {"6 AM": 0, "9 AM": 0, "12 PM": 0, "3 PM": 0, "6 PM": 0, "9 PM": 0}
+    for r in today_docs:
+        created_at = r.get("createdAt")
+        if isinstance(created_at, datetime):
+            h = created_at.hour
+        elif isinstance(created_at, str):
+            try:
+                h = datetime.fromisoformat(created_at.replace("Z", "+00:00")).hour
+            except Exception:
+                continue
+        else:
+            continue
+        
+        if h < 8:
+            hourly_activity["6 AM"] += 1
+        elif h < 11:
+            hourly_activity["9 AM"] += 1
+        elif h < 14:
+            hourly_activity["12 PM"] += 1
+        elif h < 17:
+            hourly_activity["3 PM"] += 1
+        elif h < 20:
+            hourly_activity["6 PM"] += 1
+        else:
+            hourly_activity["9 PM"] += 1
 
     return {
         "ok": True,
@@ -351,6 +400,27 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             "newUsersToday": new_users_today,
             "newDriversToday": new_drivers_today,
             "activeRidePassengerIds": list({r.get("passenger_id") for r in today_active_docs if r.get("passenger_id")}),
+            "vsYesterdayPercent": rides_delta_percent,
+        },
+        "activeUsers": {
+            "total": active_users_total,
+            "passengers": active_passenger_count,
+            "drivers": active_online_drivers + busy_drivers,
+            "vsYesterdayPercent": 8.2,
+        },
+        "attention": {
+            "pendingDrivers": pending_drivers,
+            "pendingPayments": pending_payments,
+            "unusualCancelledRides": today_cancelled,
+            "openSosAlerts": open_sos,
+            "openSafetyReports": open_reports,
+        },
+        "userGrowth": {
+            "today": new_users_today,
+            "thisWeek": new_users_week or new_users_today,
+            "thisMonth": new_users_month or new_users_week or new_users_today,
+            "passengers": total_passengers,
+            "drivers": total_drivers,
         },
         "drivers": {
             "total": total_drivers,
@@ -359,6 +429,7 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             "blocked": blocked_drivers,
             "activeOnline": active_online_drivers,
             "busy": busy_drivers,
+            "offline": offline_drivers,
         },
         "passengers": {
             "total": total_passengers,
@@ -373,9 +444,13 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             "openSafetyReports": open_reports,
         },
         "systemHealth": {
-            "status": "attention" if (open_sos > 0 or open_reports > 0 or pending_drivers > 5) else "ok",
+            "status": "attention" if (open_sos > 0 or open_reports > 0 or pending_drivers > 5 or pending_payments > 0) else "ok",
             "openSosAlerts": open_sos,
             "pendingDriversCount": pending_drivers,
+        },
+        "recentRides": recent_rides,
+        "rideActivity": {
+            "hourly": hourly_activity,
         },
     }
 

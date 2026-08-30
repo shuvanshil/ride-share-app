@@ -92,18 +92,35 @@
                 <button id="admin-sidebar-toggle" class="btn btn-ghost-secondary me-2 p-1" type="button" title="Toggle sidebar">
                     <i class="ti ti-menu-2 fs-2 text-dark"></i>
                 </button>
-                <span class="navbar-brand text-primary fw-bold fs-3 m-0">
-                    LiphtUp <span id="admin-header-role-badge" class="badge bg-blue-lt text-blue ms-1">Admin</span>
+                <span class="navbar-brand text-primary fw-bold fs-3 m-0 d-flex align-items-center">
+                    LightUp <span id="admin-header-role-badge" class="badge bg-purple-lt text-purple ms-2 fw-bold" style="font-size: 0.72rem;">Super Admin</span>
                 </span>
                 <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
-                    <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm d-flex align-items-center" type="button">
+                    <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm rounded-pill d-flex align-items-center px-3" type="button">
                         <i class="ti ti-activity me-1 text-primary"></i> Live Feed 
                         <span id="admin-feed-badge" class="badge bg-red text-white ms-2 d-none">0</span>
                     </button>
-                    <div class="nav-item d-none d-sm-inline-block">
-                        <span id="admin-user-label" class="navbar-text small text-secondary"></span>
+                    <!-- User Profile Icon with Floating Dropdown -->
+                    <div class="dropdown" id="admin-user-dropdown-wrap">
+                        <button id="admin-user-profile-btn" class="btn btn-ghost-secondary btn-icon rounded-circle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="User Details">
+                            <i class="ti ti-user fs-2 text-secondary"></i>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end shadow-sm p-3 border-0 rounded-3" style="min-width: 250px;" id="admin-user-popover">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="avatar avatar-md rounded-circle bg-primary-lt text-primary"><i class="ti ti-user fs-2"></i></span>
+                                <div class="overflow-hidden">
+                                    <div class="fw-bold text-dark text-truncate" id="admin-popover-name">Admin User</div>
+                                    <div class="small text-secondary text-truncate" id="admin-popover-email">admin@liphtup.in</div>
+                                </div>
+                            </div>
+                            <div class="hr my-2"></div>
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="small text-secondary">Role</span>
+                                <span id="admin-popover-role-badge" class="badge bg-purple-lt text-purple fw-bold">Super Admin</span>
+                            </div>
+                        </div>
                     </div>
-                    <button id="admin-logout-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center" type="button">
+                    <button id="admin-logout-btn" class="btn btn-outline-danger btn-sm rounded-pill d-flex align-items-center px-3" type="button">
                         <i class="ti ti-logout me-1"></i> Logout
                     </button>
                 </div>
@@ -113,82 +130,82 @@
         <div class="page-main d-flex flex-row flex-fill">
             <!-- Sidebar Navigation -->
             <aside id="admin-sidebar" class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end shadow-xs">
-                <div class="container-fluid px-2">
-                    <div class="navbar-collapse collapse show" id="sidebar-menu">
-                        <ul class="navbar-nav pt-lg-3 w-100 gap-1">
-                            <!-- 1. Dashboard -->
+                <div class="container-fluid px-2 d-flex flex-column h-100">
+                    <div class="navbar-collapse collapse show flex-fill d-flex flex-column" id="sidebar-menu">
+                        <ul class="navbar-nav pt-lg-3 w-100 gap-1 flex-fill">
+                            <!-- OPERATIONS -->
+                            <li class="nav-header text-uppercase text-secondary fw-bold px-3 pt-2 pb-1" style="font-size: 0.68rem; letter-spacing: 0.05em;">Operations</li>
                             <li class="nav-item" id="nav-item-dashboard">
                                 <button class="admin-nav-item nav-link active w-100 text-start" data-section="dashboard" type="button">
-                                    <i class="ti ti-layout-dashboard nav-link-icon me-2"></i>
+                                    <i class="ti ti-layout-grid nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Dashboard</span>
                                 </button>
                             </li>
-                            <!-- 2. Drivers -->
-                            <li class="nav-item" id="nav-item-drivers">
-                                <button class="admin-nav-item nav-link w-100 text-start" data-section="drivers" type="button">
-                                    <i class="ti ti-users nav-link-icon me-2"></i>
-                                    <span class="nav-link-title">Drivers</span>
-                                </button>
-                            </li>
-                            <!-- 3. Passengers -->
-                            <li class="nav-item" id="nav-item-passengers">
-                                <button class="admin-nav-item nav-link w-100 text-start" data-section="passengers" type="button">
-                                    <i class="ti ti-user-check nav-link-icon me-2"></i>
-                                    <span class="nav-link-title">Passengers</span>
-                                </button>
-                            </li>
-                            <!-- 4. Live Rides -->
                             <li class="nav-item" id="nav-item-live-rides">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="live-rides" type="button">
                                     <i class="ti ti-car nav-link-icon text-primary me-2"></i>
                                     <span class="nav-link-title">Live Rides</span>
                                 </button>
                             </li>
-                            <!-- 5. Payments -->
+                            <li class="nav-item" id="nav-item-drivers">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="drivers" type="button">
+                                    <i class="ti ti-id nav-link-icon me-2"></i>
+                                    <span class="nav-link-title">Drivers</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" id="nav-item-passengers">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="passengers" type="button">
+                                    <i class="ti ti-users nav-link-icon me-2"></i>
+                                    <span class="nav-link-title">Passengers</span>
+                                </button>
+                            </li>
+
+                            <!-- TRANSACTIONS -->
+                            <li class="nav-header text-uppercase text-secondary fw-bold px-3 pt-3 pb-1" style="font-size: 0.68rem; letter-spacing: 0.05em;">Transactions</li>
                             <li class="nav-item" id="nav-item-payments">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="payments" type="button">
-                                    <i class="ti ti-currency-rupee nav-link-icon me-2"></i>
+                                    <i class="ti ti-credit-card nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Payments</span>
-                                    <span id="admin-payments-nav-badge" class="text-danger fw-bold ms-1 d-none">(0)</span>
+                                    <span id="admin-payments-nav-badge" class="badge bg-red text-white rounded-pill ms-auto d-none">0</span>
                                 </button>
                             </li>
-                            <!-- 5.5 Coupons -->
-                            <li class="nav-item" id="nav-item-coupons">
-                                <button class="admin-nav-item nav-link w-100 text-start" data-section="coupons" type="button">
-                                    <i class="ti ti-ticket nav-link-icon me-2 text-success"></i>
-                                    <span class="nav-link-title">Coupons</span>
-                                </button>
-                            </li>
-                            <!-- 6. Ride History -->
                             <li class="nav-item" id="nav-item-ride-history">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="ride-history" type="button">
                                     <i class="ti ti-history nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Ride History</span>
                                 </button>
                             </li>
-                            <!-- 7. Safety -->
-                            <li class="nav-item" id="nav-item-safety">
-                                <button class="admin-nav-item nav-link w-100 text-start" data-section="safety" type="button">
-                                    <i class="ti ti-shield nav-link-icon text-danger me-2"></i>
-                                    <span class="nav-link-title">Safety</span>
-                                    <span id="admin-safety-nav-badge" class="text-danger fw-bold ms-1 d-none">(0)</span>
+                            <li class="nav-item" id="nav-item-coupons">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="coupons" type="button">
+                                    <i class="ti ti-circle-check nav-link-icon me-2 text-success"></i>
+                                    <span class="nav-link-title">Coupons</span>
                                 </button>
                             </li>
-                            <!-- 8. Analytics -->
+
+                            <!-- MONITORING -->
+                            <li class="nav-header text-uppercase text-secondary fw-bold px-3 pt-3 pb-1" style="font-size: 0.68rem; letter-spacing: 0.05em;">Monitoring</li>
+                            <li class="nav-item" id="nav-item-safety">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="safety" type="button">
+                                    <i class="ti ti-shield-check nav-link-icon text-danger me-2"></i>
+                                    <span class="nav-link-title">Safety</span>
+                                    <span id="admin-safety-nav-badge" class="badge bg-red text-white rounded-pill ms-auto d-none">0</span>
+                                </button>
+                            </li>
                             <li class="nav-item" id="nav-item-analytics">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="analytics" type="button">
                                     <i class="ti ti-chart-bar nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Analytics</span>
                                 </button>
                             </li>
-                            <!-- 9. Audit Log -->
+
+                            <!-- SYSTEM -->
+                            <li class="nav-header text-uppercase text-secondary fw-bold px-3 pt-3 pb-1" style="font-size: 0.68rem; letter-spacing: 0.05em;">System</li>
                             <li class="nav-item" id="nav-item-audit-log">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="audit-log" type="button">
-                                    <i class="ti ti-file-text nav-link-icon me-2"></i>
+                                    <i class="ti ti-file-description nav-link-icon me-2"></i>
                                     <span class="nav-link-title">Audit Log</span>
                                 </button>
                             </li>
-                            <!-- 10. Permissions (Super Admin only) -->
                             <li class="nav-item" id="nav-item-permissions">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="permissions" type="button">
                                     <i class="ti ti-shield-lock nav-link-icon text-purple me-2"></i>
@@ -196,6 +213,14 @@
                                 </button>
                             </li>
                         </ul>
+
+                        <!-- Bottom Sidebar Collapse Button -->
+                        <div class="mt-auto pt-3 border-top w-100 pb-2">
+                            <button id="admin-sidebar-collapse-btn" class="btn btn-ghost-secondary w-100 text-start d-flex align-items-center gap-2 px-3 py-2" type="button">
+                                <i class="ti ti-arrow-left fs-3"></i>
+                                <span class="nav-link-title">Collapse</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </aside>
@@ -206,17 +231,313 @@
 
                     <!-- Dashboard -->
                     <section id="section-dashboard" class="admin-section">
-                        <div class="page-header d-print-none mb-3">
-                            <div class="row align-items-center">
-                                <div class="col">
-                                    <div class="page-pretitle">Overview</div>
-                                    <h2 class="page-title h2 fw-bold">Dashboard</h2>
+                        <!-- Dashboard Header -->
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                            <div>
+                                <h2 class="page-title h2 fw-bold mb-0">Dashboard</h2>
+                                <div class="text-secondary small">Overview of today's LightUp operations</div>
+                            </div>
+                            <div class="badge bg-white text-secondary border shadow-xs d-flex align-items-center gap-2 px-3 py-2 rounded-pill font-weight-medium">
+                                <i class="ti ti-calendar text-primary"></i>
+                                <span id="dashboard-date-badge">Sun, 30 Aug 2026</span>
+                            </div>
+                        </div>
+
+                        <!-- Your Attention Required Banner -->
+                        <div id="dashboard-attention-card" class="card border-0 shadow-xs mb-3" style="background: #fffdf5; border: 1px solid #fef3c7 !important; border-radius: 10px;">
+                            <div class="card-body p-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
+                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                    <div class="d-flex align-items-center gap-2 text-warning fw-bold">
+                                        <span class="avatar avatar-sm bg-warning-lt text-warning rounded-2"><i class="ti ti-alert-triangle fs-2"></i></span>
+                                        <span class="text-dark fw-bold">Your attention required</span>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-3 flex-wrap ms-md-2" id="attention-items-container">
+                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0" id="att-drivers-btn">
+                                            <i class="ti ti-users text-secondary"></i>
+                                            <span class="small"><strong id="att-drivers-count">0</strong> drivers awaiting approval</span>
+                                            <span class="badge bg-yellow text-dark rounded-circle px-2" id="att-drivers-badge">0</span>
+                                        </button>
+                                        <div class="vr text-secondary opacity-25 d-none d-md-block" style="height: 18px;"></div>
+                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0" id="att-payments-btn">
+                                            <span class="status-dot bg-red"></span>
+                                            <span class="small"><strong id="att-payments-count">0</strong> payment issues detected</span>
+                                            <span class="badge bg-yellow text-dark rounded-circle px-2" id="att-payments-badge">0</span>
+                                        </button>
+                                        <div class="vr text-secondary opacity-25 d-none d-md-block" style="height: 18px;"></div>
+                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0" id="att-cancelled-btn">
+                                            <i class="ti ti-alert-circle text-warning"></i>
+                                            <span class="small"><strong id="att-cancelled-count">0</strong> rides cancelled unusually</span>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0 d-none" id="att-sos-btn">
+                                            <i class="ti ti-shield-x text-danger"></i>
+                                            <span class="small text-danger fw-bold"><strong id="att-sos-count">0</strong> SOS alerts active</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <button type="button" class="btn btn-sm btn-outline-warning text-dark border-warning bg-white rounded-pill px-3" id="btn-attention-view-all">View all</button>
                                 </div>
                             </div>
                         </div>
-                        <div id="dashboard-greeting" class="mb-3"></div>
-                        <div id="dashboard-kpis" class="row row-cards mb-4"></div>
-                        <div id="dashboard-cards" class="row row-cards"></div>
+
+                        <!-- First Row: 3 KPI Cards (Rides Today, Active Users, Driver Availability) -->
+                        <div class="row row-cards mb-3">
+                            <!-- 1. Rides Today -->
+                            <div class="col-sm-6 col-lg-4">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="avatar avatar-md bg-blue-lt text-blue rounded-3"><i class="ti ti-car fs-2"></i></span>
+                                                <div>
+                                                    <div class="text-secondary small fw-medium">Rides Today</div>
+                                                    <div class="h1 mb-0 fw-bold text-dark" id="kpi-rides-today-value">--</div>
+                                                </div>
+                                            </div>
+                                            <span class="badge bg-green-lt text-green small fw-bold" id="kpi-rides-today-delta">
+                                                <i class="ti ti-arrow-up-right me-1"></i>--
+                                            </span>
+                                        </div>
+                                        <div class="hr my-2"></div>
+                                        <div class="row text-center">
+                                            <div class="col-4 border-end">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Completed</div>
+                                                <div class="fw-bold text-dark" id="kpi-rides-completed">--</div>
+                                            </div>
+                                            <div class="col-4 border-end">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Cancelled</div>
+                                                <div class="fw-bold text-dark" id="kpi-rides-cancelled">--</div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Ongoing</div>
+                                                <div class="fw-bold text-dark" id="kpi-rides-ongoing">--</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 2. Active Users -->
+                            <div class="col-sm-6 col-lg-4">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="avatar avatar-md bg-purple-lt text-purple rounded-3"><i class="ti ti-users fs-2"></i></span>
+                                                <div>
+                                                    <div class="text-secondary small fw-medium">Active Users</div>
+                                                    <div class="h1 mb-0 fw-bold text-dark" id="kpi-active-users-value">--</div>
+                                                </div>
+                                            </div>
+                                            <span class="badge bg-green-lt text-green small fw-bold" id="kpi-active-users-delta">
+                                                <i class="ti ti-arrow-up-right me-1"></i>--
+                                            </span>
+                                        </div>
+                                        <div class="hr my-2"></div>
+                                        <div class="row text-center">
+                                            <div class="col-6 border-end">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Passengers</div>
+                                                <div class="fw-bold text-dark" id="kpi-active-passengers">--</div>
+                                            </div>
+                                            <div class="col-6">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Drivers</div>
+                                                <div class="fw-bold text-dark" id="kpi-active-drivers">--</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 3. Driver Availability -->
+                            <div class="col-sm-6 col-lg-4">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="avatar avatar-md bg-orange-lt text-orange rounded-3"><i class="ti ti-steering-wheel fs-2"></i></span>
+                                                <div>
+                                                    <div class="text-secondary small fw-medium">Driver Availability</div>
+                                                    <div class="h1 mb-0 fw-bold text-dark" id="kpi-driver-availability-value">-- / --</div>
+                                                </div>
+                                            </div>
+                                            <span class="badge bg-green-lt text-green small fw-bold" id="kpi-driver-availability-delta">-- online</span>
+                                        </div>
+                                        <div class="hr my-2"></div>
+                                        <div class="row text-center">
+                                            <div class="col-4 border-end">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Online</div>
+                                                <div class="fw-bold text-dark" id="kpi-drivers-online">--</div>
+                                            </div>
+                                            <div class="col-4 border-end">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Busy</div>
+                                                <div class="fw-bold text-dark" id="kpi-drivers-busy">--</div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="text-secondary small" style="font-size: 0.75rem;">Offline</div>
+                                                <div class="fw-bold text-dark" id="kpi-drivers-offline">--</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Second Row: Ride Activity Graph, Driver Availability Donut, Recent Activity -->
+                        <div class="row row-cards mb-3">
+                            <!-- Ride Activity Line Graph -->
+                            <div class="col-lg-5 col-xl-5">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-header bg-transparent border-0 d-flex align-items-center justify-content-between p-3 pb-0">
+                                        <h3 class="card-title fw-bold m-0 fs-3">Ride Activity <span class="text-secondary fw-normal small" id="ride-activity-range-label">(Today)</span></h3>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" class="btn btn-primary active" id="btn-chart-today">Today</button>
+                                            <button type="button" class="btn btn-outline-secondary" id="btn-chart-7d">7 days</button>
+                                            <button type="button" class="btn btn-outline-secondary" id="btn-chart-30d">30 days</button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body p-3 pt-2">
+                                        <div style="position: relative; height: 230px; width: 100%;">
+                                            <canvas id="ride-activity-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Driver Availability Donut -->
+                            <div class="col-lg-3 col-xl-3">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-header bg-transparent border-0 p-3 pb-0">
+                                        <h3 class="card-title fw-bold m-0 fs-3">Driver Availability</h3>
+                                    </div>
+                                    <div class="card-body p-3 pt-2 d-flex flex-column justify-content-between">
+                                        <div class="d-flex align-items-center justify-content-center gap-3">
+                                            <div style="position: relative; width: 130px; height: 130px;" class="flex-shrink-0">
+                                                <canvas id="driver-availability-donut"></canvas>
+                                                <div class="position-absolute top-50 start-50 translate-middle text-center pointer-events-none" style="line-height: 1.1;">
+                                                    <div class="text-secondary small" style="font-size: 0.68rem;">Total</div>
+                                                    <div class="fw-bold fs-3 text-dark" id="donut-total-count">--</div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex flex-column gap-2 small flex-fill">
+                                                <div class="d-flex align-items-center justify-content-between">
+                                                    <span><span class="status-dot bg-success me-1"></span>Available</span>
+                                                    <span class="fw-bold" id="donut-legend-available">--</span>
+                                                </div>
+                                                <div class="d-flex align-items-center justify-content-between">
+                                                    <span><span class="status-dot bg-primary me-1"></span>On ride</span>
+                                                    <span class="fw-bold" id="donut-legend-busy">--</span>
+                                                </div>
+                                                <div class="d-flex align-items-center justify-content-between">
+                                                    <span><span class="status-dot bg-warning me-1"></span>Offline</span>
+                                                    <span class="fw-bold" id="donut-legend-offline">--</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3">
+                                            <div class="d-flex justify-content-between small fw-bold text-success mb-1">
+                                                <span id="donut-progress-label">-- Online</span>
+                                            </div>
+                                            <div class="progress progress-sm">
+                                                <div class="progress-bar bg-success" id="donut-progress-bar" style="width: 0%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Recent Activity Feed -->
+                            <div class="col-lg-4 col-xl-4">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-header bg-transparent border-0 d-flex align-items-center justify-content-between p-3 pb-0">
+                                        <h3 class="card-title fw-bold m-0 fs-3">Recent Activity</h3>
+                                        <button type="button" class="btn btn-ghost-secondary btn-sm p-0 text-primary" id="btn-recent-act-view-all">View all</button>
+                                    </div>
+                                    <div class="card-body p-3 pt-2">
+                                        <div id="dashboard-recent-activity-list" class="d-flex flex-column gap-2" style="max-height: 230px; overflow-y: auto;">
+                                            <div class="text-center py-4 text-secondary small">
+                                                <div class="spinner-border spinner-border-sm text-primary mb-1"></div>
+                                                <div>Loading activity...</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Third Row: User Growth -->
+                        <div class="card border-0 shadow-xs mb-3 rounded-3">
+                            <div class="card-header bg-transparent border-0 d-flex align-items-center justify-content-between p-3 pb-0">
+                                <h3 class="card-title fw-bold m-0 fs-3">User Growth</h3>
+                                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btn-user-growth-view-all">View all</button>
+                            </div>
+                            <div class="card-body p-3 pt-2">
+                                <div class="row align-items-center g-3">
+                                    <div class="col-sm-8">
+                                        <div class="row text-start g-3">
+                                            <div class="col-4">
+                                                <div class="text-secondary small font-weight-medium">Today</div>
+                                                <div class="h2 mb-0 fw-bold text-success" id="growth-today-val">+0</div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="text-secondary small font-weight-medium">This week</div>
+                                                <div class="h2 mb-0 fw-bold text-success" id="growth-week-val">+0</div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="text-secondary small font-weight-medium">This month</div>
+                                                <div class="h2 mb-0 fw-bold text-success" id="growth-month-val">+0</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-4 border-start-sm ps-sm-4">
+                                        <div class="d-flex flex-column gap-2">
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="avatar avatar-xs bg-purple-lt text-purple rounded-2"><i class="ti ti-user"></i></span>
+                                                    <span class="small text-secondary">Passengers</span>
+                                                </div>
+                                                <span class="fw-bold text-dark" id="growth-passengers-count">0</span>
+                                            </div>
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="avatar avatar-xs bg-blue-lt text-blue rounded-2"><i class="ti ti-steering-wheel"></i></span>
+                                                    <span class="small text-secondary">Drivers</span>
+                                                </div>
+                                                <span class="fw-bold text-dark" id="growth-drivers-count">0</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fourth Row: Recent Rides Table -->
+                        <div class="card border-0 shadow-xs mb-3 rounded-3">
+                            <div class="card-header bg-transparent border-0 d-flex align-items-center justify-content-between p-3 pb-2">
+                                <h3 class="card-title fw-bold m-0 fs-3">Recent Rides</h3>
+                                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btn-recent-rides-view-all">View all rides</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-vcenter card-table table-striped table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Ride ID</th>
+                                            <th>Passenger</th>
+                                            <th>Driver</th>
+                                            <th>Fare</th>
+                                            <th>Distance</th>
+                                            <th>Status</th>
+                                            <th>Time</th>
+                                            <th class="w-1"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dashboard-recent-rides-tbody">
+                                        <tr>
+                                            <td colspan="8" class="text-center py-4 text-secondary small">Loading recent rides...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </section>
 
                     <!-- Drivers -->
@@ -1267,6 +1588,49 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MODALS: MOBILE & SUPER ADMIN ============ -->
+    <!-- Modal: Mobile Device Detection Notice (Non-dismissible) -->
+    <div id="modal-mobile-warning" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" data-bs-backdrop="static" data-bs-keyboard="false" style="display: none; background: rgba(0, 0, 0, 0.75); z-index: 1090;">
+        <div class="modal-dialog modal-dialog-centered modal-sm" role="document">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-body text-center py-4 px-4">
+                    <div class="avatar avatar-lg bg-danger-lt text-danger mb-3 mx-auto rounded-circle">
+                        <i class="ti ti-device-desktop-off fs-1"></i>
+                    </div>
+                    <h3 class="fw-bold mb-3">Desktop Required</h3>
+                    <p class="text-secondary small mb-4 text-start" style="line-height: 1.6;">
+                        Dear Admin, please note that the <b>Admin Panel is designed exclusively for desktop and laptop use</b> and cannot be operated on mobile devices such as smartphones or tablets. There is currently no mobile alternative, as the <b>Admin Panel is specifically built and intended for desktop/laptop environments</b>. Please access the Admin Panel only from a laptop or desktop computer. Thank you for your understanding and cooperation.
+                    </p>
+                    <button type="button" id="btn-mobile-logout" class="btn btn-danger w-100 rounded-pill">
+                        <i class="ti ti-logout me-1"></i> I understand, and logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Super Admin Advisory Notice -->
+    <div id="modal-super-admin-notice" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" data-bs-backdrop="static" data-bs-keyboard="false" style="display: none; background: rgba(0, 0, 0, 0.65); z-index: 1085;">
+        <div class="modal-dialog modal-dialog-centered modal-md" role="document">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-header border-0 pb-0 pt-4 px-4">
+                    <h4 class="modal-title fw-bold d-flex align-items-center text-purple">
+                        <i class="ti ti-shield-lock me-2 fs-2"></i> Super Admin Advisory
+                    </h4>
+                </div>
+                <div class="modal-body py-3 px-4">
+                    <p class="text-secondary small mb-0" style="line-height: 1.6;">
+                        Dear Super Admin, please note that this account <b>must not be used for performing routine tasks, actions, or administrative operations</b>. All regular administrative activities must be carried out using your personal admin account. The Super Admin account is <b>reserved strictly for emergency situations, critical system recovery, and exceptional circumstances</b> where elevated privileges are genuinely required. Please do not use this account for any day-to-day administrative work.
+                    </p>
+                </div>
+                <div class="modal-footer border-0 pt-2 pb-4 px-4 d-flex justify-content-end gap-2">
+                    <button type="button" id="btn-super-admin-ignore" class="btn btn-outline-secondary rounded-pill px-3">Ignore</button>
+                    <button type="button" id="btn-super-admin-logout" class="btn btn-danger rounded-pill px-3">I understand and logout</button>
                 </div>
             </div>
         </div>

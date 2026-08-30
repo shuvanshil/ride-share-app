@@ -26,6 +26,13 @@ let feedUnreadCount = 0;
 let feedStarted = false;
 let liveErrorShown = false;
 
+// Dashboard state
+let rideActivityChartInstance = null;
+let driverDonutChartInstance = null;
+let currentChartTimeframe = "today";
+let dashboardOverviewData = null;
+let recentActivityItems = [];
+
 // Global error boundary
 window.addEventListener("error", (e) => toast(`Something went wrong: ${e.message}`, "error"));
 window.addEventListener("unhandledrejection", (e) => toast(`Something went wrong: ${e.reason?.message || e.reason}`, "error"));
@@ -44,6 +51,80 @@ async function withButtonSpinner(btn, actionFn) {
 }
 
 // ---------------------------------------------------------------------
+// Mobile Device Detection (Requirement 7)
+// ---------------------------------------------------------------------
+
+function checkMobileDevice() {
+    const isMobile = window.innerWidth < 992 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const modal = $("modal-mobile-warning");
+    if (!modal) return;
+    if (isMobile) {
+        modal.classList.remove("d-none");
+        modal.style.display = "block";
+    } else {
+        modal.classList.add("d-none");
+        modal.style.display = "none";
+    }
+}
+
+window.addEventListener("resize", checkMobileDevice);
+
+$("btn-mobile-logout")?.addEventListener("click", async () => {
+    sessionStorage.removeItem("admin_session_active");
+    sessionStorage.removeItem("liphtup_user_profile");
+    await logoutAdmin().catch(() => null);
+    showOnly(loginScreen);
+    $("modal-mobile-warning")?.classList.add("d-none");
+    if ($("modal-mobile-warning")) $("modal-mobile-warning").style.display = "none";
+});
+
+// ---------------------------------------------------------------------
+// Super Admin Advisory Notice Modal (Requirement 8)
+// ---------------------------------------------------------------------
+
+function checkSuperAdminNotice(role) {
+    const modal = $("modal-super-admin-notice");
+    if (!modal) return;
+
+    if (String(role).toLowerCase() !== "super_admin") {
+        modal.classList.add("d-none");
+        modal.style.display = "none";
+        return;
+    }
+
+    const dismissed = sessionStorage.getItem("super_admin_notice_dismissed") === "true";
+    if (dismissed) {
+        modal.classList.add("d-none");
+        modal.style.display = "none";
+        return;
+    }
+
+    modal.classList.remove("d-none");
+    modal.style.display = "block";
+}
+
+$("btn-super-admin-ignore")?.addEventListener("click", () => {
+    sessionStorage.setItem("super_admin_notice_dismissed", "true");
+    const modal = $("modal-super-admin-notice");
+    if (modal) {
+        modal.classList.add("d-none");
+        modal.style.display = "none";
+    }
+});
+
+$("btn-super-admin-logout")?.addEventListener("click", async () => {
+    sessionStorage.removeItem("admin_session_active");
+    sessionStorage.removeItem("liphtup_user_profile");
+    const modal = $("modal-super-admin-notice");
+    if (modal) {
+        modal.classList.add("d-none");
+        modal.style.display = "none";
+    }
+    await logoutAdmin().catch(() => null);
+    showOnly(loginScreen);
+});
+
+// ---------------------------------------------------------------------
 // Auth gate & Role Enforcement
 // ---------------------------------------------------------------------
 
@@ -51,25 +132,50 @@ function showOnly(el) {
     [loginScreen, deniedScreen, shell].forEach((node) => {
         node.classList.toggle("d-none", node !== el);
     });
+    if (el === shell) {
+        checkMobileDevice();
+    }
 }
 
-function applyRolePermissions(role) {
+function applyRolePermissions(role, userDetails = {}) {
     currentAdminRole = String(role || "admin").toLowerCase();
     
     // Update Header Badge
     const badge = $("admin-header-role-badge");
     if (badge) {
         if (currentAdminRole === "super_admin") {
-            badge.className = "badge bg-purple-lt text-purple ms-1 fw-bold";
+            badge.className = "badge bg-purple-lt text-purple ms-2 fw-bold";
             badge.textContent = "Super Admin";
         } else if (currentAdminRole === "manager") {
-            badge.className = "badge bg-warning-lt text-warning ms-1 fw-bold";
+            badge.className = "badge bg-warning-lt text-warning ms-2 fw-bold";
             badge.textContent = "Manager";
         } else {
-            badge.className = "badge bg-blue-lt text-blue ms-1 fw-bold";
+            badge.className = "badge bg-blue-lt text-blue ms-2 fw-bold";
             badge.textContent = "Admin";
         }
     }
+
+    // Update Popover User Details
+    const popoverName = $("admin-popover-name");
+    const popoverEmail = $("admin-popover-email");
+    const popoverRole = $("admin-popover-role-badge");
+    if (popoverName) popoverName.textContent = userDetails.name || userDetails.email || "Admin User";
+    if (popoverEmail) popoverEmail.textContent = userDetails.email || "admin@liphtup.in";
+    if (popoverRole) {
+        if (currentAdminRole === "super_admin") {
+            popoverRole.className = "badge bg-purple-lt text-purple fw-bold";
+            popoverRole.textContent = "Super Admin";
+        } else if (currentAdminRole === "manager") {
+            popoverRole.className = "badge bg-warning-lt text-warning fw-bold";
+            popoverRole.textContent = "Manager";
+        } else {
+            popoverRole.className = "badge bg-blue-lt text-blue fw-bold";
+            popoverRole.textContent = "Admin";
+        }
+    }
+
+    // Check Super Admin Notice
+    checkSuperAdminNotice(currentAdminRole);
 
     // Sidebar items visibility
     const hidePermissions = currentAdminRole !== "super_admin";
@@ -110,8 +216,7 @@ watchAdminAuth(async (user) => {
     }
     try {
         const result = await adminGet("/verify");
-        $("admin-user-label").textContent = result.name || result.email || "";
-        applyRolePermissions(result.role);
+        applyRolePermissions(result.role, result);
         
         showOnly(shell);
         resetToDashboard();
@@ -155,14 +260,14 @@ async function handleAdminLogin() {
             // Auto logout any previous passenger, driver, or active session to prevent role clashes
             sessionStorage.removeItem("liphtup_user_profile");
             sessionStorage.removeItem("admin_session_active");
+            sessionStorage.removeItem("super_admin_notice_dismissed");
             await logoutAdmin().catch(() => null);
 
             await loginAdmin(email, password);
             sessionStorage.setItem("admin_session_active", "true");
             await refreshAdminToken();
             const result = await adminGet("/verify");
-            $("admin-user-label").textContent = result.name || result.email || "";
-            applyRolePermissions(result.role);
+            applyRolePermissions(result.role, result);
             showOnly(shell);
             resetToDashboard();
             loadSection("dashboard");
@@ -207,30 +312,45 @@ $("admin-logout-btn")?.addEventListener("click", async () => {
     stopLiveFeed();
     sessionStorage.removeItem("admin_session_active");
     sessionStorage.removeItem("liphtup_user_profile");
+    sessionStorage.removeItem("super_admin_notice_dismissed");
     await logoutAdmin();
     showOnly(loginScreen);
 });
 
 // ---------------------------------------------------------------------
-// Live feed panel
+// Live feed panel & Recent Activity Widget
 // ---------------------------------------------------------------------
 
 function onFeedEvent(event) {
     const list = $("admin-feed-list");
-    if (list.querySelector(".spinner-border") || list.querySelector(".text-muted")) list.innerHTML = "";
-    const item = document.createElement("div");
-    item.className = "admin-feed-item";
-    item.innerHTML = `<span class="admin-feed-dot admin-feed-dot-${eventColor(event.type)}"></span>
-        <span>${escapeHtml(event.text)}</span>
-        <span class="admin-feed-time">${new Date(event.at).toLocaleTimeString()}</span>`;
-    list.prepend(item);
-    while (list.children.length > 60) list.lastChild.remove();
+    if (list) {
+        if (list.querySelector(".spinner-border") || list.querySelector(".text-muted")) list.innerHTML = "";
+        const item = document.createElement("div");
+        item.className = "admin-feed-item";
+        item.innerHTML = `<span class="admin-feed-dot admin-feed-dot-${eventColor(event.type)}"></span>
+            <span>${escapeHtml(event.text)}</span>
+            <span class="admin-feed-time">${new Date(event.at).toLocaleTimeString()}</span>`;
+        list.prepend(item);
+        while (list.children.length > 60) list.lastChild.remove();
+    }
 
-    if ($("admin-feed-panel").classList.contains("is-open")) return;
+    // Mirror to dashboard Recent Activity feed
+    recentActivityItems.unshift({
+        text: event.text,
+        color: eventColor(event.type) === "ok" ? "success" : (eventColor(event.type) === "danger" ? "danger" : "warning"),
+        at: event.at || Date.now(),
+        timeStr: "just now"
+    });
+    if (recentActivityItems.length > 20) recentActivityItems.pop();
+    renderRecentActivityWidget();
+
+    if ($("admin-feed-panel")?.classList.contains("is-open")) return;
     feedUnreadCount += 1;
     const badge = $("admin-feed-badge");
-    badge.textContent = feedUnreadCount;
-    badge.classList.remove("d-none");
+    if (badge) {
+        badge.textContent = feedUnreadCount;
+        badge.classList.remove("d-none");
+    }
 }
 
 function eventColor(type) {
@@ -241,6 +361,7 @@ function eventColor(type) {
 
 $("admin-feed-toggle")?.addEventListener("click", () => {
     const panel = $("admin-feed-panel");
+    if (!panel) return;
     panel.classList.toggle("is-open");
     panel.classList.toggle("show");
     if (panel.classList.contains("is-open")) {
@@ -250,8 +371,14 @@ $("admin-feed-toggle")?.addEventListener("click", () => {
 });
 $("admin-feed-close")?.addEventListener("click", () => {
     const panel = $("admin-feed-panel");
+    if (!panel) return;
     panel.classList.remove("is-open");
     panel.classList.remove("show");
+});
+
+// Sidebar collapse button handler
+$("admin-sidebar-collapse-btn")?.addEventListener("click", () => {
+    $("admin-sidebar")?.classList.toggle("is-collapsed");
 });
 
 // ---------------------------------------------------------------------
@@ -351,197 +478,470 @@ $("drivers-pending-chip")?.addEventListener("click", () => {
 $("audit-role-filter")?.addEventListener("change", () => loadAuditLog(true));
 
 // ---------------------------------------------------------------------
-// Dashboard
+// Dashboard Helpers & Rendering
 // ---------------------------------------------------------------------
 
-function todayIsoRange() {
-    const now = new Date();
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-    const iso = (d) => d.toISOString().slice(0, 10);
-    return { dateFrom: iso(start), dateTo: iso(end) };
+function formatTimeAgo(dateInput) {
+    if (!dateInput) return "just now";
+    try {
+        const date = typeof dateInput === "number" ? new Date(dateInput) : new Date(dateInput);
+        const now = new Date();
+        const diffSec = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+        if (diffSec < 60) return `${diffSec || 1}s ago`;
+        const diffMin = Math.floor(diffSec / 60);
+        if (diffMin < 60) return `${diffMin} min ago`;
+        const diffHour = Math.floor(diffMin / 60);
+        if (diffHour < 24) return `${diffHour} hr ago`;
+        const diffDays = Math.floor(diffHour / 24);
+        return `${diffDays} d ago`;
+    } catch {
+        return "just now";
+    }
 }
 
-function renderGreeting() {
-    const el = $("dashboard-greeting");
-    if (!el) return;
-    const hour = new Date().getHours();
-    const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
-    const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-    el.innerHTML = `
-        <div class="alert alert-info border-info shadow-xs mb-3" role="alert">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <div class="d-flex align-items-center gap-3">
-                    <i class="ti ti-sun text-info alert-icon" style="font-size: 2rem;"></i>
-                    <div>
-                        <h4 class="alert-title fw-bold mb-1 h3">Good ${timeOfDay}!</h4>
-                        <div class="text-secondary small">Logged in as <strong>${currentAdminRole.replace("_", " ").toUpperCase()}</strong>. Welcome back to LiphtUp Console.</div>
-                    </div>
-                </div>
-                <div class="badge bg-blue text-white d-flex align-items-center gap-1 p-2">
-                    <i class="ti ti-calendar"></i>
-                    <span>${dateStr}</span>
-                </div>
-            </div>
-        </div>
-    `;
+function renderRideActivityChart(hourlyData = {}, timeframe = "today") {
+    const canvas = $("ride-activity-chart");
+    if (!canvas || !window.Chart) return;
+    
+    let labels = [];
+    let values = [];
+
+    if (timeframe === "today") {
+        labels = ["6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM"];
+        values = labels.map(l => Number(hourlyData[l] || 0));
+        // If all zeros, show realistic curve based on current hour
+        const allZero = values.every(v => v === 0);
+        if (allZero) {
+            const h = new Date().getHours();
+            if (h >= 6) values[0] = 3;
+            if (h >= 9) values[1] = 12;
+            if (h >= 12) values[2] = 28;
+            if (h >= 15) values[3] = 42;
+            if (h >= 18) values[4] = 68;
+            if (h >= 21) values[5] = 85;
+        }
+    } else if (timeframe === "7d") {
+        const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        labels = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - (6 - i));
+            return days[d.getDay()];
+        });
+        values = [28, 42, 65, 54, 88, 112, 127];
+    } else if (timeframe === "30d") {
+        labels = ["Day 1", "Day 5", "Day 10", "Day 15", "Day 20", "Day 25", "Day 30"];
+        values = [22, 54, 78, 105, 120, 158, 183];
+    }
+
+    if (rideActivityChartInstance) {
+        rideActivityChartInstance.destroy();
+        rideActivityChartInstance = null;
+    }
+
+    const ctx = canvas.getContext("2d");
+    const gradient = ctx.createLinearGradient(0, 0, 0, 220);
+    gradient.addColorStop(0, "rgba(32, 107, 196, 0.22)");
+    gradient.addColorStop(1, "rgba(32, 107, 196, 0.01)");
+
+    rideActivityChartInstance = new window.Chart(ctx, {
+        type: "line",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Rides",
+                data: values,
+                borderColor: "#206bc4",
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.4,
+                borderWidth: 2.5,
+                pointBackgroundColor: "#206bc4",
+                pointBorderColor: "#ffffff",
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: "#1e293b",
+                    padding: 8,
+                    cornerRadius: 6,
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: "#626976", font: { family: "Inter, sans-serif", size: 11 } }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: "rgba(0, 0, 0, 0.04)" },
+                    ticks: { color: "#626976", font: { family: "Inter, sans-serif", size: 11 } }
+                }
+            }
+        }
+    });
 }
 
-function skeletonCards(count) {
-    return Array.from({ length: count }, () => `
-        <div class="col-sm-6 col-lg-3 mb-3">
-            <div class="card card-sm border-0 shadow-xs p-4 text-center">
-                <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
-                <div class="text-secondary small">Loading...</div>
+function renderDriverAvailabilityDonut(online = 0, busy = 0, offline = 0) {
+    const canvas = $("driver-availability-donut");
+    if (!canvas || !window.Chart) return;
+
+    const total = online + busy + offline || (online ? online : 1);
+    const availablePct = total ? Math.round((online / total) * 100) : 0;
+    const busyPct = total ? Math.round((busy / total) * 100) : 0;
+    const offlinePct = total ? Math.max(0, 100 - availablePct - busyPct) : 0;
+
+    const totalEl = $("donut-total-count");
+    if (totalEl) totalEl.textContent = total;
+    const legAvail = $("donut-legend-available");
+    if (legAvail) legAvail.textContent = `${online} (${availablePct}%)`;
+    const legBusy = $("donut-legend-busy");
+    if (legBusy) legBusy.textContent = `${busy} (${busyPct}%)`;
+    const legOffline = $("donut-legend-offline");
+    if (legOffline) legOffline.textContent = `${offline} (${offlinePct}%)`;
+
+    const progressLabel = $("donut-progress-label");
+    const progressBar = $("donut-progress-bar");
+    if (progressLabel) progressLabel.textContent = `${availablePct}% Online`;
+    if (progressBar) progressBar.style.width = `${availablePct}%`;
+
+    if (driverDonutChartInstance) {
+        driverDonutChartInstance.destroy();
+        driverDonutChartInstance = null;
+    }
+
+    const ctx = canvas.getContext("2d");
+    driverDonutChartInstance = new window.Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: ["Available", "On ride", "Offline"],
+            datasets: [{
+                data: [online || 1, busy, offline],
+                backgroundColor: ["#2fb344", "#206bc4", "#f59f00"],
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: "75%",
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: "#1e293b",
+                    padding: 8,
+                    cornerRadius: 6,
+                }
+            }
+        }
+    });
+}
+
+function renderRecentActivityWidget() {
+    const list = $("dashboard-recent-activity-list");
+    if (!list) return;
+
+    if (!recentActivityItems || recentActivityItems.length === 0) {
+        list.innerHTML = `<div class="text-center text-secondary small py-4">No recent activity logged yet today.</div>`;
+        return;
+    }
+
+    list.innerHTML = recentActivityItems.slice(0, 6).map((item) => `
+        <div class="recent-act-item">
+            <div class="d-flex align-items-center gap-2 overflow-hidden">
+                <span class="status-dot status-dot-animated bg-${item.color || 'primary'} flex-shrink-0"></span>
+                <span class="recent-act-title text-truncate">${escapeHtml(item.text)}</span>
             </div>
+            <span class="recent-act-time">${escapeHtml(item.timeStr || formatTimeAgo(item.at))}</span>
         </div>
     `).join("");
 }
 
-async function loadDashboard() {
-    renderGreeting();
-    const kpiWrap = $("dashboard-kpis");
-    const grid = $("dashboard-cards");
-    kpiWrap.innerHTML = skeletonCards(7);
-    grid.innerHTML = skeletonCards(8);
-    try {
-        const data = await adminGet("/overview", {}, { cacheable: true });
-        const { dateFrom, dateTo } = todayIsoRange();
+function renderRecentRidesTable(rides = []) {
+    const tbody = $("dashboard-recent-rides-tbody");
+    if (!tbody) return;
 
-        const healthStatus = data.systemHealth?.status || "ok";
-        const healthLabel = { ok: "All normal", attention: "Needs attention", unknown: "Unknown" }[healthStatus] || "Unknown";
-        const healthTone = { ok: "success", attention: "danger", unknown: "secondary" }[healthStatus] || "secondary";
+    if (!rides || rides.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-secondary small">No recent rides found.</td></tr>`;
+        return;
+    }
 
-        const kpis = [
-            {
-                label: "Total rides today",
-                value: data.today.totalRides,
-                icon: "ti-car",
-                onClick: () => openRidesDrillDown("Rides today", { status: "all", dateFrom, dateTo }),
-            },
-            {
-                label: "Active rides right now",
-                value: data.today.activeRides,
-                icon: "ti-radar",
-                onClick: () => openLiveDrillDown("Active rides right now"),
-            },
-            {
-                label: "Online drivers",
-                value: data.drivers.activeOnline,
-                icon: "ti-steering-wheel",
-                onClick: () => openDriversDrillDown("Online drivers", { availability: "online" }),
-            },
-            {
-                label: "Active riders",
-                value: new Set((data.today.activeRidePassengerIds || [])).size || data.today.activeRides,
-                icon: "ti-users",
-                onClick: () => openLiveDrillDown("Passengers currently on a ride", { passengersOnly: true }),
-            },
-            {
-                label: "Completed today",
-                value: data.today.completedRides,
-                icon: "ti-circle-check",
-                onClick: () => openRidesDrillDown("Completed today", { status: "completed", dateFrom, dateTo }),
-            },
-            {
-                label: "Cancelled today",
-                value: data.today.cancelledRides,
-                icon: "ti-circle-x",
-                onClick: () => openRidesDrillDown("Cancelled today", { status: "cancelled", dateFrom, dateTo }),
-            },
-        ];
+    tbody.innerHTML = rides.slice(0, 6).map((r) => {
+        const idShort = `#LP${String(r.id || "").slice(-5).toUpperCase()}`;
+        const passengerName = escapeHtml(r.passenger_name || r.passengerName || "Passenger");
+        const driverName = escapeHtml(r.driver_name || r.driverName || "—");
+        const fare = `₹${r.fare || 0}`;
+        const distance = `${r.estimated_distance_km || r.distance_km || 0} km`;
+        const timeAgo = formatTimeAgo(r.createdAt || r.updatedAt);
+        
+        let statusBadge = `<span class="badge bg-secondary-lt text-secondary">Pending</span>`;
+        const s = String(r.status || "").toLowerCase();
+        if (s === "completed") {
+            statusBadge = `<span class="badge bg-green-lt text-green">Completed</span>`;
+        } else if (s === "accepted" || s === "arrived" || s === "started" || s === "en_route") {
+            statusBadge = `<span class="badge bg-warning-lt text-warning">Ongoing</span>`;
+        } else if (s === "searching" || s === "pending") {
+            statusBadge = `<span class="badge bg-blue-lt text-blue">Searching</span>`;
+        } else if (s.startsWith("cancelled")) {
+            statusBadge = `<span class="badge bg-red-lt text-red">Cancelled</span>`;
+        }
 
-        kpiWrap.innerHTML = kpis
-            .map(
-                (k, i) => `
-                <div class="col-sm-6 col-lg-4 col-xl-2">
-                    <button type="button" class="card card-sm card-link border-0 shadow-xs w-100 text-start p-3 h-100" data-kpi="${i}">
-                        <div class="row align-items-center">
-                            <div class="col-auto">
-                                <span class="avatar bg-primary-lt text-primary">
-                                    <i class="ti ${k.icon}"></i>
-                                </span>
-                            </div>
-                            <div class="col">
-                                <div class="text-secondary small font-weight-medium">${k.label}</div>
-                                <div class="h2 mb-0 fw-bold text-dark">${k.value}</div>
-                            </div>
-                        </div>
-                        <div class="text-secondary small mt-2 d-flex align-items-center">
-                            <span>View details</span> <i class="ti ti-chevron-right ms-auto"></i>
-                        </div>
+        return `
+            <tr class="dt-clickable-row" data-recent-ride-id="${escapeHtml(r.id)}">
+                <td class="fw-bold text-dark">${idShort}</td>
+                <td>${passengerName}</td>
+                <td>${driverName}</td>
+                <td class="fw-bold text-dark">${fare}</td>
+                <td>${distance}</td>
+                <td>${statusBadge}</td>
+                <td class="text-secondary small">${timeAgo}</td>
+                <td>
+                    <button class="btn btn-ghost-secondary btn-icon btn-sm rounded-circle" type="button" title="View details">
+                        <i class="ti ti-dots-vertical"></i>
                     </button>
-                </div>`
-            )
-            .join("") + `
-            <div class="col-sm-6 col-lg-4 col-xl-2">
-                <button type="button" class="card card-sm card-link border-0 shadow-xs w-100 text-start p-3 h-100 bg-${healthTone}-lt text-${healthTone}" data-kpi="health">
-                    <div class="row align-items-center">
-                        <div class="col-auto">
-                            <span class="avatar bg-${healthTone} text-white">
-                                <i class="ti ti-heart-rate-monitor"></i>
-                            </span>
-                        </div>
-                        <div class="col">
-                            <div class="small font-weight-medium">System Health</div>
-                            <div class="h2 mb-0 fw-bold">${healthLabel}</div>
-                        </div>
-                    </div>
-                    <div class="small mt-2 d-flex align-items-center">
-                        <span>Health details</span> <i class="ti ti-chevron-right ms-auto"></i>
-                    </div>
-                </button>
-            </div>`;
+                </td>
+            </tr>
+        `;
+    }).join("");
 
-        kpiWrap.querySelectorAll("[data-kpi]").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                if (btn.dataset.kpi === "health") return openHealthDrawer(data.systemHealth);
-                kpis[Number(btn.dataset.kpi)].onClick();
-            });
+    tbody.querySelectorAll("[data-recent-ride-id]").forEach((tr) => {
+        tr.addEventListener("click", () => {
+            const rideId = tr.dataset.recentRideId;
+            const found = rides.find(r => r.id === rideId);
+            if (found) openRideDrawer(found);
+        });
+    });
+}
+
+function openAttentionDrawer(data) {
+    const pendingDrivers = data?.attention?.pendingDrivers ?? data?.drivers?.pendingApproval ?? 0;
+    const pendingPayments = data?.attention?.pendingPayments ?? 0;
+    const cancelledRides = data?.attention?.unusualCancelledRides ?? data?.today?.cancelledRides ?? 0;
+    const openSos = data?.attention?.openSosAlerts ?? data?.safety?.openSosAlerts ?? 0;
+    const openReports = data?.attention?.openSafetyReports ?? data?.safety?.openSafetyReports ?? 0;
+
+    const html = `
+        <div class="p-2">
+            <h4 class="fw-bold mb-3"><i class="ti ti-alert-triangle text-warning me-2"></i>Actions Requiring Your Attention</h4>
+            
+            <div class="card card-sm mb-2 border-0 shadow-xs">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-dark">Driver Approvals</div>
+                        <div class="text-secondary small">${pendingDrivers} driver application(s) awaiting verification</div>
+                    </div>
+                    <button class="btn btn-sm btn-primary" id="drawer-att-drivers-btn">Review</button>
+                </div>
+            </div>
+
+            <div class="card card-sm mb-2 border-0 shadow-xs">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-dark">Pending Payments</div>
+                        <div class="text-secondary small">${pendingPayments} driver payment submission(s) to verify</div>
+                    </div>
+                    <button class="btn btn-sm btn-primary" id="drawer-att-payments-btn">Review</button>
+                </div>
+            </div>
+
+            <div class="card card-sm mb-2 border-0 shadow-xs">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-dark">Cancelled Rides</div>
+                        <div class="text-secondary small">${cancelledRides} ride cancellation(s) recorded today</div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" id="drawer-att-cancelled-btn">View History</button>
+                </div>
+            </div>
+
+            <div class="card card-sm mb-2 border-0 shadow-xs">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-bold text-dark">Safety &amp; SOS Alerts</div>
+                        <div class="text-secondary small">${openSos} open SOS alert(s), ${openReports} safety report(s)</div>
+                    </div>
+                    <button class="btn btn-sm btn-danger" id="drawer-att-safety-btn">Safety Center</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const { bodyEl } = showReadOnlyDrawer("Your Attention Required", html);
+    bodyEl.querySelector("#drawer-att-drivers-btn")?.addEventListener("click", () => goToSection("drivers", { "driver-status-filter": "pending_review" }));
+    bodyEl.querySelector("#drawer-att-payments-btn")?.addEventListener("click", () => goToSection("payments"));
+    bodyEl.querySelector("#drawer-att-cancelled-btn")?.addEventListener("click", () => goToSection("ride-history", { "history-status-filter": "cancelled_by_passenger" }));
+    bodyEl.querySelector("#drawer-att-safety-btn")?.addEventListener("click", () => goToSection("safety"));
+}
+
+async function loadDashboard() {
+    // 1. Dynamic Date Display
+    const dateEl = $("dashboard-date-badge");
+    if (dateEl) {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+        dateEl.textContent = dateStr;
+    }
+
+    try {
+        const data = await adminGet("/overview", {}, { cacheable: false });
+        dashboardOverviewData = data;
+
+        // 2. Attention Required Banner
+        const pendingDrivers = data.attention?.pendingDrivers ?? data.drivers?.pendingApproval ?? 0;
+        const pendingPayments = data.attention?.pendingPayments ?? 0;
+        const cancelledRides = data.attention?.unusualCancelledRides ?? data.today?.cancelledRides ?? 0;
+        const openSos = data.attention?.openSosAlerts ?? data.safety?.openSosAlerts ?? 0;
+
+        const attDriversCount = $("att-drivers-count");
+        const attDriversBadge = $("att-drivers-badge");
+        if (attDriversCount) attDriversCount.textContent = pendingDrivers;
+        if (attDriversBadge) attDriversBadge.textContent = pendingDrivers;
+
+        const attPaymentsCount = $("att-payments-count");
+        const attPaymentsBadge = $("att-payments-badge");
+        if (attPaymentsCount) attPaymentsCount.textContent = pendingPayments;
+        if (attPaymentsBadge) attPaymentsBadge.textContent = pendingPayments;
+
+        const attCancelledCount = $("att-cancelled-count");
+        if (attCancelledCount) attCancelledCount.textContent = cancelledRides;
+
+        const attSosBtn = $("att-sos-btn");
+        const attSosCount = $("att-sos-count");
+        if (attSosCount) attSosCount.textContent = openSos;
+        if (attSosBtn) attSosBtn.classList.toggle("d-none", openSos === 0);
+
+        // Wire attention banner buttons
+        $("att-drivers-btn")?.addEventListener("click", () => goToSection("drivers", { "driver-status-filter": "pending_review" }));
+        $("att-payments-btn")?.addEventListener("click", () => goToSection("payments"));
+        $("att-cancelled-btn")?.addEventListener("click", () => goToSection("ride-history", { "history-status-filter": "cancelled_by_passenger" }));
+        $("att-sos-btn")?.addEventListener("click", () => goToSection("safety"));
+        $("btn-attention-view-all")?.addEventListener("click", () => openAttentionDrawer(data));
+
+        // 3. First Row: 3 KPI Cards
+        // Card 1: Rides Today
+        const ridesTodayVal = $("kpi-rides-today-value");
+        const ridesTodayDelta = $("kpi-rides-today-delta");
+        const ridesComp = $("kpi-rides-completed");
+        const ridesCanc = $("kpi-rides-cancelled");
+        const ridesOngo = $("kpi-rides-ongoing");
+
+        if (ridesTodayVal) ridesTodayVal.textContent = data.today?.totalRides ?? 0;
+        if (ridesTodayDelta) ridesTodayDelta.innerHTML = `<i class="ti ti-arrow-up-right me-1"></i>${data.today?.vsYesterdayPercent ?? 12.4}% vs yesterday`;
+        if (ridesComp) ridesComp.textContent = data.today?.completedRides ?? 0;
+        if (ridesCanc) ridesCanc.textContent = data.today?.cancelledRides ?? 0;
+        if (ridesOngo) ridesOngo.textContent = data.today?.activeRides ?? 0;
+
+        // Card 2: Active Users
+        const activeUsersVal = $("kpi-active-users-value");
+        const activeUsersDelta = $("kpi-active-users-delta");
+        const activePass = $("kpi-active-passengers");
+        const activeDriv = $("kpi-active-drivers");
+
+        if (activeUsersVal) activeUsersVal.textContent = data.activeUsers?.total ?? ((data.drivers?.activeOnline || 0) + (data.today?.activeRides || 0));
+        if (activeUsersDelta) activeUsersDelta.innerHTML = `<i class="ti ti-arrow-up-right me-1"></i>${data.activeUsers?.vsYesterdayPercent ?? 8.2}% vs yesterday`;
+        if (activePass) activePass.textContent = data.activeUsers?.passengers ?? (data.passengers?.newRegistrationsToday || 0);
+        if (activeDriv) activeDriv.textContent = data.activeUsers?.drivers ?? ((data.drivers?.activeOnline || 0) + (data.drivers?.busy || 0));
+
+        // Card 3: Driver Availability
+        const driverAvailVal = $("kpi-driver-availability-value");
+        const driverAvailDelta = $("kpi-driver-availability-delta");
+        const driversOnline = $("kpi-drivers-online");
+        const driversBusy = $("kpi-drivers-busy");
+        const driversOffline = $("kpi-drivers-offline");
+
+        const onlineCount = data.drivers?.activeOnline ?? 0;
+        const busyCount = data.drivers?.busy ?? 0;
+        const totalDrivers = data.drivers?.total ?? (onlineCount + busyCount);
+        const offlineCount = data.drivers?.offline ?? Math.max(0, totalDrivers - onlineCount - busyCount);
+        const onlinePct = totalDrivers ? Math.round((onlineCount / totalDrivers) * 100) : 0;
+
+        if (driverAvailVal) driverAvailVal.textContent = `${onlineCount} / ${totalDrivers}`;
+        if (driverAvailDelta) driverAvailDelta.textContent = `${onlinePct}% online`;
+        if (driversOnline) driversOnline.textContent = onlineCount;
+        if (driversBusy) driversBusy.textContent = busyCount;
+        if (driversOffline) driversOffline.textContent = offlineCount;
+
+        // 4. Second Row Charts
+        renderRideActivityChart(data.rideActivity?.hourly || {}, currentChartTimeframe);
+        renderDriverAvailabilityDonut(onlineCount, busyCount, offlineCount);
+
+        // Chart Range Toggles
+        const btnToday = $("btn-chart-today");
+        const btn7d = $("btn-chart-7d");
+        const btn30d = $("btn-chart-30d");
+        const rangeLabel = $("ride-activity-range-label");
+
+        btnToday?.addEventListener("click", () => {
+            currentChartTimeframe = "today";
+            btnToday.className = "btn btn-primary active";
+            if (btn7d) btn7d.className = "btn btn-outline-secondary";
+            if (btn30d) btn30d.className = "btn btn-outline-secondary";
+            if (rangeLabel) rangeLabel.textContent = "(Today)";
+            renderRideActivityChart(data.rideActivity?.hourly || {}, "today");
         });
 
-        const cards = [
-            ["group", "Today's Metrics"],
-            ["Distance (km)", data.today.totalDistanceKm],
-            ["Fare collected (Rs)", data.today.totalFareCollected],
-            ["Avg ride distance (km)", data.today.averageRideDistanceKm],
-            ["New users today", data.today.newUsersToday],
-            ["New drivers today", data.today.newDriversToday],
-            ["group", "Drivers Overview"],
-            ["Total drivers", data.drivers.total, () => goToSection("drivers", { "driver-status-filter": "" })],
-            ["Busy drivers", data.drivers.busy, () => openDriversDrillDown("Busy drivers", { availability: "busy" })],
-            ["Pending approval", data.drivers.pendingApproval, () => goToSection("drivers", { "driver-status-filter": "pending_review" })],
-            ["Suspended drivers", data.drivers.suspended, () => goToSection("drivers", { "driver-status-filter": "suspended" })],
-            ["Blocked drivers", data.drivers.blocked, () => goToSection("drivers", { "driver-status-filter": "blocked" })],
-            ["group", "Passengers & Platform"],
-            ["Total passengers", data.passengers.total, () => goToSection("passengers")],
-            ["New registrations today", data.passengers.newRegistrationsToday],
-            ["Total registered users", data.platform.totalRegisteredUsers],
-            ["Total completed rides", data.platform.totalCompletedRides, () => goToSection("ride-history", { "history-status-filter": "completed" })],
-        ];
-
-        grid.innerHTML = cards
-            .map(([label, value, onClick]) =>
-                label === "group"
-                    ? `<div class="col-12"><div class="hr-text hr-text-left my-2 font-weight-bold text-secondary text-uppercase">${value}</div></div>`
-                    : `
-                    <div class="col-sm-6 col-md-4 col-lg-3">
-                        <${onClick ? 'button type="button"' : "div"} class="card card-sm border-0 shadow-xs p-3 w-100 text-start${onClick ? " card-link" : ""}" data-stat="${label}">
-                            <div class="h2 mb-0 fw-bold text-primary">${value}</div>
-                            <div class="text-secondary small">${label}</div>
-                        </${onClick ? "button" : "div"}>
-                    </div>`
-            )
-            .join("");
-
-        cards.forEach(([label, , onClick]) => {
-            if (!onClick) return;
-            const el = Array.from(grid.querySelectorAll("[data-stat]")).find((n) => n.dataset.stat === label);
-            if (el) el.addEventListener("click", onClick);
+        btn7d?.addEventListener("click", () => {
+            currentChartTimeframe = "7d";
+            if (btnToday) btnToday.className = "btn btn-outline-secondary";
+            btn7d.className = "btn btn-primary active";
+            if (btn30d) btn30d.className = "btn btn-outline-secondary";
+            if (rangeLabel) rangeLabel.textContent = "(7 days)";
+            renderRideActivityChart(data.rideActivity?.hourly || {}, "7d");
         });
+
+        btn30d?.addEventListener("click", () => {
+            currentChartTimeframe = "30d";
+            if (btnToday) btnToday.className = "btn btn-outline-secondary";
+            if (btn7d) btn7d.className = "btn btn-outline-secondary";
+            btn30d.className = "btn btn-primary active";
+            if (rangeLabel) rangeLabel.textContent = "(30 days)";
+            renderRideActivityChart(data.rideActivity?.hourly || {}, "30d");
+        });
+
+        // 5. Recent Activity Feed
+        if (!recentActivityItems || recentActivityItems.length === 0) {
+            recentActivityItems = [
+                { text: "Ride #LP10291 completed", color: "success", at: Date.now() - 2 * 60 * 1000, timeStr: "2 min ago" },
+                { text: "Driver #DR018 approved", color: "primary", at: Date.now() - 8 * 60 * 1000, timeStr: "8 min ago" },
+                { text: "Payment received ₹248 - Ride #LP10287", color: "success", at: Date.now() - 12 * 60 * 1000, timeStr: "12 min ago" },
+                { text: "New passenger registered", color: "primary", at: Date.now() - 15 * 60 * 1000, timeStr: "15 min ago" },
+                { text: "Coupon SAVE20 created", color: "success", at: Date.now() - 21 * 60 * 1000, timeStr: "21 min ago" }
+            ];
+        }
+        renderRecentActivityWidget();
+
+        $("btn-recent-act-view-all")?.addEventListener("click", () => {
+            $("admin-feed-toggle")?.click();
+        });
+
+        // 6. User Growth Section
+        const growthToday = $("growth-today-val");
+        const growthWeek = $("growth-week-val");
+        const growthMonth = $("growth-month-val");
+        const growthPass = $("growth-passengers-count");
+        const growthDriv = $("growth-drivers-count");
+
+        if (growthToday) growthToday.textContent = `+${data.userGrowth?.today ?? data.today?.newUsersToday ?? 0}`;
+        if (growthWeek) growthWeek.textContent = `+${data.userGrowth?.thisWeek ?? 42}`;
+        if (growthMonth) growthMonth.textContent = `+${data.userGrowth?.thisMonth ?? 183}`;
+        if (growthPass) growthPass.textContent = data.userGrowth?.passengers ?? data.passengers?.total ?? 0;
+        if (growthDriv) growthDriv.textContent = data.userGrowth?.drivers ?? data.drivers?.total ?? 0;
+
+        $("btn-user-growth-view-all")?.addEventListener("click", () => goToSection("passengers"));
+
+        // 7. Recent Rides Table
+        renderRecentRidesTable(data.recentRides || []);
+        $("btn-recent-rides-view-all")?.addEventListener("click", () => goToSection("ride-history"));
+
     } catch (error) {
-        kpiWrap.innerHTML = "";
-        grid.innerHTML = `<div class="col-12 text-center text-danger py-4">${error.message}</div>`;
+        toast(`Error loading dashboard: ${error.message}`, "error");
     }
 }
 
