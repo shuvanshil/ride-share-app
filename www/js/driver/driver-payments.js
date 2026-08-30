@@ -589,16 +589,33 @@ async function checkAndShowDriverSettlementModal() {
         if (!modal) return;
 
         const isSettlement = item.modalType === 'driver_settlement' || item.type === 'DRIVER_SETTLEMENT';
+        const isCoupon = item.modalType === 'coupon_subsidy' || item.type === 'COUPON_DISCOUNT_RECEIPT';
+        const isRideWallet = item.modalType === 'ride_wallet_receipt' || item.type === 'RIDE_WALLET_RECEIPT';
+
         if (titleEl) {
-            titleEl.innerText = isSettlement ? "Wallet Settlement Transferred!" : "Wallet Credit Received!";
+            if (isSettlement) {
+                titleEl.innerText = t('wallet.settlement_transferred', "Wallet Settlement Transferred!");
+            } else if (isCoupon) {
+                titleEl.innerText = t('wallet.coupon_credit_received', "Coupon Subsidy Received!");
+            } else if (isRideWallet) {
+                titleEl.innerText = t('wallet.ride_wallet_received', "Passenger Wallet Payment Received!");
+            } else {
+                titleEl.innerText = t('wallet.credit_received_title', "Wallet Credit Received!");
+            }
         }
         if (amtVal) {
             amtVal.innerText = `₹${(item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN')}`;
         }
         if (descEl) {
-            descEl.innerText = isSettlement
-                ? `Admin has approved and transferred ₹${(item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN')} directly to your registered UPI ID. Your wallet balance has been settled.`
-                : `₹${(item.amount ?? 0).toLocaleString('en-IN')} credit has been added to your Driver Wallet.`;
+            if (isSettlement) {
+                descEl.innerText = `Admin has approved and transferred ₹${(item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN')} directly to your registered UPI ID. Your wallet balance has been settled.`;
+            } else if (isCoupon) {
+                descEl.innerText = `₹${(item.amount ?? 0).toLocaleString('en-IN')} platform subsidy from applied coupon has been credited directly to your Driver Wallet.`;
+            } else if (isRideWallet) {
+                descEl.innerText = `Passenger paid ₹${(item.amount ?? 0).toLocaleString('en-IN')} via wallet credit, added directly to your Driver Wallet.`;
+            } else {
+                descEl.innerText = `₹${(item.amount ?? 0).toLocaleString('en-IN')} credit has been added to your Driver Wallet.`;
+            }
         }
 
         modal.classList.remove('d-none');

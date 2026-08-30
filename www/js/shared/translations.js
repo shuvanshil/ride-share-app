@@ -56,13 +56,15 @@ export const TRANSLATIONS = {
             "locating": "Locating…",
             "removing": "Removing…",
             "next": "Next",
-            "logging_in": "Logging in..."
+            "logging_in": "Logging in...",
+            "retry": "Retry"
         },
         "nav": {
             "home": "Home",
             "services": "Services",
             "history": "History",
-            "profile": "Profile"
+            "profile": "Profile",
+            "driver": "Driver"
         },
         "auth": {
             "welcome_back": "Welcome back!",
@@ -256,6 +258,7 @@ export const TRANSLATIONS = {
             "popover_title": "Live Availability & Pricing",
             "popover_desc": "Availability is calculated in real-time from approved, free drivers in your pickup radius. Fares are calculated using standard government rates based on road distance with zero hidden surge charges.",
             "vehicle_locked": "Vehicle locked for your active ride.",
+            "all_prices_inclusive": "All prices are inclusive of taxes and fees",
             "need_options_sooner": "Need options sooner?",
             "view_choices_now": "View choices now →",
             "still_looking_title": "We're still looking for a driver for you",
@@ -585,11 +588,14 @@ export const TRANSLATIONS = {
             "new_ride_request": "New Ride Request!",
             "pickup_distance": "Pickup distance",
             "accept_ride_btn": "Accept Ride",
+            "accepting": "Accepting...",
+            "ride_accepted_route_loading": "Ride accepted. Loading route...",
             "reject_btn": "Decline",
             "start_trip_btn": "Verify OTP & Start Trip",
             "enter_pin_prompt": "Enter passenger 4-digit PIN",
             "complete_trip_btn": "Complete Trip",
             "fare_collected": "Fare Collected & Clear",
+            "fare_received_clear": "Fare Collected & Clear",
             "review_title": "Account Under Review",
             "review_sub": "Your driver profile has been submitted. You can start accepting rides after admin approval.",
             "current_week": "Current Week",
@@ -886,7 +892,13 @@ export const TRANSLATIONS = {
             "remaining_fare_label": "Remaining to Pay",
             "confirm_payment": "Confirm & Apply Credits",
             "deduct_confirm_sub": "Apply your available wallet credits to reduce your ride fare.",
-            "fare_fully_covered": "Fare will be fully covered by wallet credits!"
+            "fare_fully_covered": "Fare will be fully covered by wallet credits!",
+            "badge": "Wallet",
+            "opening_wallet": "Opening wallet...",
+            "remaining_cash_to_pay": "Remaining cash to pay driver",
+            "settlement_transferred": "Wallet Settlement Transferred!",
+            "coupon_credit_received": "Coupon Subsidy Received!",
+            "ride_wallet_received": "Passenger Wallet Payment Received!"
         },
         "coupons": {
             "title": "Coupons",
@@ -956,13 +968,15 @@ export const TRANSLATIONS = {
             "locating": "অবস্থান সনাক্ত করা হচ্ছে…",
             "removing": "মুছে ফেলা হচ্ছে…",
             "next": "পরবর্তী",
-            "logging_in": "লগইন করা হচ্ছে..."
+            "logging_in": "লগইন করা হচ্ছে...",
+            "retry": "পুনরায় চেষ্টা করুন"
         },
         "nav": {
             "home": "হোম",
             "services": "সার্ভিস",
             "history": "হিস্ট্রি",
-            "profile": "প্রোফাইল"
+            "profile": "প্রোফাইল",
+            "driver": "ড্রাইভার"
         },
         "auth": {
             "welcome_back": "স্বাগতম!",
@@ -1156,6 +1170,7 @@ export const TRANSLATIONS = {
             "popover_title": "লাইভ উপলব্ধতা ও মূল্য নির্ধারণ",
             "popover_desc": "অনুমোদিত ও ফাঁকা ড্রাইভারদের রিয়েল-টাইম তথ্যের ভিত্তিতে উপলব্ধতা হিসাব করা হয়। কোন হিডেন চার্জ নেই।",
             "vehicle_locked": "আপনার সক্রিয় রাইডের জন্য যান নির্বাচন লক করা হয়েছে।",
+            "all_prices_inclusive": "সমস্ত মূল্য ট্যাক্স ও ফি অন্তর্ভুক্ত",
             "need_options_sooner": "তাড়াতাড়ি অপশন দরকার?",
             "view_choices_now": "বিকল্পসমূহ দেখুন →",
             "still_looking_title": "আমরা এখনও আপনার জন্য ড্রাইভার খুঁজছি",
@@ -1485,11 +1500,14 @@ export const TRANSLATIONS = {
             "new_ride_request": "নতুন রাইড রিকোয়েস্ট!",
             "pickup_distance": "পিকআপ দূরত্ব",
             "accept_ride_btn": "রাইড গ্রহণ করুন",
+            "accepting": "গ্রহণ করা হচ্ছে...",
+            "ride_accepted_route_loading": "রাইড গ্রহণ করা হয়েছে। রুট লোড হচ্ছে...",
             "reject_btn": "বাতিল",
             "start_trip_btn": "OTP যাচাই করে রাইড শুরু করুন",
             "enter_pin_prompt": "প্যাসেঞ্জারের ৪-সংখ্যার PIN প্রবেশ করান",
             "complete_trip_btn": "রাইড সম্পন্ন করুন",
             "fare_collected": "ভাড়া সংগৃহীত ও ক্লিয়ার",
+            "fare_received_clear": "ভাড়া সংগৃহীত ও সমাপ্ত",
             "review_title": "অ্যাকাউন্ট পর্যালোচনার অধীনে রয়েছে",
             "review_sub": "আপনার ড্রাইভার প্রোফাইল জমা দেওয়া হয়েছে। এডমিন অনুমোদনের পর আপনি রাইড গ্রহণ শুরু করতে পারবেন।",
             "current_week": "বর্তমান সপ্তাহ",
@@ -1786,7 +1804,13 @@ export const TRANSLATIONS = {
             "remaining_fare_label": "পরিশোধের বাকি",
             "confirm_payment": "নিশ্চিত করুন ও ক্রেডিট ব্যবহার করুন",
             "deduct_confirm_sub": "আপনার রাইডের ভাড়া কমাতে ওয়ালেট ক্রেডিট ব্যবহার করুন।",
-            "fare_fully_covered": "রাইডের সম্পূর্ণ ভাড়া ওয়ালেট ক্রেডিট দিয়ে পরিশোধ হবে!"
+            "fare_fully_covered": "রাইডের সম্পূর্ণ ভাড়া ওয়ালেট ক্রেডিট দিয়ে পরিশোধ হবে!",
+            "badge": "ওয়ালেট",
+            "opening_wallet": "ওয়ালেট খোলা হচ্ছে...",
+            "remaining_cash_to_pay": "ড্রাইভারকে নগদ প্রদেয় বাকি",
+            "settlement_transferred": "ওয়ালেট সেটেলমেন্ট সফলভাবে স্থানান্তরিত হয়েছে!",
+            "coupon_credit_received": "কুপন ভরতুকি জমা হয়েছে!",
+            "ride_wallet_received": "যাত্রীর ওয়ালেট পেমেন্ট জমা হয়েছে!"
         },
         "coupons": {
             "title": "কুপন",

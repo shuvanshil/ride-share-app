@@ -379,6 +379,44 @@ def get_unacknowledged_credits(auth_user: Dict[str, Any] = Depends(current_user)
             formatted["settlementAmount"] = formatted.get("amount", 0)
             unacknowledged.append(formatted)
 
+    # 3. Fetch unacknowledged COUPON_DISCOUNT_RECEIPT transactions (for driver coupon platform subsidies)
+    coupon_credits = list(
+        db.collection("walletTransactions")
+        .where("userId", "==", uid)
+        .where("type", "==", "COUPON_DISCOUNT_RECEIPT")
+        .where("status", "==", "completed")
+        .stream()
+    )
+    for doc in coupon_credits:
+        d = doc.to_dict() or {}
+        tx_id = d.get("transactionId")
+        if not tx_id:
+            continue
+        ack_snap = db.collection("walletCreditAcknowledgements").document(f"ack_{uid}_{tx_id}").get()
+        if not ack_snap.exists:
+            formatted = _format_transaction_for_client(d, "driver")
+            formatted["modalType"] = "coupon_subsidy"
+            unacknowledged.append(formatted)
+
+    # 4. Fetch unacknowledged RIDE_WALLET_RECEIPT transactions (for driver wallet payment receipts)
+    ride_wallet_credits = list(
+        db.collection("walletTransactions")
+        .where("userId", "==", uid)
+        .where("type", "==", "RIDE_WALLET_RECEIPT")
+        .where("status", "==", "completed")
+        .stream()
+    )
+    for doc in ride_wallet_credits:
+        d = doc.to_dict() or {}
+        tx_id = d.get("transactionId")
+        if not tx_id:
+            continue
+        ack_snap = db.collection("walletCreditAcknowledgements").document(f"ack_{uid}_{tx_id}").get()
+        if not ack_snap.exists:
+            formatted = _format_transaction_for_client(d, "driver")
+            formatted["modalType"] = "ride_wallet_receipt"
+            unacknowledged.append(formatted)
+
     return {
         "ok": True,
         "unacknowledgedCredits": unacknowledged,

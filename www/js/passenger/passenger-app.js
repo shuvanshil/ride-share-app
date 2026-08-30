@@ -900,7 +900,7 @@ function showTripProgressPanel(ride) {
 
             const availBal = cachedPassengerWalletBalance !== null ? cachedPassengerWalletBalance : 0;
 
-            if (!isPinVerified || (availBal <= 0 && walletPaidAmount <= 0) || couponApplied) {
+            if (!isPinVerified || availBal <= 0 || walletPaidAmount > 0 || couponApplied || remainingFare <= 0) {
                 walletBox.classList.add('d-none');
             } else {
                 walletBox.classList.remove('d-none');
@@ -909,27 +909,12 @@ function showTripProgressPanel(ride) {
                     walletAvailText.innerText = `${t('wallet.available_balance', 'Available balance')}: ₹${availBal.toLocaleString('en-IN')}`;
                 }
 
-                if (walletPaidAmount > 0) {
-                    walletAppliedBox?.classList.remove('d-none');
-                    if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${walletPaidAmount.toLocaleString('en-IN')}`;
-                    if (walletStatusNote) walletStatusNote.innerText = t('wallet.applied_to_ride', "Applied to this ride");
-
-                    if (remainingFare === 0) {
-                        walletPayBtn?.classList.add('d-none');
-                    } else {
-                        walletPayBtn?.classList.remove('d-none');
-                        if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.change', "Change");
-                    }
-                } else if (remainingFare > 0 && availBal > 0) {
-                    walletAppliedBox?.classList.remove('d-none');
-                    const suggestedAmt = Math.min(availBal, remainingFare);
-                    if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
-                    if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
-                    walletPayBtn?.classList.remove('d-none');
-                    if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
-                } else {
-                    walletAppliedBox?.classList.add('d-none');
-                }
+                walletAppliedBox?.classList.remove('d-none');
+                const suggestedAmt = Math.min(availBal, remainingFare);
+                if (walletBadgeAmount) walletBadgeAmount.innerText = `₹${suggestedAmt.toLocaleString('en-IN')}`;
+                if (walletStatusNote) walletStatusNote.innerText = t('wallet.available_to_use', "Available to use");
+                walletPayBtn?.classList.remove('d-none');
+                if (walletActionBtnText) walletActionBtnText.innerText = t('wallet.use_credits', "Use Credits");
 
                 if (walletPayBtn) {
                     walletPayBtn.onclick = (e) => {
@@ -946,7 +931,7 @@ async function openPassengerRideWalletModal(rideObj) {
     const modal = document.getElementById('trip-wallet-pay-modal');
     if (!modal) return;
 
-    const ride = rideObj || currentPassengerRideData || window.currentActiveRideData;
+    const ride = currentPassengerRideData || rideObj || window.currentActiveRideData;
     if (!ride) {
         await showAlert(t('common.error_occurred', "No active ride found."));
         return;
@@ -955,7 +940,7 @@ async function openPassengerRideWalletModal(rideObj) {
     const curUser = auth.currentUser;
     if (!curUser) return;
 
-    window.LiphtUpLoading?.showPageLoader?.(t('wallet.title', "Wallet"));
+    window.LiphtUpLoading?.showPageLoader?.(t('wallet.opening_wallet', "Opening wallet..."));
     try {
         const token = await curUser.getIdToken();
         const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
@@ -966,7 +951,11 @@ async function openPassengerRideWalletModal(rideObj) {
         const farePaise = Number(ride.farePaise) || Math.round(Number(ride.fare || 0) * 100);
         const walletPaidPaise = Number(ride.walletPaidAmountPaise) || Math.round(Number(ride.wallet_paid_amount || 0) * 100);
         const cashPaidPaise = Number(ride.cashPaidAmountPaise || 0);
-        const remainingPaise = (ride.remainingFarePaise !== undefined) ? Number(ride.remainingFarePaise) : Math.max(0, farePaise - (walletPaidPaise + cashPaidPaise));
+        const couponApplied = ride.couponApplied;
+        const couponDiscountPaise = couponApplied ? (Number(couponApplied.discountPaise) || Math.round(Number(couponApplied.discountAmount || 0) * 100)) : 0;
+        const remainingPaise = (ride.remainingFarePaise !== undefined) 
+            ? Number(ride.remainingFarePaise) 
+            : Math.max(0, farePaise - (walletPaidPaise + cashPaidPaise + couponDiscountPaise));
         const remainingFare = remainingPaise / 100.0;
         const totalFare = farePaise / 100.0;
 
@@ -1008,7 +997,7 @@ async function openPassengerRideWalletModal(rideObj) {
             if (afterText) {
                 afterText.innerText = remAfter === 0 
                     ? t('wallet.fare_fully_covered', "Fare will be fully covered by wallet credits!")
-                    : `${t('wallet.remaining_fare_label', 'Remaining to Pay')}: ₹${remAfter.toLocaleString('en-IN')}`;
+                    : `${t('wallet.remaining_cash_to_pay', 'Remaining cash to pay driver')}: ₹${remAfter.toLocaleString('en-IN')}`;
             }
             if (zeroNotice) zeroNotice.classList.add('d-none');
             if (confirmBtn) {

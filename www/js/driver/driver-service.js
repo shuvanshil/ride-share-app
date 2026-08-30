@@ -469,11 +469,16 @@ class RotatingVehicleMarker {
         this.element.appendChild(this.innerWrap);
         this.setVehicleType(vehicleType);
         this.setHeading(this.heading);
+        this.setActiveRide(Boolean(currentRideId));
 
         this.overlay.onAdd = () => this.overlay.getPanes()?.overlayMouseTarget.appendChild(this.element);
         this.overlay.draw = () => this.draw();
         this.overlay.onRemove = () => this.element.remove();
         this.overlay.setMap(markerMap);
+    }
+
+    setActiveRide(active) {
+        this.element.classList.toggle("is-active-ride", Boolean(active));
     }
 
     draw() {
@@ -2148,6 +2153,7 @@ function renderIdleState() {
     currentRide = null;
     currentRideId = null;
     currentRideStatus = "";
+    driverMarker?.setActiveRide?.(false);
     routePanel.classList.add('d-none');
     openConsoleButton.classList.add('d-none');
     hideLifecyclePanel();
@@ -2162,6 +2168,7 @@ function renderActiveRideState(rideId, ride) {
     currentRideId = rideId;
     currentRide = ride;
     currentRideStatus = ride.status || "accepted";
+    driverMarker?.setActiveRide?.(true);
     openConsoleButton.classList.remove('d-none');
     updateIncomingRequestsVisibility();
     showLifecyclePanel(currentRideStatus, ride);
