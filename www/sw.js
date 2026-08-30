@@ -146,8 +146,13 @@ self.addEventListener("fetch", (event) => {
     }
 });
 
+let currentWorkerRole = "passenger";
+
 self.addEventListener("message", (event) => {
     if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+    if (event.data?.type === "SET_USER_ROLE") {
+        currentWorkerRole = String(event.data.role || "").toLowerCase().trim();
+    }
 });
 
 function getRideNotificationUrl(data = {}) {
@@ -176,6 +181,18 @@ function showRideNotification(payload = {}) {
 
     const targetUrl = getRideNotificationUrl(data);
     const tag = data.tag || (data.rideId ? `liphtup-ride-${data.rideId}` : (data.requestId ? `liphtup-req-${data.requestId}` : "liphtup-general"));
+
+    const isRideRequestPush = data.type === "ride_request"
+        || data.type === "NEW_PASSENGER_AVAILABLE"
+        || data.type === "ride_dispatch"
+        || data.type === "pending_driver_available"
+        || (targetUrl && targetUrl.includes("/driver"))
+        || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger")));
+
+    if (isRideRequestPush && currentWorkerRole !== "driver") {
+        console.log("Service Worker: Suppressing driver ride request push for passenger/guest account.");
+        return Promise.resolve();
+    }
 
     return self.registration.showNotification(title, {
         body,

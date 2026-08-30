@@ -85,11 +85,14 @@
         var Plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
         var Push = Plugins.PushNotifications;
 
-        // Auto-detect driver pages and sync native role
-        if (window.isCurrentPage && (window.isCurrentPage('driver.html') || window.isCurrentPage('driver-service.html') || window.isCurrentPage('driver-dashboard.html'))) {
-            if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setUserRole === 'function') {
+        // Auto-detect driver vs passenger pages and sync native role
+        if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setUserRole === 'function') {
+            if (window.isCurrentPage && (window.isCurrentPage('driver.html') || window.isCurrentPage('driver-service.html') || window.isCurrentPage('driver-dashboard.html'))) {
                 window.LiphtUpNativeStatus.setUserRole('driver');
                 console.log('[native-bridge] auto-set native user_role to driver');
+            } else if (window.isCurrentPage && (window.isCurrentPage('index.html') || window.isCurrentPage('services.html') || window.isCurrentPage('history.html') || window.isCurrentPage('profile.html') || window.isCurrentPage('login.html'))) {
+                window.LiphtUpNativeStatus.setUserRole('passenger');
+                console.log('[native-bridge] auto-set native user_role to passenger');
             }
         }
 

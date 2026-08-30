@@ -27,11 +27,22 @@ public class PushNotificationService extends FirebaseMessagingService {
         super.onMessageReceived(remoteMessage);
         Log.d(TAG, "From: " + remoteMessage.getFrom());
 
-        // Role-based filtering: Suppress driver-only ride request notifications if current user is logged in as a passenger
+        // Role-based filtering: Suppress any driver ride request notifications unless active user is logged in as a driver
         Map<String, String> dataMap = remoteMessage.getData();
         String msgType = dataMap != null ? dataMap.get("type") : null;
-        if (isPassengerLoggedIn() && "NEW_PASSENGER_AVAILABLE".equals(msgType)) {
-            Log.d(TAG, "Suppressing driver notification: Active user is logged in as a passenger.");
+        String url = dataMap != null ? dataMap.get("url") : null;
+        String title = dataMap != null ? dataMap.get("title") : null;
+
+        boolean isRideRequestPush = "ride_request".equalsIgnoreCase(msgType)
+                || "NEW_PASSENGER_AVAILABLE".equalsIgnoreCase(msgType)
+                || "ride_dispatch".equalsIgnoreCase(msgType)
+                || "pending_driver_available".equalsIgnoreCase(msgType)
+                || (url != null && url.contains("/driver"))
+                || (title != null && (title.toLowerCase().contains("new ride request") || title.toLowerCase().contains("ride request")));
+
+        if (isRideRequestPush && !isDriverLoggedIn()) {
+            Log.d(TAG, "Suppressing driver ride request notification: Active user is not logged in as a driver. Current role: "
+                    + getSharedPreferences("liphtup_prefs", MODE_PRIVATE).getString("user_role", "none"));
             return;
         }
 

@@ -1486,11 +1486,18 @@ def save_passenger_push_token(
             "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
         db.collection("users").document(uid).set(update, merge=True)
+        # Ensure driver presence does NOT dispatch ride requests to this token when active user is logged in as passenger
+        driver_presence_ref = db.collection("driverPresence").document(uid)
+        if driver_presence_ref.get().exists:
+            driver_presence_ref.set({
+                "driverAvailability": "offline",
+                "desiredAvailability": "offline",
+                "notificationEligibleUntil": datetime.fromtimestamp(0, timezone.utc),
+                "pushTokens": fb_firestore.ArrayRemove([body.token]),
+                "fcmToken": None,
+                "updatedAt": datetime.now(timezone.utc),
+            }, merge=True)
         return {"ok": True}
-    except ApiError:
-        raise
-    except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not register passenger push token.", 503)
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001

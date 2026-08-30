@@ -124,8 +124,15 @@ function renderSession(profile) {
 function dispatchSessionReady(profile) {
     if (sessionReadyDispatched) return;
     sessionReadyDispatched = true;
+    const role = profile?.role || "passenger";
     if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
-        window.LiphtUpNative.setUserRole(profile?.role || "");
+        window.LiphtUpNative.setUserRole(role);
+    }
+    if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setUserRole === 'function') {
+        window.LiphtUpNativeStatus.setUserRole(role);
+    }
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'SET_USER_ROLE', role: role });
     }
     window.dispatchEvent(new CustomEvent('user-session-ready', { detail: profile }));
 
