@@ -286,7 +286,7 @@ function _renderModal(modal, step) {
                     <div id="fb-reasons-exp-icon" style="margin:0 auto 12px;width:56px;height:56px;display:block;"></div>
                     <h2 class="fb-reasons-title" id="fb-reasons-title" style="text-align:center;width:100%;"></h2>
                     <p class="fb-reasons-subtitle" id="fb-reasons-subtitle" style="text-align:center;width:100%;"></p>
-                    <p class="fb-count-label" id="fb-count-label" aria-live="polite">0 of ${MAX_REASONS} selected</p>
+                    <p class="fb-count-label" id="fb-count-label" aria-live="polite">${t('feedback.count_selected', { count: 0, max: MAX_REASONS })}</p>
                     <div class="fb-reasons-grid" id="fb-reasons-grid"></div>
                     <p id="fb-reasons-validation" class="fb-validation-msg" aria-live="polite"></p>
                     <button class="fb-submit-btn" id="fb-submit-btn" type="button">${t('services.submit_feedback', 'Submit Feedback')}</button>

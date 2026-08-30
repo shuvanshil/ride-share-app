@@ -1482,35 +1482,45 @@ async function completeRideJob() {
             ? Number(rideData.remainingFarePaise) 
             : Math.max(0, totalFarePaise - (walletPaidPaise + couponDiscountPaise));
 
-        const walletPaidAmount = walletPaidPaise / 100.0;
-        const couponDiscountAmount = couponDiscountPaise / 100.0;
+        const totalFare = totalFarePaise / 100.0;
+        const subsidyPaidAmount = (walletPaidPaise + couponDiscountPaise) / 100.0;
         const remainingFare = remainingFarePaise / 100.0;
 
         pendingDriverPaymentRideId = completedRideId;
         const finalFareEl = document.getElementById('driver-final-fare');
-        if (finalFareEl) finalFareEl.innerText = formatFareAmount(remainingFare);
+        if (finalFareEl) finalFareEl.innerText = `₹${Math.round(remainingFare)}`;
+
+        const summaryTotalEl = document.getElementById('driver-summary-total');
+        if (summaryTotalEl) summaryTotalEl.innerText = `₹${Math.round(totalFare)}`;
+
+        const summaryPaidEl = document.getElementById('driver-summary-paid');
+        if (summaryPaidEl) summaryPaidEl.innerText = `₹${Math.round(subsidyPaidAmount)}`;
+
+        const summaryCollectEl = document.getElementById('driver-summary-collect');
+        if (summaryCollectEl) summaryCollectEl.innerText = `₹${Math.round(remainingFare)}`;
 
         const driverUPI = currentUser.upiId;
         const upiQrImage = document.getElementById('upi-qr-image');
+        const qrBox = upiQrImage?.closest('.driver-fare-qr-box') || upiQrImage?.parentElement;
 
         if (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0)) {
             if (upiQrImage) {
                 upiQrImage.src = "";
-                upiQrImage.classList.add('d-none');
+                if (qrBox) qrBox.classList.add('d-none');
             }
         } else if (driverUPI && remainingFare > 0) {
             const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${remainingFare}&cu=INR`);
             if (upiQrImage) {
                 upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
-                upiQrImage.classList.remove('d-none');
+                if (qrBox) qrBox.classList.remove('d-none');
             }
         } else {
             if (upiQrImage) {
                 upiQrImage.src = "";
-                upiQrImage.classList.add('d-none');
+                if (qrBox) qrBox.classList.add('d-none');
             }
             if (remainingFare > 0) {
-                await showAlert("Your driver UPI ID is missing from your profile. Please collect cash for this ride.");
+                await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
             }
         }
 
@@ -1679,20 +1689,22 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
 
 addOptionalClickListener('close-driver-payment-btn', async () => {
     const closeBtn = document.getElementById('close-driver-payment-btn');
-    closeBtn.disabled = true;
-    closeBtn.innerText = "Saving trip history...";
-    window.LiphtUpLoading?.showPageLoader?.("Saving trip history...");
+    if (closeBtn) closeBtn.disabled = true;
+    window.LiphtUpLoading?.showPageLoader?.(t('common.saving', "Saving..."));
 
     const saved = await markRidePaidAndCreateHistory(pendingDriverPaymentRideId);
     window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     if (!saved) {
-        closeBtn.disabled = false;
-        closeBtn.innerText = "Fare Received & Clear";
+        if (closeBtn) closeBtn.disabled = false;
         return;
     }
 
-    document.getElementById('driver-payment-view').classList.add('d-none');
+    document.getElementById('driver-payment-view')?.classList.add('d-none');
     window.location.reload();
+});
+
+addOptionalClickListener('close-driver-payment-icon-btn', () => {
+    document.getElementById('close-driver-payment-btn')?.click();
 });
 
 addOptionalClickListener('logout-btn', async () => {

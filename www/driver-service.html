@@ -165,20 +165,108 @@
         </div>
     </div>
 
+    <!-- Collect Fare Modal -->
     <div id="driver-service-payment-view" class="modal-layer d-none">
-        <div class="receipt-card">
-            <div class="success-mark">Rs</div>
-            <h4 id="driver-service-payment-title" data-i18n="driver.collect_fare_title">Collect Your Fare</h4>
-            <p id="driver-service-payment-subtitle" data-i18n="driver.upi_qr_notice">Show this screen to the passenger for easy collection.</p>
-            <div class="price-total" id="driver-service-final-fare">Rs 0.00</div>
-            <div id="driver-wallet-breakdown-box" class="badge bg-success-subtle text-success p-2 w-100 mb-2 text-start d-none" style="font-size:12px; white-space: normal; line-height: 1.4;">
-                <span id="driver-wallet-breakdown-text"></span>
+        <div class="driver-fare-collect-card">
+            <!-- Close Button -->
+            <button id="driver-service-close-payment-icon-btn" class="driver-fare-close-btn" type="button" aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+
+            <!-- Hero Top Badge with Rupee Icon and Sparkles -->
+            <div class="driver-fare-hero-wrap">
+                <svg class="driver-fare-sparkle sparkle-top-left" width="16" height="16" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+                <svg class="driver-fare-sparkle sparkle-top-right" width="20" height="20" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+                <svg class="driver-fare-sparkle sparkle-mid-left" width="18" height="18" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+                <svg class="driver-fare-sparkle sparkle-mid-right" width="14" height="14" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+
+                <div class="driver-fare-badge-outer">
+                    <div class="driver-fare-badge-inner">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="6" y1="3" x2="18" y2="3"></line>
+                            <line x1="6" y1="8" x2="18" y2="8"></line>
+                            <path d="M6 13l7.5 8"></path>
+                            <path d="M6 13h3a4 4 0 0 0 0-8"></path>
+                        </svg>
+                    </div>
+                </div>
             </div>
+
+            <!-- Title & Subtitle -->
+            <h3 id="driver-service-payment-title" class="driver-fare-title" data-i18n="driver.collect_fare_title">Collect Your Fare</h3>
+            <p id="driver-service-payment-subtitle" class="driver-fare-subtitle" data-i18n="driver.upi_qr_notice">Show this screen to the passenger to collect the fare easily.</p>
+
+            <!-- Amount Pill & Big Fare Amount with Sunburst Rays -->
+            <div class="driver-fare-amount-pill" data-i18n="driver.amount_to_collect">Amount to Collect</div>
+            <div class="driver-fare-display-wrap">
+                <svg class="driver-fare-ray ray-left" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="3" stroke-linecap="round">
+                    <line x1="18" y1="12" x2="6" y2="6"></line>
+                    <line x1="20" y1="12" x2="4" y2="12"></line>
+                    <line x1="18" y1="12" x2="6" y2="18"></line>
+                </svg>
+
+                <div id="driver-service-final-fare" class="driver-fare-big-amount">₹0</div>
+
+                <svg class="driver-fare-ray ray-right" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="3" stroke-linecap="round">
+                    <line x1="6" y1="12" x2="18" y2="6"></line>
+                    <line x1="4" y1="12" x2="20" y2="12"></line>
+                    <line x1="6" y1="12" x2="18" y2="18"></line>
+                </svg>
+            </div>
+
+            <!-- 3-Column Fare Breakdown Pill -->
+            <div id="driver-service-fare-breakdown-card" class="driver-fare-breakdown-card">
+                <div class="driver-breakdown-col">
+                    <span class="breakdown-label" data-i18n="driver.total_label">Total</span>
+                    <span id="driver-service-summary-total" class="breakdown-val">₹0</span>
+                </div>
+                <div class="driver-breakdown-divider"></div>
+                <div class="driver-breakdown-col">
+                    <span class="breakdown-label" data-i18n="driver.paid_subsidy_label">Paid via Wallet</span>
+                    <span id="driver-service-summary-paid" class="breakdown-val">₹0</span>
+                </div>
+                <div class="driver-breakdown-divider"></div>
+                <div class="driver-breakdown-col">
+                    <span class="breakdown-label" data-i18n="driver.collect_label">Collect</span>
+                    <span id="driver-service-summary-collect" class="breakdown-val val-highlight">₹0</span>
+                </div>
+            </div>
+
             <p id="driver-service-fare-note" class="fare-adjustment-note d-none"></p>
-            <div class="qr-frame">
-                <img id="driver-service-upi-qr-image" src="" alt="UPI QR Code">
+
+            <!-- QR Code Card Frame -->
+            <div class="driver-fare-qr-box">
+                <img id="driver-service-upi-qr-image" src="" alt="UPI QR Code" width="180" height="180">
             </div>
-            <button id="driver-service-close-payment-btn" class="gy-btn gy-btn-dark w-100" type="button" data-i18n="driver.fare_collected">Fare Received & Clear</button>
+
+            <!-- Trust / Security Badge -->
+            <div class="driver-fare-trust-row">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="#16A34A" stroke="#16A34A" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M9 12l2 2 4-4" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span data-i18n="driver.upi_security_badge">Secure • UPI Payments • Fast & Easy</span>
+            </div>
+
+            <!-- Full Width Action Button -->
+            <button id="driver-service-close-payment-btn" class="driver-fare-action-btn" type="button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff" stroke="#15803D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" fill="#ffffff"/>
+                    <path d="M8 12l3 3 5-5" stroke="#15803D" stroke-width="2.5" fill="none"/>
+                </svg>
+                <span data-i18n="driver.fare_collected">Fare Collected & Clear</span>
+            </button>
         </div>
     </div>
 

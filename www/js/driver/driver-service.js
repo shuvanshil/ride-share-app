@@ -2280,56 +2280,49 @@ async function completeRideJob() {
         const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, totalFarePaise - (walletPaidPaise + couponDiscountPaise));
 
         const totalFare = totalFarePaise / 100.0;
-        const walletPaidAmount = walletPaidPaise / 100.0;
+        const subsidyPaidAmount = (walletPaidPaise + couponDiscountPaise) / 100.0;
         const remainingFare = remainingFarePaise / 100.0;
 
-        const breakdownBox = document.getElementById('driver-wallet-breakdown-box');
-        const breakdownText = document.getElementById('driver-wallet-breakdown-text');
+        const summaryTotalEl = document.getElementById('driver-service-summary-total');
+        const summaryPaidEl = document.getElementById('driver-service-summary-paid');
+        const summaryCollectEl = document.getElementById('driver-service-summary-collect');
         const paymentTitle = document.getElementById('driver-service-payment-title');
         const paymentSubtitle = document.getElementById('driver-service-payment-subtitle');
+        const qrBox = upiQrImage?.closest('.driver-fare-qr-box') || upiQrImage?.parentElement;
+
+        if (summaryTotalEl) summaryTotalEl.innerText = `₹${Math.round(totalFare)}`;
+        if (summaryPaidEl) summaryPaidEl.innerText = `₹${Math.round(subsidyPaidAmount)}`;
+        if (summaryCollectEl) summaryCollectEl.innerText = `₹${Math.round(remainingFare)}`;
 
         if (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0)) {
             // Fully paid via wallet or platform coupon!
-            finalFareEl.innerText = formatFareAmount(0);
+            if (finalFareEl) finalFareEl.innerText = "₹0";
             if (paymentTitle) paymentTitle.innerText = t('wallet.payment_success', 'Ride Fully Covered');
             if (paymentSubtitle) paymentSubtitle.innerText = couponDiscountAmount > 0 
-                ? `Fare of ₹${totalFare} covered by platform promotion and credited to your wallet.` 
-                : t('wallet.paid_via_wallet_no_cash', { amount: walletPaidAmount });
-            if (breakdownBox) {
-                breakdownBox.classList.remove('d-none');
-                if (breakdownText) {
-                    breakdownText.innerText = couponDiscountAmount > 0 
-                        ? `Full fare (₹${totalFare}) covered by promotional subsidy and added to your wallet. No cash collection needed.`
-                        : `Full fare (₹${totalFare}) paid via passenger wallet credits and added to your wallet. No cash collection needed.`;
-                }
+                ? `Fare of ₹${Math.round(totalFare)} covered by platform promotion.` 
+                : t('wallet.paid_via_wallet_no_cash', { amount: Math.round(walletPaidAmount) });
+            if (upiQrImage) {
+                upiQrImage.src = "";
+                if (qrBox) qrBox.classList.add('d-none');
             }
-            upiQrImage.classList.add('d-none');
         } else {
             // Cash / UPI collection required for remaining fare
-            finalFareEl.innerText = formatFareAmount(remainingFare);
-            if (couponDiscountAmount > 0) {
-                if (breakdownBox) {
-                    breakdownBox.classList.remove('d-none');
-                    if (breakdownText) breakdownText.innerText = `Fare Updated: ₹${couponDiscountAmount} promotional adjustment applied. Amount to collect: ₹${remainingFare}`;
-                }
-            } else if (walletPaidAmount > 0) {
-                if (breakdownBox) {
-                    breakdownBox.classList.remove('d-none');
-                    if (breakdownText) breakdownText.innerText = `Total: ₹${totalFare} | Paid via Wallet: ₹${walletPaidAmount} | Collect: ₹${remainingFare}`;
-                }
-            } else {
-                if (breakdownBox) breakdownBox.classList.add('d-none');
-            }
-
+            if (finalFareEl) finalFareEl.innerText = `₹${Math.round(remainingFare)}`;
             const driverUPI = currentUser.upiId;
-            if (driverUPI) {
+            if (driverUPI && remainingFare > 0) {
                 const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${remainingFare}&cu=INR`);
-                upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
-                upiQrImage.classList.remove('d-none');
+                if (upiQrImage) {
+                    upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
+                    if (qrBox) qrBox.classList.remove('d-none');
+                }
             } else {
-                upiQrImage.src = "";
-                upiQrImage.classList.add('d-none');
-                await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
+                if (upiQrImage) {
+                    upiQrImage.src = "";
+                    if (qrBox) qrBox.classList.add('d-none');
+                }
+                if (remainingFare > 0) {
+                    await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
+                }
             }
         }
 
@@ -2541,7 +2534,7 @@ ridesContainer?.addEventListener('click', (event) => {
     acceptIncomingRide(acceptButton.dataset.rideId, acceptButton);
 });
 
-closePaymentButton.addEventListener('click', async () => {
+closePaymentButton?.addEventListener('click', async () => {
     closePaymentButton.disabled = true;
     closePaymentButton.innerText = t('driver.saving_trip_history', "Saving trip history...");
 
@@ -2552,8 +2545,12 @@ closePaymentButton.addEventListener('click', async () => {
         return;
     }
 
-    paymentModal.classList.add('d-none');
+    paymentModal?.classList.add('d-none');
     window.location.reload();
+});
+
+document.getElementById('driver-service-close-payment-icon-btn')?.addEventListener('click', () => {
+    closePaymentButton?.click();
 });
 
 window.addEventListener('beforeunload', () => {

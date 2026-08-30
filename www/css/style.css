@@ -3197,6 +3197,260 @@ select {
     height: 180px;
 }
 
+/* --- Modern Driver Fare Collection Modal (Mockup Parity) --- */
+.driver-fare-collect-card {
+    position: relative;
+    background: #ffffff;
+    border-radius: 28px;
+    padding: 30px 22px 24px;
+    max-width: 410px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+    animation: driverFareModalPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-sizing: border-box;
+}
+
+@keyframes driverFareModalPop {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.driver-fare-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #F3F4F6;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #4B5563;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+    z-index: 5;
+}
+
+.driver-fare-close-btn:hover {
+    background: #E5E7EB;
+    color: #111827;
+    transform: scale(1.05);
+}
+
+.driver-fare-hero-wrap {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.driver-fare-badge-outer {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: #DCFCE7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.driver-fare-badge-inner {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: #16A34A;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35);
+}
+
+.driver-fare-sparkle {
+    position: absolute;
+    pointer-events: none;
+}
+
+.sparkle-top-left {
+    top: -2px;
+    left: 4px;
+}
+
+.sparkle-top-right {
+    top: 0;
+    right: 6px;
+}
+
+.sparkle-mid-left {
+    bottom: 10px;
+    left: -8px;
+}
+
+.sparkle-mid-right {
+    bottom: 14px;
+    right: -6px;
+}
+
+.driver-fare-title {
+    font-size: 23px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: -0.4px;
+}
+
+.driver-fare-subtitle {
+    font-size: 13.5px;
+    color: #4B5563;
+    line-height: 1.45;
+    margin: 0 auto 14px;
+    max-width: 270px;
+}
+
+.driver-fare-amount-pill {
+    display: inline-block;
+    background: #E8F5E9;
+    color: #15803D;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 9999px;
+    margin-bottom: 6px;
+    letter-spacing: 0.2px;
+}
+
+.driver-fare-display-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.driver-fare-big-amount {
+    font-size: 48px;
+    font-weight: 800;
+    color: #15803D;
+    line-height: 1;
+    letter-spacing: -1.5px;
+}
+
+.driver-fare-ray {
+    flex-shrink: 0;
+}
+
+.driver-fare-breakdown-card {
+    background: #F0FDF4;
+    border: 1px solid #DCFCE7;
+    border-radius: 12px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.driver-breakdown-col {
+    flex: 1;
+    text-align: center;
+    padding: 0 4px;
+}
+
+.driver-breakdown-divider {
+    width: 1px;
+    height: 24px;
+    background: #E5E7EB;
+}
+
+.breakdown-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: #6B7280;
+    margin-bottom: 2px;
+}
+
+.breakdown-val {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #1F2937;
+}
+
+.breakdown-val.val-highlight {
+    color: #15803D;
+}
+
+.driver-fare-qr-box {
+    background: #ffffff;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 16px;
+    padding: 12px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.driver-fare-qr-box img {
+    width: 180px;
+    height: 180px;
+    object-fit: contain;
+    border-radius: 6px;
+    display: block;
+}
+
+.driver-fare-trust-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #4B5563;
+    margin-bottom: 16px;
+}
+
+.driver-fare-action-btn {
+    width: 100%;
+    background: #15803D;
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 15.5px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(21, 128, 61, 0.35);
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.driver-fare-action-btn:hover {
+    background: #166534;
+    transform: translateY(-1px);
+}
+
+.driver-fare-action-btn:active {
+    transform: translateY(0);
+}
+
 .google-map-host {
     width: 100%;
     height: 100%;

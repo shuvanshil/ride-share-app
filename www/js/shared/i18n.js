@@ -43,8 +43,20 @@ export function getCurrentLanguage() {
  * Fetches string by dot-notation key (e.g. 'auth.welcome_back').
  * Supports template variables: i18n.t('home.greeting', { name: 'Tojo' }).
  */
-export function t(keyPath, params = {}) {
+export function t(keyPath, fallbackOrParams = {}, maybeParams = {}) {
     if (!keyPath) return '';
+    let fallback = '';
+    let params = {};
+
+    if (typeof fallbackOrParams === 'string') {
+        fallback = fallbackOrParams;
+        if (maybeParams && typeof maybeParams === 'object') {
+            params = maybeParams;
+        }
+    } else if (fallbackOrParams && typeof fallbackOrParams === 'object') {
+        params = fallbackOrParams;
+    }
+
     const keys = String(keyPath).split('.');
     
     // 1. Try current language
@@ -55,9 +67,9 @@ export function t(keyPath, params = {}) {
         result = getNestedKey(TRANSLATIONS['en'], keys);
     }
 
-    // 3. Fallback to key itself if not found anywhere
+    // 3. Fallback to provided fallback string or key itself if not found anywhere
     if (result === undefined) {
-        return keyPath;
+        result = fallback || keyPath;
     }
 
     let text = String(result);
