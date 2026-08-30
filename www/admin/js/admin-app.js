@@ -721,63 +721,76 @@ function renderRecentRidesTable(rides = []) {
 }
 
 function openAttentionDrawer(data) {
-    const pendingDrivers = data?.attention?.pendingDrivers ?? data?.drivers?.pendingApproval ?? 0;
-    const pendingPayments = data?.attention?.pendingPayments ?? 0;
-    const cancelledRides = data?.attention?.unusualCancelledRides ?? data?.today?.cancelledRides ?? 0;
-    const openSos = data?.attention?.openSosAlerts ?? data?.safety?.openSosAlerts ?? 0;
-    const openReports = data?.attention?.openSafetyReports ?? data?.safety?.openSafetyReports ?? 0;
+    const pendingDrivers = Number(data?.attention?.pendingDrivers ?? data?.drivers?.pendingApproval ?? 0);
+    const pendingPayments = Number(data?.attention?.pendingPayments ?? 0);
+    const openSos = Number(data?.attention?.openSosAlerts ?? data?.safety?.openSosAlerts ?? 0);
+    const openReports = Number(data?.attention?.openSafetyReports ?? data?.safety?.openSafetyReports ?? 0);
+    const total = pendingDrivers + pendingPayments + openSos + openReports;
 
-    const html = `
-        <div class="p-2">
-            <h4 class="fw-bold mb-3"><i class="ti ti-alert-triangle text-warning me-2"></i>Actions Requiring Your Attention</h4>
-            
+    if (total === 0) {
+        showReadOnlyDrawer("Your Attention Required", `<div class="text-center py-5 text-secondary"><i class="ti ti-circle-check fs-1 text-success mb-2 d-block"></i>All clear! No items currently require attention.</div>`);
+        return;
+    }
+
+    let itemsHtml = "";
+    if (pendingDrivers > 0) {
+        itemsHtml += `
             <div class="card card-sm mb-2 border-0 shadow-xs">
                 <div class="card-body d-flex align-items-center justify-content-between">
                     <div>
-                        <div class="fw-bold text-dark">Driver Approvals</div>
+                        <div class="fw-bold text-dark fs-4"><i class="ti ti-user-check text-primary me-1"></i> Driver Approvals</div>
                         <div class="text-secondary small">${pendingDrivers} driver application(s) awaiting verification</div>
                     </div>
-                    <button class="btn btn-sm btn-primary" id="drawer-att-drivers-btn">Review</button>
+                    <button class="btn btn-sm btn-primary rounded-pill px-3" id="drawer-att-drivers-btn">Review</button>
                 </div>
-            </div>
+            </div>`;
+    }
 
+    if (pendingPayments > 0) {
+        itemsHtml += `
             <div class="card card-sm mb-2 border-0 shadow-xs">
                 <div class="card-body d-flex align-items-center justify-content-between">
                     <div>
-                        <div class="fw-bold text-dark">Pending Payments</div>
+                        <div class="fw-bold text-dark fs-4"><i class="ti ti-credit-card-off text-warning me-1"></i> Payment Approvals</div>
                         <div class="text-secondary small">${pendingPayments} driver payment submission(s) to verify</div>
                     </div>
-                    <button class="btn btn-sm btn-primary" id="drawer-att-payments-btn">Review</button>
+                    <button class="btn btn-sm btn-warning text-dark rounded-pill px-3" id="drawer-att-payments-btn">Review</button>
                 </div>
-            </div>
+            </div>`;
+    }
 
+    if (openSos > 0) {
+        itemsHtml += `
             <div class="card card-sm mb-2 border-0 shadow-xs">
                 <div class="card-body d-flex align-items-center justify-content-between">
                     <div>
-                        <div class="fw-bold text-dark">Cancelled Rides</div>
-                        <div class="text-secondary small">${cancelledRides} ride cancellation(s) recorded today</div>
+                        <div class="fw-bold text-danger fs-4"><i class="ti ti-shield-x text-danger me-1"></i> SOS Alerts</div>
+                        <div class="text-secondary small">${openSos} open SOS emergency alert(s)</div>
                     </div>
-                    <button class="btn btn-sm btn-outline-secondary" id="drawer-att-cancelled-btn">View History</button>
+                    <button class="btn btn-sm btn-danger rounded-pill px-3" id="drawer-att-sos-btn">Safety Center</button>
                 </div>
-            </div>
+            </div>`;
+    }
 
+    if (openReports > 0) {
+        itemsHtml += `
             <div class="card card-sm mb-2 border-0 shadow-xs">
                 <div class="card-body d-flex align-items-center justify-content-between">
                     <div>
-                        <div class="fw-bold text-dark">Safety &amp; SOS Alerts</div>
-                        <div class="text-secondary small">${openSos} open SOS alert(s), ${openReports} safety report(s)</div>
+                        <div class="fw-bold text-dark fs-4"><i class="ti ti-alert-circle text-orange me-1"></i> Safety Reports</div>
+                        <div class="text-secondary small">${openReports} passenger/driver safety report(s)</div>
                     </div>
-                    <button class="btn btn-sm btn-danger" id="drawer-att-safety-btn">Safety Center</button>
+                    <button class="btn btn-sm btn-outline-danger rounded-pill px-3" id="drawer-att-reports-btn">Safety Center</button>
                 </div>
-            </div>
-        </div>
-    `;
+            </div>`;
+    }
 
-    const { bodyEl } = showReadOnlyDrawer("Your Attention Required", html);
+    const html = `<div class="p-2">${itemsHtml}</div>`;
+    const { bodyEl } = showReadOnlyDrawer("Actions Requiring Attention", html);
     bodyEl.querySelector("#drawer-att-drivers-btn")?.addEventListener("click", () => goToSection("drivers", { "driver-status-filter": "pending_review" }));
     bodyEl.querySelector("#drawer-att-payments-btn")?.addEventListener("click", () => goToSection("payments"));
-    bodyEl.querySelector("#drawer-att-cancelled-btn")?.addEventListener("click", () => goToSection("ride-history", { "history-status-filter": "cancelled_by_passenger" }));
-    bodyEl.querySelector("#drawer-att-safety-btn")?.addEventListener("click", () => goToSection("safety"));
+    bodyEl.querySelector("#drawer-att-sos-btn")?.addEventListener("click", () => goToSection("safety"));
+    bodyEl.querySelector("#drawer-att-reports-btn")?.addEventListener("click", () => goToSection("safety"));
 }
 
 async function loadDashboard() {
@@ -793,35 +806,95 @@ async function loadDashboard() {
         const data = await adminGet("/overview", {}, { cacheable: false });
         dashboardOverviewData = data;
 
-        // 2. Attention Required Banner
-        const pendingDrivers = data.attention?.pendingDrivers ?? data.drivers?.pendingApproval ?? 0;
-        const pendingPayments = data.attention?.pendingPayments ?? 0;
-        const cancelledRides = data.attention?.unusualCancelledRides ?? data.today?.cancelledRides ?? 0;
-        const openSos = data.attention?.openSosAlerts ?? data.safety?.openSosAlerts ?? 0;
+        // 2. Attention Required Banner - Only show items with count >= 1; hide completely if all 0
+        const pendingDrivers = Number(data.attention?.pendingDrivers ?? data.drivers?.pendingApproval ?? 0);
+        const pendingPayments = Number(data.attention?.pendingPayments ?? 0);
+        const openSos = Number(data.attention?.openSosAlerts ?? data.safety?.openSosAlerts ?? 0);
+        const openReports = Number(data.attention?.openSafetyReports ?? data.safety?.openSafetyReports ?? 0);
+        const totalAttention = pendingDrivers + pendingPayments + openSos + openReports;
 
-        const attDriversCount = $("att-drivers-count");
-        const attDriversBadge = $("att-drivers-badge");
-        if (attDriversCount) attDriversCount.textContent = pendingDrivers;
-        if (attDriversBadge) attDriversBadge.textContent = pendingDrivers;
+        const attCard = $("dashboard-attention-card");
+        if (totalAttention === 0) {
+            if (attCard) {
+                attCard.classList.add("d-none");
+                attCard.style.display = "none";
+            }
+        } else {
+            if (attCard) {
+                attCard.classList.remove("d-none");
+                attCard.style.display = "block";
+            }
 
-        const attPaymentsCount = $("att-payments-count");
-        const attPaymentsBadge = $("att-payments-badge");
-        if (attPaymentsCount) attPaymentsCount.textContent = pendingPayments;
-        if (attPaymentsBadge) attPaymentsBadge.textContent = pendingPayments;
+            // Driver Approvals
+            const btnDrivers = $("att-drivers-btn");
+            if (btnDrivers) {
+                if (pendingDrivers > 0) {
+                    btnDrivers.classList.remove("d-none");
+                    btnDrivers.classList.add("d-inline-flex");
+                    const c = $("att-drivers-count");
+                    const b = $("att-drivers-badge");
+                    if (c) c.textContent = pendingDrivers;
+                    if (b) b.textContent = pendingDrivers;
+                } else {
+                    btnDrivers.classList.add("d-none");
+                    btnDrivers.classList.remove("d-inline-flex");
+                }
+            }
 
-        const attCancelledCount = $("att-cancelled-count");
-        if (attCancelledCount) attCancelledCount.textContent = cancelledRides;
+            // Payment Approvals
+            const btnPayments = $("att-payments-btn");
+            if (btnPayments) {
+                if (pendingPayments > 0) {
+                    btnPayments.classList.remove("d-none");
+                    btnPayments.classList.add("d-inline-flex");
+                    const c = $("att-payments-count");
+                    const b = $("att-payments-badge");
+                    if (c) c.textContent = pendingPayments;
+                    if (b) b.textContent = pendingPayments;
+                } else {
+                    btnPayments.classList.add("d-none");
+                    btnPayments.classList.remove("d-inline-flex");
+                }
+            }
 
-        const attSosBtn = $("att-sos-btn");
-        const attSosCount = $("att-sos-count");
-        if (attSosCount) attSosCount.textContent = openSos;
-        if (attSosBtn) attSosBtn.classList.toggle("d-none", openSos === 0);
+            // SOS Alerts
+            const btnSos = $("att-sos-btn");
+            if (btnSos) {
+                if (openSos > 0) {
+                    btnSos.classList.remove("d-none");
+                    btnSos.classList.add("d-inline-flex");
+                    const c = $("att-sos-count");
+                    const b = $("att-sos-badge");
+                    if (c) c.textContent = openSos;
+                    if (b) b.textContent = openSos;
+                } else {
+                    btnSos.classList.add("d-none");
+                    btnSos.classList.remove("d-inline-flex");
+                }
+            }
+
+            // Safety Reports
+            const btnSafety = $("att-safety-btn");
+            if (btnSafety) {
+                if (openReports > 0) {
+                    btnSafety.classList.remove("d-none");
+                    btnSafety.classList.add("d-inline-flex");
+                    const c = $("att-safety-count");
+                    const b = $("att-safety-badge");
+                    if (c) c.textContent = openReports;
+                    if (b) b.textContent = openReports;
+                } else {
+                    btnSafety.classList.add("d-none");
+                    btnSafety.classList.remove("d-inline-flex");
+                }
+            }
+        }
 
         // Wire attention banner buttons
         $("att-drivers-btn")?.addEventListener("click", () => goToSection("drivers", { "driver-status-filter": "pending_review" }));
         $("att-payments-btn")?.addEventListener("click", () => goToSection("payments"));
-        $("att-cancelled-btn")?.addEventListener("click", () => goToSection("ride-history", { "history-status-filter": "cancelled_by_passenger" }));
         $("att-sos-btn")?.addEventListener("click", () => goToSection("safety"));
+        $("att-safety-btn")?.addEventListener("click", () => goToSection("safety"));
         $("btn-attention-view-all")?.addEventListener("click", () => openAttentionDrawer(data));
 
         // 3. First Row: 3 KPI Cards
@@ -905,16 +978,8 @@ async function loadDashboard() {
             renderRideActivityChart(data.rideActivity?.hourly || {}, "30d");
         });
 
-        // 5. Recent Activity Feed
-        if (!recentActivityItems || recentActivityItems.length === 0) {
-            recentActivityItems = [
-                { text: "Ride #LP10291 completed", color: "success", at: Date.now() - 2 * 60 * 1000, timeStr: "2 min ago" },
-                { text: "Driver #DR018 approved", color: "primary", at: Date.now() - 8 * 60 * 1000, timeStr: "8 min ago" },
-                { text: "Payment received ₹248 - Ride #LP10287", color: "success", at: Date.now() - 12 * 60 * 1000, timeStr: "12 min ago" },
-                { text: "New passenger registered", color: "primary", at: Date.now() - 15 * 60 * 1000, timeStr: "15 min ago" },
-                { text: "Coupon SAVE20 created", color: "success", at: Date.now() - 21 * 60 * 1000, timeStr: "21 min ago" }
-            ];
-        }
+        // 5. Recent Activity Feed - use real data from server API
+        recentActivityItems = Array.isArray(data.recentActivity) ? [...data.recentActivity] : [];
         renderRecentActivityWidget();
 
         $("btn-recent-act-view-all")?.addEventListener("click", () => {

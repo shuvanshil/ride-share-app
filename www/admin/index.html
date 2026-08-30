@@ -244,38 +244,50 @@
                         </div>
 
                         <!-- Your Attention Required Banner -->
-                        <div id="dashboard-attention-card" class="card border-0 shadow-xs mb-3" style="background: #fffdf5; border: 1px solid #fef3c7 !important; border-radius: 10px;">
-                            <div class="card-body p-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
+                        <div id="dashboard-attention-card" class="card border-0 shadow-sm mb-4 d-none" style="background: #fffdf5; border: 1.5px solid #fde68a !important; border-radius: 12px;">
+                            <div class="card-body p-3 p-md-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
                                 <div class="d-flex align-items-center gap-3 flex-wrap">
-                                    <div class="d-flex align-items-center gap-2 text-warning fw-bold">
-                                        <span class="avatar avatar-sm bg-warning-lt text-warning rounded-2"><i class="ti ti-alert-triangle fs-2"></i></span>
-                                        <span class="text-dark fw-bold">Your attention required</span>
+                                    <div class="d-flex align-items-center gap-2 text-warning-emphasis">
+                                        <span class="avatar avatar-md bg-warning text-white rounded-3 shadow-xs"><i class="ti ti-alert-triangle fs-1"></i></span>
+                                        <div>
+                                            <div class="text-dark fw-bolder fs-3 mb-0" style="letter-spacing: -0.01em;">Action Required</div>
+                                            <div class="text-secondary small">Items that require admin attention</div>
+                                        </div>
                                     </div>
-                                    <div class="d-flex align-items-center gap-3 flex-wrap ms-md-2" id="attention-items-container">
-                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0" id="att-drivers-btn">
-                                            <i class="ti ti-users text-secondary"></i>
-                                            <span class="small"><strong id="att-drivers-count">0</strong> drivers awaiting approval</span>
-                                            <span class="badge bg-yellow text-dark rounded-circle px-2" id="att-drivers-badge">0</span>
+                                    <div class="d-flex align-items-center gap-2 flex-wrap ms-lg-3" id="attention-items-container">
+                                        <!-- 1. Driver Approval -->
+                                        <button type="button" class="btn btn-outline-primary bg-white shadow-xs d-none align-items-center gap-2 px-3 py-2 border rounded-pill text-start" id="att-drivers-btn">
+                                            <i class="ti ti-user-check fs-2 text-primary"></i>
+                                            <span class="fs-4 fw-semibold text-dark"><span id="att-drivers-count" class="fw-bold text-primary">0</span> Driver approvals</span>
+                                            <span class="badge bg-primary text-white rounded-pill px-2 py-1 fs-5 ms-1" id="att-drivers-badge">0</span>
                                         </button>
-                                        <div class="vr text-secondary opacity-25 d-none d-md-block" style="height: 18px;"></div>
-                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0" id="att-payments-btn">
-                                            <span class="status-dot bg-red"></span>
-                                            <span class="small"><strong id="att-payments-count">0</strong> payment issues detected</span>
-                                            <span class="badge bg-yellow text-dark rounded-circle px-2" id="att-payments-badge">0</span>
+
+                                        <!-- 2. Payment Issues -->
+                                        <button type="button" class="btn btn-outline-warning bg-white shadow-xs d-none align-items-center gap-2 px-3 py-2 border rounded-pill text-start" id="att-payments-btn">
+                                            <i class="ti ti-credit-card-off fs-2 text-warning"></i>
+                                            <span class="fs-4 fw-semibold text-dark"><span id="att-payments-count" class="fw-bold text-warning-emphasis">0</span> Payment issues</span>
+                                            <span class="badge bg-warning text-dark rounded-pill px-2 py-1 fs-5 ms-1" id="att-payments-badge">0</span>
                                         </button>
-                                        <div class="vr text-secondary opacity-25 d-none d-md-block" style="height: 18px;"></div>
-                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0" id="att-cancelled-btn">
-                                            <i class="ti ti-alert-circle text-warning"></i>
-                                            <span class="small"><strong id="att-cancelled-count">0</strong> rides cancelled unusually</span>
+
+                                        <!-- 3. SOS Alerts -->
+                                        <button type="button" class="btn btn-outline-danger bg-white shadow-xs d-none align-items-center gap-2 px-3 py-2 border rounded-pill text-start" id="att-sos-btn">
+                                            <i class="ti ti-shield-x fs-2 text-danger"></i>
+                                            <span class="fs-4 fw-semibold text-danger"><span id="att-sos-count" class="fw-bold text-danger">0</span> SOS alerts</span>
+                                            <span class="badge bg-danger text-white rounded-pill px-2 py-1 fs-5 ms-1" id="att-sos-badge">0</span>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-ghost-dark d-flex align-items-center gap-2 p-1 border-0 d-none" id="att-sos-btn">
-                                            <i class="ti ti-shield-x text-danger"></i>
-                                            <span class="small text-danger fw-bold"><strong id="att-sos-count">0</strong> SOS alerts active</span>
+
+                                        <!-- 4. Safety Reports -->
+                                        <button type="button" class="btn btn-outline-secondary bg-white shadow-xs d-none align-items-center gap-2 px-3 py-2 border rounded-pill text-start" id="att-safety-btn">
+                                            <i class="ti ti-alert-circle fs-2 text-orange"></i>
+                                            <span class="fs-4 fw-semibold text-dark"><span id="att-safety-count" class="fw-bold text-orange">0</span> Safety reports</span>
+                                            <span class="badge bg-orange text-white rounded-pill px-2 py-1 fs-5 ms-1" id="att-safety-badge">0</span>
                                         </button>
                                     </div>
                                 </div>
                                 <div>
-                                    <button type="button" class="btn btn-sm btn-outline-warning text-dark border-warning bg-white rounded-pill px-3" id="btn-attention-view-all">View all</button>
+                                    <button type="button" class="btn btn-warning text-dark font-weight-bold rounded-pill px-4 py-2 shadow-xs" id="btn-attention-view-all">
+                                        <i class="ti ti-list-details me-1"></i> View all
+                                    </button>
                                 </div>
                             </div>
                         </div>

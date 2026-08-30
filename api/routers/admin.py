@@ -359,6 +359,124 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     recent_rides_docs = [_doc_dict(d) for d in _stream(recent_rides_query)]
     recent_rides = _backfill_driver_names(recent_rides_docs)
 
+    # Collect real recent activity events
+    recent_activity: list[dict[str, Any]] = []
+
+    # 1. Recently completed/status-changed rides
+    for r in recent_rides_docs[:8]:
+        r_id = str(r.get("id") or "")
+        short_id = f"#LP{r_id[-5:].upper()}" if len(r_id) >= 5 else f"#{r_id}"
+        st = str(r.get("status") or "").lower()
+        t = r.get("updatedAt") or r.get("createdAt")
+        t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+        if st == "completed":
+            fare = r.get("fare") or 0
+            recent_activity.append({
+                "text": f"Ride {short_id} completed (₹{fare})",
+                "color": "success",
+                "type": "ride_completed",
+                "at": t_iso,
+            })
+        elif st == "accepted" or st == "started":
+            pickup = r.get("pickup_name") or r.get("pickupName") or "pickup"
+            drop = r.get("drop_name") or r.get("dropName") or "drop"
+            recent_activity.append({
+                "text": f"Ride {short_id} started \u00b7 {pickup} \u2192 {drop}",
+                "color": "primary",
+                "type": "ride_started",
+                "at": t_iso,
+            })
+        elif st.startswith("cancelled"):
+            recent_activity.append({
+                "text": f"Ride {short_id} cancelled",
+                "color": "danger",
+                "type": "ride_cancelled",
+                "at": t_iso,
+            })
+
+    # 2. Recent users (registrations & approvals)
+    recent_users_query = users_coll.order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(8)
+    for u in [_doc_dict(d) for d in _stream(recent_users_query)]:
+        role = u.get("role")
+        name = u.get("name") or u.get("phone") or "User"
+        t = u.get("createdAt")
+        t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+        if role == "driver":
+            if u.get("verificationStatus") == "approved":
+                recent_activity.append({
+                    "text": f"Driver {name} approved",
+                    "color": "primary",
+                    "type": "driver_approved",
+                    "at": t_iso,
+                })
+            else:
+                recent_activity.append({
+                    "text": f"New driver registered: {name}",
+                    "color": "primary",
+                    "type": "driver_registered",
+                    "at": t_iso,
+                })
+        elif role == "passenger":
+            recent_activity.append({
+                "text": f"New passenger registered: {name}",
+                "color": "primary",
+                "type": "passenger_registered",
+                "at": t_iso,
+            })
+
+    # 3. Recent driver payments
+    try:
+        recent_pmts_query = db.collection("driverPayments").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(5)
+        for p in [_doc_dict(d) for d in _stream(recent_pmts_query)]:
+            t = p.get("createdAt")
+            t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+            amt = p.get("amount") or 0
+            st = p.get("status")
+            if st == "approved":
+                recent_activity.append({
+                    "text": f"Driver payment approved (₹{amt})",
+                    "color": "success",
+                    "type": "payment_approved",
+                    "at": t_iso,
+                })
+            elif st == "submitted":
+                recent_activity.append({
+                    "text": f"Driver payment submitted (₹{amt}) awaiting approval",
+                    "color": "warning",
+                    "type": "payment_submitted",
+                    "at": t_iso,
+                })
+    except Exception:
+        pass
+
+    # 4. Recent coupons
+    try:
+        recent_cpns_query = db.collection("coupons").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(5)
+        for c in [_doc_dict(d) for d in _stream(recent_cpns_query)]:
+            t = c.get("createdAt")
+            t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+            code = c.get("code") or "PROMO"
+            if c.get("active") is False:
+                recent_activity.append({
+                    "text": f"Coupon {code} deactivated",
+                    "color": "warning",
+                    "type": "coupon_deactivated",
+                    "at": t_iso,
+                })
+            else:
+                recent_activity.append({
+                    "text": f"Coupon {code} created",
+                    "color": "success",
+                    "type": "coupon_created",
+                    "at": t_iso,
+                })
+    except Exception:
+        pass
+
+    # Sort all recent real events by 'at' descending and take top 12
+    recent_activity.sort(key=lambda x: str(x.get("at") or ""), reverse=True)
+    recent_activity = recent_activity[:12]
+
     # Hourly ride activity breakdown for today
     hourly_activity: dict[str, int] = {"6 AM": 0, "9 AM": 0, "12 PM": 0, "3 PM": 0, "6 PM": 0, "9 PM": 0}
     for r in today_docs:
@@ -411,10 +529,10 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
         "attention": {
             "pendingDrivers": pending_drivers,
             "pendingPayments": pending_payments,
-            "unusualCancelledRides": today_cancelled,
             "openSosAlerts": open_sos,
             "openSafetyReports": open_reports,
         },
+        "recentActivity": recent_activity,
         "userGrowth": {
             "today": new_users_today,
             "thisWeek": new_users_week or new_users_today,

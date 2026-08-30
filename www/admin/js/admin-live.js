@@ -115,6 +115,8 @@ export function startLiveFeed(onEvent, onError) {
                     }
                 }
                 knownUserIds.add(uid);
+            } else if (change.type === "modified" && data.role === "driver" && data.verificationStatus === "approved") {
+                emit({ type: "driver_approved", text: `Driver approved: ${data.name || data.phone || "Unnamed"}` });
             } else if (change.type === "modified" && data.role === "driver" && data.verificationStatus === "suspended") {
                 emit({ type: "driver_suspended", text: `Driver suspended: ${data.name || "Unnamed"}` });
             } else if (change.type === "modified" && data.role === "driver" && data.verificationStatus === "blocked") {
@@ -124,6 +126,42 @@ export function startLiveFeed(onEvent, onError) {
         firstUsersSnapshot = false;
     }, (error) => handleListenerError("users", error));
     unsubs.push(u3);
+
+    // Driver Payments
+    let firstPaymentsSnapshot = true;
+    const u4 = onSnapshot(collection(db, "driverPayments"), (snap) => {
+        snap.docChanges().forEach((change) => {
+            if (firstPaymentsSnapshot) return;
+            const data = change.doc.data();
+            if (change.type === "added") {
+                emit({ type: "payment_submitted", text: `Driver payment submitted (Rs ${data.amount || 0})` });
+            } else if (change.type === "modified" && data.status === "approved") {
+                emit({ type: "payment_approved", text: `Driver payment approved (Rs ${data.amount || 0})` });
+            }
+        });
+        firstPaymentsSnapshot = false;
+    }, (error) => handleListenerError("driverPayments", error));
+    unsubs.push(u4);
+
+    // Coupons
+    let firstCouponsSnapshot = true;
+    const u5 = onSnapshot(collection(db, "coupons"), (snap) => {
+        snap.docChanges().forEach((change) => {
+            if (firstCouponsSnapshot) return;
+            const data = change.doc.data();
+            if (change.type === "added") {
+                emit({ type: "coupon_created", text: `New coupon created: ${data.code || "Promo"}` });
+            } else if (change.type === "modified") {
+                if (data.active === false) {
+                    emit({ type: "coupon_deactivated", text: `Coupon deactivated: ${data.code || "Promo"}` });
+                } else if (data.active === true) {
+                    emit({ type: "coupon_created", text: `Coupon updated/activated: ${data.code || "Promo"}` });
+                }
+            }
+        });
+        firstCouponsSnapshot = false;
+    }, (error) => handleListenerError("coupons", error));
+    unsubs.push(u5);
 }
 
 // ---------------------------------------------------------------------
