@@ -793,6 +793,68 @@ function openAttentionDrawer(data) {
     bodyEl.querySelector("#drawer-att-reports-btn")?.addEventListener("click", () => goToSection("safety"));
 }
 
+function setDashboardLoadingSpinners() {
+    // 1. Attention card hidden while loading
+    $("dashboard-attention-card")?.classList.add("d-none");
+
+    const spinner = `<span class="spinner-border spinner-border-sm text-primary" role="status"></span>`;
+    const subSpinner = `<span class="spinner-border spinner-border-sm text-secondary" style="width: 0.85rem; height: 0.85rem;" role="status"></span>`;
+
+    // 2. Rides Today Card
+    if ($("kpi-rides-today-value")) $("kpi-rides-today-value").innerHTML = spinner;
+    if ($("kpi-rides-today-delta")) $("kpi-rides-today-delta").innerHTML = `<span class="text-secondary small">Loading...</span>`;
+    if ($("kpi-rides-completed")) $("kpi-rides-completed").innerHTML = subSpinner;
+    if ($("kpi-rides-cancelled")) $("kpi-rides-cancelled").innerHTML = subSpinner;
+    if ($("kpi-rides-ongoing")) $("kpi-rides-ongoing").innerHTML = subSpinner;
+
+    // 3. Active Users Card
+    if ($("kpi-active-users-value")) $("kpi-active-users-value").innerHTML = spinner;
+    if ($("kpi-active-users-delta")) $("kpi-active-users-delta").innerHTML = `<span class="text-secondary small">Loading...</span>`;
+    if ($("kpi-active-passengers")) $("kpi-active-passengers").innerHTML = subSpinner;
+    if ($("kpi-active-drivers")) $("kpi-active-drivers").innerHTML = subSpinner;
+
+    // 4. Driver Availability Card
+    if ($("kpi-driver-availability-value")) $("kpi-driver-availability-value").innerHTML = spinner;
+    if ($("kpi-driver-availability-delta")) $("kpi-driver-availability-delta").innerHTML = `<span class="text-secondary small">Loading...</span>`;
+    if ($("kpi-drivers-online")) $("kpi-drivers-online").innerHTML = subSpinner;
+    if ($("kpi-drivers-busy")) $("kpi-drivers-busy").innerHTML = subSpinner;
+    if ($("kpi-drivers-offline")) $("kpi-drivers-offline").innerHTML = subSpinner;
+
+    // 5. Driver Donut Stats
+    if ($("donut-total-count")) $("donut-total-count").innerHTML = subSpinner;
+    if ($("donut-legend-available")) $("donut-legend-available").innerHTML = subSpinner;
+    if ($("donut-legend-busy")) $("donut-legend-busy").innerHTML = subSpinner;
+    if ($("donut-legend-offline")) $("donut-legend-offline").innerHTML = subSpinner;
+    if ($("donut-progress-label")) $("donut-progress-label").innerHTML = `<span class="text-secondary small">Loading...</span>`;
+
+    // 6. Recent Activity Feed
+    if ($("dashboard-recent-activity-list")) {
+        $("dashboard-recent-activity-list").innerHTML = `
+            <div class="text-center py-4 text-secondary">
+                <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+                <div class="small">Loading activity...</div>
+            </div>`;
+    }
+
+    // 7. User Growth Stats
+    if ($("growth-today-val")) $("growth-today-val").innerHTML = spinner;
+    if ($("growth-week-val")) $("growth-week-val").innerHTML = spinner;
+    if ($("growth-month-val")) $("growth-month-val").innerHTML = spinner;
+    if ($("growth-passengers-count")) $("growth-passengers-count").innerHTML = subSpinner;
+    if ($("growth-drivers-count")) $("growth-drivers-count").innerHTML = subSpinner;
+
+    // 8. Recent Rides Table
+    if ($("dashboard-recent-rides-tbody")) {
+        $("dashboard-recent-rides-tbody").innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-5 text-secondary">
+                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                    <span>Loading recent rides...</span>
+                </td>
+            </tr>`;
+    }
+}
+
 async function loadDashboard() {
     // 1. Dynamic Date Display
     const dateEl = $("dashboard-date-badge");
@@ -801,6 +863,9 @@ async function loadDashboard() {
         const dateStr = now.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
         dateEl.textContent = dateStr;
     }
+
+    // Show initial loading spinners across all sections
+    setDashboardLoadingSpinners();
 
     try {
         const data = await adminGet("/overview", {}, { cacheable: false });
