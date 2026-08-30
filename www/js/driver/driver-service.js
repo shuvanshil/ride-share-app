@@ -1259,14 +1259,14 @@ function renderLifecycleState(status, rideData = currentRide) {
             farePaymentCardHtml = `
                 <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">${t('services.original_fare', 'Original Trip Fare')}:</span>
                         <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
                     </div>
                     <div style="color: #0284c7; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
-                        <i class="ti ti-ticket me-1"></i> Coupon (${couponApplied?.code || 'Promo'}): ₹${couponDiscountAmount.toLocaleString('en-IN')} Platform Subsidy (added to your wallet)
+                        <i class="ti ti-ticket me-1"></i> ${t('wallet.coupon_subsidy_banner', { code: couponApplied?.code || 'Promo', amount: couponDiscountAmount.toLocaleString('en-IN') })}
                     </div>
                     <div style="font-size: 16px; font-weight: 700; color: #16a34a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                        New fare to collect: ₹0 (Fully covered by platform)
+                        ${t('wallet.new_fare_zero_platform', 'New fare to collect: ₹0 (Fully covered by platform)')}
                     </div>
                 </div>
             `;
@@ -1274,14 +1274,14 @@ function renderLifecycleState(status, rideData = currentRide) {
             farePaymentCardHtml = `
                 <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">${t('services.original_fare', 'Original Trip Fare')}:</span>
                         <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
                     </div>
                     <div style="color: #0284c7; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
-                        <i class="ti ti-ticket me-1"></i> Coupon (${couponApplied?.code || 'Promo'}): ₹${couponDiscountAmount.toLocaleString('en-IN')} Platform Subsidy (added to your wallet)
+                        <i class="ti ti-ticket me-1"></i> ${t('wallet.coupon_subsidy_banner', { code: couponApplied?.code || 'Promo', amount: couponDiscountAmount.toLocaleString('en-IN') })}
                     </div>
                     <div style="font-size: 16px; font-weight: 700; color: #0f172a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                        New fare to collect: ₹${remainingFare.toLocaleString('en-IN')}
+                        ${t('wallet.new_fare_to_collect', { amount: remainingFare.toLocaleString('en-IN') })}
                     </div>
                 </div>
             `;
@@ -1291,14 +1291,14 @@ function renderLifecycleState(status, rideData = currentRide) {
             farePaymentCardHtml = `
                 <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">${t('services.original_fare', 'Original Trip Fare')}:</span>
                         <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
                     </div>
                     <div style="color: #475569; font-size: 14px; margin-bottom: 6px;">
-                        Passenger paid ₹${walletPaidAmount.toLocaleString('en-IN')} via wallet credit (added to your wallet).
+                        ${t('wallet.passenger_paid_wallet_credit', { amount: walletPaidAmount.toLocaleString('en-IN') })}
                     </div>
                     <div style="font-size: 16px; font-weight: 700; color: #16a34a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                        New fare to collect: ₹0 (Fully paid)
+                        ${t('wallet.new_fare_zero_platform', 'New fare to collect: ₹0 (Fully paid)')}
                     </div>
                 </div>
             `;
@@ -1306,14 +1306,14 @@ function renderLifecycleState(status, rideData = currentRide) {
             farePaymentCardHtml = `
                 <div class="at-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 16px; margin: 16px 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="color: #475569; font-size: 13px; font-weight: 600;">Original Trip Fare:</span>
+                        <span style="color: #475569; font-size: 13px; font-weight: 600;">${t('services.original_fare', 'Original Trip Fare')}:</span>
                         <span style="text-decoration: line-through; color: #94a3b8; font-size: 14px;">₹${totalFare.toLocaleString('en-IN')}</span>
                     </div>
                     <div style="color: #475569; font-size: 14px; margin-bottom: 6px;">
-                        Passenger paid ₹${walletPaidAmount.toLocaleString('en-IN')} via wallet credit (added to your wallet).
+                        ${t('wallet.passenger_paid_wallet_credit', { amount: walletPaidAmount.toLocaleString('en-IN') })}
                     </div>
                     <div style="font-size: 16px; font-weight: 700; color: #0f172a; padding-top: 6px; border-top: 1px dashed #e2e8f0;">
-                        New fare to collect: ₹${remainingFare.toLocaleString('en-IN')}
+                        ${t('wallet.new_fare_to_collect', { amount: remainingFare.toLocaleString('en-IN') })}
                     </div>
                 </div>
             `;
@@ -2456,12 +2456,12 @@ function startActiveRideListener() {
             const addedInr = (currentWalletPaidPaise - lastObservedWalletPaidPaise) / 100.0;
             const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, (Number(rideData.farePaise) || 0) - currentWalletPaidPaise);
             const remainingInr = remainingFarePaise / 100.0;
-            showAlert(`Passenger paid ₹${addedInr.toLocaleString('en-IN')} with wallet credits! Updated cash to collect: ₹${remainingInr.toLocaleString('en-IN')}`);
+            showAlert(t('wallet.passenger_paid_alert_driver', { amount: addedInr.toLocaleString('en-IN'), remaining: remainingInr.toLocaleString('en-IN') }));
         } else if (lastObservedWalletPaidPaise === 0 && currentWalletPaidPaise > 0 && currentRideId === activeRideDoc.id) {
             const totalPaidInr = currentWalletPaidPaise / 100.0;
             const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, (Number(rideData.farePaise) || 0) - currentWalletPaidPaise);
             const remainingInr = remainingFarePaise / 100.0;
-            showAlert(`Passenger paid ₹${totalPaidInr.toLocaleString('en-IN')} with wallet credits! Updated cash to collect: ₹${remainingInr.toLocaleString('en-IN')}`);
+            showAlert(t('wallet.passenger_paid_alert_driver', { amount: totalPaidInr.toLocaleString('en-IN'), remaining: remainingInr.toLocaleString('en-IN') }));
         }
         lastObservedWalletPaidPaise = currentWalletPaidPaise;
 
@@ -2474,7 +2474,7 @@ function startActiveRideListener() {
             const discInr = currentCouponDiscountPaise / 100.0;
             const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, (Number(rideData.farePaise) || 0) - currentCouponDiscountPaise);
             const remainingInr = remainingFarePaise / 100.0;
-            showAlert(`Promotion Applied! ₹${discInr.toLocaleString('en-IN')} platform subsidy added to your wallet! Updated cash to collect: ₹${remainingInr.toLocaleString('en-IN')}`);
+            showAlert(t('wallet.coupon_applied_alert_driver', { amount: discInr.toLocaleString('en-IN'), remaining: remainingInr.toLocaleString('en-IN') }));
         }
         lastObservedCouponDiscountPaise = currentCouponDiscountPaise;
 

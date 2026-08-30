@@ -378,7 +378,15 @@ export const TRANSLATIONS = {
             "pending_queue_active": "Notify Alert Active",
             "expires_in_prefix": "Expires in",
             "min_suffix": "min",
-            "pickup_pin_label": "Pickup PIN"
+            "pickup_pin_label": "Pickup PIN",
+            "save_home_address": "Save Home Address",
+            "save_work_address": "Save Work Address",
+            "save_new_address": "Save New Address",
+            "save_address": "Save Address",
+            "max_saved_places_notice": "You can save up to 3 places in addition to Home and Work.",
+            "save_address_error": "Could not save address. Please try again.",
+            "delete_place_error": "Could not delete place. Try again.",
+            "action_hint": "Search, driver assignment, PIN verification, tracking, and completion happen here."
         },
         "history": {
             "title": "Ride History",
@@ -905,8 +913,21 @@ export const TRANSLATIONS = {
             "opening_wallet": "Opening wallet...",
             "remaining_cash_to_pay": "Remaining cash to pay driver",
             "settlement_transferred": "Wallet Settlement Transferred!",
+            "settlement_transferred_desc": "Admin has approved and transferred ₹{amount} directly to your registered UPI ID. Your wallet balance has been settled.",
             "coupon_credit_received": "Coupon Subsidy Received!",
-            "ride_wallet_received": "Passenger Wallet Payment Received!"
+            "coupon_subsidy_received_desc": "₹{amount} platform subsidy from applied coupon has been credited directly to your Driver Wallet.",
+            "ride_wallet_received": "Passenger Wallet Payment Received!",
+            "driver_wallet_payment_received_desc": "Passenger paid ₹{amount} via wallet credit, added directly to your Driver Wallet.",
+            "direct_bank_upi": "Direct Bank / UPI Transfer",
+            "coupon_subsidy_banner": "Coupon ({code}): ₹{amount} Platform Subsidy (added to your wallet)",
+            "new_fare_zero_platform": "New fare to collect: ₹0 (Fully covered by platform)",
+            "new_fare_to_collect": "New fare to collect: ₹{amount}",
+            "passenger_paid_wallet_credit": "Passenger paid ₹{amount} via wallet credit (added to your wallet).",
+            "coupon_applied_alert_driver": "Promotion Applied! ₹{amount} platform subsidy added to your wallet! Updated cash to collect: ₹{remaining}",
+            "passenger_paid_alert_driver": "Passenger paid ₹{amount} with wallet credits! Updated cash to collect: ₹{remaining}",
+            "missing_ride_id": "Unable to identify active ride ID. Please refresh.",
+            "payment_failed": "Payment failed. Please try again.",
+            "remaining_cash_default": "Remaining cash to pay driver: ₹0"
         },
         "coupons": {
             "title": "Coupons",
@@ -1298,7 +1319,15 @@ export const TRANSLATIONS = {
             "pending_queue_active": "নোটিফাই অ্যালার্ট সক্রিয়",
             "expires_in_prefix": "মেয়াদ শেষ হতে বাকি",
             "min_suffix": "মি.",
-            "pickup_pin_label": "পিকআপ পিন"
+            "pickup_pin_label": "পিকআপ পিন",
+            "save_home_address": "বাড়ির ঠিকানা সংরক্ষণ করুন",
+            "save_work_address": "কর্মস্থলের ঠিকানা সংরক্ষণ করুন",
+            "save_new_address": "নতুন ঠিকানা সংরক্ষণ করুন",
+            "save_address": "ঠিকানা সংরক্ষণ করুন",
+            "max_saved_places_notice": "বাড়ি ও কর্মস্থল ছাড়াও আপনি সর্বোচ্চ ৩টি স্থান সংরক্ষণ করতে পারবেন।",
+            "save_address_error": "ঠিকানা সংরক্ষণ করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
+            "delete_place_error": "স্থানটি মোছা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
+            "action_hint": "অনুসন্ধান, ড্রাইভার নির্বাচন, পিন ভেরিফিকেশন, ট্র্যাকিং ও সম্পন্ন এখানে হবে।"
         },
         "history": {
             "title": "রাইড হিস্ট্রি",
@@ -1825,8 +1854,21 @@ export const TRANSLATIONS = {
             "opening_wallet": "ওয়ালেট খোলা হচ্ছে...",
             "remaining_cash_to_pay": "ড্রাইভারকে নগদ প্রদেয় বাকি",
             "settlement_transferred": "ওয়ালেট সেটেলমেন্ট সফলভাবে স্থানান্তরিত হয়েছে!",
+            "settlement_transferred_desc": "অ্যাডমিন ₹{amount} সরাসরি আপনার নিবন্ধিত UPI আইডিতে স্থানান্তর করেছেন। আপনার ওয়ালেট ব্যালেন্স পরিশোধ করা হয়েছে।",
             "coupon_credit_received": "কুপন ভরতুকি জমা হয়েছে!",
-            "ride_wallet_received": "যাত্রীর ওয়ালেট পেমেন্ট জমা হয়েছে!"
+            "coupon_subsidy_received_desc": "প্রযোজ্য কুপন থেকে ₹{amount} প্ল্যাটফর্ম সাবসিডি সরাসরি আপনার ড্রাইভার ওয়ালেটে জমা হয়েছে।",
+            "ride_wallet_received": "যাত্রীর ওয়ালেট পেমেন্ট জমা হয়েছে!",
+            "driver_wallet_payment_received_desc": "প্যাসেঞ্জার ওয়ালেট ক্রেডিট দিয়ে ₹{amount} পরিশোধ করেছেন, যা সরাসরি আপনার ড্রাইভার ওয়ালেটে জমা হয়েছে।",
+            "direct_bank_upi": "সরাসরি ব্যাংক / ইউপিআই ট্রান্সফার",
+            "coupon_subsidy_banner": "কুপন ({code}): ₹{amount} প্ল্যাটফর্ম সাবসিডি (ওয়ালেটে যোগ হয়েছে)",
+            "new_fare_zero_platform": "নতুন আদায়যোগ্য ভাড়া: ₹0 (প্ল্যাটফর্ম দ্বারা সম্পূর্ণ পরিশোধিত)",
+            "new_fare_to_collect": "নতুন আদায়যোগ্য ভাড়া: ₹{amount}",
+            "passenger_paid_wallet_credit": "প্যাসেঞ্জার ওয়ালেট ক্রেডিট দিয়ে ₹{amount} পরিশোধ করেছেন (আপনার ওয়ালেটে যোগ হয়েছে)।",
+            "coupon_applied_alert_driver": "প্রমোশন প্রযোজ্য হয়েছে! ₹{amount} প্ল্যাটফর্ম সাবসিডি আপনার ওয়ালেটে জমা হয়েছে! নতুন আদায়যোগ্য নগদ: ₹{remaining}",
+            "passenger_paid_alert_driver": "প্যাসেঞ্জার ওয়ালেট ক্রেডিট দিয়ে ₹{amount} পরিশোধ করেছেন! নতুন আদায়যোগ্য নগদ: ₹{remaining}",
+            "missing_ride_id": "চলমান রাইড আইডি শনাক্ত করা যায়নি। অনুগ্রহ করে রিফ্রেশ করুন।",
+            "payment_failed": "পেমেন্ট ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
+            "remaining_cash_default": "ড্রাইভারকে প্রদেয় অবশিষ্ট নগদ: ₹0"
         },
         "coupons": {
             "title": "কুপন",

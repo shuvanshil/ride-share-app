@@ -608,14 +608,15 @@ async function checkAndShowDriverSettlementModal() {
             amtVal.innerText = `₹${(item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN')}`;
         }
         if (descEl) {
+            const formattedAmt = (item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN');
             if (isSettlement) {
-                descEl.innerText = `Admin has approved and transferred ₹${(item.settlementAmount ?? item.amount ?? 0).toLocaleString('en-IN')} directly to your registered UPI ID. Your wallet balance has been settled.`;
+                descEl.innerText = t('wallet.settlement_transferred_desc', { amount: formattedAmt });
             } else if (isCoupon) {
-                descEl.innerText = `₹${(item.amount ?? 0).toLocaleString('en-IN')} platform subsidy from applied coupon has been credited directly to your Driver Wallet.`;
+                descEl.innerText = t('wallet.coupon_subsidy_received_desc', { amount: formattedAmt });
             } else if (isRideWallet) {
-                descEl.innerText = `Passenger paid ₹${(item.amount ?? 0).toLocaleString('en-IN')} via wallet credit, added directly to your Driver Wallet.`;
+                descEl.innerText = t('wallet.driver_wallet_payment_received_desc', { amount: formattedAmt });
             } else {
-                descEl.innerText = `₹${(item.amount ?? 0).toLocaleString('en-IN')} credit has been added to your Driver Wallet.`;
+                descEl.innerText = t('wallet.credit_received_desc', { amount: formattedAmt });
             }
         }
 

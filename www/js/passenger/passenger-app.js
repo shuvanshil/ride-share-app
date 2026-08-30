@@ -836,7 +836,7 @@ function showTripProgressPanel(ride) {
 
                     try {
                         const curUser = auth.currentUser;
-                        if (!curUser) throw new Error("Please log in to apply coupons.");
+                        if (!curUser) throw new Error(t('auth.signin_required', "Please log in to apply coupons."));
                         const token = await curUser.getIdToken();
                         const idempotencyKey = `cr_${rideId}_${enteredCode}_${Date.now()}`;
                         const applyRes = await fetch('/api/coupons/apply', {
@@ -1008,7 +1008,7 @@ async function openPassengerRideWalletModal(rideObj) {
                     window.LiphtUpLoading?.showPageLoader?.(t('wallet.processing_payment', "Processing payment..."));
                     try {
                         const rideId = ride?.id || ride?.rideId || ride?.ride_id || currentPassengerRideId || window._currentActiveRideId;
-                        if (!rideId) throw new Error("Unable to identify active ride ID. Please refresh.");
+                        if (!rideId) throw new Error(t('wallet.missing_ride_id', "Unable to identify active ride ID. Please refresh."));
 
                         const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
                         const res = await fetch('/api/wallet/pay-current-ride', {
@@ -1017,7 +1017,7 @@ async function openPassengerRideWalletModal(rideObj) {
                             body: JSON.stringify({ rideId, idempotencyKey })
                         });
                         const data = await res.json().catch(() => ({}));
-                        if (!res.ok || !data.ok) throw new Error(data.error || "Payment failed");
+                        if (!res.ok || !data.ok) throw new Error(data.error || t('wallet.payment_failed', "Payment failed"));
 
                         const result = data.result || {};
                         cachedPassengerWalletBalance = Math.max(0, userBal - (result.transferAmount || spendAmt));

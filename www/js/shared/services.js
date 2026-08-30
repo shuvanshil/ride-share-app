@@ -525,15 +525,15 @@ function openSaveAddressEditor(targetKey, defaultLabel = "", defaultAddress = ""
     if (targetKey === 'home') {
         labelInput.value = "Home";
         labelInput.readOnly = true;
-        titleEl.textContent = "Save Home Address";
+        titleEl.textContent = t('services.save_home_address', "Save Home Address");
     } else if (targetKey === 'work') {
         labelInput.value = "Work";
         labelInput.readOnly = true;
-        titleEl.textContent = "Save Work Address";
+        titleEl.textContent = t('services.save_work_address', "Save Work Address");
     } else {
         labelInput.value = defaultLabel || "";
         labelInput.readOnly = false;
-        titleEl.textContent = "Save New Address";
+        titleEl.textContent = t('services.save_new_address', "Save New Address");
     }
 
     locationInput.value = defaultAddress || "";
@@ -553,10 +553,10 @@ async function persistSavedPlace(targetKey, label, address) {
     }
 
     const submitBtn = document.getElementById('save-address-submit-btn');
-    const originalText = submitBtn ? submitBtn.innerHTML : 'Save Address';
+    const originalText = submitBtn ? submitBtn.innerHTML : t('services.save_address', 'Save Address');
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="lu-spinner lu-spinner-sm me-2" style="border-top-color:#fff;"></span>Saving...';
+        submitBtn.innerHTML = `<span class="lu-spinner lu-spinner-sm me-2" style="border-top-color:#fff;"></span>${t('common.saving', 'Saving...')}`;
     }
 
     const payload = { ...savedPlacesCache, updatedAt: new Date().toISOString() };
@@ -571,7 +571,7 @@ async function persistSavedPlace(targetKey, label, address) {
     } else {
         payload.customPlaces = payload.customPlaces || [];
         if (payload.customPlaces.length >= 3) {
-            showAlert("You can save up to 3 places in addition to Home and Work.");
+            showAlert(t('services.max_saved_places_notice', "You can save up to 3 places in addition to Home and Work."));
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = originalText;
@@ -588,7 +588,7 @@ async function persistSavedPlace(targetKey, label, address) {
         closeSaveAddressEditor();
     } catch (e) {
         console.error("Could not save address:", e);
-        showAlert("Could not save address. Please try again.");
+        showAlert(t('services.save_address_error', "Could not save address. Please try again."));
     } finally {
         if (submitBtn) {
             submitBtn.disabled = false;
@@ -622,7 +622,7 @@ async function deleteSavedPlaceItem(targetKey, customIndex = null, btnElement = 
         renderSavedPlacesModalList();
     } catch (e) {
         console.error("Could not delete saved place:", e);
-        showAlert("Could not delete place. Try again.");
+        showAlert(t('services.delete_place_error', "Could not delete place. Try again."));
         renderSavedPlacesModalList();
     }
 }
