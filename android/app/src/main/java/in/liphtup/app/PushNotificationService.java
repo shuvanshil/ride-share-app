@@ -30,15 +30,20 @@ public class PushNotificationService extends FirebaseMessagingService {
         // Role-based filtering: Suppress any driver ride request notifications unless active user is logged in as a driver
         Map<String, String> dataMap = remoteMessage.getData();
         String msgType = dataMap != null ? dataMap.get("type") : null;
-        String url = dataMap != null ? dataMap.get("url") : null;
-        String title = dataMap != null ? dataMap.get("title") : null;
+        String rawUrl = dataMap != null ? dataMap.get("url") : null;
+        String rawTitle = dataMap != null ? dataMap.get("title") : null;
+
+        RemoteMessage.Notification remoteNotif = remoteMessage.getNotification();
+        if (remoteNotif != null && (rawTitle == null || rawTitle.isEmpty())) {
+            rawTitle = remoteNotif.getTitle();
+        }
 
         boolean isRideRequestPush = "ride_request".equalsIgnoreCase(msgType)
                 || "NEW_PASSENGER_AVAILABLE".equalsIgnoreCase(msgType)
                 || "ride_dispatch".equalsIgnoreCase(msgType)
                 || "pending_driver_available".equalsIgnoreCase(msgType)
-                || (url != null && url.contains("/driver"))
-                || (title != null && (title.toLowerCase().contains("new ride request") || title.toLowerCase().contains("ride request")));
+                || (rawUrl != null && rawUrl.contains("/driver"))
+                || (rawTitle != null && (rawTitle.toLowerCase().contains("ride request") || rawTitle.toLowerCase().contains("new passenger")));
 
         if (isRideRequestPush && !isDriverLoggedIn()) {
             Log.d(TAG, "Suppressing driver ride request notification: Active user is not logged in as a driver. Current role: "
@@ -49,7 +54,7 @@ public class PushNotificationService extends FirebaseMessagingService {
         String title = null;
         String body = null;
         String rideId = null;
-        String url = null;
+        String url = rawUrl;
 
         if (dataMap != null && !dataMap.isEmpty()) {
             Log.d(TAG, "Message data payload: " + dataMap);
@@ -69,17 +74,16 @@ public class PushNotificationService extends FirebaseMessagingService {
                 title = dataMap.get("title");
                 body = dataMap.get("body");
                 rideId = dataMap.get("rideId");
-                url = dataMap.get("url");
             }
         }
 
-        if (remoteMessage.getNotification() != null) {
-            Log.d(TAG, "Message Notification Body: " + remoteMessage.getNotification().getBody());
+        if (remoteNotif != null) {
+            Log.d(TAG, "Message Notification Body: " + remoteNotif.getBody());
             if (title == null || title.isEmpty()) {
-                title = remoteMessage.getNotification().getTitle();
+                title = remoteNotif.getTitle();
             }
             if (body == null || body.isEmpty()) {
-                body = remoteMessage.getNotification().getBody();
+                body = remoteNotif.getBody();
             }
         }
 

@@ -2142,11 +2142,13 @@ def _send_passenger_push_and_inapp(db, passenger_id: str, title: str, body: str,
 def _send_driver_push_notification(db, driver_id: str, title: str, body: str, data_payload: dict[str, Any]) -> None:
     """Send push notification to driver if tokens exist."""
     try:
-        user_doc = db.collection("users").document(driver_id).get()
-        if not user_doc.exists:
+        presence_doc = db.collection("driverPresence").document(driver_id).get()
+        if not presence_doc.exists:
             return
-        user_data = user_doc.to_dict() or {}
-        tokens = _collect_tokens(user_data)
+        presence_data = presence_doc.to_dict() or {}
+        if not _is_notification_eligible(presence_data):
+            return
+        tokens = _collect_tokens(presence_data)
         if not tokens:
             return
 
