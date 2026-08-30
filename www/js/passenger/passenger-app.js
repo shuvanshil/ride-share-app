@@ -1606,9 +1606,8 @@ async function cancelPendingRideRequest() {
     } catch (e) {
         console.warn("Cancel pending request warning:", e);
     } finally {
-        resetPassengerBookingUi({ preserveSelections: false });
-        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
         await showAlert(t('services.waiting_request_cancelled', "Waiting request cancelled."));
+        window.location.reload();
     }
 }
 
@@ -2223,15 +2222,19 @@ function listenToRideStatusUpdates(rideId) {
             stopSearchStateUi();
             hideNoDriverOptions();
             const driverHadAccepted = Boolean(ride.driver_id) || ["accepted", "arrived", "started", "en_route", "cancelled_by_driver"].includes(ride.status);
-            if (ride.status === "cancelled_by_driver") {
-                const message = fareAdjustmentMessage(ride, "Please request a new ride.");
-                showAlert(`Your driver cancelled the trip. ${message}`);
-            }
             resetPassengerBookingUi({ preserveSelections: driverHadAccepted });
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             if (activeRideListener) {
                 activeRideListener();
                 activeRideListener = null;
+            }
+            if (ride.status === "cancelled_by_driver") {
+                const message = fareAdjustmentMessage(ride, "Please request a new ride.");
+                showAlert(`Your driver cancelled the trip. ${message}`).finally(() => {
+                    window.location.reload();
+                });
+            } else {
+                window.location.reload();
             }
             return;
         }
@@ -2368,9 +2371,8 @@ async function cancelRideByPassenger(rideId) {
     } catch (error) {
         console.warn("Failed to cancel ride silently:", error);
     } finally {
-        resetPassengerBookingUi({ preserveSelections: false });
-        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
-        await showAlert("Your ride request has been cancelled.");
+        await showAlert(t('services.waiting_request_cancelled', "Your ride request has been cancelled."));
+        window.location.reload();
     }
 }
 

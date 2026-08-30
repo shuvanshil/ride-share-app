@@ -125,11 +125,18 @@
                                     <p id="services-location-status" data-i18n="services.locking_location">Locking your exact location...</p>
                                 </div>
                             </div>
-                            <span id="services-gps-pill" class="services-live-signal-badge">
-                                <span class="signal-icon">((•))</span> Live
-                            </span>
+                            <button type="button" id="services-refresh-location-btn" class="services-map-refresh-btn" aria-label="Refresh location" title="Refresh Location">
+                                <svg class="refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                                </svg>
+                                <span data-i18n="services.refresh_location">Refresh</span>
+                            </button>
                         </div>
-                        <div id="map-container" class="services-map-frame">
+                        <div id="map-container" class="services-map-frame position-relative">
+                            <div id="map-refresh-overlay" class="map-refresh-overlay d-none">
+                                <span class="lu-spinner lu-spinner-sm" aria-hidden="true" style="border-top-color: #ffffff; width: 14px; height: 14px;"></span>
+                                <span id="map-refresh-overlay-text" data-i18n="services.refreshing_location">Refreshing location...</span>
+                            </div>
                             <div class="services-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span data-i18n="common.loading_map">Loading Map...</span></div>
                         </div>
 

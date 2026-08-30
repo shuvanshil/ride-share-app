@@ -1,7 +1,7 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { initializeMapEngine, useCurrentPickupLocation, warmGoogleMaps } from '../map/map-core.js';
+import { initializeMapEngine, useCurrentPickupLocation, forceRefreshUserLocation, warmGoogleMaps } from '../map/map-core.js';
 import { getRideService } from './fare-policy.js';
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { setInlineLoading, hideInitialLoader } from './loading.js';
@@ -14,6 +14,7 @@ const pickupInput = document.getElementById('pickup-input');
 const dropInput = document.getElementById('drop-input');
 const findRideBtn = document.getElementById('request-ride-btn');
 const refreshLocationBtn = document.getElementById('refresh-location-btn');
+const servicesRefreshBtn = document.getElementById('services-refresh-location-btn');
 const clearDropBtn = document.getElementById('clear-drop-btn');
 const locationStatus = document.getElementById('services-location-status');
 const gpsPill = document.getElementById('services-gps-pill');
@@ -218,6 +219,7 @@ function swapLocations() {
 
 function bindServicesControls() {
     if (refreshLocationBtn) refreshLocationBtn.addEventListener('click', refreshServicesMap);
+    if (servicesRefreshBtn) servicesRefreshBtn.addEventListener('click', forceRefreshUserLocation);
     if (swapLocationsBtn) swapLocationsBtn.addEventListener('click', swapLocations);
     if (selectOnMapBtn) {
         selectOnMapBtn.addEventListener('click', () => {

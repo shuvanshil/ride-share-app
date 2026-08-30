@@ -158,8 +158,44 @@ function schedulePrompt(rideId, rideData) {
 }
 
 // ---------------------------------------------------------------------------
-// Minimized banner
+// Minimized banner & Storage Persistence
 // ---------------------------------------------------------------------------
+
+const PENDING_FEEDBACK_KEY = 'liphtup_pending_feedback';
+
+function _savePendingFeedbackToStorage() {
+    if (!_rideId) return;
+    try {
+        sessionStorage.setItem(PENDING_FEEDBACK_KEY, JSON.stringify({
+            rideId: _rideId,
+            rideData: _rideData,
+            selectedExp: _selectedExp,
+            timestamp: Date.now()
+        }));
+    } catch {}
+}
+
+function _clearPendingFeedbackFromStorage() {
+    try {
+        sessionStorage.removeItem(PENDING_FEEDBACK_KEY);
+    } catch {}
+}
+
+function _checkStoredPendingFeedback() {
+    try {
+        const stored = sessionStorage.getItem(PENDING_FEEDBACK_KEY);
+        if (!stored) return;
+        const parsed = JSON.parse(stored);
+        if (parsed?.rideId && (Date.now() - (parsed.timestamp || 0) < 24 * 60 * 60 * 1000)) {
+            _rideId = parsed.rideId;
+            _rideData = parsed.rideData || {};
+            _selectedExp = parsed.selectedExp || null;
+            _showMinimizedBanner();
+        } else {
+            _clearPendingFeedbackFromStorage();
+        }
+    } catch {}
+}
 
 function _getOrCreateMiniBanner() {
     if (_miniBanner) return _miniBanner;
@@ -181,7 +217,10 @@ function _hideMinimizedBanner() {
 
 function _initMiniBannerEvents() {
     const banner = _getOrCreateMiniBanner();
-    if (!banner || banner.dataset.fbEventsInit) return;
+    if (!banner || banner.dataset.fbEventsInit) {
+        _checkStoredPendingFeedback();
+        return;
+    }
     banner.dataset.fbEventsInit = '1';
 
     // Clicking the banner body reopens feedback at experience or reasons step
@@ -197,9 +236,12 @@ function _initMiniBannerEvents() {
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             _dismissed = true;
+            _clearPendingFeedbackFromStorage();
             _hideMinimizedBanner();
         });
     }
+
+    _checkStoredPendingFeedback();
 }
 
 // ---------------------------------------------------------------------------
@@ -353,21 +395,27 @@ function _goToStep(modal, stepId) {
 function _bindModalEvents(modal) {
     // Step 1 (Thank You) buttons
     modal.querySelector('#fb-close-thankyou')?.addEventListener('click', () => {
+        _savePendingFeedbackToStorage();
         _closeFeedbackModal();
         _showMinimizedBanner();
+        setTimeout(() => window.location.reload(), 150);
     });
     modal.querySelector('#fb-thankyou-rate-btn')?.addEventListener('click', () => {
         _goToStep(modal, 'step-exp');
     });
     modal.querySelector('#fb-thankyou-later-btn')?.addEventListener('click', () => {
+        _savePendingFeedbackToStorage();
         _closeFeedbackModal();
         _showMinimizedBanner();
+        setTimeout(() => window.location.reload(), 150);
     });
 
     // Step 2 (Choose Experience) buttons
     modal.querySelector('#fb-close-exp')?.addEventListener('click', () => {
+        _savePendingFeedbackToStorage();
         _closeFeedbackModal();
         _showMinimizedBanner();
+        setTimeout(() => window.location.reload(), 150);
     });
     modal.querySelector('#fb-back-exp')?.addEventListener('click', () => {
         _goToStep(modal, 'step-thankyou');
@@ -375,8 +423,10 @@ function _bindModalEvents(modal) {
 
     // Step 3 (Select Reasons) buttons
     modal.querySelector('#fb-close-reasons')?.addEventListener('click', () => {
+        _savePendingFeedbackToStorage();
         _closeFeedbackModal();
         _showMinimizedBanner();
+        setTimeout(() => window.location.reload(), 150);
     });
     modal.querySelector('#fb-back-reasons')?.addEventListener('click', () => {
         _goToStep(modal, 'step-exp');
@@ -420,6 +470,7 @@ function _bindModalEvents(modal) {
     // Done button (after success)
     modal.querySelector('#fb-done-btn')?.addEventListener('click', () => {
         _feedbackSubmitted = true;
+        _clearPendingFeedbackFromStorage();
         _closeFeedbackModal();
         _hideMinimizedBanner();
         // Restore the "Book Again" button and reload
@@ -535,6 +586,7 @@ async function _handleSubmit(modal) {
         if (response.status === 409) {
             // Already submitted — treat as success silently
             _feedbackSubmitted = true;
+            _clearPendingFeedbackFromStorage();
             _goToStep(modal, 'step-success');
             return;
         }
@@ -545,6 +597,7 @@ async function _handleSubmit(modal) {
         }
 
         _feedbackSubmitted = true;
+        _clearPendingFeedbackFromStorage();
         _goToStep(modal, 'step-success');
 
     } catch (err) {

@@ -2556,6 +2556,84 @@ export async function useCurrentPickupLocation() {
     await renderDestinationFare(existingDestination, fareQuoteBox, fareAmountSpan);
 }
 
+export async function forceRefreshUserLocation() {
+    const pickupInput = document.getElementById("pickup-input");
+    const refreshBtn = document.getElementById("services-refresh-location-btn");
+    const overlay = document.getElementById("map-refresh-overlay");
+    const statusEl = document.getElementById("services-location-status");
+
+    if (refreshBtn) refreshBtn.classList.add("is-refreshing");
+    if (overlay) overlay.classList.remove("d-none");
+    if (statusEl) {
+        statusEl.textContent = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') 
+            ? window.LiphtUpI18n.t('services.refreshing_location') 
+            : "Refreshing location...";
+    }
+
+    try {
+        try {
+            localStorage.removeItem(PICKUP_CACHE_KEY);
+        } catch {}
+
+        if (pickupSearchTimer) clearTimeout(pickupSearchTimer);
+        if (pickupSearchAbortController) {
+            pickupSearchAbortController.abort();
+            pickupSearchAbortController = null;
+        }
+
+        const position = await getCurrentPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+        const coords = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            label: "Current location"
+        };
+        userLatitude = coords.lat;
+        userLongitude = coords.lng;
+
+        const geocoded = await reverseGeocodeLocation(coords.lat, coords.lng);
+        const resolvedLabel = geocoded?.name || geocoded?.fullAddress || coords.label;
+        coords.label = resolvedLabel;
+        coords.fullAddress = geocoded?.fullAddress || "";
+        coords.placeId = geocoded?.placeId || "";
+
+        if (pickupInput) {
+            pickupInput.value = resolvedLabel;
+        }
+
+        rememberPickupLocation(coords, resolvedLabel);
+
+        addPickupMarker(coords);
+        if (window.mapInstance) {
+            window.mapInstance.panTo(googleLatLngLiteral(coords));
+            window.mapInstance.setZoom(16);
+        }
+
+        window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+            detail: { name: coords.label, lat: coords.lat, lng: coords.lng }
+        }));
+
+        if (statusEl) {
+            statusEl.textContent = resolvedLabel;
+        }
+
+        if (window.selectedDestination) {
+            const fareQuoteBox = document.getElementById("fare-quote-box");
+            const fareAmountSpan = document.getElementById("fare-amount") || document.getElementById("availability-price-amount");
+            await renderDestinationFare(window.selectedDestination, fareQuoteBox, fareAmountSpan);
+        }
+    } catch (err) {
+        console.warn("Manual location refresh error:", err);
+        if (statusEl) {
+            statusEl.textContent = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function')
+                ? window.LiphtUpI18n.t('services.gps_error')
+                : "GPS Error";
+        }
+    } finally {
+        if (refreshBtn) refreshBtn.classList.remove("is-refreshing");
+        if (overlay) overlay.classList.add("d-none");
+    }
+}
+
 function setupFareEngineListeners() {
     if (fareEngineListenersBound) return;
 

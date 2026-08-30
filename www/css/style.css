@@ -9341,6 +9341,63 @@ body.profile-editor-open {
     flex-shrink: 0;
 }
 
+.services-map-refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 13px;
+    border-radius: 20px;
+    background: #E8F5E9;
+    color: #1A7A2E;
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid rgba(26, 122, 46, 0.25);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    user-select: none;
+}
+
+.services-map-refresh-btn:hover {
+    background: #DCEDC8;
+    color: #1565C0;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+.services-map-refresh-btn:active {
+    transform: translateY(0);
+}
+
+.services-map-refresh-btn.is-refreshing .refresh-icon {
+    animation: spin-refresh 0.8s linear infinite;
+}
+
+@keyframes spin-refresh {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.map-refresh-overlay {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(26, 32, 44, 0.9);
+    color: #ffffff;
+    padding: 7px 16px;
+    border-radius: 24px;
+    font-size: 12.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+}
+
 .services-live-signal-badge {
     display: inline-flex;
     align-items: center;
