@@ -382,7 +382,7 @@ def admin_grant_credit(
     # Clean tags
     clean_tags = [t.strip() for t in body.tags if t and t.strip()]
     if not clean_tags:
-        raise ApiError("At least one tag must be selected (e.g. 'Bonus', 'Thank you credit').", 400)
+        raise ApiError("At least one tag must be selected (e.g. 'Refund', 'Changes settlement', 'Conflict settlement', 'Bonus').", 400)
 
     result = grant_passenger_credit(
         db=db,

@@ -261,6 +261,9 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
     note = f"Final fare is {_format_rupees(original_fare)}."
     final_fare = original_fare
 
+    prior_max_travelled = _finite_float(ride.get("max_travelled_km") or ride.get("travelled_after_pickup_km") or 0.0)
+    prior_max_ratio = _finite_float(ride.get("max_progress_ratio") or ride.get("progress_ratio") or 0.0)
+
     if current and planned_km > 0:
         # "How far past/short of the exact drop pin is the driver right now"
         # is a small, local distance -- straight-line is fine there.
@@ -284,17 +287,26 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
             else _haversine_km(pickup["lat"], pickup["lng"], current["lat"], current["lng"])
         )
 
-        progress_ratio = max(0.0, min(1.0, pickup_to_current_km / planned_km))
-        travelled_km = max(0.0, min(pickup_to_current_km, planned_km))
+        curr_progress_ratio = max(0.0, min(1.0, pickup_to_current_km / planned_km))
+        curr_travelled_km = max(0.0, min(pickup_to_current_km, planned_km))
+
+        # Monotonicity guard: travel progress can NEVER decrease due to jitter, out-of-order, or stale GPS ticks
+        progress_ratio = max(prior_max_ratio, curr_progress_ratio)
+        travelled_km = max(prior_max_travelled, curr_travelled_km)
+
         if pickup_to_current_km > planned_km and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:
             extra_dropoff_km = distance_to_drop_km
+    elif prior_max_travelled > 0:
+        # Fallback when GPS is temporarily missing/offline at terminal event, but was tracked during ride
+        travelled_km = prior_max_travelled
+        progress_ratio = prior_max_ratio
 
     if not onboard:
         final_fare = 0
         charged_distance_km = 0
         reason = "not_picked_up"
         note = "Passenger trip did not start, so no fare is charged."
-    elif not current:
+    elif not current and prior_max_travelled <= ZERO_TRAVEL_THRESHOLD_KM:
         reason = "gps_unavailable"
         note = f"GPS was unavailable at trip end. Fare stays {_format_rupees(original_fare)}."
     elif travelled_km <= ZERO_TRAVEL_THRESHOLD_KM:
@@ -304,7 +316,9 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
         note = "No travel after pickup was detected, so the fare is Rs 0."
     elif progress_ratio < FULL_FARE_PROGRESS_RATIO:
         charged_distance_km = travelled_km
-        final_fare = _calculate_fare(service, charged_distance_km)
+        raw_fare = _calculate_fare(service, charged_distance_km)
+        # Bounded: never negative, never exceeds original fare for partial trip
+        final_fare = max(0, min(round(original_fare), round(raw_fare)))
         reason = "partial_trip"
         note = (
             f"Only {round(progress_ratio * 100)}% of the trip was completed. "
@@ -313,7 +327,8 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
     elif action == "complete" and extra_dropoff_km > FREE_DROPOFF_EXTRA_KM:
         extra_billable_km = extra_dropoff_km - FREE_DROPOFF_EXTRA_KM
         charged_distance_km = planned_km + extra_billable_km
-        final_fare = _calculate_fare(service, charged_distance_km)
+        raw_fare = _calculate_fare(service, charged_distance_km)
+        final_fare = max(round(original_fare), round(raw_fare))
         reason = "extra_after_drop"
         note = (
             f"Drop was {round(extra_dropoff_km * 1000)}m past the destination. "
@@ -1351,8 +1366,41 @@ def update_driver_location(
             "updatedAt": now,
         }, merge=True)
         if ride_id:
-            db.collection("rides").document(ride_id).set({"driverLocation": location, **telemetry, "driverLocationUpdatedAt": now, "updatedAt": now}, merge=True)
-            if ride.get("share_enabled"):
+            ride_updates: dict[str, Any] = {
+                "driverLocation": location,
+                **telemetry,
+                "driverLocationUpdatedAt": now,
+                "updatedAt": now,
+            }
+            if ride and (ride.get("status") in {"started", "en_route"} or bool(ride.get("pinVerifiedAt"))):
+                planned_km = max(0.0, _finite_float(ride.get("distance_km")))
+                accuracy = _finite_float(body.driverAccuracy, 0.0)
+                # Only accumulate travel if GPS accuracy is reasonable (<= 250m or unspecified)
+                if planned_km > 0 and (accuracy <= 250 or body.driverAccuracy is None):
+                    route_points = decode_polyline(str(ride.get("route_polyline") or ""))
+                    road_travelled_km = road_distance_along_route_km(route_points, location)
+                    pickup = {"lat": _finite_float(ride.get("pickup_lat")), "lng": _finite_float(ride.get("pickup_lng"))}
+                    pickup_to_curr_km = (
+                        road_travelled_km
+                        if road_travelled_km is not None
+                        else _haversine_km(pickup["lat"], pickup["lng"], location["lat"], location["lng"])
+                    )
+                    curr_travelled_km = max(0.0, min(pickup_to_curr_km, planned_km))
+                    curr_ratio = max(0.0, min(1.0, pickup_to_curr_km / planned_km))
+
+                    prior_max_travelled = _finite_float(ride.get("max_travelled_km") or ride.get("travelled_after_pickup_km") or 0.0)
+                    prior_max_ratio = _finite_float(ride.get("max_progress_ratio") or ride.get("progress_ratio") or 0.0)
+
+                    max_travelled_km = max(prior_max_travelled, curr_travelled_km)
+                    max_progress_ratio = max(prior_max_ratio, curr_ratio)
+
+                    ride_updates["max_travelled_km"] = round(max_travelled_km, 3)
+                    ride_updates["travelled_after_pickup_km"] = round(max_travelled_km, 3)
+                    ride_updates["max_progress_ratio"] = round(max_progress_ratio, 4)
+                    ride_updates["progress_ratio"] = round(max_progress_ratio, 4)
+
+            db.collection("rides").document(ride_id).set(ride_updates, merge=True)
+            if ride and ride.get("share_enabled"):
                 # Mirror only coordinates/status into the public, sanitized
                 # live-tracking snapshot -- see set_trip_share() below.
                 db.collection("tripShareView").document(ride_id).set(

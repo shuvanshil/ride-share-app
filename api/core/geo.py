@@ -101,12 +101,21 @@ def road_distance_along_route_km(route_points: list[tuple[float, float]], positi
     the route nearest `position`, following the road (not a straight line).
 
     Returns None if `route_points` doesn't have enough points to measure
-    along, so callers can fall back to straight-line distance.
+    along or if the position is an extreme outlier, allowing safe fallback.
     """
     if not route_points or len(route_points) < 2:
         return None
 
-    point = (float(position["lat"]), float(position["lng"]))
+    try:
+        lat = float(position["lat"])
+        lng = float(position["lng"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    if not (math.isfinite(lat) and math.isfinite(lng)):
+        return None
+
+    point = (lat, lng)
 
     cumulative_km = 0.0
     best_distance_km = math.inf
@@ -129,5 +138,9 @@ def road_distance_along_route_km(route_points: list[tuple[float, float]], positi
             best_cumulative_km = cumulative_km + (seg_length_km * fraction)
 
         cumulative_km += seg_length_km
+
+    # If the closest segment is more than 2.0 km away from the GPS point, treat as outlier
+    if best_distance_km > 2.0:
+        return None
 
     return best_cumulative_km
