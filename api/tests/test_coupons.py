@@ -207,18 +207,40 @@ class TestCouponSystem(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(discount_full, 10000)
 
     # 3. Eligibility Tests
-    def test_first_ride_eligibility(self):
+    def test_welcome_coupon_eligibility_first_3_rides(self):
         coupon = {
-            "couponId": "WELCOME",
+            "couponId": "coupon_default_welcome",
+            "code": "WELCOME",
+            "codeNormalized": "WELCOME",
             "eligibilityCategory": "first_ride",
+            "usageLimitPerPassenger": 3,
             "status": "active",
         }
-        # 0 completed rides -> Eligible
-        is_el, _ = is_passenger_eligible_for_coupon(coupon, "passenger_new", 0)
+        # 1st ride (0 completed rides, 0 uses) -> Eligible
+        is_el, _ = is_passenger_eligible_for_coupon(coupon, "passenger_new", completed_rides_count=0, previous_redemptions_count=0)
         self.assertTrue(is_el)
-        # 1 completed ride -> Ineligible
-        is_el2, _ = is_passenger_eligible_for_coupon(coupon, "passenger_old", 1)
-        self.assertFalse(is_el2)
+
+        # 2nd ride (1 completed ride, 1 use) -> Eligible
+        is_el2, _ = is_passenger_eligible_for_coupon(coupon, "passenger_new", completed_rides_count=1, previous_redemptions_count=1)
+        self.assertTrue(is_el2)
+
+        # 3rd ride (2 completed rides, 2 uses) -> Eligible
+        is_el3, _ = is_passenger_eligible_for_coupon(coupon, "passenger_new", completed_rides_count=2, previous_redemptions_count=2)
+        self.assertTrue(is_el3)
+
+        # 4th ride onward (3 completed rides, even if 0 uses previously) -> Ineligible!
+        is_el4, msg4 = is_passenger_eligible_for_coupon(coupon, "passenger_new", completed_rides_count=3, previous_redemptions_count=0)
+        self.assertFalse(is_el4)
+        self.assertIn("first 3 completed rides", msg4)
+
+        # 5th ride (4 completed rides) -> Ineligible
+        is_el5, _ = is_passenger_eligible_for_coupon(coupon, "passenger_new", completed_rides_count=4, previous_redemptions_count=1)
+        self.assertFalse(is_el5)
+
+        # Already used 3 times on earlier rides -> Ineligible
+        is_el6, msg6 = is_passenger_eligible_for_coupon(coupon, "passenger_new", completed_rides_count=2, previous_redemptions_count=3)
+        self.assertFalse(is_el6)
+        self.assertIn("already used", msg6.lower())
 
     def test_tenth_ride_eligibility(self):
         coupon = {
@@ -361,8 +383,8 @@ class TestCouponSystem(unittest.IsolatedAsyncioTestCase):
         driver_wallet = self.db.collection("wallets").document("driver_1").get().to_dict()
         self.assertEqual(driver_wallet["balancePaise"], 13000) # 10000 + 3000 (10% of 30000)
 
-    # 7. One-Time Redemption Enforcement
-    def test_prevent_reusing_coupon(self):
+    # 7. WELCOME Multi-Use and Non-WELCOME One-Time Redemption Enforcement
+    def test_welcome_coupon_allows_up_to_3_uses_on_first_3_rides(self):
         ensure_default_coupons(self.db)
         self.db.collection("wallets").document("driver_1").set({
             "userId": "driver_1",
@@ -370,21 +392,83 @@ class TestCouponSystem(unittest.IsolatedAsyncioTestCase):
             "balancePaise": 0,
             "status": "active",
         })
-        self.db.collection("rides").document("ride_a").set({
-            "id": "ride_a",
-            "passengerId": "p_once",
+
+        # Ride 1 (0 completed rides) -> 1st WELCOME use
+        self.db.collection("rides").document("ride_1").set({
+            "id": "ride_1",
+            "passengerId": "p_multi",
             "driverId": "driver_1",
             "farePaise": 20000,
             "status": "started",
             "pinVerifiedAt": "2026-08-29T12:00:00Z",
         })
+        res1 = apply_coupon_to_ride_tx(self.db, "p_multi", "ride_1", "WELCOME", "idem_w_1")
+        self.assertEqual(res1["discountPaise"], 2000)
+        # Complete ride 1
+        self.db.collection("rides").document("ride_1").update({"status": "completed"})
 
-        apply_coupon_to_ride_tx(self.db, "p_once", "ride_a", "WELCOME", "idem_1")
+        # Ride 2 (1 completed ride) -> 2nd WELCOME use
+        self.db.collection("rides").document("ride_2").set({
+            "id": "ride_2",
+            "passengerId": "p_multi",
+            "driverId": "driver_1",
+            "farePaise": 30000,
+            "status": "started",
+            "pinVerifiedAt": "2026-08-29T12:00:00Z",
+        })
+        res2 = apply_coupon_to_ride_tx(self.db, "p_multi", "ride_2", "WELCOME", "idem_w_2")
+        self.assertEqual(res2["discountPaise"], 3000)
+        # Complete ride 2
+        self.db.collection("rides").document("ride_2").update({"status": "completed"})
 
-        # Now try to apply WELCOME to ride_b for same passenger
-        self.db.collection("rides").document("ride_b").set({
-            "id": "ride_b",
-            "passengerId": "p_once",
+        # Ride 3 (2 completed rides) -> 3rd WELCOME use
+        self.db.collection("rides").document("ride_3").set({
+            "id": "ride_3",
+            "passengerId": "p_multi",
+            "driverId": "driver_1",
+            "farePaise": 40000,
+            "status": "started",
+            "pinVerifiedAt": "2026-08-29T12:00:00Z",
+        })
+        res3 = apply_coupon_to_ride_tx(self.db, "p_multi", "ride_3", "WELCOME", "idem_w_3")
+        self.assertEqual(res3["discountPaise"], 4000)
+        # Complete ride 3
+        self.db.collection("rides").document("ride_3").update({"status": "completed"})
+
+        # Ride 4 (3 completed rides) -> 4th WELCOME attempt MUST FAIL!
+        self.db.collection("rides").document("ride_4").set({
+            "id": "ride_4",
+            "passengerId": "p_multi",
+            "driverId": "driver_1",
+            "farePaise": 20000,
+            "status": "started",
+            "pinVerifiedAt": "2026-08-29T12:00:00Z",
+        })
+        with self.assertRaises(ApiError) as ctx:
+            apply_coupon_to_ride_tx(self.db, "p_multi", "ride_4", "WELCOME", "idem_w_4")
+        self.assertTrue("first 3 completed rides" in str(ctx.exception.message).lower() or "already used" in str(ctx.exception.message).lower())
+
+    def test_welcome_unused_opportunities_lost_from_4th_ride(self):
+        ensure_default_coupons(self.db)
+        self.db.collection("wallets").document("driver_1").set({
+            "userId": "driver_1",
+            "userRole": "driver",
+            "balancePaise": 0,
+            "status": "active",
+        })
+
+        # Passenger previously completed 3 rides without using WELCOME
+        for i in range(1, 4):
+            self.db.collection("rides").document(f"ride_old_{i}").set({
+                "id": f"ride_old_{i}",
+                "passengerId": "p_late",
+                "status": "completed",
+            })
+
+        # 4th ride
+        self.db.collection("rides").document("ride_4th").set({
+            "id": "ride_4th",
+            "passengerId": "p_late",
             "driverId": "driver_1",
             "farePaise": 20000,
             "status": "started",
@@ -392,7 +476,52 @@ class TestCouponSystem(unittest.IsolatedAsyncioTestCase):
         })
 
         with self.assertRaises(ApiError) as ctx:
-            apply_coupon_to_ride_tx(self.db, "p_once", "ride_b", "WELCOME", "idem_2")
+            apply_coupon_to_ride_tx(self.db, "p_late", "ride_4th", "WELCOME", "idem_late")
+        self.assertIn("first 3 completed rides", str(ctx.exception.message).lower())
+
+    def test_other_coupons_remain_strictly_one_time_use(self):
+        self.db.collection("coupons").document("SAVE20").set({
+            "couponId": "SAVE20",
+            "code": "SAVE20",
+            "codeNormalized": "SAVE20",
+            "discountType": "fixed",
+            "discountValue": 20.0,
+            "discountAmountPaise": 2000,
+            "eligibilityCategory": "all_passengers",
+            "usageLimitPerPassenger": 1,
+            "source": "admin",
+            "status": "active",
+        })
+        self.db.collection("wallets").document("driver_1").set({
+            "userId": "driver_1",
+            "userRole": "driver",
+            "balancePaise": 0,
+            "status": "active",
+        })
+
+        # 1st use of SAVE20
+        self.db.collection("rides").document("ride_save_1").set({
+            "id": "ride_save_1",
+            "passengerId": "p_save",
+            "driverId": "driver_1",
+            "farePaise": 20000,
+            "status": "started",
+            "pinVerifiedAt": "2026-08-29T12:00:00Z",
+        })
+        apply_coupon_to_ride_tx(self.db, "p_save", "ride_save_1", "SAVE20", "idem_s1")
+        self.db.collection("rides").document("ride_save_1").update({"status": "completed"})
+
+        # 2nd attempt of SAVE20 -> Must fail!
+        self.db.collection("rides").document("ride_save_2").set({
+            "id": "ride_save_2",
+            "passengerId": "p_save",
+            "driverId": "driver_1",
+            "farePaise": 20000,
+            "status": "started",
+            "pinVerifiedAt": "2026-08-29T12:00:00Z",
+        })
+        with self.assertRaises(ApiError) as ctx:
+            apply_coupon_to_ride_tx(self.db, "p_save", "ride_save_2", "SAVE20", "idem_s2")
         self.assertIn("already used", str(ctx.exception.message).lower())
 
     # 8. Mutual Exclusivity Tests (Coupon OR Wallet Credits)

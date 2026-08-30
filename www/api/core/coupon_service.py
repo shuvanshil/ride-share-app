@@ -48,11 +48,11 @@ DEFAULT_COUPONS = {
         "discountValue": 10,  # 10%
         "discountPercentage": 10,
         "discountAmountPaise": 0,
-        "description": "10% off your first ride on LiphtUp",
+        "description": "10% off your first 3 rides on LiphtUp",
         "status": "active",
         "eligibilityCategory": "first_ride",
         "restrictedPassengerIds": [],
-        "usageLimitPerPassenger": 1,
+        "usageLimitPerPassenger": 3,
         "isDeletable": False,
     },
     "SUPER10": {
@@ -191,9 +191,15 @@ def is_passenger_eligible_for_coupon(
     """
     Evaluates whether a passenger qualifies for a specific coupon based on:
     1. Status is 'active' (not inactive or deleted)
-    2. One-time usage rule (previous_redemptions_count < usageLimitPerPassenger)
+    2. Per-passenger usage limit (previous_redemptions_count < usageLimitPerPassenger)
     3. Restricted passenger list (if configured, user must be in list)
     4. Category rule (completed rides count)
+
+    WELCOME Special Rule:
+    - May be used up to 3 times total by the same passenger.
+    - Only valid during the passenger's first 3 completed rides (completed_rides_count < 3).
+    - From the 4th ride onward (completed_rides_count >= 3), WELCOME is permanently unavailable.
+    - Unused opportunities from the first 3 rides do not carry forward.
     """
     clean_uid = str(passenger_id).strip()
 
@@ -201,8 +207,15 @@ def is_passenger_eligible_for_coupon(
     if status != "active":
         return False, "This coupon is currently unavailable."
 
-    limit = int(coupon.get("usageLimitPerPassenger") or 1)
+    code_norm = normalize_coupon_code(coupon.get("codeNormalized") or coupon.get("code") or "")
+    category = str(coupon.get("eligibilityCategory", "")).strip()
+    is_welcome = (code_norm == "WELCOME" or category == "first_ride" or str(coupon.get("couponId", "")) == "coupon_default_welcome")
+
+    # Usage limit check:
+    limit = 3 if is_welcome else int(coupon.get("usageLimitPerPassenger") or 1)
     if previous_redemptions_count >= limit:
+        if is_welcome:
+            return False, "You have already used the WELCOME coupon 3 times."
         return False, "You have already used this coupon."
 
     # User ID restriction (logical AND with category)
@@ -212,12 +225,10 @@ def is_passenger_eligible_for_coupon(
         if cleaned_allowed and clean_uid not in cleaned_allowed:
             return False, "This coupon is not available for your account."
 
-    category = str(coupon.get("eligibilityCategory", "")).strip()
-
-    if category == "first_ride":
-        # WELCOME: Exactly 0 previously completed rides
-        if completed_rides_count != 0:
-            return False, "The WELCOME coupon is only valid for your first completed ride."
+    if is_welcome or category == "first_ride":
+        # WELCOME: Allowed up to 3 times, ONLY during first 3 completed rides (rides 1, 2, 3 -> completed_rides_count in [0, 1, 2])
+        if completed_rides_count >= 3:
+            return False, "The WELCOME coupon is only valid during your first 3 completed rides."
         return True, "Eligible"
 
     elif category == "tenth_ride":
@@ -303,12 +314,16 @@ def get_eligible_coupons_for_ride(
         .where("status", "==", "completed")
         .get()
     )
-    redeemed_coupon_ids = set()
+    redemption_counts_by_id: Dict[str, int] = {}
+    redemption_counts_by_code: Dict[str, int] = {}
     for r_doc in redemptions_snap:
         r_data = r_doc.to_dict() or {}
         c_id = r_data.get("couponId")
+        c_code = normalize_coupon_code(r_data.get("couponCodeNormalized") or r_data.get("codeNormalized") or r_data.get("code") or "")
         if c_id:
-            redeemed_coupon_ids.add(c_id)
+            redemption_counts_by_id[c_id] = redemption_counts_by_id.get(c_id, 0) + 1
+        if c_code:
+            redemption_counts_by_code[c_code] = redemption_counts_by_code.get(c_code, 0) + 1
 
     # Fetch all active coupons
     coupons_snap = (
@@ -328,7 +343,11 @@ def get_eligible_coupons_for_ride(
         if c_data.get("isDeleted"):
             continue
 
-        prev_redemptions = 1 if c_id in redeemed_coupon_ids else 0
+        c_code_norm = normalize_coupon_code(c_data.get("codeNormalized") or c_data.get("code") or "")
+        prev_redemptions = max(
+            redemption_counts_by_id.get(c_id, 0),
+            redemption_counts_by_code.get(c_code_norm, 0)
+        )
         is_eligible, _ = is_passenger_eligible_for_coupon(
             c_data, clean_uid, completed_count, prev_redemptions
         )
@@ -467,10 +486,18 @@ def apply_coupon_to_ride_tx(
             .where("passengerId", "==", clean_passenger_id)
             .where("couponId", "==", coupon_id)
             .where("status", "==", "completed")
-            .limit(1)
             .get(transaction=tx)
         )
         prev_redemption_count = len(user_redemptions)
+        if prev_redemption_count == 0 and normalized_code:
+            user_redemptions_by_code = (
+                db.collection("couponRedemptions")
+                .where("passengerId", "==", clean_passenger_id)
+                .where("couponCodeNormalized", "==", normalized_code)
+                .where("status", "==", "completed")
+                .get(transaction=tx)
+            )
+            prev_redemption_count = max(prev_redemption_count, len(user_redemptions_by_code))
 
         # -----------------------------------------------------------------
         # PHASE 2: VALIDATIONS & INTEGER PAISE CALCULATIONS
@@ -598,7 +625,8 @@ def apply_coupon_to_ride_tx(
             "couponCode": coupon.get("code", normalized_code),
             "code": coupon.get("code", normalized_code),
             "couponCodeNormalized": normalized_code,
-            "source": coupon.get("source", "admin"),
+            "codeNormalized": normalized_code,
+            "source": coupon.get("source", "default" if normalized_code in DEFAULT_COUPONS else "admin"),
             "passengerId": clean_passenger_id,
             "rideId": clean_ride_id,
             "driverId": driver_id,
