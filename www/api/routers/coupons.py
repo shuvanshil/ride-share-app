@@ -60,27 +60,73 @@ def _send_driver_coupon_push(driver_id: str, ride_id: str, discount_inr: float, 
                 tok = (detail or {}).get("token") if isinstance(detail, dict) else None
                 if tok and isinstance(tok, str):
                     tokens.add(tok.strip())
+            if u_data.get("fcmToken"):
+                tokens.add(str(u_data.get("fcmToken")).strip())
 
-        valid_tokens = [t for t in tokens if t and len(t) > 10]
-        if valid_tokens:
-            body_text = f"Fare updated. ₹{discount_inr:.0f} promotional adjustment applied. Amount to collect: ₹{remaining_fare_inr:.0f}."
-            message = fb_messaging.MulticastMessage(
-                notification=fb_messaging.Notification(
-                    title="Ride Fare Updated",
+        title = "Ride Fare Updated"
+        body_text = f"Coupon applied! ₹{discount_inr:g} platform subsidy credited to your wallet. Remaining cash to collect: ₹{remaining_fare_inr:g}."
+        notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=coupon_push"
+        data_payload = {
+            "type": "COUPON_FARE_ADJUSTMENT",
+            "rideId": ride_id,
+            "title": title,
+            "body": body_text,
+            "discountAmount": str(discount_inr),
+            "remainingFare": str(remaining_fare_inr),
+            "url": notification_url,
+        }
+
+        # 1. Save in-app notification document for driver
+        try:
+            db.collection("users").document(driver_id).collection("inAppNotifications").document().set({
+                "title": title,
+                "body": body_text,
+                "data": data_payload,
+                "read": False,
+                "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
+
+        unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
+        if not unique_tokens:
+            return
+
+        message = fb_messaging.MulticastMessage(
+            tokens=unique_tokens,
+            notification=fb_messaging.Notification(title=title, body=body_text),
+            data={**{k: str(v) for k, v in data_payload.items()}},
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
                     body=body_text,
+                    sound="default",
+                    channel_id="ride_requests",
                 ),
-                data={
-                    "type": "COUPON_FARE_ADJUSTMENT",
-                    "rideId": ride_id,
-                    "discountAmount": str(discount_inr),
-                    "remainingFare": str(remaining_fare_inr),
-                },
-                tokens=valid_tokens,
-            )
-            fb_messaging.send_each_for_multicast(message, app=app)
-    except Exception:
-        # Non-blocking notification dispatch
-        pass
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1)
+                )
+            ),
+            webpush=fb_messaging.WebpushConfig(
+                headers={"Urgency": "high", "TTL": "300"},
+                fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),
+                notification=fb_messaging.WebpushNotification(
+                    title=title,
+                    body=body_text,
+                    icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    tag=f"coupon-pay-{ride_id}",
+                    renotify=True,
+                ),
+            ),
+        )
+        resp = fb_messaging.send_each_for_multicast(message, app=app)
+        print(f"[PUSH] Sent driver coupon subsidy push to {len(unique_tokens)} tokens (success: {resp.success_count}, failed: {resp.failure_count})")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[PUSH_ERROR] Driver coupon subsidy push failed: {exc}")
 
 
 @router.get("/eligible")

@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/fi
 import { collection, doc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { showAlert } from '../shared/dialog.js';
 import { t } from '../shared/i18n.js';
+import { registerDriverPushToken } from '../shared/messaging.js';
 
 let currentAuthUser = null;
 let currentPaymentData = null;
@@ -673,6 +674,7 @@ onAuthStateChanged(auth, (user) => {
     fetchPaymentStatus();
     checkAndShowDriverSettlementModal();
     setupRealtimeListener(user.uid);
+    registerDriverPushToken(db, user.uid).catch(() => {});
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('tab') === 'wallet') {

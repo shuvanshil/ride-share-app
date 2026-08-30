@@ -1258,11 +1258,19 @@ onAuthStateChanged(auth, async (user) => {
             uid: user.uid,
             name: user.displayName || t('history.default_user', "LiphtUp User"),
             phone: user.phoneNumber || "",
-            role: "passenger"
+            role: "passenger",
         };
         renderProfileSummary(currentProfile);
         hideInitialLoader();
     }
+
+    import('../platform/notifications.js').then(({ registerForPush, sendTokenToBackend }) => {
+        registerForPush().then((res) => {
+            if (res?.ok && res.token) {
+                sendTokenToBackend(res.token).catch(() => {});
+            }
+        }).catch(() => {});
+    }).catch(() => {});
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('open') === 'wallet' || urlParams.get('tab') === 'wallet') {

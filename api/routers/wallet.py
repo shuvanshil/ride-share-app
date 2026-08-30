@@ -170,6 +170,90 @@ def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: f
         print(f"[PUSH_ERROR] Driver wallet payment push failed: {exc}")
 
 
+def _send_passenger_wallet_payment_push(passenger_id: str, ride_id: str, amount_inr: float, remaining_fare_inr: float):
+    """Dispatches background push and in-app notification to passenger after wallet payment commits."""
+    try:
+        app = get_admin_app()
+        db = fb_firestore.client(app)
+        tokens = set()
+
+        user_snap = db.collection("users").document(passenger_id).get()
+        if user_snap.exists:
+            u_data = user_snap.to_dict() or {}
+            tokens.update(u_data.get("pushTokens") or [])
+            for detail in u_data.get("pushTokenDetails") or []:
+                tok = (detail or {}).get("token") if isinstance(detail, dict) else None
+                if tok and isinstance(tok, str):
+                    tokens.add(tok.strip())
+            if u_data.get("fcmToken"):
+                tokens.add(str(u_data.get("fcmToken")).strip())
+
+        title = "Wallet Payment Successful"
+        body_text = f"₹{amount_inr:g} was deducted from your wallet for this ride. Remaining fare: ₹{remaining_fare_inr:g}."
+        notification_url = f"{APP_BASE_URL}/services?rideId={ride_id}&from=wallet_pay"
+        data_payload = {
+            "type": "passenger_wallet_payment_deducted",
+            "rideId": ride_id,
+            "title": title,
+            "body": body_text,
+            "amount": str(amount_inr),
+            "remainingFare": str(remaining_fare_inr),
+            "url": notification_url,
+        }
+
+        # 1. Save in-app notification document for passenger
+        try:
+            db.collection("users").document(passenger_id).collection("inAppNotifications").document().set({
+                "title": title,
+                "body": body_text,
+                "data": data_payload,
+                "read": False,
+                "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
+
+        unique_tokens = list(dict.fromkeys(t for t in tokens if t))[:100]
+        if not unique_tokens:
+            return
+
+        message = fb_messaging.MulticastMessage(
+            tokens=unique_tokens,
+            notification=fb_messaging.Notification(title=title, body=body_text),
+            data={**{k: str(v) for k, v in data_payload.items()}},
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body_text,
+                    sound="default",
+                    channel_id="ride_requests",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1)
+                )
+            ),
+            webpush=fb_messaging.WebpushConfig(
+                headers={"Urgency": "high", "TTL": "300"},
+                fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),
+                notification=fb_messaging.WebpushNotification(
+                    title=title,
+                    body=body_text,
+                    icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    tag=f"wallet-pay-pass-{ride_id}",
+                    renotify=True,
+                ),
+            ),
+        )
+        resp = fb_messaging.send_each_for_multicast(message, app=app)
+        print(f"[PUSH] Sent passenger wallet payment push to {len(unique_tokens)} tokens (success: {resp.success_count}, failed: {resp.failure_count})")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[PUSH_ERROR] Passenger wallet payment push failed: {exc}")
+
+
 @router.get("")
 @router.get("/")
 def get_user_wallet(auth_user: Dict[str, Any] = Depends(current_user)) -> Dict[str, Any]:
@@ -316,10 +400,17 @@ def pay_current_ride(
         idempotency_key=body.idempotencyKey,
     )
 
-    # Dispatches non-blocking push to driver
-    if not result.get("idempotent_replay") and result.get("driverId"):
-        _send_driver_wallet_payment_push(
-            driver_id=result["driverId"],
+    # Dispatches non-blocking push to driver and passenger
+    if not result.get("idempotent_replay"):
+        if result.get("driverId"):
+            _send_driver_wallet_payment_push(
+                driver_id=result["driverId"],
+                ride_id=result["rideId"],
+                amount_inr=result["transferAmount"],
+                remaining_fare_inr=result["remainingFare"],
+            )
+        _send_passenger_wallet_payment_push(
+            passenger_id=uid,
             ride_id=result["rideId"],
             amount_inr=result["transferAmount"],
             remaining_fare_inr=result["remainingFare"],
