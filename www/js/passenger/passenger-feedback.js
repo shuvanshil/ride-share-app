@@ -251,6 +251,12 @@ function _initMiniBannerEvents() {
 function _getOrCreateModal() {
     if (_modalLayer && document.body.contains(_modalLayer)) return _modalLayer;
     _modalLayer = document.getElementById('passenger-payment-view') || document.getElementById('feedback-modal-layer');
+    if (!_modalLayer) {
+        _modalLayer = document.createElement('div');
+        _modalLayer.id = 'feedback-modal-layer';
+        _modalLayer.className = 'modal-layer d-none';
+        document.body.appendChild(_modalLayer);
+    }
     return _modalLayer;
 }
 
