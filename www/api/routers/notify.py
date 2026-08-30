@@ -136,6 +136,23 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
                 "body": body_text,
                 "url": notification_url,
             },
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title="New LiphtUp ride request",
+                    body=body_text,
+                    sound="default",
+                    channel_id="ride_requests",
+                    priority="max",
+                    default_vibrate_timings=True,
+                    visibility="public",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1, content_available=True)
+                )
+            ),
             webpush=fb_messaging.WebpushConfig(
                 headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),

@@ -148,10 +148,44 @@ self.addEventListener("fetch", (event) => {
 
 let currentWorkerRole = "passenger";
 
+async function getStoredUserRole() {
+    try {
+        // 1. Check open client windows
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of clients) {
+            if (client.url && (client.url.includes('/driver.html') || client.url.includes('/driver-service.html') || client.url.includes('/driver-dashboard.html'))) {
+                return 'driver';
+            }
+        }
+        // 2. Check cached role record
+        const cache = await caches.open('liphtup-user-role-cache');
+        const match = await cache.match('/__liphtup_user_role__');
+        if (match) {
+            const role = (await match.text()).trim().toLowerCase();
+            if (role) return role;
+        }
+    } catch (e) {
+        console.warn('Failed to read stored role in SW:', e);
+    }
+    return currentWorkerRole || 'passenger';
+}
+
+async function setStoredUserRole(role) {
+    currentWorkerRole = String(role || '').toLowerCase().trim();
+    try {
+        const cache = await caches.open('liphtup-user-role-cache');
+        await cache.put('/__liphtup_user_role__', new Response(currentWorkerRole, {
+            headers: { 'Content-Type': 'text/plain' }
+        }));
+    } catch (e) {
+        console.warn('Failed to persist role in SW cache:', e);
+    }
+}
+
 self.addEventListener("message", (event) => {
     if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
     if (event.data?.type === "SET_USER_ROLE") {
-        currentWorkerRole = String(event.data.role || "").toLowerCase().trim();
+        event.waitUntil(setStoredUserRole(event.data.role));
     }
 });
 
@@ -173,7 +207,7 @@ function getRideNotificationUrl(data = {}) {
     return new URL("/index.html", BASE_URL).href;
 }
 
-function showRideNotification(payload = {}) {
+async function showRideNotification(payload = {}) {
     const data = payload.data || {};
     const notification = payload.notification || {};
     const title = notification.title || data.title || "LiphtUp Alert";
@@ -189,9 +223,12 @@ function showRideNotification(payload = {}) {
         || (targetUrl && targetUrl.includes("/driver"))
         || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger")));
 
-    if (isRideRequestPush && currentWorkerRole !== "driver") {
-        console.log("Service Worker: Suppressing driver ride request push for passenger/guest account.");
-        return Promise.resolve();
+    if (isRideRequestPush) {
+        const role = await getStoredUserRole();
+        if (role !== "driver") {
+            console.log("Service Worker: Suppressing driver ride request push for passenger/guest account. Active role is:", role);
+            return;
+        }
     }
 
     return self.registration.showNotification(title, {

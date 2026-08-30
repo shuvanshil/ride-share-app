@@ -2121,6 +2121,23 @@ def _send_passenger_push_and_inapp(db, passenger_id: str, title: str, body: str,
         message = fb_messaging.MulticastMessage(
             tokens=tokens,
             data={**{k: str(v) for k, v in data_payload.items()}, "title": title, "body": body},
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body,
+                    sound="default",
+                    channel_id="ride_requests",
+                    priority="high",
+                    default_vibrate_timings=True,
+                    visibility="public",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1)
+                )
+            ),
             webpush=fb_messaging.WebpushConfig(
                 headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=link_url),
@@ -2128,6 +2145,7 @@ def _send_passenger_push_and_inapp(db, passenger_id: str, title: str, body: str,
                     title=title,
                     body=body,
                     icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
                     tag=f"liphtup-passenger-{passenger_id}",
                     renotify=True,
                     require_interaction=True,
@@ -2157,6 +2175,23 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
         message = fb_messaging.MulticastMessage(
             tokens=tokens,
             data={**{k: str(v) for k, v in data_payload.items()}, "title": title, "body": body},
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body,
+                    sound="default",
+                    channel_id="ride_requests",
+                    priority="max",
+                    default_vibrate_timings=True,
+                    visibility="public",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1, content_available=True)
+                )
+            ),
             webpush=fb_messaging.WebpushConfig(
                 headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=link_url),
@@ -2164,6 +2199,7 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
                     title=title,
                     body=body,
                     icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
                     tag=f"liphtup-driver-{driver_id}",
                     renotify=True,
                     require_interaction=True,
