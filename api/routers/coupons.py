@@ -25,9 +25,11 @@ from ..core.coupon_service import (
     sanitize_dict_for_json,
 )
 from ..core.errors import ApiError
+from ..core.failures import report_backend_failure
 from ..core.firebase import get_admin_app, get_firestore
 
 router = APIRouter(prefix="/coupons", tags=["coupons"])
+APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https://liphtup.in").rstrip("/")
 
 
 class ApplyCouponRequest(BaseModel):
@@ -126,7 +128,17 @@ def _send_driver_coupon_push(driver_id: str, ride_id: str, discount_inr: float, 
         resp = fb_messaging.send_each_for_multicast(message, app=app)
         print(f"[PUSH] Sent driver coupon subsidy push to {len(unique_tokens)} tokens (success: {resp.success_count}, failed: {resp.failure_count})")
     except Exception as exc:  # noqa: BLE001
-        print(f"[PUSH_ERROR] Driver coupon subsidy push failed: {exc}")
+        report_backend_failure(
+            service="coupons",
+            operation="send_driver_coupon_push",
+            error=exc,
+            severity="MEDIUM",
+            actor_type="driver",
+            actor_id=driver_id,
+            resource_id=ride_id,
+            context={"discountInr": discount_inr, "remainingFareInr": remaining_fare_inr},
+            recommended_action="Verify FCM multicast configuration and driver push tokens.",
+        )
 
 
 @router.get("/eligible")

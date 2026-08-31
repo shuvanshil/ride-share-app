@@ -671,7 +671,7 @@ def update_profile(
         updated_snapshot = user_ref.get()
         profile = updated_snapshot.to_dict() or {**existing, **updates}
         profile.setdefault("uid", uid)
-        return {"ok": True, "profile": profile}
+        return {"ok": True, "profile": _sanitize_for_json(profile)}
     except ApiError:
         raise
     except fb_auth.EmailAlreadyExistsError:

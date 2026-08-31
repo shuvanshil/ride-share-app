@@ -8,6 +8,7 @@ import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-
 import { initAdminPayments, loadAdminPayments } from "./admin-payments.js";
 import { loadPermissions, initPermissionsModal } from "./admin-permissions.js";
 import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js";
+import { initAdminReports, loadAdminReports } from "./admin-reports.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -183,6 +184,7 @@ function applyRolePermissions(role, userDetails = {}) {
 
     $("nav-item-permissions")?.classList.toggle("d-none", hidePermissions);
     $("nav-item-coupons")?.classList.toggle("d-none", hideManagerRestricted);
+    $("nav-item-reports")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-passengers")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-ride-history")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-analytics")?.classList.toggle("d-none", hideManagerRestricted);
@@ -224,6 +226,7 @@ watchAdminAuth(async (user) => {
         refreshSafetyBadge();
         initAdminPayments();
         initAdminCoupons();
+        initAdminReports();
         initPermissionsModal();
         startSosRealtimeAlerts();
         if (!feedStarted) {
@@ -274,6 +277,7 @@ async function handleAdminLogin() {
             refreshSafetyBadge();
             initAdminPayments();
             initAdminCoupons();
+            initAdminReports();
             initPermissionsModal();
             startSosRealtimeAlerts();
             if (!feedStarted) {
@@ -442,6 +446,7 @@ function loadSection(name) {
     if (name === "analytics") loadAnalytics();
     if (name === "audit-log") loadAuditLog(true);
     if (name === "permissions") loadPermissions();
+    if (name === "reports") loadAdminReports(true);
 }
 
 function goToSection(name, filters = {}) {

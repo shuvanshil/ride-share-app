@@ -60,8 +60,12 @@ def _db():
     return fb_firestore.client(get_admin_app())
 
 
-def _clamp_limit(limit: int) -> int:
-    return max(1, min(limit, MAX_PAGE_SIZE))
+def _clamp_limit(limit: Any) -> int:
+    try:
+        val = int(getattr(limit, "default", limit))
+    except Exception:
+        val = DEFAULT_PAGE_SIZE
+    return max(1, min(val, MAX_PAGE_SIZE))
 
 
 def _safe_count(base_query) -> int:
@@ -862,6 +866,22 @@ def update_ride(
         updates["status"] = "cancelled_by_passenger"
         updates["cancellationReason"] = "Cancelled by administrator"
         updates["cancelledAt"] = fb_firestore.SERVER_TIMESTAMP
+        driver_id = str(before.get("driver_id") or "").strip()
+        if driver_id:
+            try:
+                drv_doc = db.collection("users").document(driver_id).get()
+                drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
+                avail_status = "offline"
+                if (
+                    str(drv_profile.get("desiredAvailability") or "").strip().lower() != "offline"
+                    and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
+                ):
+                    avail_status = "searching"
+                db.collection("users").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+                db.collection("driverPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+                db.collection("driverMapPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+            except Exception:
+                pass
     elif body.action == "update_fare":
         if body.fare is None or body.fare < 0:
             raise ApiError("Valid fare amount required.", 400)
@@ -1063,3 +1083,155 @@ def update_safety_report(
 
     write_audit_log(admin_user, f"safety_report.{body.action}", "safety_report", report_id, before, updates, body.notes)
     return {"ok": True, "report": _doc_dict(ref.get())}
+
+
+# ---------------------------------------------------------------------------
+# Backend Failure Reports (Admin Oversight & Management)
+# ---------------------------------------------------------------------------
+
+class FailureActionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: str = Field(min_length=1, max_length=30)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class BulkFailureActionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: str = Field(min_length=1, max_length=30)
+    failureIds: list[str] = Field(min_length=1, max_length=100)
+
+
+@router.get("/failures")
+def list_failure_reports(
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+    status: Optional[str] = Query(default=None),
+    severity: Optional[str] = Query(default=None),
+    sort_order: Optional[str] = Query(default="desc"),
+    cursor: Optional[str] = Query(default=None),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE),
+) -> dict[str, Any]:
+    limit = _clamp_limit(limit)
+    base = _db().collection("failureReports")
+
+    if status and status.lower() != "all":
+        base = base.where("status", "==", status.lower())
+    if severity and severity.upper() != "ALL":
+        base = base.where("severity", "==", severity.upper())
+
+    direction = fb_firestore.Query.ASCENDING if str(sort_order).lower() == "asc" else fb_firestore.Query.DESCENDING
+    base = base.order_by("lastSeenAt", direction=direction)
+
+    items, next_cursor = _paginate(base, cursor, limit, "failureReports")
+
+    # Count total open reports for badge
+    open_count = 0
+    try:
+        open_count = len(list(_db().collection("failureReports").where("status", "==", "open").limit(101).stream()))
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "reports": items,
+        "nextCursor": next_cursor,
+        "openCount": open_count,
+    }
+
+
+@router.patch("/failures/{failure_id}")
+def update_failure_report(
+    failure_id: str,
+    body: FailureActionBody,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    if body.action not in {"resolve", "reopen", "acknowledge"}:
+        raise ApiError("Unknown failure report action. Supported: resolve, reopen, acknowledge.", 400)
+    db = _db()
+    ref = db.collection("failureReports").document(failure_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Failure report not found.", 404)
+    before = _doc_dict(snap)
+
+    status_map = {
+        "resolve": "resolved",
+        "reopen": "open",
+        "acknowledge": "acknowledged",
+    }
+    new_status = status_map[body.action]
+    updates = {
+        "status": new_status,
+        "reviewedBy": admin_user.get("email"),
+        "reviewedAt": fb_firestore.SERVER_TIMESTAMP,
+        "adminNotes": body.notes[:500] if body.notes else before.get("adminNotes"),
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    ref.set(updates, merge=True)
+
+    write_audit_log(admin_user, f"failure_report.{body.action}", "failure_report", failure_id, before, updates, body.notes or "")
+    return {"ok": True, "report": _doc_dict(ref.get())}
+
+
+@router.delete("/failures/{failure_id}")
+def delete_failure_report(
+    failure_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    ref = db.collection("failureReports").document(failure_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Failure report not found.", 404)
+    before = _doc_dict(snap)
+
+    ref.delete()
+    write_audit_log(admin_user, "failure_report.delete", "failure_report", failure_id, before, {}, "Report deleted by admin")
+    return {"ok": True, "message": "Failure report deleted successfully."}
+
+
+@router.post("/failures/bulk")
+def bulk_failure_action(
+    body: BulkFailureActionBody,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    if body.action not in {"resolve", "reopen", "delete"}:
+        raise ApiError("Unknown bulk action. Supported: resolve, reopen, delete.", 400)
+    db = _db()
+    batch = db.batch()
+    updated_count = 0
+
+    for fid in body.failureIds:
+        clean_id = str(fid).strip()[:160]
+        if not clean_id:
+            continue
+        ref = db.collection("failureReports").document(clean_id)
+        if body.action == "delete":
+            batch.delete(ref)
+        else:
+            new_status = "resolved" if body.action == "resolve" else "open"
+            batch.set(
+                ref,
+                {
+                    "status": new_status,
+                    "reviewedBy": admin_user.get("email"),
+                    "reviewedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+        updated_count += 1
+
+    if updated_count > 0:
+        batch.commit()
+
+    write_audit_log(
+        admin_user,
+        f"failure_report.bulk_{body.action}",
+        "failure_report",
+        "bulk",
+        {},
+        {"count": updated_count, "action": body.action},
+        f"Bulk {body.action} performed on {updated_count} reports",
+    )
+    return {"ok": True, "count": updated_count, "action": body.action}
+

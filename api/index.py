@@ -149,8 +149,18 @@ def _bg_scheduled_ride_sweeper():
             from .routers.rides import activate_due_scheduled_requests
             db = fb_firestore.client(get_admin_app())
             activate_due_scheduled_requests(db)
-        except Exception:
-            pass
+        except Exception as exc:
+            try:
+                from .core.failures import report_backend_failure
+                report_backend_failure(
+                    service="background_sweeper",
+                    operation="scheduled_ride_activation_sweep",
+                    error=exc,
+                    severity="LOW",
+                    recommended_action="Check Firestore index definitions and scheduled pending requests.",
+                )
+            except Exception:
+                pass
         time.sleep(10)
 
 _sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)

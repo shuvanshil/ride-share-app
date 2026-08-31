@@ -191,6 +191,13 @@
                                     <span id="admin-safety-nav-badge" class="badge bg-red text-white rounded-pill ms-auto d-none">0</span>
                                 </button>
                             </li>
+                            <li class="nav-item" id="nav-item-reports">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="reports" type="button">
+                                    <i class="ti ti-bug nav-link-icon text-warning me-2"></i>
+                                    <span class="nav-link-title">Reports</span>
+                                    <span id="admin-reports-nav-badge" class="badge bg-red text-white rounded-pill ms-auto d-none">0</span>
+                                </button>
+                            </li>
                             <li class="nav-item" id="nav-item-analytics">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="analytics" type="button">
                                     <i class="ti ti-chart-bar nav-link-icon me-2"></i>
@@ -652,6 +659,75 @@
                                     </div>
                                 </div>
                                 <div id="safety-reports-list" class="row row-cards d-none"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Backend Failure Reports -->
+                    <section id="section-reports" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Diagnostics</div>
+                                    <h2 class="page-title h2 fw-bold d-flex align-items-center gap-2">
+                                        <i class="ti ti-bug text-warning"></i>Backend Failure Reports
+                                    </h2>
+                                </div>
+                                <div class="col-auto ms-auto d-flex flex-wrap gap-2 align-items-center">
+                                    <div class="input-icon" style="min-width: 220px;">
+                                        <input type="text" id="reports-search-input" class="form-control form-control-sm" placeholder="Search service, error, ID...">
+                                        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+                                    </div>
+                                    <select id="reports-status-filter" class="form-select form-select-sm w-auto">
+                                        <option value="open" selected>Status: Open</option>
+                                        <option value="resolved">Status: Resolved</option>
+                                        <option value="acknowledged">Status: Acknowledged</option>
+                                        <option value="all">Status: All</option>
+                                    </select>
+                                    <select id="reports-severity-filter" class="form-select form-select-sm w-auto">
+                                        <option value="" selected>All Severities</option>
+                                        <option value="CRITICAL">Critical</option>
+                                        <option value="HIGH">High</option>
+                                        <option value="MEDIUM">Medium</option>
+                                        <option value="LOW">Low</option>
+                                    </select>
+                                    <select id="reports-sort-filter" class="form-select form-select-sm w-auto">
+                                        <option value="desc" selected>Sort: Newest First</option>
+                                        <option value="asc">Sort: Oldest First</option>
+                                    </select>
+                                    <button type="button" id="reports-refresh-btn" class="btn btn-outline-secondary btn-sm btn-icon" title="Refresh Reports">
+                                        <i class="ti ti-refresh"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bulk Actions Toolbar -->
+                        <div id="reports-bulk-bar" class="card bg-primary-lt border-primary mb-3 shadow-xs d-none">
+                            <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="form-check m-0">
+                                        <input type="checkbox" id="reports-select-all" class="form-check-input">
+                                        <label class="form-check-label fw-bold text-dark" for="reports-select-all">Select All on Page</label>
+                                    </div>
+                                    <span id="reports-bulk-selected-count" class="badge bg-primary text-white">0 selected</span>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" id="reports-bulk-resolve-btn" class="btn btn-success btn-sm d-flex align-items-center gap-1">
+                                        <i class="ti ti-check"></i> Resolve Selected
+                                    </button>
+                                    <button type="button" id="reports-bulk-delete-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1">
+                                        <i class="ti ti-trash"></i> Delete Selected
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Reports Table Container -->
+                        <div id="admin-reports-table-wrap">
+                            <div class="card shadow-xs border-0 text-center py-5">
+                                <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+                                <div class="text-secondary small">Loading backend failure reports...</div>
                             </div>
                         </div>
                     </section>
@@ -1599,6 +1675,130 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: View Failure Report Detail -->
+    <div id="admin-report-detail-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.6); z-index: 1075;">
+        <div id="report-detail-modal-backdrop" class="modal-backdrop-custom position-fixed top-0 start-0 w-100 h-100" style="z-index: -1;"></div>
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable" role="document">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header border-bottom">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="avatar avatar-sm bg-warning-lt text-warning rounded"><i class="ti ti-bug fs-2"></i></span>
+                        <div>
+                            <h4 class="modal-title fw-bold mb-0">Failure Report Diagnostic</h4>
+                            <div class="text-secondary small font-monospace" id="report-modal-failure-id">--</div>
+                        </div>
+                    </div>
+                    <button id="report-detail-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- Top Status & Meta Grid -->
+                    <div class="row g-2 mb-3 p-3 bg-light rounded-3">
+                        <div class="col-6 col-md-3">
+                            <span class="text-secondary small d-block">Severity</span>
+                            <div id="report-modal-severity">--</div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <span class="text-secondary small d-block">Status</span>
+                            <div id="report-modal-status">--</div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <span class="text-secondary small d-block">Occurrences</span>
+                            <span id="report-modal-occurrences" class="badge bg-dark text-white fw-bold">1</span>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <span class="text-secondary small d-block">Environment</span>
+                            <span id="report-modal-environment" class="badge bg-secondary-lt text-dark">production</span>
+                        </div>
+                        <div class="col-12 col-md-6 mt-2 pt-2 border-top">
+                            <span class="text-secondary small d-block">First Seen:</span>
+                            <span id="report-modal-first-seen" class="small fw-semibold text-dark">--</span>
+                        </div>
+                        <div class="col-12 col-md-6 mt-2 pt-2 border-top">
+                            <span class="text-secondary small d-block">Last Seen:</span>
+                            <span id="report-modal-last-seen" class="small fw-semibold text-dark">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Service & Location Details -->
+                    <div class="card card-sm mb-3 border shadow-none">
+                        <div class="card-body">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <span class="text-secondary small d-block">Service</span>
+                                    <strong id="report-modal-service" class="text-dark">--</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-secondary small d-block">Operation</span>
+                                    <strong id="report-modal-operation" class="text-dark">--</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-secondary small d-block">Fingerprint</span>
+                                    <span id="report-modal-fingerprint" class="font-monospace small text-secondary">--</span>
+                                </div>
+                                <div class="col-md-6 mt-2">
+                                    <span class="text-secondary small d-block">API Endpoint</span>
+                                    <span id="report-modal-endpoint" class="font-monospace small text-dark">--</span>
+                                </div>
+                                <div class="col-md-6 mt-2">
+                                    <span class="text-secondary small d-block">Actor / Resource</span>
+                                    <span id="report-modal-actor" class="small text-dark">--</span>&nbsp;<span class="text-secondary">/</span>&nbsp;<span id="report-modal-resource" class="font-monospace small text-dark">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error Overview -->
+                    <div class="alert alert-danger mb-3" role="alert">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <span id="report-modal-error-type" class="fw-bold fs-3">Error</span>
+                            <span id="report-modal-error-code" class="badge bg-red text-white">500</span>
+                        </div>
+                        <div id="report-modal-error-message" class="text-dark font-monospace small" style="word-break: break-word;">
+                            --
+                        </div>
+                    </div>
+
+                    <!-- Recommended Action -->
+                    <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
+                        <i class="ti ti-bulb alert-icon me-2 fs-2 flex-shrink-0 mt-1"></i>
+                        <div>
+                            <span class="fw-bold d-block">Recommended Developer Action</span>
+                            <span id="report-modal-recommended-action" class="small">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Context Data -->
+                    <div id="report-modal-context-wrap" class="mb-3 d-none">
+                        <label class="form-label fw-bold text-secondary small text-uppercase mb-1">Context Data</label>
+                        <pre id="report-modal-context" class="p-3 bg-dark text-light rounded font-monospace small mb-0" style="max-height: 200px; overflow-y: auto;"></pre>
+                    </div>
+
+                    <!-- Stack Trace -->
+                    <div id="report-modal-stack-wrap" class="mb-0 d-none">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <label class="form-label fw-bold text-secondary small text-uppercase mb-0">Stack Trace</label>
+                            <button type="button" id="report-detail-copy-trace-btn" class="btn btn-ghost-secondary btn-sm d-flex align-items-center gap-1">
+                                <i class="ti ti-copy"></i> Copy Trace
+                            </button>
+                        </div>
+                        <pre id="report-modal-stack-trace" class="p-3 bg-dark text-warning rounded font-monospace small mb-0" style="max-height: 260px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;"></pre>
+                    </div>
+                </div>
+                <div class="modal-footer border-top d-flex justify-content-between">
+                    <button type="button" id="report-detail-delete-btn" class="btn btn-outline-danger d-flex align-items-center gap-1">
+                        <i class="ti ti-trash"></i> Delete Report
+                    </button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('admin-report-detail-modal').classList.add('d-none')">Close</button>
+                        <button type="button" id="report-detail-resolve-btn" class="btn btn-success d-flex align-items-center gap-1">
+                            <i class="ti ti-check"></i> Mark as Resolved
+                        </button>
                     </div>
                 </div>
             </div>

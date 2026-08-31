@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..core.auth import current_user
 from ..core.config import get_env
 from ..core.errors import ApiError
+from ..core.failures import report_backend_failure
 from ..core.fare_policy import (
     FREE_DROPOFF_EXTRA_KM,
     FULL_FARE_PROGRESS_RATIO,
@@ -1145,7 +1146,7 @@ def transition_driver_ride(
             if action in {"complete", "cancel", "mark_paid"}:
                 tx.set(history_ref, _driver_history_update(clean_ride_id, {**ride, **result}, next_status), merge=True)
             if action == "complete":
-                tx.update(user_ref, {"lifetime_earnings": fb_firestore.Increment(float(ride.get("fare") or 0)), "total_completed_trips": fb_firestore.Increment(1)})
+                tx.update(user_ref, {"lifetime_earnings": fb_firestore.Increment(float(final_fare_val)), "total_completed_trips": fb_firestore.Increment(1)})
             if ride.get("share_enabled"):
                 # Keep the public live-tracking snapshot (see set_trip_share
                 # below) in sync with real ride status, and stop sharing the
@@ -1520,16 +1521,57 @@ def cancel_passenger_ride(
 
         if ride_snap.exists:
             ride = ride_snap.to_dict() or {}
-            ride_ref.update({
+            driver_id = str(ride.get("driver_id") or ride.get("driverId") or "").strip()
+
+            updates: dict[str, Any] = {
                 "status": "cancelled_by_passenger",
                 "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
-            
+            }
+
+            # If passenger was onboard, calculate partial fare adjustment
+            if ride.get("pinVerifiedAt"):
+                try:
+                    fare_adj = _driver_fare_adjustment(ride, "cancel")
+                    updates["fare"] = fare_adj["final_fare"]
+                    updates["fare_adjustment"] = fare_adj
+                    updates["fareFinalizedAt"] = fb_firestore.SERVER_TIMESTAMP
+                except Exception:
+                    pass
+
+            ride_ref.update(updates)
+
+            # Release driver presence back to searching if driver was assigned
+            if driver_id:
+                try:
+                    drv_doc = db.collection("users").document(driver_id).get()
+                    drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
+                    avail_status = "offline"
+                    if (
+                        str(drv_profile.get("desiredAvailability") or "").strip().lower() != "offline"
+                        and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
+                    ):
+                        avail_status = "searching"
+                    u_upd, p_upd, m_upd = _build_driver_availability_updates(avail_status, drv_profile)
+                    db.collection("users").document(driver_id).set(u_upd, merge=True)
+                    db.collection("driverPresence").document(driver_id).set(p_upd, merge=True)
+                    db.collection("driverMapPresence").document(driver_id).set(m_upd, merge=True)
+                except Exception as exc:
+                    report_backend_failure(
+                        service="rides",
+                        operation="cancel_passenger_ride_free_driver",
+                        error=exc,
+                        severity="MEDIUM",
+                        actor_type="passenger",
+                        actor_id=uid,
+                        resource_id=driver_id,
+                        context={"rideId": clean_ride_id},
+                    )
+
             try:
                 if ride.get("pinVerifiedAt"):
                     history_ref = db.collection("tripHistory").document(clean_ride_id)
-                    history_ref.set(_history_update(clean_ride_id, ride), merge=True)
+                    history_ref.set(_history_update(clean_ride_id, {**ride, **updates}), merge=True)
                 if ride.get("share_enabled"):
                     db.collection("tripShareView").document(clean_ride_id).delete()
             except Exception:
@@ -1689,7 +1731,7 @@ def accept_driver_ride(
             "isConnected": True,
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         }, merge=True)
-        return {"ok": True, "rideId": clean_ride_id, "ride": accepted_ride}
+        return {"ok": True, "rideId": clean_ride_id, "ride": _safe_ride_dict(accepted_ride)}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001

@@ -2280,6 +2280,7 @@ async function completeRideJob() {
         const remainingFarePaise = (rideData.remainingFarePaise !== undefined) ? Number(rideData.remainingFarePaise) : Math.max(0, totalFarePaise - (walletPaidPaise + couponDiscountPaise));
 
         const totalFare = totalFarePaise / 100.0;
+        const walletPaidAmount = walletPaidPaise / 100.0;
         const subsidyPaidAmount = (walletPaidPaise + couponDiscountPaise) / 100.0;
         const remainingFare = remainingFarePaise / 100.0;
 

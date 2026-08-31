@@ -241,6 +241,20 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Centralized Backend Failure Reports:
+    // Admin read only; all writes are server-owned by FastAPI Admin SDK.
+    match /failureReports/{reportId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Administrative Roles & Permissions:
+    // Admin read only; writes managed by FastAPI Admin SDK.
+    match /adminRoles/{uid} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

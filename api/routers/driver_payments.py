@@ -57,7 +57,7 @@ def _get_driver_profile(db: Any, uid: str) -> Dict[str, Any]:
     doc_ref = db.collection("users").document(uid)
     doc_snap = doc_ref.get()
     if not doc_snap.exists:
-        raise ApiError("User account not found.", 440)
+        raise ApiError("User account not found.", 404)
     profile = doc_snap.to_dict() or {}
     if profile.get("role") != "driver":
         raise ApiError("Only driver accounts can access weekly payment features.", 403)

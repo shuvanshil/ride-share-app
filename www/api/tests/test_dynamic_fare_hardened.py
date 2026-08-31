@@ -1,7 +1,7 @@
 """Comprehensive tests for dynamic distance-based fare calculation hardening."""
 import pytest
-from www.api.routers.rides import _driver_fare_adjustment
-from www.api.core.geo import road_distance_along_route_km, decode_polyline, haversine_km
+from api.routers.rides import _driver_fare_adjustment
+from api.core.geo import road_distance_along_route_km, decode_polyline, haversine_km
 
 
 def make_ride(
