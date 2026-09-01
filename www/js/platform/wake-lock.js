@@ -27,7 +27,11 @@ export async function acquireWakeLock() {
 
     // Web Implementation
     if (!('wakeLock' in navigator)) {
-        console.warn('[platform/wake-lock] Wake Lock API not supported on this browser.');
+        return false;
+    }
+
+    // Browser Wake Lock API requires the tab to be actively visible
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
         return false;
     }
 
@@ -41,6 +45,10 @@ export async function acquireWakeLock() {
         console.log('[platform/wake-lock] web wake lock acquired.');
         return true;
     } catch (error) {
+        if (error.name === 'NotAllowedError') {
+            // Benign browser restriction when tab is in background
+            return false;
+        }
         console.warn('[platform/wake-lock] web wake lock request failed:', error);
         return false;
     }

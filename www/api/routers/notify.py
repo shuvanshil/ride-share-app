@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 import time
+import traceback
 from datetime import datetime
 from typing import Any, Optional
 
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 
 from ..core.config import get_env
 from ..core.errors import ApiError
+from ..core.failures import report_backend_failure
 from ..core.firebase import get_admin_app
 
 router = APIRouter()
@@ -176,4 +178,12 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not send ride notifications.", 500)
+        report_backend_failure(
+            category="push_notification_failed",
+            error_message=f"FCM multicast notification failed: {error}",
+            severity="medium",
+            traceback_str=traceback.format_exc(),
+            context={"rideId": body.rideId if body else None, "driverCount": len(body.driverIds) if body and body.driverIds else 0},
+            app=get_admin_app() if "get_admin_app" in globals() else None,
+        )
+        return {"ok": False, "sent": 0, "error": "Could not send ride notifications.", "detail": str(error)}
