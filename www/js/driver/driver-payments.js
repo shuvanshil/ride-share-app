@@ -461,16 +461,20 @@ function switchDriverTab(targetTab) {
         walletContent?.classList.add('d-none');
         serviceFeeContent?.classList.remove('d-none');
     }
-}
-
 serviceFeeTabBtn?.addEventListener('click', () => switchDriverTab('service-fee'));
 walletTabBtn?.addEventListener('click', () => switchDriverTab('wallet'));
 
-async function fetchDriverWalletData() {
+let driverWalletTxLimit = 10;
+
+async function fetchDriverWalletData(isLoadMore = false) {
     if (!currentAuthUser) return;
     const balanceEl = document.getElementById('driver-wallet-balance-val');
     const nextSettleEl = document.getElementById('driver-wallet-next-settlement-date');
     const txListEl = document.getElementById('driver-wallet-tx-list');
+
+    if (!isLoadMore) {
+        driverWalletTxLimit = 10;
+    }
 
     try {
         const token = await getAuthToken();
@@ -480,7 +484,7 @@ async function fetchDriverWalletData() {
         const [walletRes, settleRes, txRes] = await Promise.all([
             fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
             fetch('/api/wallet/driver/settlement-info', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
-            fetch('/api/wallet/transactions?limit=30', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
+            fetch(`/api/wallet/transactions?limit=${driverWalletTxLimit}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
         ]);
 
         const walletData = await walletRes.json().catch(() => ({}));
@@ -529,7 +533,7 @@ async function fetchDriverWalletData() {
                     </div>
                 `;
             } else {
-                txListEl.innerHTML = txs.map(tx => {
+                const cardsHtml = txs.map(tx => {
                     const isCredit = tx.direction === 'credit';
                     const sign = isCredit ? '+' : '-';
                     const amtColor = isCredit ? '#16A34A' : '#1F2937';
@@ -558,6 +562,27 @@ async function fetchDriverWalletData() {
                         </div>
                     `;
                 }).join('');
+
+                const hasMore = Boolean(txData.hasMore || (txData.totalCount && txs.length < txData.totalCount));
+                const loadMoreHtml = hasMore ? `
+                    <div class="text-center mt-3 mb-2" id="driver-wallet-load-more-wrap">
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-4 py-1.5 rounded-pill fw-semibold" id="driver-wallet-load-more-btn" style="font-size: 12px;">
+                            ${t('common.load_more', 'Load more')}
+                        </button>
+                    </div>
+                ` : '';
+
+                txListEl.innerHTML = cardsHtml + loadMoreHtml;
+
+                const loadMoreBtn = document.getElementById('driver-wallet-load-more-btn');
+                if (loadMoreBtn) {
+                    loadMoreBtn.onclick = async () => {
+                        loadMoreBtn.disabled = true;
+                        loadMoreBtn.innerText = t('common.loading', 'Loading...');
+                        driverWalletTxLimit += 10;
+                        await fetchDriverWalletData(true);
+                    };
+                }
             }
         }
     } catch (err) {

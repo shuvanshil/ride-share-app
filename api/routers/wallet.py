@@ -338,7 +338,7 @@ def get_user_wallet(auth_user: Dict[str, Any] = Depends(current_user)) -> Dict[s
 
 @router.get("/transactions")
 def get_user_transactions(
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=500),
     direction: Optional[str] = Query(None),
     type_filter: Optional[str] = Query(None, alias="type"),
     auth_user: Dict[str, Any] = Depends(current_user),

@@ -1668,14 +1668,25 @@ function setNavigationMode(enabled) {
 }
 
 function ensureNavToggleButton() {
-    if (navToggleButton || !mapHost?.parentElement) return;
+    if (navToggleButton) return;
+
+    const existingBtn = document.getElementById("driver-nav-toggle-btn");
+    if (existingBtn) {
+        navToggleButton = existingBtn;
+        navToggleButton.onclick = () => setNavigationMode(!navigationModeEnabled);
+        setNavigationMode(navigationModeEnabled);
+        return;
+    }
+
+    if (!mapHost?.parentElement) return;
 
     navToggleButton = document.createElement("button");
+    navToggleButton.id = "driver-nav-toggle-btn";
     navToggleButton.type = "button";
     navToggleButton.className = "driver-nav-toggle-btn";
     navToggleButton.setAttribute("aria-label", "Toggle navigation camera");
     navToggleButton.innerHTML = '<span class="driver-nav-toggle-icon" aria-hidden="true"></span>';
-    navToggleButton.addEventListener("click", () => setNavigationMode(!navigationModeEnabled));
+    navToggleButton.onclick = () => setNavigationMode(!navigationModeEnabled);
     mapHost.parentElement.appendChild(navToggleButton);
     setNavigationMode(navigationModeEnabled);
 }

@@ -1022,14 +1022,20 @@ async function loadWalletData() {
     }
 }
 
-async function loadWalletTransactions() {
+let profileWalletTxLimit = 10;
+
+async function loadWalletTransactions(isLoadMore = false) {
     if (!currentAuthUser) return;
     const listEl = document.getElementById('profile-wallet-tx-list');
     if (!listEl) return;
 
+    if (!isLoadMore) {
+        profileWalletTxLimit = 10;
+    }
+
     try {
         const idToken = await currentAuthUser.getIdToken();
-        const res = await fetch('/api/wallet/transactions?limit=30', {
+        const res = await fetch(`/api/wallet/transactions?limit=${profileWalletTxLimit}`, {
             headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json' }
         });
         const data = await res.json().catch(() => ({}));
@@ -1050,7 +1056,7 @@ async function loadWalletTransactions() {
             return;
         }
 
-        listEl.innerHTML = txs.map(tx => {
+        const cardsHtml = txs.map(tx => {
             const isCredit = tx.direction === 'credit';
             const sign = isCredit ? '+' : '-';
             const amtClass = isCredit ? 'text-success' : 'text-dark';
@@ -1091,6 +1097,27 @@ async function loadWalletTransactions() {
                 </div>
             `;
         }).join('');
+
+        const hasMore = Boolean(data.hasMore || (data.totalCount && txs.length < data.totalCount));
+        const loadMoreHtml = hasMore ? `
+            <div class="text-center mt-3 mb-2" id="profile-wallet-load-more-wrap">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-4 py-1.5 rounded-pill fw-semibold" id="profile-wallet-load-more-btn" style="font-size: 12px;">
+                    ${t('common.load_more', 'Load more')}
+                </button>
+            </div>
+        ` : '';
+
+        listEl.innerHTML = cardsHtml + loadMoreHtml;
+
+        const loadMoreBtn = document.getElementById('profile-wallet-load-more-btn');
+        if (loadMoreBtn) {
+            loadMoreBtn.onclick = async () => {
+                loadMoreBtn.disabled = true;
+                loadMoreBtn.innerText = t('common.loading', 'Loading...');
+                profileWalletTxLimit += 10;
+                await loadWalletTransactions(true);
+            };
+        }
     } catch (err) {
         console.error('Error rendering transactions:', err);
     }
