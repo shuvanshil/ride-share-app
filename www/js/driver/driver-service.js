@@ -47,7 +47,7 @@ const NAV_CAMERA_ZOOM = 18;
 const DRIVER_MARKER_ANIM_MIN_MS = 300;
 const DRIVER_MARKER_ANIM_MAX_MS = 5000;
 const DRIVER_MARKER_ANIM_DEFAULT_MS = 600;
-const CAMERA_ROTATE_ANIM_MS = 700;
+const CAMERA_ROTATE_ANIM_MS = 220;
 // See the matching comments in js/map.js: these keep the driver's own
 // vehicle icon snapped onto the real road route (instead of drifting off
 // it from ordinary GPS inaccuracy) and keep its heading matched to the
@@ -1860,7 +1860,8 @@ function buildLocationTelemetry(coords, browserCoords, previousPosition, previou
     const calculatedHeading = moved >= DRIVER_HEADING_MIN_DISTANCE_METERS
         ? calculateBearing(previousPosition, coords)
         : null;
-    const heading = routeHeading ?? gpsHeading ?? calculatedHeading ?? normalizeHeading(previousHeading);
+    const targetBearing = currentTarget ? calculateBearing(coords, currentTarget.position) : null;
+    const heading = routeHeading ?? gpsHeading ?? calculatedHeading ?? targetBearing ?? normalizeHeading(previousHeading);
 
     if (heading != null) telemetry.driverHeading = heading;
     if (Number.isFinite(Number(browserCoords?.speed))) telemetry.driverSpeed = Number(browserCoords.speed);
@@ -2227,11 +2228,52 @@ async function verifyAndStartTrip(rideId) {
 
     try {
         const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
-        renderActiveRideState(rideId, result.ride || { ...currentRide, status: "en_route" });
+        const updatedRide = result.ride || { ...currentRide, status: "en_route" };
+        renderActiveRideState(rideId, updatedRide);
+        checkAndRecoverLocationInconsistencyInBackground(updatedRide, lastPosition);
     } catch (error) {
         console.error("PIN verification failed:", error);
         await showAlert(t('driver.verify_pin_failed', "Could not verify PIN. Please try again."));
     }
+}
+
+function checkAndRecoverLocationInconsistencyInBackground(ride, driverPos) {
+    if (!ride || !driverPos) return;
+    setTimeout(() => {
+        try {
+            const pickupCoords = normalizeCoordinates(ride.pickup_lat, ride.pickup_lng);
+            if (!pickupCoords) return;
+
+            const distanceToPickup = distanceMeters(driverPos, pickupCoords);
+            // Diagnostic threshold for location inconsistency (e.g. > 350 meters)
+            if (Number.isFinite(distanceToPickup) && distanceToPickup > 350) {
+                console.log(`[DIAGNOSTIC] PIN verified with location discrepancy: driver is ~${Math.round(distanceToPickup)}m from pickup. Initiating background location refresh.`);
+                if (navigator.geolocation?.getCurrentPosition) {
+                    navigator.geolocation.getCurrentPosition(
+                        (freshPosition) => {
+                            const freshCoords = {
+                                lat: freshPosition.coords.latitude,
+                                lng: freshPosition.coords.longitude
+                            };
+                            const freshDistance = distanceMeters(freshCoords, pickupCoords);
+                            console.log(`[DIAGNOSTIC] Refreshed GPS position (accuracy ${freshPosition.coords.accuracy}m): distance to pickup is ~${Math.round(freshDistance)}m.`);
+                            handleLocation(freshPosition);
+                        },
+                        (err) => {
+                            console.warn("[DIAGNOSTIC] Background location refresh skipped/timed out:", err.message);
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            maximumAge: 0,
+                            timeout: 6000
+                        }
+                    );
+                }
+            }
+        } catch (diagErr) {
+            console.warn("[DIAGNOSTIC] Background location recovery error (non-fatal):", diagErr);
+        }
+    }, 0);
 }
 
 async function transitionRideThroughBackend(rideId, action, pin = "") {

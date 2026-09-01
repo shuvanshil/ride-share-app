@@ -1090,7 +1090,7 @@ function hideTripProgressPanel() {
 
 function dispatchPassengerDriverLocation(ride) {
     if (!ride) return;
-    const location = ride.driverLocation;
+    const location = ride.driverLocation || (Number.isFinite(Number(ride.driver_lat)) && Number.isFinite(Number(ride.driver_lng)) ? { lat: ride.driver_lat, lng: ride.driver_lng } : null);
     if (!location || !Number.isFinite(Number(location.lat)) || !Number.isFinite(Number(location.lng))) return;
 
     window.dispatchEvent(new CustomEvent('driver-location-updated', {
@@ -1116,6 +1116,33 @@ function dispatchPassengerDriverLocation(ride) {
             drop_lng: ride.drop_lng
         }
     }));
+}
+
+function checkPassengerLocationInconsistencyInBackground(ride) {
+    if (!ride) return;
+    setTimeout(async () => {
+        try {
+            const driverLoc = ride.driverLocation || (Number.isFinite(Number(ride.driver_lat)) && Number.isFinite(Number(ride.driver_lng)) ? { lat: ride.driver_lat, lng: ride.driver_lng } : null);
+            const pickupLat = Number(ride.pickup_lat);
+            const pickupLng = Number(ride.pickup_lng);
+            if (!driverLoc || !Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return;
+
+            // Recalculate distance between driver and passenger pickup
+            const dLat = (Number(driverLoc.lat) - pickupLat) * Math.PI / 180;
+            const dLng = (Number(driverLoc.lng) - pickupLng) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(pickupLat * Math.PI / 180) * Math.cos(Number(driverLoc.lat) * Math.PI / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const distMeters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            if (distMeters > 350) {
+                console.log(`[DIAGNOSTIC] Passenger side: PIN verified with driver distance ~${Math.round(distMeters)}m. Refreshing user position in background.`);
+                if (typeof refreshLivePickupAfterMapReady === 'function') {
+                    refreshLivePickupAfterMapReady().catch(() => {});
+                }
+            }
+        } catch (err) {
+            console.warn("[DIAGNOSTIC] Passenger location check caught error (non-fatal):", err);
+        }
+    }, 0);
 }
 
 function showPassengerCancelButton(rideId) {
@@ -2278,12 +2305,14 @@ function listenToRideStatusUpdates(rideId) {
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
             dispatchPassengerDriverLocation(ride);
+            checkPassengerLocationInconsistencyInBackground(ride);
         } else if (ride.status === "en_route") {
             showTripProgressPanel(ride);
             requestBtn.innerHTML = '🚗 Trip in Progress! Enjoy your ride.';
             requestBtn.className = "btn btn-primary w-100 fw-bold py-2";
 
             dispatchPassengerDriverLocation(ride);
+            checkPassengerLocationInconsistencyInBackground(ride);
         } else if (ride.status === "completed") {
             clearDispatchExpansionTimer();
             setPassengerDestinationLocked(false);

@@ -32,7 +32,7 @@ const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
 const PASSENGER_NAV_MODE_CACHE_KEY = "liphtup_passenger_nav_mode";
 const PASSENGER_NAV_CAMERA_TILT = 50;
 const PASSENGER_NAV_CAMERA_ZOOM = 17;
-const PASSENGER_CAMERA_ROTATE_ANIM_MS = 700;
+const PASSENGER_CAMERA_ROTATE_ANIM_MS = 220;
 // GPS on a phone is commonly 5-20m off (worse in "urban canyons"/dense
 // cover), which is why a raw GPS ping can render the vehicle icon off the
 // road entirely (on a building, footpath, etc). Whenever we already have the
@@ -1055,15 +1055,37 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinati
         zIndex: 640
     });
 
+    const isDestinationLeg = Boolean(
+        destinationPosition &&
+        targetPosition &&
+        Math.abs(targetPosition.lat - destinationPosition.lat) < 0.0001 &&
+        Math.abs(targetPosition.lng - destinationPosition.lng) < 0.0001
+    );
+
     const bounds = new window.google.maps.LatLngBounds();
     routePath.forEach((point) => bounds.extend(point));
     bounds.extend(driverPosition);
     bounds.extend(targetPosition);
-    if (destinationPosition) bounds.extend(destinationPosition);
+    if (isDestinationLeg && destinationPosition) {
+        bounds.extend(destinationPosition);
+    }
 
     if (!passengerFirstRouteFitComplete) {
-        window.mapInstance.fitBounds(bounds, { top: 58, right: 42, bottom: 96, left: 42 });
+        window.mapInstance.fitBounds(bounds, { top: 68, right: 45, bottom: 105, left: 45 });
         passengerFirstRouteFitComplete = true;
+
+        // If pickup route is relatively short (nearby driver), avoid zooming out too far
+        if (!isDestinationLeg && driverPosition && targetPosition) {
+            const distMeters = calculateDistanceMeters(driverPosition, targetPosition);
+            if (distMeters <= 1500) {
+                window.google.maps.event.addListenerOnce(window.mapInstance, "idle", () => {
+                    const currentZoom = window.mapInstance.getZoom();
+                    if (currentZoom < 15) {
+                        window.mapInstance.setZoom(15.5);
+                    }
+                });
+            }
+        }
     }
 }
 
@@ -1342,14 +1364,17 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
 
         if (targetPt && calculateDistanceMeters(position, targetPt) > 5) {
             const targetBearing = calculateBearing(position, targetPt);
-            if (targetBearing != null && heading == null) {
-                heading = targetBearing;
+            if (targetBearing != null) {
+                // If stationary, starting, or heading is uninitialized, immediately point toward the target
+                if (heading == null || Number(driver?.driverSpeed || 0) < 1.0) {
+                    heading = targetBearing;
+                }
             }
         }
     }
 
     const resolvedDriverId = driverId || driver?.driverId || driver?.id || "";
-    const finalHeading = smoothHeading(existing?.heading, heading, 0.45);
+    const finalHeading = smoothHeading(existing?.heading, heading, 0.85);
     const finalPosition = adjustForMarkerOverlap(position, finalHeading, resolvedDriverId);
 
     return { position: finalPosition, heading: finalHeading };
@@ -1960,6 +1985,7 @@ async function refreshActiveDriverRoute(detail, position, target) {
         activeDriverRouteState.routePath = [];
         activeDriverRouteState.lastRoutePosition = null;
         activeDriverRouteState.lastRouteAt = 0;
+        passengerFirstRouteFitComplete = false;
     }
 
     if (!targetChanged
