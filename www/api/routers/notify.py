@@ -124,24 +124,28 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
 
         pickup = ride.get("pickup_display_address") or ride.get("pickup_name") or "Pickup location"
         drop = ride.get("drop_display_address") or ride.get("drop_name") or ride.get("drop_full_address") or "Destination"
-        fare = float(ride.get("fare") or 0)
-        body_text = f"{pickup} to {drop}" + (f" - Rs {fare:g}" if fare > 0 else "")
+        title_text = "New Ride Request on LiphtUP"
+        body_text = f"Pickup: {pickup}\nDrop: {drop}" + (f"\nFare: Rs {fare:g}" if fare > 0 else "")
 
         notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=push"
 
         message = fb_messaging.MulticastMessage(
             tokens=unique_tokens,
+            notification=fb_messaging.Notification(
+                title=title_text,
+                body=body_text,
+            ),
             data={
                 "type": "ride_request",
                 "rideId": ride_id,
-                "title": "New LiphtUp ride request",
+                "title": title_text,
                 "body": body_text,
                 "url": notification_url,
             },
             android=fb_messaging.AndroidConfig(
                 priority="high",
                 notification=fb_messaging.AndroidNotification(
-                    title="New LiphtUp ride request",
+                    title=title_text,
                     body=body_text,
                     sound="default",
                     channel_id="ride_requests",
@@ -159,7 +163,7 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
                 headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=notification_url),
                 notification=fb_messaging.WebpushNotification(
-                    title="New LiphtUp ride request",
+                    title=title_text,
                     body=body_text,
                     icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
                     badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",

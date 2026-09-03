@@ -1545,7 +1545,7 @@ async function cancelRideByDriver(rideId) {
         return;
     }
 
-    if (!(await showConfirm(t('driver.cancel_trip_confirm', "Are you sure you want to cancel this trip and proceed?")))) return;
+    if (!(await showConfirm(t('driver.cancel_trip_confirm', "Are you sure that you want to cancel the ride?")))) return;
 
     try {
         const result = await transitionRideThroughBackend(rideId, "cancel");

@@ -2396,7 +2396,7 @@ async function cancelRideByDriver() {
         return;
     }
 
-    if (!(await showConfirm(t('driver.cancel_warning_confirm', "Warning: Cancelling active trips impacts your driver rating. Proceed?")))) return;
+    if (!(await showConfirm(t('driver.cancel_warning_confirm', "Are you sure that you want to cancel the ride?")))) return;
 
     try {
         const rideId = currentRideId;

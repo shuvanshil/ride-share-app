@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20260829-v1";
+export const TRANSLATIONS_VERSION = "20260903-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -349,6 +349,8 @@ export const TRANSLATIONS = {
             "keep_waiting": "Keep waiting",
             "waiting_request_cancelled": "Waiting request cancelled.",
             "cancel_trip_in_progress_warning": "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully.",
+            "cancel_after_pin_msg": "Please talk with your driver to cancel this ride. Please be aware that you may be charged the full fare.",
+            "okay_got_it": "Okay, got it!",
             "cancel_driver_assigned_confirm": "Cancel this ride? Your driver will be notified immediately.",
             "cancel_searching_confirm": "Cancel searching for nearby drivers?",
             "cancel_ride_btn": "Cancel ride",
@@ -716,9 +718,9 @@ export const TRANSLATIONS = {
             "start_trip_first_sos": "Start or accept a trip first, then use SOS during that trip.",
             "sos_confirm_message": "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first.",
             "send_sos": "Send SOS",
-            "cancel_trip_confirm": "Are you sure you want to cancel this trip and proceed?",
+            "cancel_trip_confirm": "Are you sure that you want to cancel the ride?",
             "no_active_trip_to_cancel": "No active trip found to cancel.",
-            "cancel_warning_confirm": "Warning: Cancelling active trips impacts your driver rating. Proceed?",
+            "cancel_warning_confirm": "Are you sure that you want to cancel the ride?",
             "trip_cancelled_online": "Trip cancelled. You are back online.",
             "cancel_trip_failed": "Could not cancel the active trip.",
             "no_active_ride_sos": "No active ride found to trigger SOS emergency.",
@@ -1293,6 +1295,8 @@ export const TRANSLATIONS = {
             "keep_waiting": "অপেক্ষা চালিয়ে যান",
             "waiting_request_cancelled": "অপেক্ষমাণ অনুরোধ বাতিল করা হয়েছে।",
             "cancel_trip_in_progress_warning": "বাতিল করতে চাইলে অনুগ্রহ করে চালকের সাথে কথা বলুন। আপনি নিজে বাতিল করলে সম্পূর্ণ ভাড়া প্রযোজ্য হতে পারে।",
+            "cancel_after_pin_msg": "এই রাইডটি বাতিল করতে অনুগ্রহ করে আপনার চালকের সাথে কথা বলুন। অনুগ্রহ করে সচেতন থাকুন যে আপনার থেকে সম্পূর্ণ ভাড়া নেওয়া হতে পারে।",
+            "okay_got_it": "ঠিক আছে, বুঝেছি!",
             "cancel_driver_assigned_confirm": "এই রাইডটি বাতিল করবেন? আপনার চালককে অবিলম্বে জানানো হবে।",
             "cancel_searching_confirm": "কাছের চালক খোঁজা বাতিল করবেন?",
             "cancel_ride_btn": "রাইড বাতিল করুন",
@@ -1660,9 +1664,9 @@ export const TRANSLATIONS = {
             "start_trip_first_sos": "প্রথমে একটি ট্রিপ শুরু বা গ্রহণ করুন, তারপর সেই ট্রিপে SOS ব্যবহার করুন।",
             "sos_confirm_message": "এটি তাত্ক্ষণিকভাবে আপনার অবস্থান সহ LiphtUp-এর নিরাপত্তা টিমকে সতর্ক করবে। কোনো জরুরি অবস্থায় প্রথমে স্থানীয় পুলিশ বা এমার্জেন্সিতে কল করুন।",
             "send_sos": "SOS পাঠান",
-            "cancel_trip_confirm": "আপনি কি নিশ্চিত যে আপনি এই ট্রিপটি বাতিল করে এগিয়ে যেতে চান?",
+            "cancel_trip_confirm": "আপনি কি নিশ্চিত যে আপনি রাইডটি বাতিল করতে চান?",
             "no_active_trip_to_cancel": "বাতিল করার জন্য কোনো সক্রিয় ট্রিপ পাওয়া যায়নি।",
-            "cancel_warning_confirm": "সতর্কতা: সক্রিয় ট্রিপ বাতিল করলে আপনার চালক রেটিং প্রভাবিত হতে পারে। এগিয়ে যাবেন?",
+            "cancel_warning_confirm": "আপনি কি নিশ্চিত যে আপনি রাইডটি বাতিল করতে চান?",
             "trip_cancelled_online": "ট্রিপ বাতিল করা হয়েছে। আপনি আবার অনলাইনে আছেন।",
             "cancel_trip_failed": "সক্রিয় ট্রিপ বাতিল করা যায়নি।",
             "no_active_ride_sos": "জরুরি SOS ট্রিগার করার জন্য কোনো সক্রিয় রাইড পাওয়া যায়নি।",

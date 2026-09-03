@@ -45,8 +45,8 @@ public class PushNotificationService extends FirebaseMessagingService {
                 || (rawUrl != null && rawUrl.contains("/driver"))
                 || (rawTitle != null && (rawTitle.toLowerCase().contains("ride request") || rawTitle.toLowerCase().contains("new passenger")));
 
-        if (isRideRequestPush && !isDriverLoggedIn()) {
-            Log.d(TAG, "Suppressing driver ride request notification: Active user is not logged in as a driver. Current role: "
+        if (isRideRequestPush && isPassengerLoggedIn() && !isDriverLoggedIn()) {
+            Log.d(TAG, "Suppressing driver ride request notification: Active user is logged in as a passenger. Current role: "
                     + getSharedPreferences("liphtup_prefs", MODE_PRIVATE).getString("user_role", "none"));
             return;
         }
@@ -64,7 +64,7 @@ public class PushNotificationService extends FirebaseMessagingService {
                 String pickupLocation = dataMap.get("pickupLocation");
                 String estimatedEarning = dataMap.get("estimatedEarning");
 
-                title = "New Ride Request!";
+                title = "New Ride Request on LiphtUP";
                 StringBuilder bodyBuilder = new StringBuilder();
                 if (passengerName != null) bodyBuilder.append("Passenger: ").append(passengerName).append("\n");
                 if (pickupLocation != null) bodyBuilder.append("Pickup: ").append(pickupLocation).append("\n");
@@ -87,9 +87,14 @@ public class PushNotificationService extends FirebaseMessagingService {
             }
         }
 
-        if (title != null && body != null) {
-            showNotification(title, body, rideId, url);
+        if (title == null || title.isEmpty()) {
+            title = "New Ride Request on LiphtUP";
         }
+        if (body == null || body.isEmpty()) {
+            body = "New passenger ride request available nearby.";
+        }
+
+        showNotification(title, body, rideId, url);
     }
 
     private boolean isDriverLoggedIn() {
@@ -122,6 +127,8 @@ public class PushNotificationService extends FirebaseMessagingService {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, requestCode, intent,
                 PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
 
+        android.net.Uri soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+
         NotificationCompat.Builder notificationBuilder =
                 new NotificationCompat.Builder(this, CHANNEL_ID)
                         .setSmallIcon(R.mipmap.ic_launcher)
@@ -129,8 +136,10 @@ public class PushNotificationService extends FirebaseMessagingService {
                         .setContentText(body)
                         .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
                         .setAutoCancel(true)
-                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setPriority(NotificationCompat.PRIORITY_MAX)
                         .setCategory(NotificationCompat.CATEGORY_CALL)
+                        .setSound(soundUri)
+                        .setVibrate(new long[]{0, 500, 250, 500, 250, 500})
                         .setDefaults(Notification.DEFAULT_ALL)
                         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                         .setContentIntent(pendingIntent);
@@ -159,7 +168,15 @@ public class PushNotificationService extends FirebaseMessagingService {
                     channel.setDescription("Notifications for new ride requests");
                     channel.enableLights(true);
                     channel.enableVibration(true);
+                    channel.setVibrationPattern(new long[]{0, 500, 250, 500, 250, 500});
+                    android.net.Uri soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+                    android.media.AudioAttributes audioAttributes = new android.media.AudioAttributes.Builder()
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .build();
+                    channel.setSound(soundUri, audioAttributes);
                     channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                    channel.setShowBadge(true);
                     manager.createNotificationChannel(channel);
                 }
             }

@@ -2216,6 +2216,10 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
         link_url = data_payload.get("url") or f"{APP_BASE_URL}/driver?rideId={data_payload.get('rideId', '')}&from=push"
         message = fb_messaging.MulticastMessage(
             tokens=tokens,
+            notification=fb_messaging.Notification(
+                title=title,
+                body=body,
+            ),
             data={**{k: str(v) for k, v in data_payload.items()}, "title": title, "body": body},
             android=fb_messaging.AndroidConfig(
                 priority="high",

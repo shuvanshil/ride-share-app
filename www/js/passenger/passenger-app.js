@@ -2368,11 +2368,17 @@ async function cancelRideByPassenger(rideId) {
     }
 
     const status = currentPassengerRideData?.status || "";
-    const cancelMessage = ["started", "en_route"].includes(status)
-        ? t('services.cancel_trip_in_progress_warning', "Please talk to the driver if you want to cancel. If you cancel by yourself, you may still be charged fully.")
-        : ["accepted", "arrived"].includes(status)
-            ? t('services.cancel_driver_assigned_confirm', "Cancel this ride? Your driver will be notified immediately.")
-            : t('services.cancel_searching_confirm', "Cancel searching for nearby drivers?");
+    if (["started", "en_route"].includes(status) || currentPassengerRideData?.pinVerifiedAt) {
+        await showAlert(
+            t('services.cancel_after_pin_msg', "Please talk with your driver to cancel this ride. Please be aware that you may be charged the full fare."),
+            { okText: t('services.okay_got_it', "Okay, got it!") }
+        );
+        return;
+    }
+
+    const cancelMessage = ["accepted", "arrived"].includes(status)
+        ? t('services.cancel_driver_assigned_confirm', "Cancel this ride? Your driver will be notified immediately.")
+        : t('services.cancel_searching_confirm', "Cancel searching for nearby drivers?");
 
     if (!(await showConfirm(cancelMessage, {
         okText: t('services.cancel_ride_btn', "Cancel ride"),
