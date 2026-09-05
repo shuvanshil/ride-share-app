@@ -84,10 +84,110 @@
     document.addEventListener('DOMContentLoaded', function () {
         var Plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
         var Push = Plugins.PushNotifications;
+        var AppPlugin = Plugins.App;
+        var StatusBarPlugin = Plugins.StatusBar;
+        var SplashPlugin = Plugins.SplashScreen;
+
+        // --- Status Bar Configuration --------------------------------------------
+        if (StatusBarPlugin) {
+            try {
+                if (typeof StatusBarPlugin.setBackgroundColor === 'function') {
+                    StatusBarPlugin.setBackgroundColor({ color: '#1A7A2E' }).catch(function () {});
+                }
+                if (typeof StatusBarPlugin.setStyle === 'function') {
+                    StatusBarPlugin.setStyle({ style: 'DARK' }).catch(function () {});
+                }
+                if (typeof StatusBarPlugin.setOverlaysWebView === 'function') {
+                    StatusBarPlugin.setOverlaysWebView({ overlay: false }).catch(function () {});
+                }
+            } catch (sbErr) {
+                console.warn('[native-bridge] StatusBar init warning:', sbErr);
+            }
+        }
+
+        // --- Splash Screen Auto-Hide ---------------------------------------------
+        if (SplashPlugin && typeof SplashPlugin.hide === 'function') {
+            try {
+                SplashPlugin.hide({ fadeOutDuration: 300 }).catch(function () {});
+            } catch (spErr) {
+                console.warn('[native-bridge] SplashScreen.hide warning:', spErr);
+            }
+        }
+
+        // --- Hardware Back Button Handler ----------------------------------------
+        if (AppPlugin && typeof AppPlugin.addListener === 'function') {
+            AppPlugin.addListener('backButton', function (status) {
+                console.log('[native-bridge] Hardware back button pressed, canGoBack:', status && status.canGoBack);
+
+                // 1. Check for closable visible modals / dialogs / drawers
+                var openModals = document.querySelectorAll('.modal.show, .modal-layer:not(.d-none), .py-modal-overlay:not(.d-none):not(.non-closable), .custom-flow-modal:not(.d-none), .history-detail-modal:not(.d-none), .driver-status-modal-overlay.closable:not(.d-none)');
+                if (openModals && openModals.length > 0) {
+                    var topModal = openModals[openModals.length - 1];
+                    var closeBtn = topModal.querySelector('.btn-close, .modal-close-btn, .py-modal-close, #qr-modal-close-btn, #py-modal-close-btn, [data-bs-dismiss="modal"], .js-close-modal');
+                    if (closeBtn) {
+                        closeBtn.click();
+                        return;
+                    }
+                    topModal.classList.add('d-none');
+                    return;
+                }
+
+                // 2. Check if currently on a subpage that should navigate back
+                var isRootPage = window.isCurrentPage('index.html') ||
+                                 window.isCurrentPage('driver.html') ||
+                                 window.isCurrentPage('') ||
+                                 window.location.pathname === '/' ||
+                                 window.location.pathname.endsWith('/index.html');
+
+                if (!isRootPage) {
+                    if (window.history.length > 1) {
+                        window.history.back();
+                    } else {
+                        var role = (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.getUserRole === 'function')
+                            ? window.LiphtUpNativeStatus.getUserRole()
+                            : '';
+                        var fallbackHome = (role === 'driver') ? '/driver.html' : '/index.html';
+                        window.location.href = fallbackHome;
+                    }
+                    return;
+                }
+
+                // 3. On root page: exit app gracefully
+                if (typeof AppPlugin.exitApp === 'function') {
+                    AppPlugin.exitApp();
+                }
+            });
+        }
+
+        // --- Pending Notification / Deep Link Dispatch --------------------------
+        if (window.LiphtUpNativeStatus) {
+            try {
+                if (typeof window.LiphtUpNativeStatus.consumePendingNotificationUrl === 'function') {
+                    var pendingUrl = window.LiphtUpNativeStatus.consumePendingNotificationUrl();
+                    if (pendingUrl && pendingUrl.length > 0) {
+                        console.log('[native-bridge] consuming pending notification url:', pendingUrl);
+                        if (window.navigateToPage) {
+                            window.navigateToPage(pendingUrl);
+                        } else {
+                            window.location.href = pendingUrl;
+                        }
+                    }
+                }
+                if (typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {
+                    var pendingRide = window.LiphtUpNativeStatus.consumePendingRideId();
+                    if (pendingRide && pendingRide.length > 0) {
+                        console.log('[native-bridge] consuming pending ride id:', pendingRide);
+                        window.location.href = '/driver.html?rideId=' + encodeURIComponent(pendingRide) + '&from=push';
+                    }
+                }
+            } catch (e) {
+                console.warn('[native-bridge] pending url error:', e);
+            }
+        }
 
         // Auto-detect driver vs passenger pages and sync native role
         if (window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setUserRole === 'function') {
-            if (window.isCurrentPage && (window.isCurrentPage('driver.html') || window.isCurrentPage('driver-service.html') || window.isCurrentPage('driver-dashboard.html'))) {
+            if (window.isCurrentPage && (window.isCurrentPage('driver.html') || window.isCurrentPage('driver-service.html') || window.isCurrentPage('driver-dashboard.html') || window.isCurrentPage('driver-payments.html'))) {
                 window.LiphtUpNativeStatus.setUserRole('driver');
                 console.log('[native-bridge] auto-set native user_role to driver');
             } else if (window.isCurrentPage && (window.isCurrentPage('index.html') || window.isCurrentPage('services.html') || window.isCurrentPage('history.html') || window.isCurrentPage('profile.html') || window.isCurrentPage('login.html'))) {
@@ -96,7 +196,6 @@
             }
         }
 
-        // --- Push Notification Handlers (Global) ---------------------------------
         // --- Push Notification Handlers (Global) ---------------------------------
         if (Push) {
             Push.addListener('pushNotificationReceived', function (notification) {
@@ -107,9 +206,13 @@
                 console.log('[native-bridge] push action:', notification);
                 var data = (notification && notification.notification && notification.notification.data) || {};
                 if (data.url) {
-                    window.location.href = data.url;
+                    if (window.navigateToPage) {
+                        window.navigateToPage(data.url);
+                    } else {
+                        window.location.href = data.url;
+                    }
                 } else if (data.rideId) {
-                    window.location.href = '/driver.html?rideId=' + data.rideId + '&from=push';
+                    window.location.href = '/driver.html?rideId=' + encodeURIComponent(data.rideId) + '&from=push';
                 }
             });
         }
@@ -144,9 +247,13 @@
                             console.log('[native-bridge] push action:', notification);
                             var data = (notification && notification.notification && notification.notification.data) || {};
                             if (data.url) {
-                                window.location.href = data.url;
+                                if (window.navigateToPage) {
+                                    window.navigateToPage(data.url);
+                                } else {
+                                    window.location.href = data.url;
+                                }
                             } else if (data.rideId) {
-                                window.location.href = '/driver.html?rideId=' + data.rideId + '&from=push';
+                                window.location.href = '/driver.html?rideId=' + encodeURIComponent(data.rideId) + '&from=push';
                             }
                         });
 

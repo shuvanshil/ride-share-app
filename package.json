@@ -6,8 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "android:sync": "cap sync android && node scripts/prune-android-assets.js",
-    "build:web": "sh scripts/build-web.sh",
-    "build:android": "sh scripts/build-android.sh"
+    "build:web": "node -e \"console.log('LiphtUp web build ready for deployment.')\"",
+    "build:android": "cap sync android && node scripts/prune-android-assets.js"
   },
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.1",

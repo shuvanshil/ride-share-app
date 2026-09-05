@@ -10,19 +10,30 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# Keep the MainActivity and its bridge
--keep class in.liphtup.app.MainActivity { *; }
+# Keep the Application classes, MainActivity, and native bridge
+-keep class in.liphtup.app.** { *; }
 -keep class com.getcapacitor.** { *; }
+-keep public class * extends com.getcapacitor.Plugin { *; }
+-keep public class * extends com.getcapacitor.BridgeActivity { *; }
+-keep public class * extends com.getcapacitor.BridgeFragment { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.PluginMethod public *;
+}
 
-# Prevent shrinking of the native bridge objects
+# Keep all Capacitor official and community plugin classes
+-keep class com.capacitorjs.plugins.** { *; }
+-keep class com.getcapacitor.community.** { *; }
+
+# Keep Firebase classes
+-keep class com.google.firebase.** { *; }
+
+# Prevent shrinking of the native bridge objects and annotations
 -keepattributes JavascriptInterface
 -keepattributes *Annotation*
+-keepattributes Signature
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
 
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Preserve line numbers for stack traces
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

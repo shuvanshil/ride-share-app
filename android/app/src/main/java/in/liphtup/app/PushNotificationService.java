@@ -125,7 +125,7 @@ public class PushNotificationService extends FirebaseMessagingService {
         int requestCode = (int) System.currentTimeMillis();
         
         PendingIntent pendingIntent = PendingIntent.getActivity(this, requestCode, intent,
-                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         android.net.Uri soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
 
