@@ -1,5 +1,5 @@
 import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, refreshAdminToken } from "./admin-api.js";
-import { showTablerConfirm } from "./admin-confirm.js";
+import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js";
 import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
 import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
@@ -1218,21 +1218,46 @@ function ensureDriversTable() {
 async function bulkDriverAction(ids, action) {
     let notes = "";
     if (action === "reject") {
-        const reason = window.prompt("Enter rejection reason for selected driver(s):", "Application requirements were not met.");
+        const reason = await showTablerPrompt({
+            title: `Reject ${ids.length} Selected Drivers`,
+            message: "Enter rejection reason for the selected drivers:",
+            placeholder: "e.g. Documents failed verification",
+            defaultValue: "Application requirements were not met.",
+            required: true,
+            variant: "danger",
+            confirmText: "Reject Selected"
+        });
         if (reason === null) return;
-        if (!reason.trim()) {
-            toast("Rejection reason cannot be empty.", "warning");
-            return;
-        }
-        notes = reason.trim();
-    } else if (action === "suspend" || action === "block") {
-        const reason = window.prompt(`Reason for ${action}ing selected driver(s) (optional):`, "");
+        notes = reason;
+    } else if (action === "suspend") {
+        const reason = await showTablerPrompt({
+            title: `Suspend ${ids.length} Selected Drivers`,
+            message: "Enter reason for suspension (optional):",
+            placeholder: "Enter reason...",
+            defaultValue: "",
+            required: false,
+            variant: "warning",
+            confirmText: "Suspend Selected"
+        });
         if (reason === null) return;
-        notes = reason.trim();
+        notes = reason;
+    } else if (action === "block") {
+        const reason = await showTablerPrompt({
+            title: `Block ${ids.length} Selected Drivers`,
+            message: "Enter reason for blocking (optional):",
+            placeholder: "Enter reason...",
+            defaultValue: "",
+            required: false,
+            variant: "danger",
+            confirmText: "Block Selected"
+        });
+        if (reason === null) return;
+        notes = reason;
     } else {
         const confirmed = await showTablerConfirm(`Are you sure you want to ${action} ${ids.length} selected driver(s)?`, {
             title: `${action.toUpperCase()} Drivers`,
-            variant: action === "suspend" || action === "block" || action === "reject" ? "danger" : "primary"
+            variant: action === "approve" ? "success" : "primary",
+            confirmText: `${action.charAt(0).toUpperCase() + action.slice(1)} Drivers`
         });
         if (!confirmed) return;
     }
@@ -1357,18 +1382,63 @@ async function openDriverDrawer(uid) {
                 const action = btn.dataset.action;
                 let notes = "";
 
-                if (action === "reject") {
-                    const reason = window.prompt("Enter rejection reason (will be displayed in driver app):", "Application requirements were not met.");
+                if (action === "approve") {
+                    const confirmed = await showTablerConfirm(`Are you sure you want to APPROVE this driver registration? The driver will be enabled to go online and accept ride bookings.`, {
+                        title: "Approve Driver Registration",
+                        variant: "success",
+                        confirmText: "Approve Driver"
+                    });
+                    if (!confirmed) return;
+                } else if (action === "reject") {
+                    const reason = await showTablerPrompt({
+                        title: "Reject Driver Registration",
+                        message: "Enter the rejection reason that will be displayed to the driver:",
+                        placeholder: "e.g. Driver license is unreadable or expired",
+                        defaultValue: "Application requirements were not met.",
+                        required: true,
+                        variant: "danger",
+                        confirmText: "Reject Driver"
+                    });
                     if (reason === null) return;
-                    if (!reason.trim()) {
-                        toast("Rejection reason cannot be empty.", "warning");
-                        return;
-                    }
-                    notes = reason.trim();
-                } else if (action === "suspend" || action === "block") {
-                    const reason = window.prompt(`Reason for ${action}ing this driver (optional):`, "");
+                    notes = reason;
+                } else if (action === "suspend") {
+                    const reason = await showTablerPrompt({
+                        title: "Suspend Driver Account",
+                        message: "Enter reason for suspension (optional):",
+                        placeholder: "e.g. Account suspended pending safety review",
+                        defaultValue: "",
+                        required: false,
+                        variant: "warning",
+                        confirmText: "Suspend Driver"
+                    });
                     if (reason === null) return;
-                    notes = reason.trim();
+                    notes = reason;
+                } else if (action === "block") {
+                    const reason = await showTablerPrompt({
+                        title: "Block Driver Account",
+                        message: "Enter reason for permanently blocking this driver (optional):",
+                        placeholder: "e.g. Account blocked due to repeated policy violations",
+                        defaultValue: "",
+                        required: false,
+                        variant: "danger",
+                        confirmText: "Block Driver"
+                    });
+                    if (reason === null) return;
+                    notes = reason;
+                } else if (action === "unsuspend") {
+                    const confirmed = await showTablerConfirm(`Are you sure you want to UNSUSPEND this driver? Their account will be restored to Approved status.`, {
+                        title: "Unsuspend Driver Account",
+                        variant: "success",
+                        confirmText: "Unsuspend Driver"
+                    });
+                    if (!confirmed) return;
+                } else if (action === "unblock") {
+                    const confirmed = await showTablerConfirm(`Are you sure you want to UNBLOCK this driver? Their account will be restored to Approved status.`, {
+                        title: "Unblock Driver Account",
+                        variant: "success",
+                        confirmText: "Unblock Driver"
+                    });
+                    if (!confirmed) return;
                 } else {
                     const confirmed = await showTablerConfirm(`Are you sure you want to ${btn.textContent.trim()} this driver?`, {
                         title: `${action.toUpperCase()} Driver`,
@@ -1848,7 +1918,17 @@ async function loadAuditLog(reset) {
 // ---------------------------------------------------------------------
 
 function detailRow(label, value) {
-    return `<div class="admin-detail-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value ?? "")}</span></div>`;
+    const isHtml = typeof value === "string" && (
+        value.includes("<span") ||
+        value.includes("<i ") ||
+        value.includes("<div") ||
+        value.includes("<badge") ||
+        value.includes("<a ") ||
+        value.includes("<strong") ||
+        value.includes("<em")
+    );
+    const rendered = isHtml ? (value ?? "") : escapeHtml(value ?? "");
+    return `<div class="admin-detail-row"><span>${escapeHtml(label)}</span><span>${rendered}</span></div>`;
 }
 
 const STATUS_TONES = {
