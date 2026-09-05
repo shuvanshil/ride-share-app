@@ -615,7 +615,16 @@ def _sanitize_driver(profile: dict[str, Any]) -> dict[str, Any]:
         "phone": profile.get("phone"),
         "email": profile.get("email"),
         "profilePhotoUrl": profile.get("profilePhotoUrl"),
-        "verificationStatus": profile.get("verificationStatus"),
+        "verificationStatus": profile.get("verificationStatus") or "pending_review",
+        "rejectionReason": profile.get("rejectionReason"),
+        "suspensionReason": profile.get("suspensionReason"),
+        "blockingReason": profile.get("blockingReason"),
+        "approvalAcknowledged": profile.get("approvalAcknowledged", False),
+        "approvedAt": profile.get("approvedAt"),
+        "rejectedAt": profile.get("rejectedAt"),
+        "suspendedAt": profile.get("suspendedAt"),
+        "blockedAt": profile.get("blockedAt"),
+        "reappliedAt": profile.get("reappliedAt"),
         "driverAvailability": profile.get("driverAvailability"),
         "vehicleType": profile.get("vehicleType") or profile.get("vehicle_type"),
         "vehicleNumber": profile.get("vehicleNumber") or profile.get("vehicle_number"),
@@ -664,7 +673,7 @@ def update_driver(
     body: DriverActionBody,
     admin_user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
-    valid_actions = {"approve", "reject", "suspend", "block", "unblock", "update"}
+    valid_actions = {"approve", "reject", "suspend", "block", "unsuspend", "unblock", "update"}
     if body.action not in valid_actions:
         raise ApiError(f"Unknown action '{body.action}'.", 400)
 
@@ -674,18 +683,59 @@ def update_driver(
     if not snap.exists:
         raise ApiError("Driver not found.", 404)
     before = _doc_dict(snap)
+    current_status = before.get("verificationStatus") or "pending_review"
 
     updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
     if body.action == "approve":
+        if current_status != "pending_review":
+            raise ApiError(f"Cannot approve a driver in '{current_status}' state.", 400)
         updates["verificationStatus"] = "approved"
+        updates["approvalAcknowledged"] = False
+        updates["approvedAt"] = fb_firestore.SERVER_TIMESTAMP
+        updates["rejectionReason"] = None
+        updates["suspensionReason"] = None
+        updates["blockingReason"] = None
     elif body.action == "reject":
+        if current_status != "pending_review":
+            raise ApiError(f"Cannot reject a driver in '{current_status}' state.", 400)
+        reason = str(body.notes or (body.fields and body.fields.get("rejectionReason")) or "").strip()
+        if not reason:
+            reason = "Application requirements were not met."
         updates["verificationStatus"] = "rejected"
+        updates["rejectionReason"] = reason
+        updates["rejectedAt"] = fb_firestore.SERVER_TIMESTAMP
+        updates["driverAvailability"] = "offline"
+        updates["desiredAvailability"] = "offline"
     elif body.action == "suspend":
+        if current_status != "approved":
+            raise ApiError(f"Cannot suspend a driver in '{current_status}' state.", 400)
+        reason = str(body.notes or (body.fields and body.fields.get("suspensionReason")) or "").strip()
         updates["verificationStatus"] = "suspended"
+        updates["suspensionReason"] = reason if reason else None
+        updates["suspendedAt"] = fb_firestore.SERVER_TIMESTAMP
+        updates["driverAvailability"] = "offline"
+        updates["desiredAvailability"] = "offline"
     elif body.action == "block":
+        if current_status != "approved":
+            raise ApiError(f"Cannot block a driver in '{current_status}' state.", 400)
+        reason = str(body.notes or (body.fields and body.fields.get("blockingReason")) or "").strip()
         updates["verificationStatus"] = "blocked"
-    elif body.action == "unblock":
+        updates["blockingReason"] = reason if reason else None
+        updates["blockedAt"] = fb_firestore.SERVER_TIMESTAMP
+        updates["driverAvailability"] = "offline"
+        updates["desiredAvailability"] = "offline"
+    elif body.action == "unsuspend":
+        if current_status != "suspended":
+            raise ApiError(f"Cannot unsuspend a driver in '{current_status}' state.", 400)
         updates["verificationStatus"] = "approved"
+        updates["suspensionReason"] = None
+        updates["unsuspendedAt"] = fb_firestore.SERVER_TIMESTAMP
+    elif body.action == "unblock":
+        if current_status != "blocked":
+            raise ApiError(f"Cannot unblock a driver in '{current_status}' state.", 400)
+        updates["verificationStatus"] = "approved"
+        updates["blockingReason"] = None
+        updates["unblockedAt"] = fb_firestore.SERVER_TIMESTAMP
     elif body.action == "update":
         if not body.fields:
             raise ApiError("No fields provided for update.", 400)
@@ -695,6 +745,23 @@ def update_driver(
                 updates[k] = str(v).strip()
 
     ref.set(updates, merge=True)
+
+    # Sync presence if verificationStatus changed
+    new_status = updates.get("verificationStatus")
+    if new_status:
+        presence_update: dict[str, Any] = {
+            "verificationStatus": new_status,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        if new_status in ("rejected", "suspended", "blocked"):
+            presence_update["driverAvailability"] = "offline"
+            presence_update["desiredAvailability"] = "offline"
+        db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+        db.collection("driverMapPresence").document(uid).set(
+            {"verificationStatus": new_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP},
+            merge=True,
+        )
+
     write_audit_log(admin_user, f"driver.{body.action}", "driver", uid, before, updates, body.notes)
     return {"ok": True, "driver": _sanitize_driver(_doc_dict(ref.get()))}
 

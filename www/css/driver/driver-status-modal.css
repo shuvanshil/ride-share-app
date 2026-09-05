@@ -1,0 +1,160 @@
+/* Driver Account Status Modal (Pending, Approved, Rejected, Suspended, Blocked) */
+
+.driver-status-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 1;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.driver-status-modal-overlay.d-none {
+    display: none !important;
+}
+
+.driver-status-modal-card {
+    background: #ffffff;
+    border-radius: 28px;
+    box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.25), 0 8px 16px -4px rgba(15, 23, 42, 0.1);
+    max-width: 410px;
+    width: 100%;
+    padding: 34px 26px 28px;
+    text-align: center;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    animation: luModalPopIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes luModalPopIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.92) translateY(12px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.driver-status-illustration-wrap {
+    width: 200px;
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 8px;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.driver-status-illustration-wrap svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.driver-status-title {
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: #0F172A;
+    margin: 14px 0 10px;
+    line-height: 1.28;
+    letter-spacing: -0.02em;
+}
+
+.driver-status-message {
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: #475569;
+    margin: 0;
+    font-weight: 400;
+}
+
+.driver-status-reason-box {
+    width: 100%;
+    background: #FEF2F2;
+    border: 1px solid #FEE2E2;
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin-top: 16px;
+    text-align: left;
+    box-sizing: border-box;
+}
+
+.driver-status-reason-title {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #991B1B;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.driver-status-reason-text {
+    font-size: 0.92rem;
+    color: #7F1D1D;
+    line-height: 1.45;
+    font-weight: 500;
+    word-break: break-word;
+}
+
+.driver-status-prompt {
+    font-size: 0.9rem;
+    color: #64748B;
+    margin-top: 12px;
+    line-height: 1.45;
+}
+
+.driver-status-actions {
+    width: 100%;
+    margin-top: 24px;
+}
+
+.driver-status-btn {
+    width: 100%;
+    border: none;
+    border-radius: 14px;
+    padding: 14px 20px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.driver-status-btn-primary {
+    background: #16A34A;
+    color: #FFFFFF;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3);
+}
+
+.driver-status-btn-primary:hover,
+.driver-status-btn-primary:focus {
+    background: #15803D;
+    color: #FFFFFF;
+    box-shadow: 0 6px 18px rgba(22, 163, 74, 0.4);
+}
+
+.driver-status-btn-primary:active {
+    transform: scale(0.98);
+}
+
+.driver-status-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    pointer-events: none;
+}

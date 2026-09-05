@@ -678,3 +678,107 @@ def update_profile(
         raise ApiError("That email address is already in use.", 409)
     except Exception as error:  # noqa: BLE001
         raise ApiError("Could not save your profile.", 503)
+
+
+@router.post("/driver/acknowledge-approval")
+@router.post("/driver-acknowledge-approval")
+def acknowledge_driver_approval(
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Mark driver approval notification as acknowledged in persistent database."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    try:
+        app = get_admin_app()
+        db = fb_firestore.client(app)
+        user_ref = db.collection("users").document(uid)
+        snap = user_ref.get()
+        if not snap.exists:
+            raise ApiError("User profile not found.", 404)
+
+        profile = snap.to_dict() or {}
+        if profile.get("role") != "driver":
+            raise ApiError("Only driver accounts can acknowledge driver approval.", 403)
+        if profile.get("verificationStatus") != "approved":
+            raise ApiError("Only approved drivers can acknowledge approval.", 400)
+
+        updates = {
+            "approvalAcknowledged": True,
+            "approvalAcknowledgedAt": fb_firestore.SERVER_TIMESTAMP,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        user_ref.set(updates, merge=True)
+
+        updated_profile = {**profile, **updates, "approvalAcknowledged": True}
+        updated_profile.setdefault("uid", uid)
+        return {"ok": True, "profile": _sanitize_for_json(updated_profile)}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        logger.exception("Failed to acknowledge driver approval: %s", error)
+        raise ApiError("Could not acknowledge approval.", 503)
+
+
+@router.post("/driver/re-apply")
+@router.post("/driver-reapply")
+def reapply_driver_registration(
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Reset a rejected driver application back to pending_review."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    try:
+        app = get_admin_app()
+        db = fb_firestore.client(app)
+        user_ref = db.collection("users").document(uid)
+        snap = user_ref.get()
+        if not snap.exists:
+            raise ApiError("User profile not found.", 404)
+
+        profile = snap.to_dict() or {}
+        if profile.get("role") != "driver":
+            raise ApiError("Only driver accounts can re-apply.", 403)
+        if profile.get("verificationStatus") != "rejected":
+            raise ApiError("Only rejected drivers can re-apply.", 400)
+
+        updates = {
+            "verificationStatus": "pending_review",
+            "approvalAcknowledged": False,
+            "rejectionReason": None,
+            "driverAvailability": "offline",
+            "desiredAvailability": "offline",
+            "reappliedAt": fb_firestore.SERVER_TIMESTAMP,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        user_ref.set(updates, merge=True)
+
+        # Sync presence
+        db.collection("driverPresence").document(uid).set(
+            {
+                "verificationStatus": "pending_review",
+                "driverAvailability": "offline",
+                "desiredAvailability": "offline",
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+        db.collection("driverMapPresence").document(uid).set(
+            {
+                "verificationStatus": "pending_review",
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+        updated_profile = {**profile, **updates, "verificationStatus": "pending_review", "rejectionReason": None}
+        updated_profile.setdefault("uid", uid)
+        return {"ok": True, "profile": _sanitize_for_json(updated_profile)}
+    except ApiError:
+        raise
+    except Exception as error:  # noqa: BLE001
+        logger.exception("Failed to re-apply driver registration: %s", error)
+        raise ApiError("Could not submit re-application.", 503)

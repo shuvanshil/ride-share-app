@@ -429,7 +429,7 @@ def _to_utc_datetime(val: Any) -> Optional[datetime]:
 
 
 def _require_approved_driver(profile: dict[str, Any], message: str) -> None:
-    v_status = profile.get("verificationStatus") or profile.get("verification_status") or profile.get("status") or ("approved" if profile.get("role") == "driver" else None)
+    v_status = profile.get("verificationStatus") or profile.get("verification_status") or profile.get("status")
     if profile.get("role") != "driver" or v_status != "approved":
         raise ApiError(message, 403)
 

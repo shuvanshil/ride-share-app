@@ -20,6 +20,7 @@ import {
     startRideRequestRing,
     stopRideRequestRing
 } from '../shared/messaging.js';
+import { driverStatusManager } from './driver-status-manager.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
@@ -1603,13 +1604,38 @@ function routeDriverProfile(profile) {
         return;
     }
 
+    currentUser = profile;
     cacheProfile(profile);
 
-    if (profile.verificationStatus === "approved") {
+    const status = profile.verificationStatus || "pending_review";
+    const isAck = Boolean(profile.approvalAcknowledged);
+
+    // Evaluate account status modal
+    driverStatusManager.evaluateStatus(profile, {
+        onAcknowledged: (updatedProfile) => {
+            currentUser = updatedProfile;
+            cacheProfile(updatedProfile);
+            startDriverConsole(updatedProfile);
+        },
+        onReapplied: (updatedProfile) => {
+            currentUser = updatedProfile;
+            cacheProfile(updatedProfile);
+            stopPresenceTracking();
+            stopRideRequestRing();
+            driverDutyOnline = false;
+        }
+    });
+
+    if (status === "approved" && isAck) {
         startDriverConsole(profile);
     } else {
-        currentUser = profile;
-        showDriverReview(profile);
+        // Stop active background presence tracking and ride rings if not in active approved duty
+        stopPresenceTracking();
+        stopRideRequestRing();
+        driverDutyOnline = false;
+        if (status === "approved" && !isAck) {
+            showDriverHome(profile);
+        }
     }
 }
 
@@ -1778,6 +1804,8 @@ function renderAccountHoldModal() {
     overlay.classList.remove('d-none');
 }
 
+let userDocUnsubscribe = null;
+
 async function bootstrapDriver() {
     const user = await waitForAuth();
     if (!user) {
@@ -1786,15 +1814,26 @@ async function bootstrapDriver() {
     }
 
     try {
-        const userDocSnap = await getDoc(doc(db, "users", user.uid));
-        if (!userDocSnap.exists()) {
-            clearCachedProfile();
-            window.location.replace("/login.html");
-            return;
+        if (userDocUnsubscribe) {
+            userDocUnsubscribe();
+            userDocUnsubscribe = null;
         }
-        routeDriverProfile(userDocSnap.data());
-        checkDriverAccountHoldStatus(user);
-        hideInitialLoader();
+
+        userDocUnsubscribe = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+            if (!docSnap.exists()) {
+                clearCachedProfile();
+                window.location.replace("/login.html");
+                return;
+            }
+            const profileData = docSnap.data();
+            profileData.uid = user.uid;
+            routeDriverProfile(profileData);
+            checkDriverAccountHoldStatus(user);
+            hideInitialLoader();
+        }, (error) => {
+            console.warn("Driver profile realtime listener error:", error);
+            hideInitialLoader();
+        });
     } catch (error) {
         console.warn("Driver auth session lookup failed:", error);
         hideInitialLoader();
@@ -1804,6 +1843,19 @@ async function bootstrapDriver() {
 bootstrapDriver();
 
 window.addEventListener('languageChanged', () => {
+    if (currentUser) {
+        driverStatusManager.evaluateStatus(currentUser, {
+            onAcknowledged: (updatedProfile) => {
+                currentUser = updatedProfile;
+                cacheProfile(updatedProfile);
+                startDriverConsole(updatedProfile);
+            },
+            onReapplied: (updatedProfile) => {
+                currentUser = updatedProfile;
+                cacheProfile(updatedProfile);
+            }
+        });
+    }
     const jobsContainer = document.getElementById('driver-jobs-list');
     if (jobsContainer && (jobsContainer.classList.contains('offline-empty-card') || jobsContainer.classList.contains('online-empty-card') || !jobsContainer.children.length)) {
         if (!driverDutyOnline) {

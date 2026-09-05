@@ -1216,15 +1216,31 @@ function ensureDriversTable() {
 }
 
 async function bulkDriverAction(ids, action) {
-    const confirmed = await showTablerConfirm(`Are you sure you want to ${action} ${ids.length} selected driver(s)?`, {
-        title: `${action.toUpperCase()} Drivers`,
-        variant: action === "suspend" || action === "block" ? "danger" : "primary"
-    });
-    if (!confirmed) return;
+    let notes = "";
+    if (action === "reject") {
+        const reason = window.prompt("Enter rejection reason for selected driver(s):", "Application requirements were not met.");
+        if (reason === null) return;
+        if (!reason.trim()) {
+            toast("Rejection reason cannot be empty.", "warning");
+            return;
+        }
+        notes = reason.trim();
+    } else if (action === "suspend" || action === "block") {
+        const reason = window.prompt(`Reason for ${action}ing selected driver(s) (optional):`, "");
+        if (reason === null) return;
+        notes = reason.trim();
+    } else {
+        const confirmed = await showTablerConfirm(`Are you sure you want to ${action} ${ids.length} selected driver(s)?`, {
+            title: `${action.toUpperCase()} Drivers`,
+            variant: action === "suspend" || action === "block" || action === "reject" ? "danger" : "primary"
+        });
+        if (!confirmed) return;
+    }
+
     let ok = 0;
     for (const uid of ids) {
         try {
-            await adminPatch(`/drivers/${uid}`, { action });
+            await adminPatch(`/drivers/${uid}`, { action, notes, fields: { rejectionReason: notes, suspensionReason: notes, blockingReason: notes } });
             ok += 1;
         } catch (error) {
             /* continue */
@@ -1267,17 +1283,39 @@ async function openDriverDrawer(uid) {
                     <div class="admin-drawer-sub">Driver ID: ${escapeHtml(d.uid)}</div>
                 </div>
             </div>
-            ${detailRow("Status", d.verificationStatus)}
-            ${detailRow("Online status", d.driverAvailability)}
+            ${detailRow("Status", statusChip(d.verificationStatus))}
+            ${d.rejectionReason ? detailRow("Rejection Reason", `<span class="text-danger fw-bold">${escapeHtml(d.rejectionReason)}</span>`) : ""}
+            ${d.suspensionReason ? detailRow("Suspension Reason", `<span class="text-warning fw-bold">${escapeHtml(d.suspensionReason)}</span>`) : ""}
+            ${d.blockingReason ? detailRow("Blocking Reason", `<span class="text-danger fw-bold">${escapeHtml(d.blockingReason)}</span>`) : ""}
+            ${detailRow("Online status", escapeHtml(d.driverAvailability || "offline"))}
             ${detailRow("Rating", "Not collected yet")}
             ${detailRow("Earnings balance", `Lifetime: Rs ${d.lifetimeEarnings || 0}`)}
             ${detailRow("Completed trips", d.totalCompletedTrips || 0)}
+            ${d.approvedAt ? detailRow("Approved Date", formatTimestamp(d.approvedAt)) : ""}
+            ${d.rejectedAt ? detailRow("Rejected Date", formatTimestamp(d.rejectedAt)) : ""}
+            ${d.suspendedAt ? detailRow("Suspended Date", formatTimestamp(d.suspendedAt)) : ""}
+            ${d.blockedAt ? detailRow("Blocked Date", formatTimestamp(d.blockedAt)) : ""}
+            ${d.reappliedAt ? detailRow("Re-applied Date", formatTimestamp(d.reappliedAt)) : ""}
             <div class="d-flex flex-wrap gap-1 mt-3">
-                ${actionBtn("approve", "Approve")}
-                ${actionBtn("reject", "Reject")}
-                ${actionBtn("suspend", "Suspend")}
-                ${actionBtn("block", "Block")}
-                ${actionBtn("unblock", "Unblock")}
+                ${d.verificationStatus === "pending_review" ? `
+                    ${actionBtn("approve", '<i class="ti ti-check me-1"></i>Approve', "btn-success")}
+                    ${actionBtn("reject", '<i class="ti ti-x me-1"></i>Reject', "btn-danger")}
+                ` : ""}
+                ${d.verificationStatus === "approved" ? `
+                    ${actionBtn("suspend", '<i class="ti ti-pause me-1"></i>Suspend', "btn-warning")}
+                    ${actionBtn("block", '<i class="ti ti-ban me-1"></i>Block', "btn-danger")}
+                ` : ""}
+                ${d.verificationStatus === "suspended" ? `
+                    ${actionBtn("unsuspend", '<i class="ti ti-play me-1"></i>Unsuspend (Restore)', "btn-success")}
+                ` : ""}
+                ${d.verificationStatus === "blocked" ? `
+                    ${actionBtn("unblock", '<i class="ti ti-lock-open me-1"></i>Unblock (Restore)', "btn-success")}
+                ` : ""}
+                ${d.verificationStatus === "rejected" ? `
+                    <div class="alert alert-danger py-2 px-3 mt-1 mb-1 small w-100">
+                        <i class="ti ti-alert-circle me-1"></i>Application rejected. Awaiting driver re-application.
+                    </div>
+                ` : ""}
             </div>
             <h4 class="admin-drawer-subsection">Recent Rides</h4>
             ${recentRidesHtml}
@@ -1317,15 +1355,32 @@ async function openDriverDrawer(uid) {
         document.querySelectorAll("#admin-drawer-body [data-action]").forEach((btn) => {
             btn.addEventListener("click", async () => {
                 const action = btn.dataset.action;
-                const confirmed = await showTablerConfirm(`Are you sure you want to ${btn.textContent} this driver?`, {
-                    title: `${btn.textContent} Driver`,
-                    variant: action === "block" || action === "suspend" || action === "reject" ? "danger" : "primary"
-                });
-                if (!confirmed) return;
+                let notes = "";
+
+                if (action === "reject") {
+                    const reason = window.prompt("Enter rejection reason (will be displayed in driver app):", "Application requirements were not met.");
+                    if (reason === null) return;
+                    if (!reason.trim()) {
+                        toast("Rejection reason cannot be empty.", "warning");
+                        return;
+                    }
+                    notes = reason.trim();
+                } else if (action === "suspend" || action === "block") {
+                    const reason = window.prompt(`Reason for ${action}ing this driver (optional):`, "");
+                    if (reason === null) return;
+                    notes = reason.trim();
+                } else {
+                    const confirmed = await showTablerConfirm(`Are you sure you want to ${btn.textContent.trim()} this driver?`, {
+                        title: `${action.toUpperCase()} Driver`,
+                        variant: "primary"
+                    });
+                    if (!confirmed) return;
+                }
+
                 await withButtonSpinner(btn, async () => {
                     try {
-                        await adminPatch(`/drivers/${uid}`, { action });
-                        toast(`Driver ${action}d.`);
+                        await adminPatch(`/drivers/${uid}`, { action, notes, fields: { rejectionReason: notes, suspensionReason: notes, blockingReason: notes } });
+                        toast(`Driver status updated to ${action}.`);
                         closeDrawer(true);
                         loadDrivers(true);
                     } catch (error) {
@@ -1826,8 +1881,8 @@ function statusChip(status) {
     return `<span class="badge ${badgeClass}">${iconMap[tone] || ''}${escapeHtml(label)}</span>`;
 }
 
-function actionBtn(action, label) {
-    return `<button class="btn btn-outline-secondary btn-sm me-1 mb-1" data-action="${action}" type="button">${label}</button>`;
+function actionBtn(action, label, btnClass = "btn-outline-secondary") {
+    return `<button class="btn ${btnClass} btn-sm me-1 mb-1" data-action="${action}" type="button">${label}</button>`;
 }
 
 function escapeHtml(value) {
