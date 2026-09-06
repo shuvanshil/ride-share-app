@@ -48,7 +48,10 @@ The backend expects the following:
 - `FIREBASE_PRIVATE_KEY`
 - `GOOGLE_MAPS_BROWSER_KEY`
 - `GOOGLE_MAPS_SERVER_KEY`
-- `TWOFACTOR_API_KEY`
+- `TWOFACTOR_API_KEY` (required when OTP_PROVIDER == "existing")
+- `MSG91_WIDGET_ID` (required when OTP_PROVIDER == "msg91")
+- `MSG91_WIDGET_TOKEN` (required when OTP_PROVIDER == "msg91")
+- `MSG91_AUTH_KEY` (required when OTP_PROVIDER == "msg91", server-only)
 - `OTP_SESSION_SECRET`
 
 ## License

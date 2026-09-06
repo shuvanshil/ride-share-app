@@ -26,6 +26,79 @@ let requestedPhoneNumber = null;
 let resendTimerId = null;
 let otpRequestInProgress = false;
 let authMode = "login";
+let activeOtpProvider = "existing";
+let msg91Config = null;
+let msg91ReadyPromise = null;
+
+async function fetchOtpConfig() {
+    try {
+        const res = await fetch("/api/otp-config");
+        if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.provider) {
+                activeOtpProvider = data.provider;
+                if (data.provider === "msg91" && data.widgetId && data.tokenAuth) {
+                    msg91Config = data;
+                    initMsg91Sdk(data);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to fetch OTP config:", e);
+    }
+}
+
+function initMsg91Sdk(config) {
+    if (msg91ReadyPromise) return msg91ReadyPromise;
+    msg91ReadyPromise = new Promise((resolve) => {
+        if (window.sendOtp && window.verifyOtp) {
+            resolve(true);
+            return;
+        }
+        window.configuration = {
+            widgetId: config.widgetId,
+            tokenAuth: config.tokenAuth,
+            exposeMethods: true,
+            success: (data) => {
+                console.log("MSG91 Widget success callback event:", data);
+            },
+            failure: (error) => {
+                console.warn("MSG91 Widget failure callback event:", error);
+            }
+        };
+
+        const scriptId = "msg91-otp-sdk";
+        let script = document.getElementById(scriptId);
+        if (!script) {
+            script = document.createElement("script");
+            script.id = scriptId;
+            script.type = "text/javascript";
+            script.src = "https://verify.msg91.com/otp-provider.js";
+            script.onload = () => {
+                if (typeof window.initSendOTP === "function") {
+                    try {
+                        window.initSendOTP(window.configuration);
+                    } catch (err) {
+                        console.warn("initSendOTP error:", err);
+                    }
+                }
+                resolve(true);
+            };
+            script.onerror = () => {
+                console.error("Failed to load MSG91 SDK script");
+                resolve(false);
+            };
+            document.head.appendChild(script);
+        } else {
+            resolve(true);
+        }
+    });
+    return msg91ReadyPromise;
+}
+
+function toMsg91Identifier(phone) {
+    return String(phone || "").replace(/^\+/, "").replace(/\D/g, "");
+}
 
 const passwordLoginContainer = document.getElementById('password-login-container');
 const phoneInputContainer = document.getElementById('phone-input-container');
@@ -367,22 +440,79 @@ async function sendOTP() {
             }
         }
 
-        const response = await fetch("/api/send-otp", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                phone: phoneNumber,
-                purpose: authMode === "reset" ? "reset" : "register"
-            })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.ok || !data.otpSessionId) {
-            throw new Error(data.error || data.message || t('auth.send_otp_failed', "Could not send the OTP. Please try again."));
+        const purpose = authMode === "reset" ? "reset" : "register";
+
+        if (activeOtpProvider === "msg91") {
+            if (msg91Config) {
+                await initMsg91Sdk(msg91Config);
+            }
+            if (!window.sendOtp) {
+                throw new Error("OTP service is currently initializing. Please try again in a moment.");
+            }
+
+            // 1. Authorize send and reserve cooldown & rate-limit slot with LiphtUP server
+            const reserveRes = await fetch("/api/send-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone: phoneNumber, purpose, isRetry: false })
+            });
+            const reserveData = await reserveRes.json().catch(() => ({}));
+            if (!reserveRes.ok || !reserveData.ok) {
+                throw new Error(reserveData.error || reserveData.message || t('auth.send_otp_failed', "Could not send the OTP. Please try again."));
+            }
+
+            // 2. Dispatch OTP via MSG91 Custom UI Web SDK
+            const identifier = toMsg91Identifier(phoneNumber);
+            await new Promise((resolve, reject) => {
+                window.sendOtp(
+                    identifier,
+                    async (data) => {
+                        try {
+                            const reqId = typeof data === 'object' && data !== null
+                                ? String(data.message || data.reqId || data.data?.reqId || "")
+                                : String(data || "");
+
+                            if (reqId) {
+                                await fetch("/api/otp/session", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ phone: phoneNumber, purpose, reqId })
+                                }).catch((err) => console.warn("Session binding warning:", err));
+                                otpSessionId = reqId;
+                            } else {
+                                otpSessionId = `msg91_${Date.now()}`;
+                            }
+                            resolve(data);
+                        } catch (err) {
+                            resolve(data);
+                        }
+                    },
+                    (error) => {
+                        const errMsg = typeof error === 'object' && error !== null
+                            ? (error.message || error.error || JSON.stringify(error))
+                            : String(error || "Could not send OTP via MSG91.");
+                        reject(new Error(errMsg));
+                    }
+                );
+            });
+        } else {
+            const response = await fetch("/api/send-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    phone: phoneNumber,
+                    purpose
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok || !data.otpSessionId) {
+                throw new Error(data.error || data.message || t('auth.send_otp_failed', "Could not send the OTP. Please try again."));
+            }
+
+            otpSessionId = data.otpSessionId;
         }
 
-        otpSessionId = data.otpSessionId;
         requestedPhoneNumber = phoneNumber;
-        console.log(`2Factor OTP sent to ${phoneNumber}`);
         setVisible(phoneInputContainer, false);
         setVisible(otpInputContainer, true);
         const otpSentMsg = t('auth.sent_otp_to', "We sent a 6-digit OTP to");
@@ -392,7 +522,7 @@ async function sendOTP() {
         startResendTimer();
         document.getElementById('otp-code').focus();
     } catch (error) {
-        console.error("2Factor OTP send failed:", error);
+        console.error("OTP send failed:", error);
         const message = getAuthErrorMessage(error, t('auth.send_otp_failed', "Could not send the OTP. Please try again."));
         setAuthStatus(message, true);
         await showAppAlert(message);
@@ -407,6 +537,40 @@ async function sendOTP() {
 
 async function resendOTP() {
     if (!requestedPhoneNumber || resendOtpBtn.disabled) return;
+    if (activeOtpProvider === "msg91" && window.retryOtp) {
+        resendOtpBtn.disabled = true;
+        setAuthStatus(t('auth.requesting_otp', "Requesting a new OTP..."));
+        try {
+            const purpose = authMode === "reset" ? "reset" : "register";
+            const checkRes = await fetch("/api/send-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone: requestedPhoneNumber, purpose, isRetry: true })
+            });
+            const checkData = await checkRes.json().catch(() => ({}));
+            if (!checkRes.ok || !checkData.ok) {
+                throw new Error(checkData.error || checkData.message || t('auth.send_otp_failed', "Could not resend OTP. Please wait before trying again."));
+            }
+
+            await new Promise((resolve, reject) => {
+                window.retryOtp(
+                    '11',
+                    (data) => resolve(data),
+                    (err) => reject(new Error(typeof err === 'object' ? err.message || JSON.stringify(err) : String(err))),
+                    otpSessionId || undefined
+                );
+            });
+            setAuthStatus(t('auth.otp_sent_status', "New OTP sent. It may take a few moments to arrive."));
+            startResendTimer();
+        } catch (err) {
+            console.error("MSG91 retryOtp failed:", err);
+            const message = getAuthErrorMessage(err, "Could not resend OTP. Please try again.");
+            setAuthStatus(message, true);
+            await showAppAlert(message);
+            resendOtpBtn.disabled = false;
+        }
+        return;
+    }
     await sendOTP();
 }
 
@@ -534,23 +698,77 @@ async function verifyOTP() {
     setAuthStatus(t('auth.verifying_otp_status', "Verifying your OTP..."));
 
     try {
-        const response = await fetch("/api/verify-otp", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                phone: requestedPhoneNumber,
-                otpSessionId,
-                otp: code,
-                purpose: authMode === "reset" ? "reset" : "register"
-            })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.ok || !data.verificationToken) {
-            throw new Error(data.error || data.message || t('auth.verify_otp_failed', "Could not verify the OTP. Please try again."));
+        const purpose = authMode === "reset" ? "reset" : "register";
+
+        if (activeOtpProvider === "msg91") {
+            if (!window.verifyOtp) {
+                throw new Error("OTP verification service is not ready. Please refresh and try again.");
+            }
+
+            const verifyResult = await new Promise((resolve, reject) => {
+                window.verifyOtp(
+                    code,
+                    (data) => resolve(data),
+                    async (error) => {
+                        fetch("/api/otp/report-failure", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ phone: requestedPhoneNumber, purpose, reqId: otpSessionId })
+                        }).catch(() => {});
+                        const errMsg = typeof error === 'object' && error !== null
+                            ? (error.message || error.error || JSON.stringify(error))
+                            : String(error || "That OTP is incorrect or expired.");
+                        reject(new Error(errMsg));
+                    },
+                    otpSessionId || undefined
+                );
+            });
+
+            const accessToken = typeof verifyResult === 'object' && verifyResult !== null
+                ? String(verifyResult.message || verifyResult.token || verifyResult.accessToken || verifyResult.jwt || "")
+                : String(verifyResult || "");
+
+            if (!accessToken) {
+                throw new Error("Could not retrieve verification confirmation token from MSG91.");
+            }
+
+            const response = await fetch("/api/verify-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    phone: requestedPhoneNumber,
+                    otpSessionId,
+                    accessToken,
+                    purpose
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok || !data.verificationToken) {
+                throw new Error(data.error || data.message || t('auth.verify_otp_failed', "Could not verify the OTP. Please try again."));
+            }
+
+            verifiedPhoneNumber = data.phone || requestedPhoneNumber;
+            otpVerificationToken = data.verificationToken;
+        } else {
+            const response = await fetch("/api/verify-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    phone: requestedPhoneNumber,
+                    otpSessionId,
+                    otp: code,
+                    purpose
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok || !data.verificationToken) {
+                throw new Error(data.error || data.message || t('auth.verify_otp_failed', "Could not verify the OTP. Please try again."));
+            }
+
+            verifiedPhoneNumber = data.phone || requestedPhoneNumber;
+            otpVerificationToken = data.verificationToken;
         }
 
-        verifiedPhoneNumber = data.phone || requestedPhoneNumber;
-        otpVerificationToken = data.verificationToken;
         clearResendTimer();
         setAuthStatus(t('auth.phone_verified_success', "Phone number verified successfully."));
 
@@ -819,6 +1037,7 @@ document.getElementById('reset-confirm-password').addEventListener('keydown', (e
 updateRegistrationFieldsForRole();
 updateAuthModeUi();
 resetAuthStep();
+fetchOtpConfig();
 
 window.addEventListener('languageChanged', () => {
     updateAuthModeUi();

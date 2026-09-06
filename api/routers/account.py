@@ -19,7 +19,7 @@ from ..core.config import get_env, require_env
 from ..core.auth import current_user
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app
-from ..core.otp import verify_token
+from ..core.otp import get_active_otp_provider_name, verify_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ def _build_profile(uid: str, phone: str, profile: dict[str, Any]) -> dict[str, A
         "role": base["role"],
         "phoneVerified": True,
         "authProvider": "password",
-        "otpProvider": "2factor",
+        "otpProvider": get_active_otp_provider_name(),
         "profileCompleted": True,
         "createdAt": datetime.now(timezone.utc),
     }
