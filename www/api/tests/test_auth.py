@@ -182,3 +182,71 @@ def test_driver_fare_adjustment_adds_only_after_free_dropoff_buffer() -> None:
     assert adjustment["reason"] == "extra_after_drop"
     assert adjustment["final_fare"] > adjustment["original_fare"]
     assert adjustment["extra_dropoff_distance_km"] > 0.1
+
+
+def test_check_phone_invalid_returns_false(monkeypatch) -> None:
+    client = TestClient(app)
+    response = client.post("/api/auth/check-phone", json={"phone": "123"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["exists"] is False
+
+
+def test_check_phone_existing_in_index(monkeypatch) -> None:
+    class MockDoc:
+        exists = True
+
+    class MockCollection:
+        def document(self, phone):
+            return self
+        def get(self):
+            return MockDoc()
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+
+    client = TestClient(app)
+    response = client.post("/api/auth/check-phone", json={"phone": "9876543210"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["exists"] is True
+    assert data["phone"] == "+919876543210"
+
+
+def test_check_phone_non_existing_returns_false(monkeypatch) -> None:
+    class MockDoc:
+        exists = False
+
+    class MockCollection:
+        def document(self, phone):
+            return self
+        def get(self):
+            return MockDoc()
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    class MockAuthClient:
+        def __init__(self, app):
+            pass
+        def get_user_by_phone_number(self, phone):
+            raise Exception("User not found")
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+    monkeypatch.setattr("api.routers.auth.fb_auth.Client", MockAuthClient)
+
+    client = TestClient(app)
+    response = client.post("/api/auth/check-phone", json={"phone": "9876543210"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["exists"] is False
+

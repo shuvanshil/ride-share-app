@@ -50,6 +50,39 @@ const registerModeBtn = document.getElementById('register-mode-btn');
 const authEntryTitle = document.getElementById('auth-entry-title');
 const authEntryCopy = document.getElementById('auth-entry-copy');
 
+const accountExistsModal = document.getElementById('account-exists-modal');
+const accountExistsCloseBtn = document.getElementById('account-exists-close-btn');
+const accountExistsCloseX = document.getElementById('account-exists-close-x');
+const accountExistsLoginBtn = document.getElementById('account-exists-login-btn');
+const accountExistsPhoneDisplay = document.getElementById('account-exists-phone-display');
+
+let modalPhoneTarget = null;
+
+function showAccountExistsModal(phoneNumber) {
+    modalPhoneTarget = phoneNumber;
+    if (accountExistsPhoneDisplay) {
+        const national = phoneNumber.replace(/^\+91/, "");
+        accountExistsPhoneDisplay.textContent = `+91 ${national.slice(0, 5)} ${national.slice(5)}`;
+    }
+    if (accountExistsModal) {
+        accountExistsModal.classList.remove('d-none');
+        document.addEventListener('keydown', onAccountExistsKeydown);
+    }
+}
+
+function closeAccountExistsModal() {
+    if (accountExistsModal) {
+        accountExistsModal.classList.add('d-none');
+        document.removeEventListener('keydown', onAccountExistsKeydown);
+    }
+}
+
+function onAccountExistsKeydown(e) {
+    if (e.key === "Escape") {
+        closeAccountExistsModal();
+    }
+}
+
 function setVisible(element, visible) {
     element.classList.toggle('d-none', !visible);
 }
@@ -227,6 +260,7 @@ function resetAuthStep() {
     clearResendTimer();
 
     document.getElementById('otp-code').value = "";
+    closeAccountExistsModal();
     setVisible(passwordLoginContainer, authMode === "login");
     setVisible(phoneInputContainer, authMode === "register" || authMode === "reset");
     setVisible(otpInputContainer, false);
@@ -254,6 +288,50 @@ function resetAuthStep() {
     }, 50);
 }
 
+async function checkPhoneExists(phoneNumber) {
+    let clientChecked = false;
+    // Fast path 1: direct Firestore client lookup (instant from local cache / live connection)
+    try {
+        const docSnap = await Promise.race([
+            getDoc(doc(db, PHONE_INDEX_COLLECTION, phoneNumber)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("firestore_timeout")), 600))
+        ]);
+        clientChecked = true;
+        if (docSnap && docSnap.exists()) {
+            const data = docSnap.data();
+            if (data && (data.email || data.uid)) {
+                return true;
+            }
+        }
+        // If Firestore document does not exist, the user definitely does not exist in phoneLoginIndex
+        return false;
+    } catch (e) {
+        console.warn("Direct Firestore check fallback triggered:", e);
+    }
+
+    // Fast path 2: Only fallback to backend endpoint if client Firestore connection timed out / errored
+    if (!clientChecked) {
+        try {
+            const response = await fetch("/api/auth/check-phone", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone: phoneNumber }),
+                signal: AbortSignal.timeout(800)
+            });
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (data.ok && data.exists) {
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.warn("Backend check-phone warning:", e);
+        }
+    }
+
+    return false;
+}
+
 async function sendOTP() {
     if (otpRequestInProgress) return;
 
@@ -271,6 +349,24 @@ async function sendOTP() {
     otpVerificationToken = null;
 
     try {
+        // Fast pre-check for registration: If phone number already exists, do not send OTP
+        if (authMode === "register") {
+            setAuthStatus(t('auth.checking_account', "Checking your account..."));
+            const alreadyExists = await checkPhoneExists(phoneNumber);
+            if (alreadyExists) {
+                sendOtpBtn.disabled = false;
+                resendOtpBtn.disabled = false;
+                sendOtpBtn.textContent = t('auth.send_registration_otp', "Send Registration OTP");
+                resendOtpBtn.textContent = t('auth.resend_otp', "Resend OTP");
+                setAuthStatus();
+                otpRequestInProgress = false;
+                loginFlowStarted = false;
+
+                showAccountExistsModal(phoneNumber);
+                return;
+            }
+        }
+
         const response = await fetch("/api/send-otp", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -459,13 +555,6 @@ async function verifyOTP() {
         setAuthStatus(t('auth.phone_verified_success', "Phone number verified successfully."));
 
         if (authMode === "register") {
-            const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
-            if (existingPhoneLogin?.email) {
-                await showAppAlert(t('auth.account_exists_login', "An account already exists for this mobile number. Please login or use forgot password."));
-                setAuthMode("login");
-                return;
-            }
-
             setVisible(otpInputContainer, false);
             setVisible(registrationContainer, true);
             authEntryTitle.textContent = t('auth.complete_profile_title', "Complete your profile");
@@ -675,6 +764,35 @@ loginModeBtn.addEventListener('click', () => setAuthMode("login"));
 registerModeBtn.addEventListener('click', () => setAuthMode("register"));
 userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
 driverAgreementCheckbox.addEventListener('change', updateRegistrationSubmitState);
+
+if (accountExistsCloseBtn) {
+    accountExistsCloseBtn.addEventListener('click', closeAccountExistsModal);
+}
+if (accountExistsCloseX) {
+    accountExistsCloseX.addEventListener('click', closeAccountExistsModal);
+}
+if (accountExistsModal) {
+    accountExistsModal.addEventListener('click', (e) => {
+        if (e.target === accountExistsModal) {
+            closeAccountExistsModal();
+        }
+    });
+}
+if (accountExistsLoginBtn) {
+    accountExistsLoginBtn.addEventListener('click', () => {
+        const phoneToFill = modalPhoneTarget ? modalPhoneTarget.replace(/^\+91/, "") : "";
+        closeAccountExistsModal();
+        setAuthMode("login");
+        if (phoneToFill) {
+            const loginIdentifier = document.getElementById('login-identifier');
+            if (loginIdentifier) {
+                loginIdentifier.value = phoneToFill;
+                const loginPassword = document.getElementById('login-password');
+                if (loginPassword) loginPassword.focus();
+            }
+        }
+    });
+}
 
 document.getElementById('phone-number').addEventListener('input', (event) => {
     event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10);
