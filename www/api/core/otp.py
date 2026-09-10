@@ -33,7 +33,7 @@ from .otp_providers.msg91 import (
 # SINGLE SOURCE-CODE PROVIDER SWITCH
 # Supported values: "existing" | "msg91"
 # -----------------------------------------------------------------------------
-OTP_PROVIDER: Literal["existing", "msg91"] = "existing"
+OTP_PROVIDER: Literal["existing", "msg91"] = "msg91"
 
 OTP_TEMPLATE_NAME = get_env("TWOFACTOR_OTP_TEMPLATE", TWOFACTOR_DEFAULT_TEMPLATE)
 TOKEN_TTL_MS = 10 * 60 * 1000  # 10 minutes
