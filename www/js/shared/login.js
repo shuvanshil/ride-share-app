@@ -346,9 +346,7 @@ function resetAuthStep() {
     clearResendTimer();
 
     document.getElementById('otp-code').value = "";
-    if (document.getElementById('user-gender')) {
-        document.getElementById('user-gender').value = "";
-    }
+    setGender("Male");
     closeAccountExistsModal();
     setVisible(passwordLoginContainer, authMode === "login");
     setVisible(phoneInputContainer, authMode === "register" || authMode === "reset");
@@ -835,11 +833,12 @@ async function finalizeRegistration() {
     if (registerBtn.disabled) return;
 
     const name = document.getElementById('user-name').value.trim();
-    const email = normalizeEmail(document.getElementById('user-email').value);
+    const emailEl = document.getElementById('user-email');
+    const email = emailEl ? normalizeEmail(emailEl.value) : "";
     const role = document.getElementById('user-role').value;
     const password = document.getElementById('user-password').value;
-    const genderSelect = document.getElementById('user-gender');
-    const gender = genderSelect ? genderSelect.value : "";
+    const genderInput = document.getElementById('user-gender');
+    const gender = genderInput ? genderInput.value : "Male";
 
     if (!verifiedPhoneNumber || !otpVerificationToken) {
         await showAppAlert(t('auth.phone_session_missing', "Your phone verification session is missing. Please verify OTP again."));
@@ -851,7 +850,7 @@ async function finalizeRegistration() {
         return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         await showAppAlert(t('profile.enter_valid_email', "Please enter a valid email address."));
         return;
     }
@@ -1080,6 +1079,132 @@ if (resetConfirmPasswordEl) {
     });
 }
 
+function setGender(genderValue) {
+    const genderInput = document.getElementById('user-gender');
+    const cards = document.querySelectorAll('.auth-gender-card');
+    const val = genderValue || "Male";
+    if (genderInput) genderInput.value = val;
+    cards.forEach(card => {
+        const isActive = card.getAttribute('data-gender') === val;
+        card.classList.toggle('active', isActive);
+        card.setAttribute('aria-checked', String(isActive));
+    });
+}
+
+function initGenderCards() {
+    const cards = document.querySelectorAll('.auth-gender-card');
+    cards.forEach(card => {
+        card.addEventListener('click', (e) => {
+            e.preventDefault();
+            const val = card.getAttribute('data-gender');
+            setGender(val);
+        });
+    });
+}
+
+function initCustomSelect(container) {
+    if (!container || container.dataset.customSelectInit) return;
+    container.dataset.customSelectInit = "true";
+
+    const targetSelectId = container.getAttribute('data-target-select');
+    const selectEl = targetSelectId ? document.getElementById(targetSelectId) : container.querySelector('select');
+    const trigger = container.querySelector('.liphtup-select-trigger');
+    const menu = container.querySelector('.liphtup-select-menu');
+    const labelEl = container.querySelector('.liphtup-select-label');
+    const iconContainer = container.querySelector('.liphtup-select-icon');
+    const options = container.querySelectorAll('.liphtup-select-option');
+
+    if (!selectEl || !trigger || !menu) return;
+
+    function updateDisplay(val) {
+        options.forEach(opt => {
+            const optVal = opt.getAttribute('data-value');
+            const isActive = optVal === val;
+            opt.classList.toggle('active', isActive);
+            opt.setAttribute('aria-selected', String(isActive));
+            if (isActive) {
+                const optText = opt.querySelector('.liphtup-option-text');
+                const optIcon = opt.querySelector('.liphtup-option-icon svg');
+                if (labelEl && optText) {
+                    labelEl.textContent = optText.textContent;
+                }
+                if (iconContainer && optIcon) {
+                    iconContainer.innerHTML = optIcon.outerHTML;
+                    const innerSvg = iconContainer.querySelector('svg');
+                    if (innerSvg) innerSvg.setAttribute('stroke', '#166534');
+                }
+            }
+        });
+    }
+
+    trigger.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const isOpen = !menu.classList.contains('d-none');
+        document.querySelectorAll('.liphtup-custom-select').forEach(cs => {
+            if (cs !== container) {
+                cs.classList.remove('is-open');
+                const m = cs.querySelector('.liphtup-select-menu');
+                if (m) m.classList.add('d-none');
+                const t = cs.querySelector('.liphtup-select-trigger');
+                if (t) t.setAttribute('aria-expanded', 'false');
+            }
+        });
+        menu.classList.toggle('d-none', isOpen);
+        container.classList.toggle('is-open', !isOpen);
+        trigger.setAttribute('aria-expanded', String(!isOpen));
+    });
+
+    options.forEach(opt => {
+        opt.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const val = opt.getAttribute('data-value');
+            selectEl.value = val;
+            updateDisplay(val);
+            menu.classList.add('d-none');
+            container.classList.remove('is-open');
+            trigger.setAttribute('aria-expanded', 'false');
+            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
+
+    selectEl.addEventListener('change', () => {
+        updateDisplay(selectEl.value);
+    });
+
+    container._updateDisplay = updateDisplay;
+    updateDisplay(selectEl.value);
+}
+
+function initAllCustomSelects() {
+    document.querySelectorAll('.liphtup-custom-select').forEach(initCustomSelect);
+}
+
+function refreshAllCustomSelectDisplays() {
+    document.querySelectorAll('.liphtup-custom-select').forEach(cs => {
+        const targetSelectId = cs.getAttribute('data-target-select');
+        const selectEl = targetSelectId ? document.getElementById(targetSelectId) : cs.querySelector('select');
+        if (selectEl && typeof cs._updateDisplay === 'function') {
+            cs._updateDisplay(selectEl.value);
+        }
+    });
+}
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.liphtup-custom-select')) {
+        document.querySelectorAll('.liphtup-custom-select').forEach(cs => {
+            cs.classList.remove('is-open');
+            const m = cs.querySelector('.liphtup-select-menu');
+            if (m) m.classList.add('d-none');
+            const t = cs.querySelector('.liphtup-select-trigger');
+            if (t) t.setAttribute('aria-expanded', 'false');
+        });
+    }
+});
+
+initGenderCards();
+initAllCustomSelects();
 updateRegistrationFieldsForRole();
 updateAuthModeUi();
 resetAuthStep();
@@ -1087,6 +1212,7 @@ fetchOtpConfig();
 
 window.addEventListener('languageChanged', () => {
     updateAuthModeUi();
+    refreshAllCustomSelectDisplays();
 });
 
 onAuthStateChanged(auth, async (user) => {

@@ -271,3 +271,18 @@ def test_validate_base_profile_gender_options() -> None:
     assert built["gender"] == "Female"
 
 
+def test_validate_base_profile_optional_email() -> None:
+    from api.routers.account import _validate_base_profile, _build_profile
+
+    no_email_profile = _validate_base_profile({"name": "No Email User", "gender": "Male"})
+    assert no_email_profile["name"] == "No Email User"
+    assert no_email_profile["email"] == ""
+    assert no_email_profile["gender"] == "Male"
+
+    built = _build_profile("test-uid-2", "+919876543211", {"name": "No Email User", "gender": "Female"})
+    assert built["email"] == ""
+    assert built["name"] == "No Email User"
+    assert built["gender"] == "Female"
+
+
+

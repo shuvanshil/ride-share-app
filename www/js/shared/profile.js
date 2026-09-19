@@ -737,7 +737,7 @@ function validateProfileForm() {
     const isDriver = currentProfile?.role === "driver";
 
     if (name.length < 2) return t('profile.enter_full_name', "Enter your full name.");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return t('profile.enter_valid_email', "Enter a valid email address.");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return t('profile.enter_valid_email', "Enter a valid email address.");
     if (photoUrl && !/^https?:\/\/[^\s]+$/i.test(photoUrl)) return t('profile.enter_valid_photo_url', "Enter a valid profile photo URL.");
 
     if (isDriver) {

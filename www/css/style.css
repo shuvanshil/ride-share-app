@@ -1384,6 +1384,309 @@ select.gy-input:focus {
     outline: none;
 }
 
+/* ==========================================================================
+   Gender Horizontal Selection Cards & LiphtUp Custom Select Components
+   ========================================================================== */
+
+.auth-section-label {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 6px;
+}
+
+.auth-gender-section {
+    width: 100%;
+}
+
+.auth-gender-cards {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    align-items: stretch;
+}
+
+.auth-gender-card {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 10px 6px;
+    border-radius: 12px;
+    border: 1.5px solid #e2e8f0;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+    outline: none;
+}
+
+.auth-gender-card:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+
+.auth-gender-card.active {
+    border-color: #166534;
+    background: #f0fdf4;
+}
+
+.auth-gender-radio {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s ease;
+}
+
+.auth-gender-card.active .auth-gender-radio {
+    border-color: #166534;
+}
+
+.auth-gender-radio-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+.auth-gender-card.active .auth-gender-radio-dot {
+    background-color: #166534;
+}
+
+.auth-gender-icon {
+    flex-shrink: 0;
+    color: #64748b;
+    transition: color 0.2s ease;
+}
+
+.auth-gender-card.active .auth-gender-icon {
+    color: #166534;
+}
+
+.auth-gender-text {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #334155;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+.auth-gender-card.active .auth-gender-text {
+    color: #166534;
+    font-weight: 600;
+}
+
+@media (max-width: 380px) {
+    .auth-gender-cards {
+        gap: 5px;
+    }
+    .auth-gender-card {
+        padding: 8px 4px;
+        gap: 4px;
+    }
+    .auth-gender-radio {
+        width: 15px;
+        height: 15px;
+    }
+    .auth-gender-radio-dot {
+        width: 8px;
+        height: 8px;
+    }
+    .auth-gender-icon {
+        width: 15px;
+        height: 15px;
+    }
+    .auth-gender-text {
+        font-size: 12px;
+    }
+}
+
+/* Custom Select Dropdown */
+.liphtup-custom-select-wrapper {
+    width: 100%;
+    position: relative;
+}
+
+.liphtup-custom-select {
+    position: relative;
+    width: 100%;
+}
+
+.liphtup-native-select-hidden {
+    position: absolute !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+}
+
+.liphtup-select-trigger {
+    width: 100%;
+    min-height: 52px;
+    padding: 10px 16px;
+    border-radius: 14px;
+    border: 1.5px solid #166534;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.liphtup-select-trigger:focus-visible {
+    box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.2);
+}
+
+.liphtup-custom-select.is-open .liphtup-select-trigger {
+    border-color: #166534;
+    box-shadow: 0 0 0 3px rgba(22, 101, 52, 0.15);
+}
+
+.liphtup-select-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.liphtup-select-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #166534;
+    flex-shrink: 0;
+}
+
+.liphtup-select-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.liphtup-select-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #166534;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.liphtup-custom-select.is-open .liphtup-select-arrow {
+    transform: rotate(180deg);
+}
+
+.liphtup-select-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+}
+
+.liphtup-select-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: #ffffff;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.liphtup-select-option:last-child {
+    border-bottom: none;
+}
+
+.liphtup-select-option:hover {
+    background-color: #f8fafc;
+}
+
+.liphtup-select-option.active {
+    background-color: #eaf7ed;
+    color: #166534;
+}
+
+.liphtup-option-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.liphtup-option-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+    flex-shrink: 0;
+    transition: color 0.15s ease;
+}
+
+.liphtup-select-option.active .liphtup-option-icon {
+    color: #166534;
+}
+
+.liphtup-option-text {
+    font-size: 14.5px;
+    font-weight: 500;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.15s ease, font-weight 0.15s ease;
+}
+
+.liphtup-select-option.active .liphtup-option-text {
+    color: #166534;
+    font-weight: 600;
+}
+
+.liphtup-option-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #166534;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    flex-shrink: 0;
+}
+
+.liphtup-select-option.active .liphtup-option-check {
+    opacity: 1;
+    transform: scale(1);
+}
+
 .auth-remember-row {
     margin-top: 14px;
 }

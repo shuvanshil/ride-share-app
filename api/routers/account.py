@@ -73,7 +73,7 @@ class ProfileUpdateBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     name: str
-    email: str
+    email: str = ""
     gender: str | None = None
     profilePhotoUrl: str = ""
     vehicleType: str | None = None
@@ -92,7 +92,7 @@ def _validate_base_profile(profile: dict[str, Any]) -> dict[str, str]:
 
     if len(name) < 2:
         raise ApiError("Enter your full name.", 400)
-    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+    if email and not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
         raise ApiError("Enter a valid email address.", 400)
 
     return {"name": name, "email": email, "role": role, "gender": gender}
@@ -193,12 +193,15 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
             raise ApiError("An account already exists for this mobile number. Please login instead.", 409)
 
         base = _validate_base_profile(body.profile or {})
-        user_record = auth_client.create_user(
-            email=base["email"],
-            password=password,
-            display_name=base["name"],
-            phone_number=token_payload["phone"],
-        )
+        create_user_kwargs: dict[str, Any] = {
+            "password": password,
+            "display_name": base["name"],
+            "phone_number": token_payload["phone"],
+        }
+        if base["email"]:
+            create_user_kwargs["email"] = base["email"]
+
+        user_record = auth_client.create_user(**create_user_kwargs)
         created_uid = user_record.uid
 
         merged_profile_input = {**(body.profile or {}), **base}
@@ -527,7 +530,7 @@ def _validate_profile_update(body: ProfileUpdateBody, role: str) -> dict[str, An
 
     if len(name) < 2:
         raise ApiError("Enter your full name.", 400)
-    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+    if email and not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
         raise ApiError("Enter a valid email address.", 400)
 
     updates: dict[str, Any] = {
@@ -644,7 +647,10 @@ def update_profile(
         updates = _validate_profile_update(body, role)
 
         auth_client = fb_auth.Client(app)
-        auth_client.update_user(uid, email=updates["email"], display_name=updates["name"])
+        auth_update_kwargs: dict[str, Any] = {"display_name": updates["name"]}
+        if updates["email"]:
+            auth_update_kwargs["email"] = updates["email"]
+        auth_client.update_user(uid, **auth_update_kwargs)
         user_ref.update(updates)
 
         phone = existing.get("phone") or user.get("phone_number") or ""
