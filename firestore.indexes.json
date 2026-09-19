@@ -178,6 +178,14 @@
       ]
     },
     {
+      "collectionGroup": "rides",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sensitiveRide", "order": "ASCENDING" },
+        { "fieldPath": "sensitiveRideNotificationSent", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "auditLogs",
       "queryScope": "COLLECTION",
       "fields": [

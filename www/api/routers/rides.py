@@ -29,6 +29,10 @@ from ..core.fare_policy import (
 )
 from ..core.firebase import get_admin_app
 from ..core.geo import decode_polyline, haversine_km, road_distance_along_route_km
+from ..core.telegram import (
+    claim_and_send_sensitive_ride_alert,
+    is_sensitive_time_window,
+)
 
 router = APIRouter(prefix="/rides", tags=["rides"])
 
@@ -776,6 +780,7 @@ async def create_passenger_ride(
             "passenger_id": uid,
             "passenger_name": str(profile.get("name") or user.get("name") or "Passenger")[:80],
             "passenger_phone": str(profile.get("phone") or user.get("phone_number") or "")[:40],
+            "passenger_gender": str(profile.get("gender") or "Others")[:20],
             "pickup_name": body.pickupName.strip(),
             "drop_name": body.dropName.strip(),
             "drop_full_address": body.dropFullAddress.strip(),
@@ -1090,7 +1095,30 @@ def transition_driver_ride(
 
             updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
             if action == "verify_pin":
-                updates.update({"status": next_status, "pinVerifiedAt": fb_firestore.SERVER_TIMESTAMP, "startedAt": fb_firestore.SERVER_TIMESTAMP})
+                now_utc = datetime.now(timezone.utc)
+                is_night = is_sensitive_time_window(now_utc, KOLKATA_TZ)
+                p_gender = ride.get("passenger_gender")
+                if not p_gender:
+                    try:
+                        p_snap = db.collection("users").document(str(ride.get("passenger_id") or "")).get()
+                        if p_snap.exists:
+                            p_gender = (p_snap.to_dict() or {}).get("gender")
+                    except Exception:
+                        p_gender = None
+                is_female = str(p_gender or "").strip().lower() == "female"
+                is_sensitive = bool(is_female and is_night)
+
+                pin_updates: dict[str, Any] = {
+                    "status": next_status,
+                    "pinVerifiedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "startedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "sensitiveRide": is_sensitive,
+                }
+                if is_sensitive:
+                    pin_updates["sensitiveRideDetectedAt"] = fb_firestore.SERVER_TIMESTAMP
+                    pin_updates["sensitiveRideNotificationSent"] = False
+                updates.update(pin_updates)
+                result["is_sensitive"] = is_sensitive
             elif action == "complete":
                 fare_adjustment = _driver_fare_adjustment(ride, action)
                 final_fare_val = fare_adjustment["final_fare"]
@@ -1158,6 +1186,11 @@ def transition_driver_ride(
                     tx.set(share_ref, {"status": next_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
 
         transition_transaction(transaction)
+        if action == "verify_pin" and result.get("is_sensitive"):
+            try:
+                claim_and_send_sensitive_ride_alert(db, clean_ride_id)
+            except Exception:
+                pass
         if action == "complete":
             _bump_daily_stats(db, uid, {"completed_rides": 1, "earnings": float(result.get("fare") or 0)})
         if action in {"complete", "cancel"}:
