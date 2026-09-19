@@ -157,36 +157,42 @@ function onAccountExistsKeydown(e) {
 }
 
 function setVisible(element, visible) {
-    element.classList.toggle('d-none', !visible);
+    if (element) {
+        element.classList.toggle('d-none', !visible);
+    }
 }
 
 function updateAuthModeUi() {
     const isRegistration = authMode === "register";
     const isReset = authMode === "reset";
 
-    loginModeBtn.classList.toggle('active', authMode === "login" || isReset);
-    registerModeBtn.classList.toggle('active', isRegistration);
-    loginModeBtn.setAttribute('aria-selected', String(authMode === "login" || isReset));
-    registerModeBtn.setAttribute('aria-selected', String(isRegistration));
+    if (loginModeBtn) {
+        loginModeBtn.classList.toggle('active', authMode === "login" || isReset);
+        loginModeBtn.setAttribute('aria-selected', String(authMode === "login" || isReset));
+    }
+    if (registerModeBtn) {
+        registerModeBtn.classList.toggle('active', isRegistration);
+        registerModeBtn.setAttribute('aria-selected', String(isRegistration));
+    }
 
     if (isRegistration) {
-        authEntryTitle.textContent = t('auth.create_account_title', "Create your account");
-        authEntryCopy.textContent = t('auth.create_account_sub', "Verify your mobile number, then complete your passenger or driver profile.");
-        sendOtpBtn.textContent = t('auth.send_registration_otp', "Send Registration OTP");
-        verifyOtpBtn.textContent = t('auth.verify_and_continue', "Verify & Continue");
+        if (authEntryTitle) authEntryTitle.textContent = t('auth.create_account_title', "Create your account");
+        if (authEntryCopy) authEntryCopy.textContent = t('auth.create_account_sub', "Verify your mobile number, then complete your passenger or driver profile.");
+        if (sendOtpBtn) sendOtpBtn.textContent = t('auth.send_registration_otp', "Send Registration OTP");
+        if (verifyOtpBtn) verifyOtpBtn.textContent = t('auth.verify_and_continue', "Verify & Continue");
         return;
     }
 
     if (isReset) {
-        authEntryTitle.textContent = t('auth.reset_password_title', "Reset your password");
-        authEntryCopy.textContent = t('auth.reset_password_sub', "Verify your registered mobile number, then create a new password.");
-        sendOtpBtn.textContent = t('auth.send_reset_otp', "Send Reset OTP");
-        verifyOtpBtn.textContent = t('auth.verify_otp', "Verify OTP");
+        if (authEntryTitle) authEntryTitle.textContent = t('auth.reset_password_title', "Reset your password");
+        if (authEntryCopy) authEntryCopy.textContent = t('auth.reset_password_sub', "Verify your registered mobile number, then create a new password.");
+        if (sendOtpBtn) sendOtpBtn.textContent = t('auth.send_reset_otp', "Send Reset OTP");
+        if (verifyOtpBtn) verifyOtpBtn.textContent = t('auth.verify_otp', "Verify OTP");
         return;
     }
 
-    authEntryTitle.textContent = t('auth.welcome_back', "Welcome back");
-    authEntryCopy.textContent = t('auth.login_sub', "Login with your phone or email and password.");
+    if (authEntryTitle) authEntryTitle.textContent = t('auth.welcome_back', "Welcome back");
+    if (authEntryCopy) authEntryCopy.textContent = t('auth.login_sub', "Login with your phone or email and password.");
 }
 
 function setAuthMode(mode) {
@@ -197,9 +203,10 @@ function setAuthMode(mode) {
 }
 
 function setAuthStatus(message = "", isError = false) {
-    if (authStatus) {
-        authStatus.textContent = "";
-        authStatus.classList.add('d-none');
+    const el = document.getElementById('auth-status') || authStatus;
+    if (el) {
+        el.textContent = "";
+        el.classList.add('d-none');
     }
 }
 
@@ -986,22 +993,22 @@ async function updateForgottenPassword() {
     }
 }
 
-sendOtpBtn.addEventListener('click', sendOTP);
-verifyOtpBtn.addEventListener('click', verifyOTP);
-passwordLoginBtn.addEventListener('click', loginWithPassword);
-forgotPasswordBtn.addEventListener('click', () => setAuthMode("reset"));
-resetPasswordBtn.addEventListener('click', updateForgottenPassword);
-resetBackBtn.addEventListener('click', async () => {
+if (sendOtpBtn) sendOtpBtn.addEventListener('click', sendOTP);
+if (verifyOtpBtn) verifyOtpBtn.addEventListener('click', verifyOTP);
+if (passwordLoginBtn) passwordLoginBtn.addEventListener('click', loginWithPassword);
+if (forgotPasswordBtn) forgotPasswordBtn.addEventListener('click', () => setAuthMode("reset"));
+if (resetPasswordBtn) resetPasswordBtn.addEventListener('click', updateForgottenPassword);
+if (resetBackBtn) resetBackBtn.addEventListener('click', async () => {
     if (auth.currentUser) await signOut(auth);
     setAuthMode("login");
 });
-registerBtn.addEventListener('click', finalizeRegistration);
-resendOtpBtn.addEventListener('click', resendOTP);
-changePhoneBtn.addEventListener('click', resetAuthStep);
-loginModeBtn.addEventListener('click', () => setAuthMode("login"));
-registerModeBtn.addEventListener('click', () => setAuthMode("register"));
-userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
-driverAgreementCheckbox.addEventListener('change', updateRegistrationSubmitState);
+if (registerBtn) registerBtn.addEventListener('click', finalizeRegistration);
+if (resendOtpBtn) resendOtpBtn.addEventListener('click', resendOTP);
+if (changePhoneBtn) changePhoneBtn.addEventListener('click', resetAuthStep);
+if (loginModeBtn) loginModeBtn.addEventListener('click', () => setAuthMode("login"));
+if (registerModeBtn) registerModeBtn.addEventListener('click', () => setAuthMode("register"));
+if (userRoleSelect) userRoleSelect.addEventListener('change', updateRegistrationFieldsForRole);
+if (driverAgreementCheckbox) driverAgreementCheckbox.addEventListener('change', updateRegistrationSubmitState);
 
 if (accountExistsCloseBtn) {
     accountExistsCloseBtn.addEventListener('click', closeAccountExistsModal);
@@ -1032,27 +1039,46 @@ if (accountExistsLoginBtn) {
     });
 }
 
-document.getElementById('phone-number').addEventListener('input', (event) => {
-    event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10);
-});
-document.getElementById('phone-number').addEventListener('keydown', (event) => {
-    if (event.key === "Enter") sendOTP();
-});
-document.getElementById('otp-code').addEventListener('input', (event) => {
-    event.target.value = event.target.value.replace(/\D/g, "").slice(0, 6);
-});
-document.getElementById('otp-code').addEventListener('keydown', (event) => {
-    if (event.key === "Enter") verifyOTP();
-});
-document.getElementById('login-identifier').addEventListener('keydown', (event) => {
-    if (event.key === "Enter") loginWithPassword();
-});
-document.getElementById('login-password').addEventListener('keydown', (event) => {
-    if (event.key === "Enter") loginWithPassword();
-});
-document.getElementById('reset-confirm-password').addEventListener('keydown', (event) => {
-    if (event.key === "Enter") updateForgottenPassword();
-});
+const phoneInputEl = document.getElementById('phone-number');
+if (phoneInputEl) {
+    phoneInputEl.addEventListener('input', (event) => {
+        event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10);
+    });
+    phoneInputEl.addEventListener('keydown', (event) => {
+        if (event.key === "Enter") sendOTP();
+    });
+}
+
+const otpInputEl = document.getElementById('otp-code');
+if (otpInputEl) {
+    otpInputEl.addEventListener('input', (event) => {
+        event.target.value = event.target.value.replace(/\D/g, "").slice(0, 6);
+    });
+    otpInputEl.addEventListener('keydown', (event) => {
+        if (event.key === "Enter") verifyOTP();
+    });
+}
+
+const loginIdentifierEl = document.getElementById('login-identifier');
+if (loginIdentifierEl) {
+    loginIdentifierEl.addEventListener('keydown', (event) => {
+        if (event.key === "Enter") loginWithPassword();
+    });
+}
+
+const loginPasswordEl = document.getElementById('login-password');
+if (loginPasswordEl) {
+    loginPasswordEl.addEventListener('keydown', (event) => {
+        if (event.key === "Enter") loginWithPassword();
+    });
+}
+
+const resetConfirmPasswordEl = document.getElementById('reset-confirm-password');
+if (resetConfirmPasswordEl) {
+    resetConfirmPasswordEl.addEventListener('keydown', (event) => {
+        if (event.key === "Enter") updateForgottenPassword();
+    });
+}
 
 updateRegistrationFieldsForRole();
 updateAuthModeUi();
