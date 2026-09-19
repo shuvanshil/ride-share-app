@@ -237,24 +237,37 @@ def test_telegram_failure_allows_retry() -> None:
 
 def test_sensitive_ride_pin_verification_scenarios() -> None:
     """
-    Test Scenarios A, B, C, D directly:
-    - Scenario A: Female passenger + 22:00 IST + PIN verification -> Sensitive
-    - Scenario B: Male passenger + 22:00 IST + PIN verification -> Not sensitive
-    - Scenario C: Female passenger + 12:00 IST (daytime) + PIN verification -> Not sensitive
-    - Scenario D: Female passenger + 22:00 IST + PIN not verified -> Not sensitive
+    Test Scenarios directly:
+    - Scenario A: Female passenger + 22:00 IST + PIN verification -> Sensitive (True)
+    - Scenario A2: 'Others' passenger + 22:00 IST + PIN verification -> Sensitive (True)
+    - Scenario B: Male passenger + 22:00 IST + PIN verification -> Not sensitive (False)
+    - Scenario C: Female / Others passenger + 12:00 IST (daytime) + PIN verification -> Not sensitive (False)
+    - Scenario D: Male passenger + 12:00 IST (daytime) + PIN verification -> Not sensitive (False)
     """
-    # Scenario A: Female + Night
     night_dt = datetime(2026, 9, 19, 22, 0, 0, tzinfo=KOLKATA_TZ)
-    assert is_sensitive_time_window(night_dt) is True
-    assert ("female" == "female" and is_sensitive_time_window(night_dt)) is True
-
-    # Scenario B: Male + Night
-    assert ("male" == "female" and is_sensitive_time_window(night_dt)) is False
-
-    # Scenario C: Female + Daytime (14:00)
     day_dt = datetime(2026, 9, 19, 14, 0, 0, tzinfo=KOLKATA_TZ)
-    assert is_sensitive_time_window(day_dt) is False
-    assert ("female" == "female" and is_sensitive_time_window(day_dt)) is False
+
+    def is_gender_sensitive(gender: str, dt: datetime) -> bool:
+        clean = str(gender or "Others").strip().lower()
+        return (clean != "male") and is_sensitive_time_window(dt)
+
+    # Scenario A: Female + Night -> True
+    assert is_gender_sensitive("Female", night_dt) is True
+    assert is_gender_sensitive("female", night_dt) is True
+
+    # Scenario A2: Others + Night -> True
+    assert is_gender_sensitive("Others", night_dt) is True
+    assert is_gender_sensitive("others", night_dt) is True
+    assert is_gender_sensitive("", night_dt) is True  # Legacy fallback defaults to Others -> True
+
+    # Scenario B: Male + Night -> False
+    assert is_gender_sensitive("Male", night_dt) is False
+    assert is_gender_sensitive("male", night_dt) is False
+
+    # Scenario C: Female / Others + Daytime -> False
+    assert is_gender_sensitive("Female", day_dt) is False
+    assert is_gender_sensitive("Others", day_dt) is False
+    assert is_gender_sensitive("Male", day_dt) is False
 
 
 def test_standalone_runner_processes_pending(monkeypatch) -> None:

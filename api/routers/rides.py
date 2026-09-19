@@ -1100,13 +1100,14 @@ def transition_driver_ride(
                 p_gender = ride.get("passenger_gender")
                 if not p_gender:
                     try:
-                        p_snap = db.collection("users").document(str(ride.get("passenger_id") or "")).get()
+                        p_snap = db.collection("users").document(str(ride.get("passenger_id") or "")).get(transaction=tx)
                         if p_snap.exists:
                             p_gender = (p_snap.to_dict() or {}).get("gender")
                     except Exception:
                         p_gender = None
-                is_female = str(p_gender or "").strip().lower() == "female"
-                is_sensitive = bool(is_female and is_night)
+                clean_gender = str(p_gender or "Others").strip().lower()
+                is_sensitive_gender = clean_gender != "male"
+                is_sensitive = bool(is_sensitive_gender and is_night)
 
                 pin_updates: dict[str, Any] = {
                     "status": next_status,
