@@ -47,6 +47,7 @@ const deleteSubmitButton = document.getElementById('profile-delete-submit-btn');
 const inputs = {
     name: document.getElementById('profile-edit-name'),
     email: document.getElementById('profile-edit-email'),
+    gender: document.getElementById('profile-edit-gender'),
     phone: document.getElementById('profile-edit-phone'),
     vehicleType: document.getElementById('profile-edit-vehicle-type'),
     vehicleModel: document.getElementById('profile-edit-vehicle-model'),
@@ -566,6 +567,9 @@ function populateEditForm() {
 
     inputs.name.value = currentProfile.name || currentAuthUser.displayName || "";
     inputs.email.value = currentProfile.email || "";
+    if (inputs.gender) {
+        inputs.gender.value = currentProfile.gender || "Others";
+    }
     inputs.phone.value = currentProfile.phone || currentAuthUser.phoneNumber || "";
     const vehicleText = `${currentProfile.vehicleModel || currentProfile.vehicle_model || ""}`.toLowerCase();
     inputs.vehicleType.value = currentProfile.vehicleType || currentProfile.vehicle_type
@@ -796,6 +800,9 @@ async function saveProfile(event) {
         email,
         profilePhotoUrl: pendingPhotoValue
     };
+    if (inputs.gender && inputs.gender.value) {
+        updates.gender = inputs.gender.value;
+    }
 
     if (currentProfile.role === "driver") {
         const vehicleType = inputs.vehicleType.value;

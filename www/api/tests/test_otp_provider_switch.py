@@ -372,3 +372,29 @@ def test_otp_provider_dynamic_profile_field(monkeypatch) -> None:
     monkeypatch.setattr(otp_core, "OTP_PROVIDER", "msg91")
     profile = _build_profile("test_uid", "+919876543210", {"name": "Test User", "email": "test@example.com", "role": "passenger"})
     assert profile["otpProvider"] == "msg91"
+
+
+def test_verify_otp_existing_mismatch_clear_error(monkeypatch) -> None:
+    monkeypatch.setattr(otp_core, "OTP_PROVIDER", "existing")
+    monkeypatch.setattr(otp_router, "OTP_PROVIDER", "existing")
+    monkeypatch.setattr(otp_router, "enforce_rate_limit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(otp_router, "record_failed_otp_attempt", lambda *_args, **_kwargs: None)
+
+    async def mock_verify_two_factor(session_id, otp):
+        return False
+
+    monkeypatch.setattr(otp_router, "verify_two_factor_otp", mock_verify_two_factor)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/verify-otp",
+        json={
+            "phone": "9876543210",
+            "purpose": "register",
+            "otpSessionId": "session_123",
+            "otp": "999999",
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "That OTP is incorrect. Please check the SMS and try again."
+

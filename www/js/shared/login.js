@@ -197,9 +197,10 @@ function setAuthMode(mode) {
 }
 
 function setAuthStatus(message = "", isError = false) {
-    authStatus.textContent = message;
-    authStatus.classList.toggle('d-none', !message);
-    authStatus.classList.toggle('is-error', Boolean(message) && isError);
+    if (authStatus) {
+        authStatus.textContent = "";
+        authStatus.classList.add('d-none');
+    }
 }
 
 function getAuthErrorMessage(error, fallbackMessage) {
@@ -216,7 +217,7 @@ function getAuthErrorMessage(error, fallbackMessage) {
             "auth/user-not-found": t('auth.err_user_not_found', "No LiphtUp account was found for this phone or email."),
             "auth/wrong-password": t('auth.err_invalid_credential', "Phone/email or password is incorrect."),
             "auth/weak-password": t('auth.err_weak_password', "Use a password with at least 6 characters."),
-            "auth/invalid-verification-code": t('auth.err_invalid_otp', "That OTP is incorrect. Check the SMS and try again."),
+            "auth/invalid-verification-code": t('auth.err_invalid_otp', "That OTP is incorrect. Please check the SMS and try again."),
             "auth/code-expired": t('auth.err_otp_expired', "That OTP has expired. Request a new OTP."),
             "auth/session-expired": t('auth.err_session_expired', "This verification session has expired. Request a new OTP."),
             "auth/too-many-requests": t('auth.err_too_many_requests', "Too many attempts were made. Please wait before trying again."),
@@ -230,10 +231,15 @@ function getAuthErrorMessage(error, fallbackMessage) {
         if (messages[error.code]) return messages[error.code];
     }
 
-    if (typeof error === 'object' && error !== null) {
-        return error.message || error.error || fallbackMessage;
+    const rawMessage = (typeof error === 'object' && error !== null)
+        ? (error.message || error.error || fallbackMessage)
+        : String(error || fallbackMessage);
+
+    if (/provider request failed|invalid[ -]?otp|otp mismatch|incorrect or expired|wrong otp/i.test(rawMessage)) {
+        return t('auth.err_invalid_otp', "That OTP is incorrect. Please check the SMS and try again.");
     }
 
+    if (rawMessage) return rawMessage;
     return fallbackMessage;
 }
 
@@ -333,6 +339,9 @@ function resetAuthStep() {
     clearResendTimer();
 
     document.getElementById('otp-code').value = "";
+    if (document.getElementById('user-gender')) {
+        document.getElementById('user-gender').value = "";
+    }
     closeAccountExistsModal();
     setVisible(passwordLoginContainer, authMode === "login");
     setVisible(phoneInputContainer, authMode === "register" || authMode === "reset");
@@ -717,8 +726,12 @@ async function verifyOTP() {
                         }).catch(() => {});
                         const errMsg = typeof error === 'object' && error !== null
                             ? (error.message || error.error || JSON.stringify(error))
-                            : String(error || "That OTP is incorrect or expired.");
-                        reject(new Error(errMsg));
+                            : String(error || "");
+                        if (/provider request failed|invalid|mismatch|incorrect|wrong/i.test(errMsg)) {
+                            reject(new Error(t('auth.err_invalid_otp', "That OTP is incorrect. Please check the SMS and try again.")));
+                        } else {
+                            reject(new Error(errMsg || t('auth.err_invalid_otp', "That OTP is incorrect. Please check the SMS and try again.")));
+                        }
                     },
                     otpSessionId || undefined
                 );
@@ -818,6 +831,8 @@ async function finalizeRegistration() {
     const email = normalizeEmail(document.getElementById('user-email').value);
     const role = document.getElementById('user-role').value;
     const password = document.getElementById('user-password').value;
+    const genderSelect = document.getElementById('user-gender');
+    const gender = genderSelect ? genderSelect.value : "";
 
     if (!verifiedPhoneNumber || !otpVerificationToken) {
         await showAppAlert(t('auth.phone_session_missing', "Your phone verification session is missing. Please verify OTP again."));
@@ -834,13 +849,18 @@ async function finalizeRegistration() {
         return;
     }
 
+    if (!gender) {
+        await showAppAlert(t('auth.select_gender_prompt', "Please select your gender."));
+        return;
+    }
+
     const passwordError = getRegistrationPasswordError();
     if (passwordError) {
         await showAppAlert(passwordError);
         return;
     }
 
-    const profileData = { name, email, role };
+    const profileData = { name, email, role, gender };
 
     if (role === "driver") {
         const vehicleType = document.getElementById('driver-vehicle-type').value;

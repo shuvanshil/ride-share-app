@@ -74,6 +74,7 @@ class ProfileUpdateBody(BaseModel):
 
     name: str
     email: str
+    gender: str | None = None
     profilePhotoUrl: str = ""
     vehicleType: str | None = None
     vehicleModel: str | None = None
@@ -86,13 +87,15 @@ def _validate_base_profile(profile: dict[str, Any]) -> dict[str, str]:
     name = _clean_string(profile.get("name"), 80)
     email = _normalize_email(profile.get("email"))
     role = "driver" if profile.get("role") == "driver" else "passenger"
+    raw_gender = _clean_string(profile.get("gender"), 20).lower()
+    gender = "Male" if raw_gender == "male" else ("Female" if raw_gender == "female" else "Others")
 
     if len(name) < 2:
         raise ApiError("Enter your full name.", 400)
     if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
         raise ApiError("Enter a valid email address.", 400)
 
-    return {"name": name, "email": email, "role": role}
+    return {"name": name, "email": email, "role": role, "gender": gender}
 
 
 def _build_profile(uid: str, phone: str, profile: dict[str, Any]) -> dict[str, Any]:
@@ -103,6 +106,7 @@ def _build_profile(uid: str, phone: str, profile: dict[str, Any]) -> dict[str, A
         "phone": phone,
         "email": base["email"],
         "role": base["role"],
+        "gender": base["gender"],
         "phoneVerified": True,
         "authProvider": "password",
         "otpProvider": get_active_otp_provider_name(),
@@ -533,6 +537,10 @@ def _validate_profile_update(body: ProfileUpdateBody, role: str) -> dict[str, An
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
     }
 
+    if body.gender is not None:
+        raw_g = _clean_profile_value(body.gender, 20).lower()
+        updates["gender"] = "Male" if raw_g == "male" else ("Female" if raw_g == "female" else "Others")
+
     if role != "driver":
         if any(
             value is not None
@@ -609,6 +617,7 @@ def get_profile(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
 
     profile = snapshot.to_dict() or {}
     profile.setdefault("uid", uid)
+    profile.setdefault("gender", "Others")
     return {"ok": True, "profile": _sanitize_for_json(profile)}
 
 

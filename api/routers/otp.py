@@ -211,7 +211,7 @@ async def verify_otp(request: Request, body: VerifyOtpBody) -> dict[str, Any]:
             matched = await verify_two_factor_otp(otp_session_id, otp)
             if not matched:
                 record_failed_otp_attempt(phone, purpose, otp_session_id)
-                raise ApiError("That OTP is incorrect or expired.", 400)
+                raise ApiError("That OTP is incorrect. Please check the SMS and try again.", 400)
 
             mark_otp_verified(phone, purpose, otp_session_id)
             return {

@@ -86,5 +86,5 @@ def test_otp_provider_http_error_does_not_expose_provider_payload(monkeypatch) -
         asyncio.run(otp_core.fetch_two_factor_json("https://provider.invalid"))
 
     assert caught.value.status_code == 502
-    assert caught.value.message == "OTP provider request failed."
+    assert caught.value.message == "Could not reach OTP provider. Please try again."
     assert caught.value.extra == {}

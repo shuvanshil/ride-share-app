@@ -155,6 +155,15 @@
                 </div>
 
                 <div class="profile-form-field">
+                    <label for="profile-edit-gender" data-i18n="auth.gender">Gender</label>
+                    <select id="profile-edit-gender" class="form-select gy-input">
+                        <option value="Male" data-i18n="auth.gender_male">Male</option>
+                        <option value="Female" data-i18n="auth.gender_female">Female</option>
+                        <option value="Others" data-i18n="auth.gender_others">Others</option>
+                    </select>
+                </div>
+
+                <div class="profile-form-field">
                     <label for="profile-edit-phone" data-i18n="auth.mobile_number">Mobile number</label>
                     <input id="profile-edit-phone" class="form-control gy-input" type="tel" readonly aria-readonly="true">
                     <small data-i18n="profile.phone_readonly_hint">Mobile number is secured by phone authentication and cannot be changed here.</small>

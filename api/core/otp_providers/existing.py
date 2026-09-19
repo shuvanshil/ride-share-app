@@ -27,7 +27,11 @@ async def fetch_two_factor_json(url: str) -> dict[str, Any]:
         data = {}
 
     if response.is_error:
-        raise ApiError("OTP provider request failed.", 502)
+        if isinstance(data, dict) and data.get("Status") == "Error":
+            details = str(data.get("Details") or "").lower()
+            if "mismatch" in details or "invalid" in details or "expired" in details or "not matched" in details:
+                return data
+        raise ApiError("Could not reach OTP provider. Please try again.", 502)
 
     return data
 

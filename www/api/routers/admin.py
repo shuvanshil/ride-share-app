@@ -631,6 +631,7 @@ def _sanitize_driver(profile: dict[str, Any]) -> dict[str, Any]:
         "vehicleModel": profile.get("vehicleModel") or profile.get("vehicle_model"),
         "drivingLicenseNumber": profile.get("drivingLicenseNumber"),
         "upiId": profile.get("upiId"),
+        "gender": profile.get("gender") or "Others",
         "lifetimeEarnings": profile.get("lifetime_earnings") or 0,
         "totalCompletedTrips": profile.get("total_completed_trips") or 0,
         "createdAt": profile.get("createdAt"),
@@ -797,6 +798,7 @@ def _sanitize_passenger(profile: dict[str, Any]) -> dict[str, Any]:
         "name": profile.get("name"),
         "phone": profile.get("phone"),
         "email": profile.get("email"),
+        "gender": profile.get("gender") or "Others",
         "accountStatus": profile.get("accountStatus") or "active",
         "createdAt": profile.get("createdAt"),
     }

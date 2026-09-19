@@ -224,6 +224,21 @@
                 <div class="auth-input-group mb-3">
                     <span class="auth-input-icon">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 16v-8"/>
+                            <path d="M9 11h6"/>
+                        </svg>
+                    </span>
+                    <select id="user-gender" class="form-select auth-select">
+                        <option value="" disabled selected data-i18n="auth.select_gender">Select Gender</option>
+                        <option value="Male" data-i18n="auth.gender_male">Male</option>
+                        <option value="Female" data-i18n="auth.gender_female">Female</option>
+                        <option value="Others" data-i18n="auth.gender_others">Others</option>
+                    </select>
+                </div>
+                <div class="auth-input-group mb-3">
+                    <span class="auth-input-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
                             <circle cx="9" cy="7" r="4"/>
                             <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
@@ -290,9 +305,9 @@
                         </span>
                         <input type="text" id="driver-upi-id" class="form-control" placeholder="UPI ID" data-i18n-placeholder="profile.upi_id">
                     </div>
-                    <label class="driver-agreement mb-3 d-flex gap-2 align-items-start" for="driver-agreement-checkbox">
-                        <input type="checkbox" id="driver-agreement-checkbox" class="auth-checkbox mt-1">
-                        <span class="small text-muted" data-i18n-html="auth.driver_agreement_notice">I agree to LiphtUp's Terms &amp; Privacy Policy.</span>
+                    <label class="driver-agreement-row mb-3" for="driver-agreement-checkbox">
+                        <input type="checkbox" id="driver-agreement-checkbox" class="auth-checkbox flex-shrink-0">
+                        <span class="driver-agreement-text" data-i18n-html="auth.driver_agreement_notice">I agree to LiphtUp's Terms &amp; Privacy Policy.</span>
                     </label>
                 </div>
                 <button id="register-btn" class="gy-btn-auth" type="button">
@@ -329,7 +344,6 @@
             </div>
 
             <div id="recaptcha-container" class="mt-3 d-flex justify-content-center"></div>
-            <div id="auth-status" class="auth-status d-none mt-3" role="status"></div>
 
             <!-- Footer Trust Badges Card (Stacked: Icons Above Text) -->
             <div class="auth-trust-card mt-4">

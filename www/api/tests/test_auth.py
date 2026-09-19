@@ -250,3 +250,24 @@ def test_check_phone_non_existing_returns_false(monkeypatch) -> None:
     assert data["ok"] is True
     assert data["exists"] is False
 
+
+def test_validate_base_profile_gender_options() -> None:
+    from api.routers.account import _validate_base_profile, _build_profile
+
+    male_profile = _validate_base_profile({"name": "Test User", "email": "test@example.com", "role": "passenger", "gender": "Male"})
+    assert male_profile["gender"] == "Male"
+
+    female_profile = _validate_base_profile({"name": "Test User", "email": "test@example.com", "role": "driver", "gender": "Female"})
+    assert female_profile["gender"] == "Female"
+
+    others_profile = _validate_base_profile({"name": "Test User", "email": "test@example.com", "role": "passenger", "gender": "Others"})
+    assert others_profile["gender"] == "Others"
+
+    # Default fallback for accounts registered without gender
+    default_profile = _validate_base_profile({"name": "Test User", "email": "test@example.com", "role": "passenger"})
+    assert default_profile["gender"] == "Others"
+
+    built = _build_profile("test-uid", "+919876543210", {"name": "Test User", "email": "test@example.com", "gender": "Female"})
+    assert built["gender"] == "Female"
+
+
