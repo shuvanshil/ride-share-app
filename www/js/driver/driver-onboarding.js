@@ -1589,6 +1589,13 @@ function startDriverConsole(profile) {
         driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
         showDriverHome(currentUser);
         updateDutySwitchUi();
+        if (isDriverDutyOnline()) {
+            if (driverPresenceWatchId === null) {
+                startDriverPresenceTracking();
+            }
+        } else {
+            stopPresenceTracking();
+        }
         return;
     }
 
