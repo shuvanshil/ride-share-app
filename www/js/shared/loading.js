@@ -44,6 +44,11 @@ export function showPageLoader(message) {
     }
     overlay.classList.add("is-visible");
     overlay.setAttribute("aria-hidden", "false");
+
+    // Safety fallback: Never allow page loader to freeze screen longer than 10 seconds
+    overlayHideTimer = window.setTimeout(() => {
+        hidePageLoader({ force: true });
+    }, 10000);
 }
 
 /**

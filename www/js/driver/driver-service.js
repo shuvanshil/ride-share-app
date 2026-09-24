@@ -1561,34 +1561,73 @@ function scheduleRouteRetry() {
     }, 20000);
 }
 
-async function ensureMap(position) {
-    if (map) return map;
+let ensureMapPromise = null;
+let mapRetryTimer = null;
+let mapRetryCount = 0;
+const MAX_MAP_RETRIES = 6;
 
-    try {
-        mapShell = await createRideMapSurface(mapHost, {
-            center: position,
-            zoom: 17,
-            minZoom: 9,
-            maxZoom: 21,
-            zoomControl: true,
-            fullscreenControl: true,
-            gestureHandling: "greedy",
-            enableCameraRotation: true
-        });
-        map = mapShell.map;
-        hideMessage();
-        ensureNavToggleButton();
-        return map;
-    } catch (error) {
-        console.error("Driver Google Map failed to load:", error);
-        setGpsState("error", "MAP");
+function scheduleMapAutoRetry(position) {
+    if (map || mapRetryTimer) return;
+    if (mapRetryCount >= MAX_MAP_RETRIES) {
         showMessage(
             "Map could not load",
-            "Check the Google Maps browser key and your network connection, then retry.",
+            "Check your internet connection and tap 'Retry Map' to reload the map.",
             "map"
         );
-        throw error;
+        return;
     }
+    mapRetryCount++;
+    const delay = Math.min(8000, 1200 * Math.pow(1.35, mapRetryCount));
+    console.log(`[driver-service] Scheduling auto map retry #${mapRetryCount} in ${Math.round(delay)}ms...`);
+    mapRetryTimer = window.setTimeout(() => {
+        mapRetryTimer = null;
+        if (!map) {
+            ensureMap(lastPosition || position || getInitialDriverLocation()).catch(() => {});
+        }
+    }, delay);
+}
+
+async function ensureMap(position) {
+    if (map) return map;
+    if (ensureMapPromise) return ensureMapPromise;
+
+    ensureMapPromise = (async () => {
+        try {
+            mapShell = await createRideMapSurface(mapHost, {
+                center: position || lastPosition || getInitialDriverLocation(),
+                zoom: 17,
+                minZoom: 9,
+                maxZoom: 21,
+                zoomControl: true,
+                fullscreenControl: true,
+                gestureHandling: "greedy",
+                enableCameraRotation: true
+            });
+            map = mapShell.map;
+            hideMessage();
+            ensureNavToggleButton();
+            if (mapRetryTimer) {
+                window.clearTimeout(mapRetryTimer);
+                mapRetryTimer = null;
+            }
+            mapRetryCount = 0;
+            return map;
+        } catch (error) {
+            console.error("Driver Google Map failed to load:", error);
+            setGpsState("error", "MAP");
+            showMessage(
+                "Map loading paused",
+                "Retrying map connection automatically... Check your network connection if this persists.",
+                "map"
+            );
+            scheduleMapAutoRetry(position);
+            throw error;
+        } finally {
+            ensureMapPromise = null;
+        }
+    })();
+
+    return ensureMapPromise;
 }
 
 function stopCameraAnimation() {
@@ -2039,18 +2078,24 @@ async function handleLocation(position) {
     hasLiveGpsPosition = true;
     rememberDriverLocation(coords);
     updateDriverLocationDisplay(coords.lat, coords.lng);
-    setGpsState("live", "LIVE");
-    setLifecycleGpsText("GPS Active & Broadcasting");
-    hideMessage();
-    statusText.innerText = currentTarget
-        ? currentTarget.kind === "pickup"
-            ? "Live route to passenger pickup"
-            : "Passenger verified - navigating to destination"
-        : "Online and ready for ride requests";
 
-    writeDriverLocation(coords).catch((error) => {
-        console.warn("Driver location sync failed:", error);
-    });
+    const isOffline = (currentUser?.driverAvailability || "offline") === "offline";
+    if (!isOffline) {
+        setGpsState("live", "LIVE");
+        setLifecycleGpsText("GPS Active & Broadcasting");
+        statusText.innerText = currentTarget
+            ? currentTarget.kind === "pickup"
+                ? "Live route to passenger pickup"
+                : "Passenger verified - navigating to destination"
+            : "Online and ready for ride requests";
+    }
+    hideMessage();
+
+    if (!isOffline || Boolean(currentRideId)) {
+        writeDriverLocation(coords).catch((error) => {
+            console.warn("Driver location sync failed:", error);
+        });
+    }
 
     try {
         await ensureMap(coords);
@@ -2724,9 +2769,21 @@ async function bootstrapDriverService() {
             toggleDriverOnlineStatus("searching");
         });
         document.getElementById("driver-service-live-pill")?.addEventListener("click", () => {
-            if (activeRide) return;
+            if (currentRideId) return;
             const isCurrentlyOffline = (currentUser?.driverAvailability || "offline") === "offline";
             toggleDriverOnlineStatus(isCurrentlyOffline ? "searching" : "offline");
+        });
+        document.getElementById("driver-location-retry-btn")?.addEventListener("click", () => {
+            hideMessage();
+            mapRetryCount = 0;
+            if (mapRetryTimer) {
+                window.clearTimeout(mapRetryTimer);
+                mapRetryTimer = null;
+            }
+            startLocationTracking();
+            if (!map) {
+                ensureMap(lastPosition || getInitialDriverLocation()).catch(() => {});
+            }
         });
         document.getElementById("driver-recenter-btn")?.addEventListener("click", () => {
             if (map && lastPosition) map.panTo(lastPosition);
@@ -2831,6 +2888,10 @@ async function toggleDriverOnlineStatus(targetStatus) {
             });
         }, 0);
     } else {
+        if (locationWatchId !== null) {
+            navigator.geolocation.clearWatch(locationWatchId);
+            locationWatchId = null;
+        }
         if (demandPollInterval) {
             clearInterval(demandPollInterval);
             demandPollInterval = null;

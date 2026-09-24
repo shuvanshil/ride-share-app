@@ -336,7 +336,7 @@ async function getGoogleBrowserKey() {
     }
 }
 
-async function loadGoogleMaps() {
+async function loadGoogleMaps(retryAttempt = 0) {
     if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
         return getGoogleMaps();
     }
@@ -350,9 +350,9 @@ async function loadGoogleMaps() {
 
         const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
         if (existingScript) {
-            await new Promise((resolve, reject) => {
+            const loaded = await new Promise((resolve) => {
                 if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
-                    resolve();
+                    resolve(true);
                     return;
                 }
                 let attempts = 0;
@@ -360,45 +360,51 @@ async function loadGoogleMaps() {
                     attempts++;
                     if (getGoogleMaps()?.Map && getGoogleMaps()?.places) {
                         clearInterval(checkTimer);
-                        resolve();
-                    } else if (attempts > 300) { // 15s timeout
+                        resolve(true);
+                    } else if (attempts > 50) { // 2.5s quick timeout for stale/dead script tags
                         clearInterval(checkTimer);
-                        if (getGoogleMaps()?.Map) {
-                            resolve();
-                        } else {
-                            reject(new Error("Google Maps SDK load timed out."));
-                        }
+                        resolve(Boolean(getGoogleMaps()?.Map));
                     }
                 }, 50);
             });
-            return getGoogleMaps();
+
+            if (loaded && getGoogleMaps()?.Map) {
+                return getGoogleMaps();
+            }
+
+            // Stale or dead script tag from previous failed load — remove it cleanly
+            console.warn('[map] Removing stale Google Maps script tag to re-initialize...');
+            try { existingScript.remove(); } catch {}
         }
 
         const browserKey = await getGoogleBrowserKey();
         await new Promise((resolve, reject) => {
-            const callbackName = `__googleMapsInit_${Date.now()}`;
+            const callbackName = `__googleMapsInit_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
             let finished = false;
+
+            const cleanup = () => {
+                finished = true;
+                clearTimeout(timeoutId);
+                try { delete window[callbackName]; } catch {}
+            };
 
             const timeoutId = setTimeout(() => {
                 if (finished) return;
+                cleanup();
+                const scriptEl = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
+                if (scriptEl) {
+                    try { scriptEl.remove(); } catch {}
+                }
                 if (getGoogleMaps()?.Map) {
-                    finished = true;
-                    try { delete window[callbackName]; } catch {}
                     resolve();
                 } else {
-                    finished = true;
-                    try { delete window[callbackName]; } catch {}
                     reject(new Error("Google Maps SDK did not load in time."));
                 }
-            }, 20000);
+            }, 12000);
 
             window[callbackName] = () => {
                 if (finished) return;
-                finished = true;
-                clearTimeout(timeoutId);
-                setTimeout(() => {
-                    try { delete window[callbackName]; } catch {}
-                }, 200);
+                cleanup();
                 resolve();
             };
 
@@ -410,9 +416,8 @@ async function loadGoogleMaps() {
             
             script.onerror = (err) => {
                 if (finished) return;
-                finished = true;
-                clearTimeout(timeoutId);
-                try { delete window[callbackName]; } catch {}
+                cleanup();
+                try { script.remove(); } catch {}
                 reject(err || new Error("Failed to load Google Maps script."));
             };
 
@@ -424,8 +429,17 @@ async function loadGoogleMaps() {
         }
 
         return getGoogleMaps();
-    })().catch((error) => {
+    })().catch(async (error) => {
         googleMapsLoadPromise = null;
+        const scriptEl = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
+        if (scriptEl) {
+            try { scriptEl.remove(); } catch {}
+        }
+        if (retryAttempt < 1) {
+            console.warn(`[map] Google Maps load failed (${error.message}). Retrying once...`);
+            await new Promise((r) => setTimeout(r, 1200));
+            return loadGoogleMaps(retryAttempt + 1);
+        }
         throw error;
     });
 

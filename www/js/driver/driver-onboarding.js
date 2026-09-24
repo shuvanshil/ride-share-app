@@ -638,14 +638,14 @@ function updateDutySwitchUi() {
     }
 }
 
-async function updateDriverAvailabilityThroughBackend(status) {
+async function updateDriverAvailabilityThroughBackend(status, locationData = null) {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) throw new Error("Authentication is required.");
     const response = await fetch("/api/rides/driver-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ status }),
-        signal: AbortSignal.timeout(8000)
+        body: JSON.stringify({ status, ...(locationData || {}) }),
+        signal: AbortSignal.timeout(6000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -656,7 +656,7 @@ async function updateDriverAvailabilityThroughBackend(status) {
     return data;
 }
 
-async function setDriverAvailability(status) {
+async function setDriverAvailability(status, locationData = null) {
     if (!auth.currentUser || !currentUser || currentUser.role !== "driver") return;
     const previousStatus = currentUser.driverAvailability;
     const previousDesired = currentUser.desiredAvailability;
@@ -682,7 +682,7 @@ async function setDriverAvailability(status) {
 
     // 2. Fast background sync
     try {
-        await updateDriverAvailabilityThroughBackend(status);
+        await updateDriverAvailabilityThroughBackend(status, locationData);
     } catch (error) {
         console.warn("Driver availability background sync failed:", error);
         // Rollback state if server rejected
@@ -698,7 +698,7 @@ async function setDriverAvailability(status) {
 async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "searching", telemetry = {}) {
     try {
         const user = auth.currentUser;
-        if (!user || user.role !== "driver") return;
+        if (!user || !currentUser || currentUser.role !== "driver") return;
         if (!isDriverDutyOnline() && fallbackAvailability !== "busy") return;
 
         const idToken = await user.getIdToken(false);
@@ -730,9 +730,22 @@ function startDriverPresenceTracking() {
 
     stopPresenceTracking();
 
+    // Fast initial position broadcast so the driver is visible on map immediately
+    getQuickPosition(3000).then((pos) => {
+        if (pos && isDriverDutyOnline()) {
+            lastPresenceWrittenPosition = pos;
+            lastPresenceWriteAt = Date.now();
+            updateDriverPresenceLocation(pos.lat, pos.lng, "searching");
+        }
+    }).catch(() => {});
+
     driverPresenceWatchId = navigator.geolocation.watchPosition(
         async (position) => {
             try {
+                if (!isDriverDutyOnline()) {
+                    stopPresenceTracking();
+                    return;
+                }
                 const rawCoords = { lat: position.coords.latitude, lng: position.coords.longitude };
                 const smoothed = smoothGpsCoordinate(
                     lastPresenceSmoothedPosition,
@@ -765,7 +778,7 @@ function startDriverPresenceTracking() {
         (error) => {
             console.warn("Driver presence GPS failed:", error);
         },
-        { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
     );
 }
 
@@ -1684,6 +1697,7 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
     }
     updateDutySwitchUi();
 
+    let quickCoords = null;
     if (checked) {
         startDriverPresenceTracking();
         setTimeout(() => {
@@ -1691,6 +1705,11 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
                 console.warn("Driver push token registration failed:", error);
             });
         }, 0);
+
+        // Fetch fast position (max 2.5s) to sync availability & map presence immediately
+        try {
+            quickCoords = await getQuickPosition(2500);
+        } catch {}
     } else {
         stopRideRequestRing();
         stopPresenceTracking();
@@ -1698,7 +1717,11 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
 
     // 2. Fast background sync
     try {
-        await updateDriverAvailabilityThroughBackend(targetStatus);
+        const locationData = quickCoords ? { lat: quickCoords.lat, lng: quickCoords.lng } : null;
+        await updateDriverAvailabilityThroughBackend(targetStatus, locationData);
+        if (quickCoords && checked) {
+            updateDriverPresenceLocation(quickCoords.lat, quickCoords.lng, targetStatus);
+        }
     } catch (error) {
         console.error("Failed to update driver duty status on server:", error);
         // Rollback switch and state
