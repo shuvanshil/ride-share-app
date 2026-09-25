@@ -196,7 +196,7 @@ export const TRANSLATIONS = {
             "hero_line1": "Your Everyday",
             "hero_line2": "Ride, <span class=\"headline-accent\">Anytime</span>",
             "hero_line3": "Anywhere",
-            "hero_sub": "Quick rides, great price, <br> always on time.",
+            "hero_sub": "Quick rides, great price,<br>always on time.",
             "enter_destination": "Enter destination",
             "recent_rides": "Recent rides",
             "safe_secure_title": "Safe & Secure",
