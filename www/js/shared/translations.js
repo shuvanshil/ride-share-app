@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20260903-v1";
+export const TRANSLATIONS_VERSION = "20260928-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -196,7 +196,7 @@ export const TRANSLATIONS = {
             "hero_line1": "Your Everyday",
             "hero_line2": "Ride, <span class=\"headline-accent\">Anytime</span>",
             "hero_line3": "Anywhere",
-            "hero_sub": "Quick rides, great price, always on time.",
+            "hero_sub": "<span class=\"hero-sub-line\">Quick rides, great price,</span><span class=\"hero-sub-line\">always on time.</span>",
             "enter_destination": "Enter destination",
             "recent_rides": "Recent rides",
             "safe_secure_title": "Safe & Secure",
@@ -1173,7 +1173,7 @@ export const TRANSLATIONS = {
             "hero_line1": "আপনার প্রতিদিনের",
             "hero_line2": "রাইড, <span class=\"headline-accent\">যে কোনো সময়</span>",
             "hero_line3": "যে কোনো জায়গায়",
-            "hero_sub": "দ্রুত রাইড, সেরা ভাড়া, সঠিক সময়।",
+            "hero_sub": "<span class=\"hero-sub-line\">দ্রুত রাইড, সেরা ভাড়া,</span><span class=\"hero-sub-line\">সঠিক সময়।</span>",
             "enter_destination": "গন্তব্য লিখুন",
             "recent_rides": "সাম্প্রতিক রাইড",
             "safe_secure_title": "নিরাপদ ও সুরক্ষিত",
