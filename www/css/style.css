@@ -399,28 +399,57 @@
 
 .drawer-nav {
     padding: 12px 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .drawer-item {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     padding: 14px 20px;
     color: #374151;
     text-decoration: none;
     font-weight: 600;
     font-size: 15px;
-    transition: background 0.2s;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    font-family: inherit;
 }
 
+.drawer-item:hover,
 .drawer-item:active {
-    background: #f9fafb;
+    background: #f3f4f6;
+    color: #111827;
 }
 
+.drawer-item svg,
 .drawer-item .webicon {
     width: 20px;
     height: 20px;
-    color: var(--gy-green);
+    flex-shrink: 0;
+    color: var(--gy-green, #1A7A2E);
+}
+
+.drawer-item.drawer-item-logout {
+    color: #DC2626;
+    margin-top: 4px;
+    border-top: 1px solid #f3f4f6;
+    padding-top: 16px;
+}
+
+.drawer-item.drawer-item-logout svg {
+    color: #DC2626;
+}
+
+.drawer-item.drawer-item-logout:hover,
+.drawer-item.drawer-item-logout:active {
+    background: #FEF2F2;
+    color: #B91C1C;
 }
 
 /* Redesign Search & Home Layout */

@@ -9,6 +9,7 @@ import {
     setDoc,
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showSkeleton, setButtonBusy } from '../shared/loading.js';
 import { waitForAuth } from '../shared/auth.js';
@@ -24,14 +25,16 @@ const recentRidesSection = document.getElementById('dashboard-recent-section');
 const savedPlacesRow = document.getElementById('dashboard-saved-places');
 const dashboardSearchForm = document.getElementById('dashboard-search-form');
 const dashboardSearchInput = document.getElementById('dashboard-search-input');
-const savedPlaceModal = document.getElementById('saved-place-modal');
-const savedPlaceForm = document.getElementById('saved-place-form');
-const savedPlaceTitle = document.getElementById('saved-place-modal-title');
-const savedPlaceAddressInput = document.getElementById('saved-place-address-input');
-const savedPlaceSuggestions = document.getElementById('saved-place-suggestions');
-const savedPlaceUseGpsBtn = document.getElementById('saved-place-use-gps-btn');
-const savedPlaceCancelBtn = document.getElementById('saved-place-cancel-btn');
-const savedPlaceRemoveBtn = document.getElementById('saved-place-remove-btn');
+
+// Full Saved Places & Address Editor Modal elements
+const savedPlacesModal = document.getElementById('saved-places-modal');
+const savedPlacesListContainer = document.getElementById('saved-places-list-container');
+const saveAddressEditorModal = document.getElementById('save-address-editor-modal');
+const saveAddressTypeInput = document.getElementById('save-address-type-input');
+const saveAddressLocationInput = document.getElementById('save-address-location-input');
+const saveAddressSuggestions = document.getElementById('save-address-suggestions');
+const saveAddressEditorTitle = document.getElementById('save-address-editor-title');
+const saveAddressEditorForm = document.getElementById('save-address-editor-form');
 
 let currentUid = null;
 let savedPlacesCache = null;
@@ -144,6 +147,9 @@ function setupSideDrawer(profile) {
     const drawerName = document.getElementById('drawer-user-name');
     const drawerPhone = document.getElementById('drawer-user-phone');
 
+    const savedPlacesBtn = document.getElementById('drawer-item-saved-places');
+    const logoutBtn = document.getElementById('drawer-item-logout');
+
     if (!trigger || !drawer) return;
 
     // Update profile images: prioritize custom profilePhotoUrl from Firestore,
@@ -199,6 +205,33 @@ function setupSideDrawer(profile) {
     closeBtn?.addEventListener('click', closeDrawer);
     drawer.addEventListener('click', (e) => {
         if (e.target === drawer) closeDrawer();
+    });
+
+    savedPlacesBtn?.addEventListener('click', () => {
+        closeDrawer();
+        openSavedPlacesModal();
+    });
+
+    logoutBtn?.addEventListener('click', async () => {
+        closeDrawer();
+        const confirmed = await showConfirm(
+            t('profile.logout_confirm_msg', "Are you sure you want to log out of LiphtUp?"),
+            {
+                okText: t('common.logout', "Logout"),
+                cancelText: t('common.cancel', "Cancel")
+            }
+        );
+        if (!confirmed) return;
+
+        window.LiphtUpLoading?.showPageLoader?.(t('common.logging_out', "Logging out..."));
+        try {
+            sessionStorage.clear();
+            await signOut(auth);
+        } catch (err) {
+            console.warn("Logout error:", err);
+        } finally {
+            window.location.href = '/login.html';
+        }
     });
 }
 
@@ -264,6 +297,7 @@ let cachedTripsForLanguageSwitch = [];
 
 window.addEventListener('languageChanged', () => {
     renderSavedPlaces();
+    renderSavedPlacesModalList();
     if (cachedTripsForLanguageSwitch.length) {
         renderRecentRides(cachedTripsForLanguageSwitch);
     }
@@ -305,10 +339,16 @@ async function initRecentRides(uid) {
 // Saved places (Home / Work / favourites)
 // ==========================================
 
+// ==========================================
+// Saved places (Home / Work / custom places)
+// ==========================================
+
+let activeEditingSlotOrIndex = null;
+
 async function loadSavedPlaces(uid) {
     try {
         const user = await waitForAuth();
-        const activeUid = uid || user?.uid;
+        const activeUid = uid || user?.uid || currentUid;
         if (!activeUid) return {};
         const snap = await getDoc(doc(db, "savedPlaces", activeUid));
         return snap.exists() ? snap.data() : {};
@@ -319,7 +359,6 @@ async function loadSavedPlaces(uid) {
 }
 
 function savedPlaceChipMarkup(slot, place) {
-    const t = (key, fallback) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(key) : fallback;
     const labels = { 
         home: t('home.home_chip', 'Home'), 
         work: t('home.work_chip', 'Work') 
@@ -359,7 +398,7 @@ function renderSavedPlaces() {
             if (place?.address) {
                 goToServicesWithDestination(place.address);
             } else {
-                openSavedPlaceModal(slot);
+                openSaveAddressEditor(slot, slot === 'home' ? 'Home' : 'Work');
             }
         });
     });
@@ -367,37 +406,263 @@ function renderSavedPlaces() {
     savedPlacesRow.querySelectorAll('.dashboard-saved-chip-edit').forEach((editBtn) => {
         editBtn.addEventListener('click', (event) => {
             event.stopPropagation();
-            openSavedPlaceModal(editBtn.dataset.slot);
+            const slot = editBtn.dataset.slot;
+            const place = savedPlacesCache?.[slot];
+            openSaveAddressEditor(slot, slot === 'home' ? 'Home' : 'Work', place?.address || '');
         });
     });
 }
 
 async function initSavedPlaces(uid) {
-    if (!savedPlacesRow) return;
-    const clearSkeleton = showSkeleton(savedPlacesRow, { kind: 'line', count: 1 });
+    if (!savedPlacesRow && !savedPlacesModal) return;
+    const clearSkeleton = savedPlacesRow ? showSkeleton(savedPlacesRow, { kind: 'line', count: 1 }) : () => {};
     savedPlacesCache = await loadSavedPlaces(uid);
     clearSkeleton();
     renderSavedPlaces();
 }
 
-function openSavedPlaceModal(slot) {
-    if (!savedPlaceModal) return;
-    activeSavedSlot = slot;
-    const existing = savedPlacesCache?.[slot];
-    pickedPlace = existing?.address ? { ...existing } : null;
-    if (savedPlaceTitle) savedPlaceTitle.textContent = slot === "home" ? t('profile.save_home_title', "Save your Home address") : t('profile.save_work_title', "Save your Work address");
-    if (savedPlaceAddressInput) savedPlaceAddressInput.value = existing?.address || "";
-    if (savedPlaceSuggestions) savedPlaceSuggestions.innerHTML = "";
-    savedPlaceRemoveBtn?.classList.toggle('d-none', !existing?.address);
-    savedPlaceModal.classList.remove('d-none');
-    window.requestAnimationFrame(() => savedPlaceAddressInput?.focus());
+function renderSavedPlacesModalList() {
+    if (!savedPlacesListContainer) return;
+
+    const home = savedPlacesCache?.home;
+    const work = savedPlacesCache?.work;
+    const customPlaces = Array.isArray(savedPlacesCache?.customPlaces) ? savedPlacesCache.customPlaces : [];
+
+    let html = '';
+
+    // 1. Home Item
+    html += `
+        <div class="saved-place-item-card" data-type="home">
+            <div class="saved-place-icon-badge">
+                <span class="webicon webicon-home" style="color: #1A7A2E;"></span>
+            </div>
+            <div class="saved-place-details" ${home?.address ? `onclick="window.selectSavedPlace('home')"` : ''} style="cursor:${home?.address ? 'pointer' : 'default'}">
+                <strong>${t('home.home_chip', 'Home')}</strong>
+                <small>${home?.address ? escapeHtml(home.address) : t('services.not_saved_yet', 'Not saved yet - tap pencil to add')}</small>
+            </div>
+            <div class="saved-place-actions">
+                <button type="button" class="saved-item-action-btn" title="Edit Home" onclick="window.editSavedPlace('home')">
+                    <span class="webicon webicon-edit" style="color: #4B5563;"></span>
+                </button>
+                ${home?.address ? `
+                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete Home" onclick="window.deleteSavedPlace('home', null, this)">
+                        <span class="webicon webicon-trash"></span>
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `;
+
+    // 2. Work Item
+    html += `
+        <div class="saved-place-item-card" data-type="work">
+            <div class="saved-place-icon-badge">
+                <span class="webicon webicon-work" style="color: #1A7A2E;"></span>
+            </div>
+            <div class="saved-place-details" ${work?.address ? `onclick="window.selectSavedPlace('work')"` : ''} style="cursor:${work?.address ? 'pointer' : 'default'}">
+                <strong>${t('home.work_chip', 'Work')}</strong>
+                <small>${work?.address ? escapeHtml(work.address) : t('services.not_saved_yet', 'Not saved yet - tap pencil to add')}</small>
+            </div>
+            <div class="saved-place-actions">
+                <button type="button" class="saved-item-action-btn" title="Edit Work" onclick="window.editSavedPlace('work')">
+                    <span class="webicon webicon-edit" style="color: #4B5563;"></span>
+                </button>
+                ${work?.address ? `
+                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete Work" onclick="window.deleteSavedPlace('work', null, this)">
+                        <span class="webicon webicon-trash"></span>
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `;
+
+    // 3. Custom Places
+    customPlaces.forEach((place, index) => {
+        html += `
+            <div class="saved-place-item-card" data-index="${index}">
+                <div class="saved-place-icon-badge">
+                    <span class="webicon webicon-favorite" style="color: #1A7A2E;"></span>
+                </div>
+                <div class="saved-place-details" onclick="window.selectSavedPlace('custom', ${index})" style="cursor:pointer">
+                    <strong>${escapeHtml(place.name || t('profile.saved_place_title', 'Saved Place'))}</strong>
+                    <small>${escapeHtml(place.address)}</small>
+                </div>
+                <div class="saved-place-actions">
+                    <button type="button" class="saved-item-action-btn" title="Edit" onclick="window.editSavedPlace('custom', ${index})">
+                        <span class="webicon webicon-edit" style="color: #4B5563;"></span>
+                    </button>
+                    <button type="button" class="saved-item-action-btn delete-btn" title="Delete" onclick="window.deleteSavedPlace('custom', ${index}, this)">
+                        <span class="webicon webicon-trash"></span>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+
+    savedPlacesListContainer.innerHTML = html;
+
+    const addBtn = document.getElementById('add-new-saved-place-btn');
+    if (addBtn) {
+        addBtn.classList.toggle('d-none', customPlaces.length >= 3);
+    }
 }
 
-function closeSavedPlaceModal() {
-    savedPlaceModal?.classList.add('d-none');
-    activeSavedSlot = null;
-    pickedPlace = null;
+function openSavedPlacesModal() {
+    renderSavedPlacesModalList();
+    savedPlacesModal?.classList.remove('d-none');
 }
+
+function closeSavedPlacesModal() {
+    savedPlacesModal?.classList.add('d-none');
+}
+
+function openSaveAddressEditor(targetKey, defaultLabel = "", defaultAddress = "") {
+    activeEditingSlotOrIndex = targetKey;
+    pickedPlace = null;
+    if (!saveAddressEditorModal) return;
+
+    if (targetKey === 'home') {
+        if (saveAddressTypeInput) {
+            saveAddressTypeInput.value = "Home";
+            saveAddressTypeInput.readOnly = true;
+        }
+        if (saveAddressEditorTitle) saveAddressEditorTitle.textContent = t('services.save_home_address', "Save Home Address");
+    } else if (targetKey === 'work') {
+        if (saveAddressTypeInput) {
+            saveAddressTypeInput.value = "Work";
+            saveAddressTypeInput.readOnly = true;
+        }
+        if (saveAddressEditorTitle) saveAddressEditorTitle.textContent = t('services.save_work_address', "Save Work Address");
+    } else {
+        if (saveAddressTypeInput) {
+            saveAddressTypeInput.value = defaultLabel || "";
+            saveAddressTypeInput.readOnly = false;
+        }
+        if (saveAddressEditorTitle) saveAddressEditorTitle.textContent = t('services.save_new_address', "Save New Address");
+    }
+
+    if (saveAddressLocationInput) saveAddressLocationInput.value = defaultAddress || "";
+    if (saveAddressSuggestions) saveAddressSuggestions.innerHTML = "";
+    saveAddressEditorModal.classList.remove('d-none');
+    setTimeout(() => (saveAddressTypeInput?.readOnly ? saveAddressLocationInput?.focus() : saveAddressTypeInput?.focus()), 100);
+}
+
+function closeSaveAddressEditor() {
+    saveAddressEditorModal?.classList.add('d-none');
+    activeEditingSlotOrIndex = null;
+    pickedPlace = null;
+    if (saveAddressSuggestions) saveAddressSuggestions.innerHTML = "";
+}
+
+async function persistSavedPlace(targetKey, label, address) {
+    if (!currentUid) {
+        window.location.href = '/login.html';
+        return;
+    }
+
+    const submitBtn = document.getElementById('save-address-submit-btn');
+    const originalText = submitBtn ? submitBtn.innerHTML : t('services.save_address', 'Save Address');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span class="lu-spinner lu-spinner-sm me-2" style="border-top-color:#fff;"></span>${t('common.saving', 'Saving...')}`;
+    }
+
+    const payload = { ...savedPlacesCache, updatedAt: new Date().toISOString() };
+
+    if (targetKey === 'home') {
+        payload.home = { address, name: "Home" };
+    } else if (targetKey === 'work') {
+        payload.work = { address, name: "Work" };
+    } else if (typeof targetKey === 'number') {
+        payload.customPlaces = payload.customPlaces || [];
+        payload.customPlaces[targetKey] = { name: label, address };
+    } else {
+        payload.customPlaces = payload.customPlaces || [];
+        if (payload.customPlaces.length >= 3) {
+            showAlert(t('services.max_saved_places_notice', "You can save up to 3 places in addition to Home and Work."));
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
+            return;
+        }
+        payload.customPlaces.push({ name: label, address });
+    }
+
+    try {
+        await setDoc(doc(db, "savedPlaces", currentUid), payload, { merge: true });
+        savedPlacesCache = payload;
+        renderSavedPlaces();
+        renderSavedPlacesModalList();
+        closeSaveAddressEditor();
+    } catch (e) {
+        console.error("Could not save address:", e);
+        showAlert(t('services.save_address_error', "Could not save address. Please try again."));
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    }
+}
+
+async function deleteSavedPlaceItem(targetKey, customIndex = null, btnElement = null) {
+    if (!currentUid) return;
+
+    if (btnElement) {
+        btnElement.disabled = true;
+        btnElement.innerHTML = '<span class="lu-spinner lu-spinner-sm" style="margin:0; border-top-color:#EF4444;"></span>';
+    }
+
+    const payload = { ...savedPlacesCache, updatedAt: new Date().toISOString() };
+
+    if (targetKey === 'home') {
+        delete payload.home;
+    } else if (targetKey === 'work') {
+        delete payload.work;
+    } else if (targetKey === 'custom' && Number.isInteger(customIndex)) {
+        payload.customPlaces = payload.customPlaces || [];
+        payload.customPlaces.splice(customIndex, 1);
+    }
+
+    try {
+        await setDoc(doc(db, "savedPlaces", currentUid), payload);
+        savedPlacesCache = payload;
+        renderSavedPlaces();
+        renderSavedPlacesModalList();
+    } catch (e) {
+        console.error("Could not delete saved place:", e);
+        showAlert(t('services.delete_place_error', "Could not delete place. Try again."));
+        renderSavedPlacesModalList();
+    }
+}
+
+window.selectSavedPlace = (targetKey, index = null) => {
+    let address = "";
+    if (targetKey === 'home') address = savedPlacesCache?.home?.address;
+    else if (targetKey === 'work') address = savedPlacesCache?.work?.address;
+    else if (targetKey === 'custom' && Number.isInteger(index)) address = savedPlacesCache?.customPlaces?.[index]?.address;
+
+    if (address) {
+        closeSavedPlacesModal();
+        goToServicesWithDestination(address);
+    }
+};
+
+window.editSavedPlace = (targetKey, index = null) => {
+    if (targetKey === 'home') {
+        openSaveAddressEditor('home', 'Home', savedPlacesCache?.home?.address || '');
+    } else if (targetKey === 'work') {
+        openSaveAddressEditor('work', 'Work', savedPlacesCache?.work?.address || '');
+    } else if (targetKey === 'custom' && Number.isInteger(index)) {
+        const place = savedPlacesCache?.customPlaces?.[index];
+        openSaveAddressEditor(index, place?.name || '', place?.address || '');
+    }
+};
+
+window.deleteSavedPlace = (targetKey, index = null, btnElement = null) => {
+    deleteSavedPlaceItem(targetKey, index, btnElement);
+};
 
 async function searchAddressSuggestions(text) {
     if (suggestionAbortController) suggestionAbortController.abort();
@@ -423,9 +688,6 @@ async function searchAddressSuggestions(text) {
     }
 }
 
-// Plain autocomplete predictions don't carry coordinates -- resolve them via
-// Place Details (same call the main booking search makes) so a saved Home/Work
-// address is always backed by real map coordinates, not just a text label.
 async function resolvePlaceCoordinates(place) {
     if (Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng))) {
         return {
@@ -457,144 +719,56 @@ async function resolvePlaceCoordinates(place) {
     }
 }
 
-function renderSuggestions(results) {
-    if (!savedPlaceSuggestions) return;
-    if (!results.length) {
-        savedPlaceSuggestions.innerHTML = "";
-        return;
-    }
-    savedPlaceSuggestions.innerHTML = results.slice(0, 5).map((place, index) => `
-        <button type="button" class="saved-place-suggestion" data-index="${index}">
-            <strong>${escapeHtml(place.name || place.mainName || "")}</strong>
-            <small>${escapeHtml(place.fullAddress || "")}</small>
-        </button>
-    `).join('');
-
-    savedPlaceSuggestions.querySelectorAll('.saved-place-suggestion').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-            const place = results[Number(btn.dataset.index)];
-            if (!place) return;
-            savedPlaceSuggestions.innerHTML = "";
-            savedPlaceAddressInput.value = place.fullAddress || place.name || "";
-            savedPlaceAddressInput.disabled = true;
-            pickedPlace = await resolvePlaceCoordinates(place);
-            savedPlaceAddressInput.disabled = false;
-            if (savedPlaceAddressInput) savedPlaceAddressInput.value = pickedPlace.address;
-        });
-    });
-}
-
-let suggestionDebounceTimer = null;
-savedPlaceAddressInput?.addEventListener('input', () => {
-    pickedPlace = null;
-    const text = savedPlaceAddressInput.value.trim();
-    if (suggestionDebounceTimer) window.clearTimeout(suggestionDebounceTimer);
+let saveAddressDebounceTimer = null;
+saveAddressLocationInput?.addEventListener('input', () => {
+    const text = saveAddressLocationInput.value.trim();
+    if (saveAddressDebounceTimer) window.clearTimeout(saveAddressDebounceTimer);
     if (text.length < 2) {
-        if (savedPlaceSuggestions) savedPlaceSuggestions.innerHTML = "";
+        if (saveAddressSuggestions) saveAddressSuggestions.innerHTML = "";
         return;
     }
-    suggestionDebounceTimer = window.setTimeout(async () => {
+    saveAddressDebounceTimer = window.setTimeout(async () => {
         const results = await searchAddressSuggestions(text);
-        renderSuggestions(results);
+        if (!saveAddressSuggestions) return;
+        if (!results.length) {
+            saveAddressSuggestions.innerHTML = "";
+            return;
+        }
+        saveAddressSuggestions.innerHTML = results.slice(0, 5).map((place, index) => `
+            <button type="button" class="destination-suggestion-item saved-place-suggestion w-100 text-start" data-index="${index}">
+                <strong>${escapeHtml(place.name || place.mainName || "")}</strong>
+                <small class="d-block text-muted">${escapeHtml(place.fullAddress || "")}</small>
+            </button>
+        `).join('');
+
+        saveAddressSuggestions.querySelectorAll('.saved-place-suggestion').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const place = results[Number(btn.dataset.index)];
+                if (!place) return;
+                saveAddressSuggestions.innerHTML = "";
+                saveAddressLocationInput.value = place.fullAddress || place.name || "";
+                saveAddressLocationInput.disabled = true;
+                pickedPlace = await resolvePlaceCoordinates(place);
+                saveAddressLocationInput.disabled = false;
+                if (saveAddressLocationInput) saveAddressLocationInput.value = pickedPlace.address;
+            });
+        });
     }, 250);
 });
 
-savedPlaceUseGpsBtn?.addEventListener('click', async () => {
-    if (!navigator.geolocation) {
-        await showAlert(t('profile.location_not_supported', "Your browser does not support location detection."));
-        return;
-    }
-    const restore = setButtonBusy(savedPlaceUseGpsBtn, t('common.locating', "Locating…"));
-    navigator.geolocation.getCurrentPosition(async (position) => {
-        try {
-            const { latitude, longitude } = position.coords;
-            const params = new URLSearchParams({ lat: String(latitude), lng: String(longitude) });
-            const response = await fetch(`/api/google-reverse-geocode?${params.toString()}`, {
-                headers: { Accept: "application/json" }
-            });
-            const data = await response.json().catch(() => ({}));
-            const result = response.ok ? data.result : null;
-            const address = result?.displayAddress || result?.fullAddress || "";
-            if (!address) throw new Error(t('profile.location_resolve_failed', "Could not resolve your current address."));
+document.getElementById('saved-places-modal-close')?.addEventListener('click', closeSavedPlacesModal);
+document.getElementById('saved-places-modal-backdrop')?.addEventListener('click', closeSavedPlacesModal);
+document.getElementById('add-new-saved-place-btn')?.addEventListener('click', () => openSaveAddressEditor('new'));
+document.getElementById('save-address-editor-close')?.addEventListener('click', closeSaveAddressEditor);
+document.getElementById('save-address-editor-backdrop')?.addEventListener('click', closeSaveAddressEditor);
+document.getElementById('save-address-cancel-btn')?.addEventListener('click', closeSaveAddressEditor);
 
-            pickedPlace = { address, lat: latitude, lng: longitude, placeId: "" };
-            if (savedPlaceAddressInput) savedPlaceAddressInput.value = address;
-            if (savedPlaceSuggestions) savedPlaceSuggestions.innerHTML = "";
-        } catch (error) {
-            await showAlert(error.message || t('profile.location_detect_failed', "Could not detect your current location."));
-        } finally {
-            restore();
-        }
-    }, async () => {
-        restore();
-        await showAlert(t('profile.location_permission_denied', "Could not access your location. Please allow location access and try again."));
-    }, { enableHighAccuracy: true, timeout: 10000 });
-});
-
-savedPlaceCancelBtn?.addEventListener('click', closeSavedPlaceModal);
-savedPlaceModal?.addEventListener('mousedown', (event) => {
-    if (event.target === savedPlaceModal) closeSavedPlaceModal();
-});
-
-savedPlaceRemoveBtn?.addEventListener('click', async () => {
-    if (!currentUid || !activeSavedSlot) return;
-    const label = activeSavedSlot === "home" ? t('profile.home', "Home") : t('profile.work', "Work");
-    const confirmed = await showConfirm(`${t('profile.remove_saved_prefix', "Remove your saved")} ${label} ${t('profile.remove_saved_suffix', "address?")}`, {
-        okText: t('common.remove', "Remove"),
-        cancelText: t('profile.keep_it', "Keep it")
-    });
-    if (!confirmed) return;
-
-    const restore = setButtonBusy(savedPlaceRemoveBtn, t('common.removing', "Removing…"));
-    try {
-        await setDoc(doc(db, "savedPlaces", currentUid), {
-            [activeSavedSlot]: deleteField(),
-            updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        savedPlacesCache = { ...(savedPlacesCache || {}) };
-        delete savedPlacesCache[activeSavedSlot];
-        renderSavedPlaces();
-        closeSavedPlaceModal();
-    } catch (error) {
-        console.error("Could not remove saved place:", error);
-        await showAlert(t('profile.remove_address_failed', "Could not remove this address. Please try again."));
-    } finally {
-        restore();
-    }
-});
-
-savedPlaceForm?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!currentUid || !activeSavedSlot) return;
-
-    const address = pickedPlace?.address || cleanText(savedPlaceAddressInput?.value);
-    if (!address) {
-        await showAlert(t('profile.enter_or_pick_address', "Please enter or pick an address first."));
-        return;
-    }
-
-    const submitBtn = savedPlaceForm.querySelector('button[type="submit"]');
-    const restore = setButtonBusy(submitBtn, t('common.saving', "Saving…"));
-    try {
-        const place = pickedPlace?.address === address
-            ? pickedPlace
-            : { address, lat: null, lng: null, placeId: "" };
-
-        await setDoc(doc(db, "savedPlaces", currentUid), {
-            [activeSavedSlot]: place,
-            updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        savedPlacesCache = { ...(savedPlacesCache || {}), [activeSavedSlot]: place };
-        renderSavedPlaces();
-        closeSavedPlaceModal();
-    } catch (error) {
-        console.error("Could not save place:", error);
-        await showAlert(t('profile.save_address_failed', "Could not save this location. Please try again."));
-    } finally {
-        restore();
-    }
+saveAddressEditorForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const label = cleanText(saveAddressTypeInput?.value);
+    const address = pickedPlace?.address || cleanText(saveAddressLocationInput?.value);
+    if (!label || !address) return;
+    persistSavedPlace(activeEditingSlotOrIndex, label, address);
 });
 
 // ==========================================

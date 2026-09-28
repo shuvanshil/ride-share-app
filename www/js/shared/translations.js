@@ -57,13 +57,17 @@ export const TRANSLATIONS = {
             "removing": "Removing…",
             "next": "Next",
             "logging_in": "Logging in...",
-            "retry": "Retry"
+            "retry": "Retry",
+            "help": "Help"
         },
         "nav": {
             "home": "Home",
             "services": "Services",
             "history": "History",
             "profile": "Profile",
+            "saved_places": "Saved Places",
+            "help": "Help",
+            "logout": "Logout",
             "driver": "Driver"
         },
         "auth": {
@@ -1034,13 +1038,17 @@ export const TRANSLATIONS = {
             "removing": "মুছে ফেলা হচ্ছে…",
             "next": "পরবর্তী",
             "logging_in": "লগইন করা হচ্ছে...",
-            "retry": "পুনরায় চেষ্টা করুন"
+            "retry": "পুনরায় চেষ্টা করুন",
+            "help": "সাহায্য"
         },
         "nav": {
             "home": "হোম",
             "services": "সার্ভিস",
             "history": "হিস্ট্রি",
             "profile": "প্রোফাইল",
+            "saved_places": "সংরক্ষিত স্থানসমূহ",
+            "help": "সাহায্য",
+            "logout": "লগআউট",
             "driver": "ড্রাইভার"
         },
         "auth": {
