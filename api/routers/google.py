@@ -23,7 +23,7 @@ from ..core.rate_limit import enforce_rate_limit
 router = APIRouter()
 
 DEFAULT_LAT = 23.8315
-DEFAULT_LNG = 91.9882
+DEFAULT_LNG = 91.2868
 
 TRIPURA_TOWNS_RE = re.compile(
     r"(agartala|kailashahar|kumarghat|dharmanagar|ambassa|udaipur|belonia|khowai|teliamura|unakoti|tripura)"
@@ -50,9 +50,10 @@ def _build_query_variants(query: str) -> list[str]:
     variants = [clean, f"{clean} Tripura", f"{clean} India"]
 
     if not TRIPURA_TOWNS_RE.search(lower):
-        variants.append(f"{clean} Kailashahar Tripura")
-        variants.append(f"{clean} Unakoti Tripura")
         variants.append(f"{clean} Agartala Tripura")
+        variants.append(f"{clean} Kailashahar Tripura")
+        variants.append(f"{clean} Dharmanagar Tripura")
+        variants.append(f"{clean} Unakoti Tripura")
 
     seen: set[str] = set()
     unique: list[str] = []

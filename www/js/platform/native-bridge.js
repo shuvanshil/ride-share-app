@@ -238,6 +238,11 @@
                     }
 
                     return new Promise(function (resolve, reject) {
+                        var timeoutTimer = setTimeout(function () {
+                            console.warn('[native-bridge] push registration timed out (non-fatal)');
+                            resolve(null);
+                        }, 4500);
+
                         Push.removeAllListeners();
 
                         Push.addListener('pushNotificationReceived', function (notification) {
@@ -258,11 +263,13 @@
                         });
 
                         Push.addListener('registration', function (token) {
+                            clearTimeout(timeoutTimer);
                             console.log('[native-bridge] push registered:', token.value);
                             resolve(token.value);
                         });
 
                         Push.addListener('registrationError', function (error) {
+                            clearTimeout(timeoutTimer);
                             console.error('[native-bridge] push error:', error.error);
                             reject(new Error(error.error));
                         });
@@ -271,6 +278,7 @@
                         try {
                             Push.register();
                         } catch (e) {
+                            clearTimeout(timeoutTimer);
                             console.error('[native-bridge] push.register exception:', e);
                             reject(e);
                         }

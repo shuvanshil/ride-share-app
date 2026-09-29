@@ -88,8 +88,12 @@ export async function releaseWakeLock() {
  */
 if (!isNative) {
     document.addEventListener('visibilitychange', async () => {
-        if (wakeLockSentinel !== null && document.visibilityState === 'visible') {
-            await acquireWakeLock();
+        try {
+            if (wakeLockSentinel !== null && document.visibilityState === 'visible') {
+                await acquireWakeLock();
+            }
+        } catch (e) {
+            console.warn('[platform/wake-lock] visibility change wake lock skipped:', e);
         }
     });
 }

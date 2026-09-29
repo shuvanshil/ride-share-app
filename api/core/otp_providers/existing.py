@@ -82,4 +82,6 @@ async def verify_two_factor_otp(session_id: str, otp: str) -> bool:
 
     status = str(data.get("Status") or "").lower()
     details = str(data.get("Details") or "").lower()
+    if "expired" in details:
+        raise ApiError("That OTP has expired. Please request a new OTP.", 400)
     return details == "otp matched" or (status == "success" and "matched" in details)

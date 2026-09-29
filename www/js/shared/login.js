@@ -277,6 +277,26 @@ function formatPhoneFromValue(value, showAlert = true) {
     return `+91${nationalPhone}`;
 }
 
+const ACTIVE_OTP_SESSION_KEY = "liphtup_active_otp_session";
+
+function saveActiveOtpSession(phone, sessionId, mode, provider) {
+    try {
+        sessionStorage.setItem(ACTIVE_OTP_SESSION_KEY, JSON.stringify({
+            phone,
+            sessionId,
+            mode,
+            provider,
+            sentAt: Date.now()
+        }));
+    } catch (e) {}
+}
+
+function clearActiveOtpSession() {
+    try {
+        sessionStorage.removeItem(ACTIVE_OTP_SESSION_KEY);
+    } catch (e) {}
+}
+
 function getFormattedPhoneNumber() {
     return formatPhoneFromValue(document.getElementById('phone-number').value);
 }
@@ -288,9 +308,15 @@ function clearResendTimer() {
     }
 }
 
-function startResendTimer() {
+function startResendTimer(initialSeconds = OTP_RESEND_DELAY_SECONDS) {
     clearResendTimer();
-    let secondsRemaining = OTP_RESEND_DELAY_SECONDS;
+    let secondsRemaining = initialSeconds;
+    if (secondsRemaining <= 0) {
+        resendOtpBtn.disabled = false;
+        resendOtpBtn.textContent = t('auth.resend_otp', "Resend OTP");
+        return;
+    }
+
     resendOtpBtn.disabled = true;
     resendOtpBtn.textContent = `${t('auth.resend_otp_in', 'Resend OTP in')} ${secondsRemaining}s`;
 
@@ -304,6 +330,45 @@ function startResendTimer() {
         }
         resendOtpBtn.textContent = `${t('auth.resend_otp_in', 'Resend OTP in')} ${secondsRemaining}s`;
     }, 1000);
+}
+
+function restoreActiveOtpSession() {
+    try {
+        const raw = sessionStorage.getItem(ACTIVE_OTP_SESSION_KEY);
+        if (!raw) return false;
+        const session = JSON.parse(raw);
+        const ageMs = Date.now() - Number(session.sentAt || 0);
+        if (!session.phone || ageMs > 10 * 60 * 1000) {
+            clearActiveOtpSession();
+            return false;
+        }
+
+        requestedPhoneNumber = session.phone;
+        otpSessionId = session.sessionId;
+        authMode = session.mode || "register";
+        if (session.provider) activeOtpProvider = session.provider;
+
+        const phoneInput = document.getElementById('phone-number');
+        if (phoneInput) phoneInput.value = session.phone.replace(/^\+91/, "");
+
+        setVisible(passwordLoginContainer, false);
+        setVisible(phoneInputContainer, false);
+        setVisible(otpInputContainer, true);
+        setVisible(resetPasswordContainer, false);
+        setVisible(registrationContainer, false);
+
+        const otpSentMsg = t('auth.sent_otp_to', "We sent a 6-digit OTP to");
+        const destEl = document.getElementById('otp-destination');
+        if (destEl) destEl.textContent = `${otpSentMsg} ${maskPhoneNumber(session.phone)}.`;
+
+        const remainingCooldownSeconds = Math.max(0, OTP_RESEND_DELAY_SECONDS - Math.floor(ageMs / 1000));
+        startResendTimer(remainingCooldownSeconds);
+        updateAuthModeUi();
+        return true;
+    } catch (e) {
+        clearActiveOtpSession();
+        return false;
+    }
 }
 
 function cacheUserProfile(profile) {
@@ -344,6 +409,7 @@ function resetAuthStep() {
     otpVerificationToken = null;
     requestedPhoneNumber = null;
     clearResendTimer();
+    clearActiveOtpSession();
 
     document.getElementById('otp-code').value = "";
     setGender("Male");
@@ -567,6 +633,7 @@ async function sendOTP() {
         }
 
         requestedPhoneNumber = phoneNumber;
+        saveActiveOtpSession(phoneNumber, otpSessionId, authMode, activeOtpProvider);
         setVisible(phoneInputContainer, false);
         setVisible(otpInputContainer, true);
         const otpSentMsg = t('auth.sent_otp_to', "We sent a 6-digit OTP to");
@@ -828,6 +895,7 @@ async function verifyOTP() {
         }
 
         clearResendTimer();
+        clearActiveOtpSession();
         setAuthStatus(t('auth.phone_verified_success', "Phone number verified successfully."));
 
         if (authMode === "register") {
@@ -851,6 +919,7 @@ async function verifyOTP() {
         const message = getAuthErrorMessage(error, error.message || t('auth.verify_otp_failed', "Could not verify the OTP. Please try again."));
         setAuthStatus(message, true);
         await showAppAlert(message);
+    } finally {
         verifyOtpBtn.disabled = false;
         verifyOtpBtn.textContent = authMode === "register" ? t('auth.verify_and_continue', "Verify & Continue") : t('auth.verify_otp', "Verify OTP");
     }
@@ -1282,6 +1351,7 @@ initAllCustomSelects();
 updateRegistrationFieldsForRole();
 updateAuthModeUi();
 resetAuthStep();
+restoreActiveOtpSession();
 fetchOtpConfig();
 
 window.addEventListener('languageChanged', () => {

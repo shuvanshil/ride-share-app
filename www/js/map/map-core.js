@@ -7,8 +7,8 @@ import {
     onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-const DEFAULT_PICKUP = { lat: 24.3124, lng: 92.0135 };
-const TRIPURA_CENTER = { lat: 23.8315, lng: 91.9882 };
+const DEFAULT_PICKUP = { lat: 23.8315, lng: 91.2868 };
+const TRIPURA_CENTER = { lat: 23.8315, lng: 91.2868 };
 const PICKUP_CACHE_KEY = "liphtup_last_passenger_pickup";
 const DESTINATION_SEARCH_DEBOUNCE_MS = 90;
 const AUTOCOMPLETE_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -251,7 +251,7 @@ function getFallbackPickupLocation() {
     return {
         lat: DEFAULT_PICKUP.lat,
         lng: DEFAULT_PICKUP.lng,
-        label: "Kailashahar Center"
+        label: "Agartala Center"
     };
 }
 
@@ -2930,7 +2930,7 @@ function tryModernGoogleAutocomplete(query, maps, places) {
         return places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
             input: query.trim(),
             includedRegionCodes: ["in"],
-            locationBias: { circle: { center, radius: 50000 } }
+            locationBias: { circle: { center, radius: 180000 } }
         }).then(({ suggestions = [] }) => suggestions
             .map((suggestion) => suggestion.placePrediction)
             .filter(Boolean)
@@ -2989,7 +2989,7 @@ async function searchDirectGoogleAutocomplete(query) {
                             latitude: Number(userLatitude || TRIPURA_CENTER.lat),
                             longitude: Number(userLongitude || TRIPURA_CENTER.lng)
                         },
-                        radius: 50000
+                        radius: 180000
                     }
                 }
             })
@@ -3043,7 +3043,7 @@ function searchLegacyGoogleAutocomplete(query, maps, places) {
             input: query.trim(),
             locationBias: {
                 center: location,
-                radius: 50000
+                radius: 180000
             },
             componentRestrictions: { country: "in" }
         }, (predictions, status) => {
@@ -3392,6 +3392,20 @@ export async function fetchRoadRouteDetails(origin, destination) {
         } catch (matrixErr) {
             console.warn("Client-side DistanceMatrixService failed:", matrixErr);
         }
+    // Tier 4: Fallback to Haversine distance with 1.25 road curvature factor
+    try {
+        const straightDistanceKm = calculateDistanceMeters(originCoords, destinationCoords) / 1000;
+        if (Number.isFinite(straightDistanceKm) && straightDistanceKm > 0) {
+            const estDistanceKm = Math.max(0.5, Math.round(straightDistanceKm * 1.25 * 100) / 100);
+            const estDurationMinutes = Math.max(3, Math.round((estDistanceKm / 25) * 60));
+            return {
+                distanceKm: estDistanceKm,
+                durationMinutes: estDurationMinutes,
+                routePath: [originCoords, destinationCoords]
+            };
+        }
+    } catch (fallbackErr) {
+        console.warn("Haversine road fallback failed:", fallbackErr);
     }
 
     return null;

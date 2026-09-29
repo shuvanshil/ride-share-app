@@ -45,10 +45,10 @@ export function showPageLoader(message) {
     overlay.classList.add("is-visible");
     overlay.setAttribute("aria-hidden", "false");
 
-    // Safety fallback: Never allow page loader to freeze screen longer than 10 seconds
+    // Safety fallback: Never allow page loader to freeze screen longer than 6 seconds
     overlayHideTimer = window.setTimeout(() => {
         hidePageLoader({ force: true });
-    }, 10000);
+    }, 6000);
 }
 
 /**
@@ -58,6 +58,11 @@ export function showPageLoader(message) {
 export function hidePageLoader({ force = false } = {}) {
     overlayRefCount = force ? 0 : Math.max(0, overlayRefCount - 1);
     if (overlayRefCount > 0) return;
+
+    if (overlayHideTimer) {
+        window.clearTimeout(overlayHideTimer);
+        overlayHideTimer = null;
+    }
 
     const overlay = document.getElementById(OVERLAY_ID);
     if (!overlay) return;
@@ -69,6 +74,7 @@ export function hidePageLoader({ force = false } = {}) {
  * Puts a button into a busy state: shows an inline spinner, swaps its
  * label, and disables it. Returns a restore() function that puts the
  * button back exactly how it was.
+ * Auto-restores after 8 seconds as a safety watchdog against unhandled promise freezes.
  * @param {HTMLElement} button
  * @param {string} [busyText]
  */
@@ -85,12 +91,22 @@ export function setButtonBusy(button, busyText) {
     button.disabled = true;
     button.innerHTML = `<span class="lu-spinner lu-spinner-sm" aria-hidden="true"></span><span>${finalText}</span>`;
 
-    return function restore() {
+    let safetyTimer = window.setTimeout(() => {
+        restore();
+    }, 8000);
+
+    function restore() {
+        if (safetyTimer) {
+            window.clearTimeout(safetyTimer);
+            safetyTimer = null;
+        }
         if (button.dataset.luBusy !== "1") return;
         delete button.dataset.luBusy;
         button.innerHTML = originalHtml;
         button.disabled = originalDisabled;
-    };
+    }
+
+    return restore;
 }
 
 /**
@@ -113,12 +129,22 @@ export function showSkeleton(container, { kind = "card", count = 2 } = {}) {
     container.setAttribute("data-lu-skeleton", "1");
     container.innerHTML = Array.from({ length: Math.max(1, count) }, () => block).join("");
 
-    return function clear() {
+    let skeletonSafetyTimer = window.setTimeout(() => {
+        clear();
+    }, 12000);
+
+    function clear() {
+        if (skeletonSafetyTimer) {
+            window.clearTimeout(skeletonSafetyTimer);
+            skeletonSafetyTimer = null;
+        }
         if (container.getAttribute("data-lu-skeleton") !== "1") return;
         if (previousLoadingAttr === null) container.removeAttribute("data-lu-skeleton");
         else container.setAttribute("data-lu-skeleton", previousLoadingAttr);
         container.innerHTML = previousHtml;
-    };
+    }
+
+    return clear;
 }
 
 /**

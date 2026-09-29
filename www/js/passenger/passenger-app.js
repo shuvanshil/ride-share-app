@@ -1875,18 +1875,18 @@ function scheduleDispatchExpansion(rideId, ride = {}) {
     const elapsed = Date.now() - startTime;
     const remainingMs = MAX_SEARCH_DURATION_MS - elapsed;
 
-    if (remainingMs <= 0 || ride.search_status === "no_more_available_drivers" || ride.search_status === "no_available_drivers" || ride.search_status === "timeout") {
+    if (remainingMs <= 0 || elapsed >= MAX_SEARCH_DURATION_MS || ((ride.search_status === "no_more_available_drivers" || ride.search_status === "no_available_drivers") && elapsed >= 45000)) {
         handleSearchTimeout(rideId);
         return;
     }
 
-    // Schedule overall 100s timeout stop
+    // Schedule overall timeout stop
     activeSearchTimeoutTimer = setTimeout(() => {
         handleSearchTimeout(rideId);
     }, remainingMs);
 
-    // Schedule periodic dispatch expansion (every 15s)
-    const nextExpansionInterval = Math.min(ride.dispatch_timeout_ms || 15000, remainingMs);
+    // Schedule periodic dispatch expansion (every 10-12s)
+    const nextExpansionInterval = Math.max(8000, Math.min(ride.dispatch_timeout_ms || 12000, 12000, remainingMs));
     activeDispatchExpansionTimer = setTimeout(() => {
         expandRideDispatch(rideId);
     }, nextExpansionInterval);
@@ -1924,14 +1924,14 @@ async function expandRideDispatch(rideId) {
         if (reqBtn && currentPassengerRideId === rideId && currentPassengerRideData?.status === "pending") {
             const startTime = getRideSearchStartTime(rideId, currentPassengerRideData || {});
             const elapsed = Date.now() - startTime;
-            if (elapsed >= MAX_SEARCH_DURATION_MS || data.searchStatus === "no_more_available_drivers" || data.searchStatus === "no_available_drivers") {
+            if (elapsed >= MAX_SEARCH_DURATION_MS || ((data.searchStatus === "no_more_available_drivers" || data.searchStatus === "no_available_drivers") && elapsed >= 45000)) {
                 handleSearchTimeout(rideId);
             } else {
                 delete reqBtn.dataset.state;
                 reqBtn.disabled = true;
                 reqBtn.innerHTML = "Searching nearby drivers...";
                 reqBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
-                scheduleDispatchExpansion(rideId, currentPassengerRideData || { dispatch_timeout_ms: DISPATCH_TIMEOUT_MS });
+                scheduleDispatchExpansion(rideId, currentPassengerRideData || { dispatch_timeout_ms: 12000 });
             }
         }
         return data;
@@ -2200,6 +2200,7 @@ requestRideButton.addEventListener('click', async () => {
         notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
         showPassengerCancelButton(backendRide.rideId);
         listenToRideStatusUpdates(backendRide.rideId);
+        scheduleDispatchExpansion(backendRide.rideId, backendRide.ride || { dispatch_timeout_ms: 12000 });
 
     } catch (error) {
         console.error("Database Write Failure:", error);

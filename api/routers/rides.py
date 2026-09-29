@@ -38,7 +38,7 @@ router = APIRouter(prefix="/rides", tags=["rides"])
 
 ACTIVE_PASSENGER_STATUSES = {"pending", "accepted", "arrived", "started", "en_route"}
 DISPATCH_BATCH_SIZE = 10
-DISPATCH_TIMEOUT_MS = 45000
+DISPATCH_TIMEOUT_MS = 12000
 DRIVER_NOTIFICATION_ELIGIBLE_HOURS = 12
 DRIVER_LOCATION_VISIBLE_SECONDS = DRIVER_NOTIFICATION_ELIGIBLE_HOURS * 60 * 60
 KOLKATA_TZ = ZoneInfo("Asia/Kolkata")
@@ -553,13 +553,15 @@ def _accumulate_online_seconds(db, uid: str, previous_moment: Any, still_online:
 def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc).timestamp()
     candidates: list[dict[str, Any]] = []
-    for snapshot in db.collection("driverPresence").where("driverAvailability", "==", "searching").stream():
+    for snapshot in db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).stream():
         driver = snapshot.to_dict() or {}
         location = driver.get("driverLocation") or {}
         lat, lng = location.get("lat"), location.get("lng")
         last_seen = _timestamp_seconds(driver.get("lastLocationAt") or driver.get("lastSeenAt") or driver.get("updatedAt"))
+        v_status = driver.get("verificationStatus") or driver.get("verification_status") or driver.get("status")
+        is_approved = v_status == "approved" or driver.get("is_verified") is True or driver.get("isApproved") is True
         if (
-            driver.get("verificationStatus") != "approved"
+            not is_approved
             or (last_seen is not None and now - last_seen > DRIVER_LOCATION_VISIBLE_SECONDS)
             or (last_seen is None and not driver.get("isConnected"))
             or not isinstance(lat, (int, float))
@@ -598,44 +600,45 @@ def _availability_for_location_update(profile: dict[str, Any], ride_id: str) -> 
 async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, drop_lng: float) -> tuple[float, int, str]:
     """Returns (distance_km, duration_minutes, encoded_polyline).
 
-    The polyline is saved on the ride so that later, when checking how much
-    of the trip the driver has actually covered, we can measure that
-    distance along the real road route instead of a straight line -- see
-    road_distance_along_route_km() in api/core/geo.py.
+    Attempts to calculate high-precision route via Google Routes API. If Google
+    Routes API is unavailable, times out, or fails, falls back gracefully to
+    road-factor-adjusted haversine distance so ride creation never breaks.
     """
     key = get_env("GOOGLE_MAPS_SERVER_KEY")
-    if not key:
-        raise ApiError("Missing GOOGLE_MAPS_SERVER_KEY.", 500)
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-            response = await client.post(
-                "https://routes.googleapis.com/directions/v2:computeRoutes",
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Goog-Api-Key": key,
-                    "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
-                },
-                json={
-                    "origin": {"location": {"latLng": {"latitude": pickup_lat, "longitude": pickup_lng}}},
-                    "destination": {"location": {"latLng": {"latitude": drop_lat, "longitude": drop_lng}}},
-                    "travelMode": "DRIVE",
-                    "routingPreference": "TRAFFIC_UNAWARE",
-                    "computeAlternativeRoutes": False,
-                    "units": "METRIC",
-                },
-            )
-        response.raise_for_status()
-        data = response.json()
-        route = (data.get("routes") or [None])[0]
-        if not route or not route.get("distanceMeters"):
-            raise ApiError("Google route not found.", 404)
-        duration = str(route.get("duration") or "0").rstrip("s")
-        encoded_polyline = str((route.get("polyline") or {}).get("encodedPolyline") or "")
-        return float(route["distanceMeters"]) / 1000, max(1, round(float(duration) / 60)), encoded_polyline
-    except ApiError:
-        raise
-    except Exception as error:  # noqa: BLE001
-        raise ApiError("Could not calculate the ride route.", 503)
+    if key:
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(4.0, connect=2.5)) as client:
+                response = await client.post(
+                    "https://routes.googleapis.com/directions/v2:computeRoutes",
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Goog-Api-Key": key,
+                        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline",
+                    },
+                    json={
+                        "origin": {"location": {"latLng": {"latitude": pickup_lat, "longitude": pickup_lng}}},
+                        "destination": {"location": {"latLng": {"latitude": drop_lat, "longitude": drop_lng}}},
+                        "travelMode": "DRIVE",
+                        "routingPreference": "TRAFFIC_UNAWARE",
+                        "computeAlternativeRoutes": False,
+                        "units": "METRIC",
+                    },
+                )
+            if response.is_success:
+                data = response.json()
+                route = (data.get("routes") or [None])[0]
+                if route and route.get("distanceMeters"):
+                    duration = str(route.get("duration") or "0").rstrip("s")
+                    encoded_polyline = str((route.get("polyline") or {}).get("encodedPolyline") or "")
+                    return float(route["distanceMeters"]) / 1000, max(1, round(float(duration) / 60)), encoded_polyline
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Fast fallback: Haversine distance with standard 1.25 road curvature factor
+    straight_km = _haversine_km(pickup_lat, pickup_lng, drop_lat, drop_lng)
+    road_km = max(0.5, round(straight_km * 1.25, 2))
+    est_duration_min = max(2, round((road_km / 25.0) * 60))
+    return road_km, est_duration_min, ""
 
 
 def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
@@ -828,7 +831,7 @@ async def create_passenger_ride(
             "dispatch_timeout_ms": DISPATCH_TIMEOUT_MS,
             "dispatch_total_candidates": len(drivers),
             "dispatch_round": 1 if driver_ids else 0,
-            "search_status": "searching_nearby_drivers" if driver_ids else "no_available_drivers",
+            "search_status": "searching_nearby_drivers",
             "createdAt": fb_firestore.SERVER_TIMESTAMP,
         }
         create_transaction(transaction)
