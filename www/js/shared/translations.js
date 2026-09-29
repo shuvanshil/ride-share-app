@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20260928-v1";
+export const TRANSLATIONS_VERSION = "20260929-v1";
 
 export const TRANSLATIONS = {
     "en": {

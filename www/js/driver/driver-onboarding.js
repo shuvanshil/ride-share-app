@@ -540,10 +540,12 @@ function showDriverReview(profile) {
 }
 
 function getGreetingPrefix() {
-    const hour = new Date().getHours();
+    const now = new Date();
+    const utcMillis = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istHour = new Date(utcMillis + (3600000 * 5.5)).getHours();
     const t = (k, f) => (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t(k) : f;
-    if (hour >= 5 && hour < 12) return t('home.greeting_morning', "Good morning");
-    if (hour >= 12 && hour < 17) return t('home.greeting_afternoon', "Good afternoon");
+    if (istHour >= 4 && istHour < 12) return t('home.greeting_morning', "Good morning");
+    if (istHour >= 12 && istHour < 17) return t('home.greeting_afternoon', "Good afternoon");
     return t('home.greeting_evening', "Good evening");
 }
 

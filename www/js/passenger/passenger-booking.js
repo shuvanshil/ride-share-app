@@ -101,34 +101,128 @@ function formatRelativeDay(millis) {
     return new Date(millis).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
+// ==========================================
+// Greetings & Dynamic Sub-greeting Rotation (IST & 3-hour rotation)
+// ==========================================
+
+const GREETINGS_SUB_EN = [
+  "Where are you headed?",
+  "Where are you off to today?",
+  "Got places to go?",
+  "Ready when you are.",
+  "Let's make the journey easy.",
+  "Your ride is just a tap away.",
+  "Another day, another journey.",
+  "Where will you go today?",
+  "Let's get you moving.",
+  "Your destination awaits.",
+  "The road is yours today.",
+  "Wherever today takes you.",
+  "Make your next move.",
+  "Start your journey here.",
+  "Ready when the road is.",
+  "Go places. Go LiphtUp."
+];
+
+const GREETINGS_SUB_BN = [
+  "কোথায় যাচ্ছেন?",
+  "আজ কোথায় চলেছেন?",
+  "কোথাও যাওয়ার আছে?",
+  "আপনি প্রস্তুত তো?",
+  "চলুন, যাত্রাটা সহজ করি।",
+  "এক ট্যাপেই আপনার রাইড।",
+  "আরেকটি দিন, আরেকটি যাত্রা।",
+  "আজ কোথায় যাবেন?",
+  "চলুন, রওনা হওয়া যাক।",
+  "আপনার গন্তব্য অপেক্ষায়।",
+  "আজকের পথ আপনার।",
+  "আজ যেদিকেই যান।",
+  "পরের গন্তব্য ঠিক করুন।",
+  "যাত্রা শুরু হোক এখান থেকেই।",
+  "রাস্তা প্রস্তুত, আপনিও তো?",
+  "ঘুরে আসুন, LiphtUp-এর সাথে।"
+];
+
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+let currentGreetingIndex = -1;
+let lastGreetingTimestamp = 0;
+let cachedUserName = "User";
+
+function getIndianTime() {
+    const now = new Date();
+    const utcMillis = now.getTime() + (now.getTimezoneOffset() * 60000);
+    return new Date(utcMillis + (3600000 * 5.5));
+}
+
+function getGreetingKeyAndFallback() {
+    const istDate = getIndianTime();
+    const hour = istDate.getHours();
+    if (hour >= 4 && hour < 12) {
+        return { key: "home.greeting_morning", fallback: "Good morning" };
+    }
+    if (hour >= 12 && hour < 17) {
+        return { key: "home.greeting_afternoon", fallback: "Good afternoon" };
+    }
+    return { key: "home.greeting_evening", fallback: "Good evening" };
+}
+
 function updateGreeting(name) {
+    if (name) cachedUserName = name;
     const greetingEl = document.getElementById('greeting-text');
     if (!greetingEl) return;
 
-    const hour = new Date().getHours();
-    let key = "home.greeting_morning";
-    let fallback = "Good morning";
-    if (hour >= 12 && hour < 17) {
-        key = "home.greeting_afternoon";
-        fallback = "Good afternoon";
-    } else if (hour >= 17 || hour < 4) {
-        key = "home.greeting_evening";
-        fallback = "Good evening";
-    }
-
+    const { key, fallback } = getGreetingKeyAndFallback();
     const translatedGreeting = t(key, fallback);
 
-    greetingEl.innerHTML = `${translatedGreeting}, <span id="user-display-name">${escapeHtml(name || 'User')}</span> 👋`;
+    greetingEl.innerHTML = `${translatedGreeting}, <span id="user-display-name">${escapeHtml(cachedUserName)}</span> 👋`;
 }
 
-window.addEventListener('languageChanged', () => {
-    const nameEl = document.getElementById('user-display-name');
-    if (nameEl) {
-        updateGreeting(nameEl.innerText);
+function selectRandomGreetingIndex() {
+    const total = GREETINGS_SUB_EN.length;
+    let newIndex = Math.floor(Math.random() * total);
+    if (currentGreetingIndex >= 0 && total > 1 && newIndex === currentGreetingIndex) {
+        newIndex = (newIndex + 1) % total;
     }
-    renderSavedPlaces();
-    renderRecentRides();
-});
+    currentGreetingIndex = newIndex;
+    lastGreetingTimestamp = Date.now();
+    try {
+        sessionStorage.setItem('liphtup_subgreeting_idx', String(currentGreetingIndex));
+        sessionStorage.setItem('liphtup_subgreeting_time', String(lastGreetingTimestamp));
+    } catch (e) {}
+    return currentGreetingIndex;
+}
+
+function updateDynamicSubGreeting() {
+    const subEl = document.getElementById('home-subgreeting-text');
+    if (!subEl) return;
+
+    if (currentGreetingIndex < 0) {
+        selectRandomGreetingIndex();
+    } else {
+        const now = Date.now();
+        if (now - lastGreetingTimestamp >= THREE_HOURS_MS) {
+            selectRandomGreetingIndex();
+        }
+    }
+
+    const currentLang = (window.LiphtUpI18n && typeof window.LiphtUpI18n.getCurrentLanguage === 'function')
+        ? window.LiphtUpI18n.getCurrentLanguage()
+        : 'en';
+    
+    const list = (currentLang === 'bn' || currentLang === 'bengali') ? GREETINGS_SUB_BN : GREETINGS_SUB_EN;
+    const greetingText = list[currentGreetingIndex] || list[0];
+    subEl.textContent = greetingText;
+}
+
+// Periodic check: update every minute if 3 hours elapsed or IST time boundary changed
+setInterval(() => {
+    const now = Date.now();
+    if (now - lastGreetingTimestamp >= THREE_HOURS_MS) {
+        selectRandomGreetingIndex();
+        updateDynamicSubGreeting();
+    }
+    updateGreeting();
+}, 60000);
 
 function getDefaultAvatarUrl(profile = {}) {
     const gender = String(profile.gender || profile.sex || "").trim().toLowerCase();
@@ -296,6 +390,8 @@ function renderRecentRides(trips) {
 let cachedTripsForLanguageSwitch = [];
 
 window.addEventListener('languageChanged', () => {
+    updateGreeting();
+    updateDynamicSubGreeting();
     renderSavedPlaces();
     renderSavedPlacesModalList();
     if (cachedTripsForLanguageSwitch.length) {
@@ -789,11 +885,16 @@ dashboardSearchForm?.addEventListener('submit', (event) => {
 // Bootstrap
 // ==========================================
 
+// Run initial greeting calculation immediately on script load for instant display
+updateGreeting();
+updateDynamicSubGreeting();
+
 window.addEventListener('user-session-ready', (event) => {
     const profile = event.detail || {};
     if (profile.role === "driver" || !profile.uid) return;
     currentUid = profile.uid;
     updateGreeting(profile.name || profile.displayName);
+    updateDynamicSubGreeting();
     setupSideDrawer(profile);
     initRecentRides(profile.uid);
     initSavedPlaces(profile.uid);
