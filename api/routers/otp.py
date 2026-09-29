@@ -10,6 +10,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from ..core.auth import check_user_phone_exists
 from ..core.config import get_env, require_env
 from ..core.errors import ApiError
 from ..core.otp import (
@@ -94,6 +95,9 @@ async def send_otp(request: Request, body: SendOtpBody) -> dict[str, Any]:
 
     if not phone:
         raise ApiError("Enter a valid 10-digit Indian mobile number.", 400)
+
+    if purpose == "register" and check_user_phone_exists(phone):
+        raise ApiError("An account already exists for this mobile number. Please login instead.", 409)
 
     enforce_rate_limit(request, "otp-send", 10, 60 * 60, subject=purpose)
 

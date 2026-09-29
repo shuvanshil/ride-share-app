@@ -9,13 +9,52 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-from firebase_admin import auth as fb_auth
+from firebase_admin import auth as fb_auth, firestore as fb_firestore
 from fastapi import Header
 
 from .errors import ApiError
 from .firebase import get_admin_app
 
 _BEARER_RE = re.compile(r"^Bearer\s+(.+)$", re.IGNORECASE)
+
+
+def check_user_phone_exists(phone: str) -> bool:
+    """Fast check whether a user with the given normalized phone exists across index, auth, or users collection."""
+    if not phone:
+        return False
+    try:
+        app = get_admin_app()
+        db = fb_firestore.client(app)
+
+        # 1. Fast indexed lookup in phoneLoginIndex
+        index_snap = db.collection("phoneLoginIndex").document(phone).get()
+        if index_snap.exists:
+            return True
+
+        # 2. Fast check in Firebase Auth
+        auth_client = fb_auth.Client(app)
+        try:
+            auth_client.get_user_by_phone_number(phone)
+            return True
+        except Exception:
+            pass
+
+        # 3. Fast check in users collection
+        user_query = db.collection("users").where("phone", "==", phone).limit(1).get()
+        if len(user_query) > 0:
+            return True
+
+        user_query_alt = db.collection("users").where("phone_number", "==", phone).limit(1).get()
+        if len(user_query_alt) > 0:
+            return True
+
+        user_query_camel = db.collection("users").where("phoneNumber", "==", phone).limit(1).get()
+        if len(user_query_camel) > 0:
+            return True
+
+        return False
+    except Exception:
+        return False
 
 
 def extract_bearer_token(authorization: Optional[str]) -> str:

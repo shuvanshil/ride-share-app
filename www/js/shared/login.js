@@ -375,48 +375,64 @@ function resetAuthStep() {
     }, 50);
 }
 
+const phoneExistsCache = new Map();
+
 async function checkPhoneExists(phoneNumber) {
-    let clientChecked = false;
-    // Fast path 1: direct Firestore client lookup (instant from local cache / live connection)
-    try {
-        const docSnap = await Promise.race([
-            getDoc(doc(db, PHONE_INDEX_COLLECTION, phoneNumber)),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("firestore_timeout")), 600))
-        ]);
-        clientChecked = true;
-        if (docSnap && docSnap.exists()) {
-            const data = docSnap.data();
-            if (data && (data.email || data.uid)) {
-                return true;
-            }
-        }
-        // If Firestore document does not exist, the user definitely does not exist in phoneLoginIndex
-        return false;
-    } catch (e) {
-        console.warn("Direct Firestore check fallback triggered:", e);
+    if (!phoneNumber) return false;
+    if (phoneExistsCache.has(phoneNumber)) {
+        return phoneExistsCache.get(phoneNumber);
     }
 
-    // Fast path 2: Only fallback to backend endpoint if client Firestore connection timed out / errored
-    if (!clientChecked) {
-        try {
-            const response = await fetch("/api/auth/check-phone", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phone: phoneNumber }),
-                signal: AbortSignal.timeout(800)
-            });
-            if (response.ok) {
-                const data = await response.json().catch(() => ({}));
-                if (data.ok && data.exists) {
-                    return true;
+    const checkPromise = (async () => {
+        // Fast parallel check: Direct Firestore client lookup + Backend multi-table check
+        const clientCheck = async () => {
+            try {
+                const docSnap = await getDoc(doc(db, PHONE_INDEX_COLLECTION, phoneNumber));
+                if (docSnap && docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data && (data.email || data.uid || data.phone)) {
+                        return true;
+                    }
                 }
+            } catch (e) {
+                // Ignore client firestore errors or timeouts
             }
-        } catch (e) {
-            console.warn("Backend check-phone warning:", e);
-        }
-    }
+            return null;
+        };
 
-    return false;
+        const backendCheck = async () => {
+            try {
+                const response = await fetch("/api/auth/check-phone", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phone: phoneNumber }),
+                    signal: AbortSignal.timeout(2000)
+                });
+                if (response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    if (data.ok) {
+                        return Boolean(data.exists);
+                    }
+                }
+            } catch (e) {
+                console.warn("Backend check-phone warning:", e);
+            }
+            return null;
+        };
+
+        const [clientRes, backendRes] = await Promise.all([clientCheck(), backendCheck()]);
+        if (clientRes === true || backendRes === true) {
+            return true;
+        }
+        if (clientRes === false && backendRes === false) {
+            return false;
+        }
+        return clientRes === true || backendRes === true;
+    })();
+
+    const result = await checkPromise;
+    phoneExistsCache.set(phoneNumber, result);
+    return result;
 }
 
 async function sendOTP() {
@@ -472,6 +488,18 @@ async function sendOTP() {
             });
             const reserveData = await reserveRes.json().catch(() => ({}));
             if (!reserveRes.ok || !reserveData.ok) {
+                if (reserveRes.status === 409 || /already exists/i.test(reserveData.error || reserveData.message || "")) {
+                    phoneExistsCache.set(phoneNumber, true);
+                    sendOtpBtn.disabled = false;
+                    resendOtpBtn.disabled = false;
+                    sendOtpBtn.textContent = t('auth.send_registration_otp', "Send Registration OTP");
+                    resendOtpBtn.textContent = t('auth.resend_otp', "Resend OTP");
+                    setAuthStatus();
+                    otpRequestInProgress = false;
+                    loginFlowStarted = false;
+                    showAccountExistsModal(phoneNumber);
+                    return;
+                }
                 throw new Error(reserveData.error || reserveData.message || t('auth.send_otp_failed', "Could not send the OTP. Please try again."));
             }
 
@@ -520,6 +548,18 @@ async function sendOTP() {
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok || !data.ok || !data.otpSessionId) {
+                if (response.status === 409 || /already exists/i.test(data.error || data.message || "")) {
+                    phoneExistsCache.set(phoneNumber, true);
+                    sendOtpBtn.disabled = false;
+                    resendOtpBtn.disabled = false;
+                    sendOtpBtn.textContent = t('auth.send_registration_otp', "Send Registration OTP");
+                    resendOtpBtn.textContent = t('auth.resend_otp', "Resend OTP");
+                    setAuthStatus();
+                    otpRequestInProgress = false;
+                    loginFlowStarted = false;
+                    showAccountExistsModal(phoneNumber);
+                    return;
+                }
                 throw new Error(data.error || data.message || t('auth.send_otp_failed', "Could not send the OTP. Please try again."));
             }
 
@@ -908,9 +948,13 @@ async function finalizeRegistration() {
 
     try {
         await clearActiveAdminOrPriorSession();
-        const existingPhoneLogin = await resolvePhoneLogin(verifiedPhoneNumber);
-        if (existingPhoneLogin?.email) {
-            throw new Error(t('auth.account_exists_login', "An account already exists for this mobile number. Please login instead."));
+        const existingCheck = await checkPhoneExists(verifiedPhoneNumber);
+        if (existingCheck) {
+            showAccountExistsModal(verifiedPhoneNumber);
+            registerBtn.disabled = false;
+            registerBtn.textContent = t('auth.register_btn', "Create Account");
+            updateRegistrationSubmitState();
+            return;
         }
 
         const response = await fetch("/api/register-account", {
@@ -924,6 +968,14 @@ async function finalizeRegistration() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok || !data.customToken || !data.profile) {
+            if (response.status === 409 || /already exists/i.test(data.error || data.message || "")) {
+                phoneExistsCache.set(verifiedPhoneNumber, true);
+                showAccountExistsModal(verifiedPhoneNumber);
+                registerBtn.disabled = false;
+                registerBtn.textContent = t('auth.register_btn', "Create Account");
+                updateRegistrationSubmitState();
+                return;
+            }
             throw new Error(data.error || data.message || t('auth.registration_failed', "Could not create account. Please try again."));
         }
 
@@ -1038,10 +1090,32 @@ if (accountExistsLoginBtn) {
     });
 }
 
+async function precheckRegistrationPhone(rawDigits) {
+    if (authMode !== "register" || rawDigits.length !== 10) return;
+    const formatted = `+91${rawDigits}`;
+    const exists = await checkPhoneExists(formatted);
+    if (exists && authMode === "register") {
+        const currentDigits = (phoneInputEl.value || "").replace(/\D/g, "");
+        if (currentDigits === rawDigits) {
+            showAccountExistsModal(formatted);
+        }
+    }
+}
+
 const phoneInputEl = document.getElementById('phone-number');
 if (phoneInputEl) {
     phoneInputEl.addEventListener('input', (event) => {
-        event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10);
+        const digits = event.target.value.replace(/\D/g, "").slice(0, 10);
+        event.target.value = digits;
+        if (digits.length === 10 && authMode === "register") {
+            precheckRegistrationPhone(digits);
+        }
+    });
+    phoneInputEl.addEventListener('blur', (event) => {
+        const digits = event.target.value.replace(/\D/g, "").slice(0, 10);
+        if (digits.length === 10 && authMode === "register") {
+            precheckRegistrationPhone(digits);
+        }
     });
     phoneInputEl.addEventListener('keydown', (event) => {
         if (event.key === "Enter") sendOTP();

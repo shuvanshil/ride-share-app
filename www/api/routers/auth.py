@@ -55,6 +55,19 @@ async def check_phone(body: CheckPhoneBody) -> dict[str, Any]:
         except Exception:
             pass
 
+        # 3. Fast check in users collection
+        user_query = db.collection("users").where("phone", "==", phone).limit(1).get()
+        if len(user_query) > 0:
+            return {"ok": True, "exists": True, "phone": phone}
+
+        user_query_alt = db.collection("users").where("phone_number", "==", phone).limit(1).get()
+        if len(user_query_alt) > 0:
+            return {"ok": True, "exists": True, "phone": phone}
+
+        user_query_camel = db.collection("users").where("phoneNumber", "==", phone).limit(1).get()
+        if len(user_query_camel) > 0:
+            return {"ok": True, "exists": True, "phone": phone}
+
         return {"ok": True, "exists": False, "phone": phone}
     except Exception as e:
         return {"ok": True, "exists": False, "phone": phone, "warning": str(e)}

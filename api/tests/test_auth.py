@@ -285,4 +285,47 @@ def test_validate_base_profile_optional_email() -> None:
     assert built["gender"] == "Female"
 
 
+def test_check_phone_existing_in_auth(monkeypatch) -> None:
+    class MockDoc:
+        exists = False
 
+    class MockCollection:
+        def document(self, phone):
+            return self
+        def get(self):
+            return MockDoc()
+        def where(self, *args, **kwargs):
+            return self
+        def limit(self, n):
+            return self
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    class MockAuthClient:
+        def __init__(self, app):
+            pass
+        def get_user_by_phone_number(self, phone):
+            return object()
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+    monkeypatch.setattr("api.routers.auth.fb_auth.Client", MockAuthClient)
+
+    client = TestClient(app)
+    response = client.post("/api/auth/check-phone", json={"phone": "9876543210"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["exists"] is True
+
+
+def test_send_otp_blocks_existing_user_on_registration(monkeypatch) -> None:
+    monkeypatch.setattr("api.routers.otp.check_user_phone_exists", lambda phone: True)
+
+    client = TestClient(app)
+    response = client.post("/api/send-otp", json={"phone": "9876543210", "purpose": "register"})
+    assert response.status_code == 409
+    data = response.json()
+    assert "already exists" in (data.get("detail") or data.get("error") or "")

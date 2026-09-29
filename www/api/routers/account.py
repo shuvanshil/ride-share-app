@@ -162,7 +162,7 @@ async def _phone_already_exists(auth_client: fb_auth.Client, db, phone: str) -> 
     try:
         auth_client.get_user_by_phone_number(phone)
         return True
-    except fb_auth.UserNotFoundError:
+    except Exception:
         pass
 
     index_snap = db.collection("phoneLoginIndex").document(phone).get()
@@ -170,7 +170,15 @@ async def _phone_already_exists(auth_client: fb_auth.Client, db, phone: str) -> 
         return True
 
     user_query = db.collection("users").where("phone", "==", phone).limit(1).get()
-    return len(user_query) > 0
+    if len(user_query) > 0:
+        return True
+
+    user_query_alt = db.collection("users").where("phone_number", "==", phone).limit(1).get()
+    if len(user_query_alt) > 0:
+        return True
+
+    user_query_camel = db.collection("users").where("phoneNumber", "==", phone).limit(1).get()
+    return len(user_query_camel) > 0
 
 
 @router.post("/register-account")
