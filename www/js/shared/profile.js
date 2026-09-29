@@ -567,8 +567,14 @@ function populateEditForm() {
 
     inputs.name.value = currentProfile.name || currentAuthUser.displayName || "";
     inputs.email.value = currentProfile.email || "";
+    const rawGender = currentProfile.gender || currentProfile.sex || "";
     if (inputs.gender) {
-        inputs.gender.value = currentProfile.gender || "Others";
+        if (rawGender) {
+            const matchingOpt = Array.from(inputs.gender.options).find(opt => opt.value.toLowerCase() === rawGender.toLowerCase());
+            inputs.gender.value = matchingOpt ? matchingOpt.value : rawGender;
+        } else {
+            inputs.gender.value = "";
+        }
     }
     inputs.phone.value = currentProfile.phone || currentAuthUser.phoneNumber || "";
     const vehicleText = `${currentProfile.vehicleModel || currentProfile.vehicle_model || ""}`.toLowerCase();
@@ -585,7 +591,7 @@ function populateEditForm() {
     roleBadge.innerText = isDriver ? t('profile.driver_account', "Driver account") : t('profile.passenger_account', "Passenger account");
     driverFields.classList.toggle('d-none', !isDriver);
     removePhotoButton.classList.toggle('d-none', !photoUrl);
-    renderAvatar(editAvatar, inputs.name.value, photoUrl);
+    renderAvatar(editAvatar, inputs.name.value, photoUrl, inputs.gender ? inputs.gender.value : rawGender);
     clearError();
 }
 
@@ -916,7 +922,11 @@ function bindProfileActions() {
     editForm.addEventListener('submit', saveProfile);
 
     inputs.name.addEventListener('input', () => {
-        renderAvatar(editAvatar, inputs.name.value, pendingPhotoValue);
+        renderAvatar(editAvatar, inputs.name.value, pendingPhotoValue, inputs.gender?.value || currentProfile?.gender || "");
+    });
+
+    inputs.gender?.addEventListener('change', () => {
+        renderAvatar(editAvatar, inputs.name.value, pendingPhotoValue, inputs.gender.value);
     });
 
     photoUrlInput.addEventListener('change', () => {
@@ -925,7 +935,7 @@ function bindProfileActions() {
         pendingPhotoValue = value;
         photoFileInput.value = "";
         removePhotoButton.classList.remove('d-none');
-        renderAvatar(editAvatar, inputs.name.value, value);
+        renderAvatar(editAvatar, inputs.name.value, value, inputs.gender?.value || currentProfile?.gender || "");
     });
 
     photoFileInput.addEventListener('change', async () => {
@@ -937,7 +947,7 @@ function bindProfileActions() {
             pendingPhotoValue = await compressProfilePhoto(file);
             photoUrlInput.value = "";
             removePhotoButton.classList.remove('d-none');
-            renderAvatar(editAvatar, inputs.name.value, pendingPhotoValue);
+            renderAvatar(editAvatar, inputs.name.value, pendingPhotoValue, inputs.gender?.value || currentProfile?.gender || "");
         } catch (error) {
             photoFileInput.value = "";
             showError(error.message || "Could not prepare this photo.");
@@ -949,7 +959,7 @@ function bindProfileActions() {
         photoUrlInput.value = "";
         photoFileInput.value = "";
         removePhotoButton.classList.add('d-none');
-        renderAvatar(editAvatar, inputs.name.value, "");
+        renderAvatar(editAvatar, inputs.name.value, "", inputs.gender?.value || currentProfile?.gender || "");
     });
 
     profileSessionButton.addEventListener('click', () => {

@@ -157,6 +157,7 @@
                 <div class="profile-form-field">
                     <label for="profile-edit-gender" data-i18n="auth.gender">Gender</label>
                     <select id="profile-edit-gender" class="form-select gy-input">
+                        <option value="" disabled selected data-i18n="auth.select_gender_placeholder">Select Gender Preferences</option>
                         <option value="Male" data-i18n="auth.gender_male">Male</option>
                         <option value="Female" data-i18n="auth.gender_female">Female</option>
                         <option value="Others" data-i18n="auth.gender_others">Others</option>
@@ -170,7 +171,7 @@
                 </div>
 
                 <div class="profile-form-field">
-                    <label for="profile-photo-url"><span data-i18n="profile.photo_url_label">Profile photo URL</span> <span data-i18n="common.optional">Optional</span></label>
+                    <label for="profile-photo-url"><span data-i18n="profile.photo_url_label">Profile photo URL</span> <span class="text-muted small" data-i18n="common.optional">Optional</span></label>
                     <input id="profile-photo-url" class="form-control gy-input" type="url" maxlength="1500" placeholder="https://example.com/photo.jpg">
                 </div>
 

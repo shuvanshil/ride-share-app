@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20260929-v1";
+export const TRANSLATIONS_VERSION = "20260929-v2";
 
 export const TRANSLATIONS = {
     "en": {
@@ -105,6 +105,7 @@ export const TRANSLATIONS = {
             "create_account_sub": "Verify your mobile number, then complete your passenger or driver profile.",
             "gender": "Gender",
             "select_gender": "Select Gender",
+            "select_gender_placeholder": "Select Gender Preferences",
             "select_gender_prompt": "Please select your gender.",
             "gender_male": "Male",
             "gender_female": "Female",
@@ -1086,6 +1087,7 @@ export const TRANSLATIONS = {
             "create_account_sub": "আপনার মোবাইল নম্বর যাচাই করুন, তারপর আপনার প্রোফাইল সম্পূর্ণ করুন।",
             "gender": "লিঙ্গ",
             "select_gender": "লিঙ্গ নির্বাচন করুন",
+            "select_gender_placeholder": "লিঙ্গের পছন্দ নির্বাচন করুন",
             "select_gender_prompt": "অনুগ্রহ করে আপনার লিঙ্গ নির্বাচন করুন।",
             "gender_male": "পুরুষ",
             "gender_female": "মহিলা",

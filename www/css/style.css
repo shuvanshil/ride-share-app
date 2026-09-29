@@ -4530,6 +4530,15 @@ body.profile-editor-open {
 }
 
 .profile-form-field label span {
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+}
+
+.profile-form-field label .text-muted,
+.profile-form-field label span.small,
+.profile-form-field label .profile-optional-tag,
+.profile-form-field label span:not(:first-child) {
     color: var(--gy-muted);
     font-size: 10px;
     font-weight: 600;
@@ -4562,6 +4571,20 @@ body.profile-editor-open {
     background-color: #ffffff !important;
     border-radius: 8px;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-edit-sheet select.gy-input,
+.profile-edit-sheet select.form-select,
+.profile-form-field select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23166534' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 14px center !important;
+    background-size: 16px 16px !important;
+    padding-right: 38px !important;
+    cursor: pointer;
 }
 
 .profile-edit-sheet .gy-input:focus,
