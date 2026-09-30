@@ -1,0 +1,18 @@
+:root {
+    --gy-green: #1A7A2E;
+    --gy-green-soft: #EAF8ED;
+    --gy-bg: #F8F9FA;
+    --gy-muted-bg: #FFFFFF;
+    --gy-text: #111111;
+    --gy-muted: #6B7280;
+    --gy-border: #E7E7E7;
+    --gy-danger: #D32F2F;
+    --gy-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    --gy-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+
+    --driver-green: #16723a;
+    --driver-ink: #17211b;
+    --driver-muted: #66736b;
+    --driver-line: #dce5df;
+    --driver-danger: #b42318;
+}

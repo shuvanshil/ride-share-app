@@ -1,0 +1,38 @@
+{
+  "appId": "in.liphtup.app",
+  "appName": "LiphtUp",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "localhost",
+    "allowNavigation": [
+      "liphtup.in",
+      "*.liphtup.in",
+      "www.gstatic.com",
+      "*.googleapis.com",
+      "*.google.com"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#1A7A2E",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "DARK"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

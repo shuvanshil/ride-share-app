@@ -56,3 +56,21 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// Automatically sync latest web assets from www/ to android assets on every build
+task syncWebAssets(type: Copy) {
+    description = 'Syncs runtime web assets from www/ to android assets before packaging.'
+    from('../../www') {
+        exclude 'api/**', 'admin/**', '**/*.py', '**/*.pyc', 'requirements*.txt', 'vercel.json', 'sitemap.xml', 'robots.txt'
+    }
+    into 'src/main/assets/public'
+    
+    doLast {
+        copy {
+            from('../../capacitor.config.json')
+            into('src/main/assets')
+        }
+    }
+}
+
+preBuild.dependsOn syncWebAssets

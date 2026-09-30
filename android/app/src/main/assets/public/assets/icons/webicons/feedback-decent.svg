@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Face circle -->
+  <circle cx="32" cy="32" r="30" fill="#FEF3C7" stroke="#F59E0B" stroke-width="2.5"/>
+  <!-- Eyes -->
+  <circle cx="22" cy="26" r="3.5" fill="#F59E0B"/>
+  <circle cx="42" cy="26" r="3.5" fill="#F59E0B"/>
+  <!-- Neutral straight mouth -->
+  <path d="M21 40 L43 40" stroke="#F59E0B" stroke-width="3" stroke-linecap="round"/>
+  <!-- Flat eyebrows -->
+  <path d="M17 21 L27 21" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M37 21 L47 21" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

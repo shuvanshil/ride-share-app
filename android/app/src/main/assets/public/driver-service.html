@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="js/platform/native-bridge.js"></script>
+    <script src="js/platform/routes.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1A7A2E">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="LiphtUp">
+    <title>LiphtUp Driver Navigation</title>
+    <meta name="robots" content="noindex, nofollow">
+
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+    <link rel="apple-touch-icon" href="assets/icons/liphtup-icon-180.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css?v=20260809-merge-fix">
+    <link rel="stylesheet" href="css/driver/driver.css?v=2.0.5">
+    <link rel="stylesheet" href="css/driver-service.css?v=2.0.0">
+</head>
+<body>
+    <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
+        <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #1A7A2E;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
+        <style>@keyframes lu-spin { to { transform: rotate(360deg); } }</style>
+    </div>
+    <div id="app-container" class="app-root driver-service-app-root">
+        <div class="screen-shell driver-shell driver-service-page">
+            <header class="app-bar driver-service-header">
+                <div>
+                    <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
+                    <small id="driver-service-status" data-i18n="driver.connecting_service">Connecting to driver service...</small>
+                </div>
+                <span id="driver-service-live-pill" class="online-pill driver-live-pill" data-state="loading">GPS</span>
+            </header>
+
+            <section id="driver-map-stage" class="driver-map-stage" aria-label="Live driver navigation">
+                <!-- Floating Current Location Header Card -->
+                <div id="driver-location-card" class="driver-map-location-card">
+                    <div class="driver-location-icon-badge">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+                            <circle cx="12" cy="10" r="3"/>
+                        </svg>
+                    </div>
+                    <div class="driver-location-text">
+                        <strong class="driver-location-title" data-i18n="driver.current_location">Current Location</strong>
+                        <small id="driver-location-name" class="driver-location-subtitle" data-i18n="driver.detecting_location">Detecting location...</small>
+                    </div>
+                </div>
+
+                <!-- Floating Location Settlement Loading Badge -->
+                <div id="driver-location-loading-overlay" class="driver-location-loading-card">
+                    <span class="lu-spinner lu-spinner-sm me-2" aria-hidden="true" style="border-top-color:#166534;"></span>
+                    <span data-i18n="driver.getting_location">Getting your location...</span>
+                </div>
+
+                <!-- Floating Map Action Controls -->
+                <button id="driver-nav-toggle-btn" class="driver-nav-toggle-btn" type="button" aria-label="Toggle navigation view">
+                    <span class="driver-nav-toggle-icon" aria-hidden="true"></span>
+                </button>
+
+                <div id="driver-service-map" class="driver-service-map">
+                    <div class="driver-map-loading"><span class="lu-spinner" aria-hidden="true"></span><span data-i18n="common.loading_map">Loading Map...</span></div>
+                </div>
+
+                <section id="driver-route-panel" class="driver-route-panel d-none" aria-live="polite">
+                    <div>
+                        <span id="driver-route-label" data-i18n="driver.next_stop">Next stop</span>
+                        <strong id="driver-route-place" data-i18n="driver.waiting_ride_details">Waiting for ride details</strong>
+                    </div>
+                    <div class="driver-route-metrics">
+                        <strong id="driver-route-distance">-- km</strong>
+                        <span id="driver-route-duration">-- min</span>
+                    </div>
+                </section>
+
+                <section id="driver-map-message" class="driver-map-message d-none" aria-live="assertive">
+                    <strong id="driver-map-message-title" data-i18n="driver.location_unavailable">Location unavailable</strong>
+                    <p id="driver-map-message-copy" data-i18n="driver.location_access_required">Allow location access to use live navigation.</p>
+                    <button id="driver-location-retry-btn" class="gy-btn gy-btn-primary" type="button" data-i18n="driver.retry_location">Retry Location</button>
+                </section>
+
+                <div id="driver-route-warning" class="driver-route-warning d-none" role="status" data-i18n="driver.route_unavailable">
+                    Route unavailable. Live markers will remain visible while we retry.
+                </div>
+            </section>
+
+            <!-- Offline Status Banner (Shown ONLY when driver is offline) -->
+            <section id="driver-offline-card" class="driver-offline-banner-card d-none">
+                <div class="driver-offline-banner-left">
+                    <div class="driver-offline-icon-badge">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4.93 4.93a10 10 0 0 1 14.14 0"/>
+                            <path d="M7.76 7.76a6 6 0 0 1 8.48 0"/>
+                            <circle cx="12" cy="12" r="2" fill="#166534"/>
+                            <path d="M12 14v4"/>
+                            <path d="M10 20h4"/>
+                        </svg>
+                    </div>
+                    <div class="driver-offline-banner-text">
+                        <strong data-i18n="driver.currently_offline">You are currently offline</strong>
+                        <p data-i18n="driver.go_online_hint">Go online to start receiving ride requests.</p>
+                    </div>
+                </div>
+                <button id="driver-go-online-btn" class="gy-btn driver-go-online-btn" type="button" data-i18n="driver.go_online">Go Online</button>
+            </section>
+
+            <section id="driver-service-requests" class="driver-service-requests" aria-live="polite">
+                <h6 class="section-title" data-i18n="driver.incoming_requests">Incoming Local Ride Requests</h6>
+                <div id="driver-service-rides-list" class="ride-list">
+                    <div id="driver-service-no-rides-msg" class="driver-empty-requests-card">
+                        <div class="driver-empty-radar-wrap">
+                            <div class="driver-radar-pulse"></div>
+                            <div class="driver-radar-dot"></div>
+                        </div>
+                        <strong class="driver-empty-title" data-i18n="driver.no_active_requests">No active requests</strong>
+                        <p id="driver-empty-subtext" class="driver-empty-subtext">
+                            <span data-i18n="driver.searching_nearby_passengers">We are searching for nearby passengers.</span><br>
+                            <span id="driver-empty-go-online-wrap" class="d-none">
+                                <a href="#" id="driver-empty-go-online-link" class="driver-go-online-link" data-i18n="driver.go_online">Go online</a> <span data-i18n="driver.to_receive_requests">to start receiving ride requests.</span>
+                            </span>
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="driver-service-lifecycle" class="active-trip-card-container driver-service-lifecycle d-none" aria-live="polite">
+                <div class="active-trip-header-bar">
+                    <span class="active-trip-header-title" data-i18n="services.active_trip">Active Trip</span>
+                    <span class="active-trip-header-badge" id="active-trip-header-badge">Active</span>
+                </div>
+                <div id="driver-service-trip-details"></div>
+                <div class="at-bottom-actions-row">
+                    <button id="driver-service-sos-btn" class="gy-btn gy-btn-sos py-2 px-3 fw-bold" style="border-radius:12px; font-size:14px;" type="button">
+                        <span class="webicon webicon-sos" aria-hidden="true" style="width:16px;height:16px;"></span> SOS
+                    </button>
+                    <button id="driver-open-console-btn-inline" class="at-console-btn d-none" type="button">
+                        <span class="webicon webicon-notify" style="width:16px;height:16px;background-color:#fff;"></span>
+                        <span data-i18n="driver.open_console">Open Driver Console</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="driver-service-actions">
+                <button id="driver-open-console-btn" class="gy-btn gy-btn-dark w-100 d-none" type="button" data-i18n="driver.open_duty_console">
+                    Open Duty Console
+                </button>
+            </section>
+
+            <nav class="bottom-nav driver-service-nav">
+                <button type="button" onclick="window.location.href='/driver.html'"><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="nav.home">Home</span></button>
+                <button class="active" type="button"><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="nav.services">Services</span></button>
+                <button type="button" onclick="window.location.href='/history.html'"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="nav.history">History</span></button>
+                <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="nav.profile">Profile</span></button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Collect Fare Modal -->
+    <div id="driver-service-payment-view" class="modal-layer d-none">
+        <div class="driver-fare-collect-card">
+            <!-- Close Button -->
+            <button id="driver-service-close-payment-icon-btn" class="driver-fare-close-btn" type="button" aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+
+            <!-- Hero Top Badge with Rupee Icon and Sparkles -->
+            <div class="driver-fare-hero-wrap">
+                <svg class="driver-fare-sparkle sparkle-top-left" width="16" height="16" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+                <svg class="driver-fare-sparkle sparkle-top-right" width="20" height="20" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+                <svg class="driver-fare-sparkle sparkle-mid-left" width="18" height="18" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+                <svg class="driver-fare-sparkle sparkle-mid-right" width="14" height="14" viewBox="0 0 24 24" fill="#86EFAC">
+                    <path d="M12 0L14.5 9.5L24 12L14.5 14.5L12 24L9.5 14.5L0 12L9.5 9.5L12 0Z"/>
+                </svg>
+
+                <div class="driver-fare-badge-outer">
+                    <div class="driver-fare-badge-inner">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="6" y1="3" x2="18" y2="3"></line>
+                            <line x1="6" y1="8" x2="18" y2="8"></line>
+                            <path d="M6 13l7.5 8"></path>
+                            <path d="M6 13h3a4 4 0 0 0 0-8"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Title & Subtitle -->
+            <h3 id="driver-service-payment-title" class="driver-fare-title" data-i18n="driver.collect_fare_title">Collect Your Fare</h3>
+            <p id="driver-service-payment-subtitle" class="driver-fare-subtitle" data-i18n="driver.upi_qr_notice">Show this screen to the passenger to collect the fare easily.</p>
+
+            <!-- Amount Pill & Big Fare Amount with Sunburst Rays -->
+            <div class="driver-fare-amount-pill" data-i18n="driver.amount_to_collect">Amount to Collect</div>
+            <div class="driver-fare-display-wrap">
+                <svg class="driver-fare-ray ray-left" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="3" stroke-linecap="round">
+                    <line x1="18" y1="12" x2="6" y2="6"></line>
+                    <line x1="20" y1="12" x2="4" y2="12"></line>
+                    <line x1="18" y1="12" x2="6" y2="18"></line>
+                </svg>
+
+                <div id="driver-service-final-fare" class="driver-fare-big-amount">₹0</div>
+
+                <svg class="driver-fare-ray ray-right" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#86EFAC" stroke-width="3" stroke-linecap="round">
+                    <line x1="6" y1="12" x2="18" y2="6"></line>
+                    <line x1="4" y1="12" x2="20" y2="12"></line>
+                    <line x1="6" y1="12" x2="18" y2="18"></line>
+                </svg>
+            </div>
+
+            <!-- 3-Column Fare Breakdown Pill -->
+            <div id="driver-service-fare-breakdown-card" class="driver-fare-breakdown-card">
+                <div class="driver-breakdown-col">
+                    <span class="breakdown-label" data-i18n="driver.total_label">Total</span>
+                    <span id="driver-service-summary-total" class="breakdown-val">₹0</span>
+                </div>
+                <div class="driver-breakdown-divider"></div>
+                <div class="driver-breakdown-col">
+                    <span class="breakdown-label" data-i18n="driver.paid_subsidy_label">Paid via Wallet</span>
+                    <span id="driver-service-summary-paid" class="breakdown-val">₹0</span>
+                </div>
+                <div class="driver-breakdown-divider"></div>
+                <div class="driver-breakdown-col">
+                    <span class="breakdown-label" data-i18n="driver.collect_label">Collect</span>
+                    <span id="driver-service-summary-collect" class="breakdown-val val-highlight">₹0</span>
+                </div>
+            </div>
+
+            <p id="driver-service-fare-note" class="fare-adjustment-note d-none"></p>
+
+            <!-- QR Code Card Frame -->
+            <div class="driver-fare-qr-box">
+                <img id="driver-service-upi-qr-image" src="" alt="UPI QR Code" width="180" height="180">
+            </div>
+
+            <!-- Trust / Security Badge -->
+            <div class="driver-fare-trust-row">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="#16A34A" stroke="#16A34A" stroke-width="1.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M9 12l2 2 4-4" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span data-i18n="driver.upi_security_badge">Secure • UPI Payments • Fast & Easy</span>
+            </div>
+
+            <!-- Full Width Action Button -->
+            <button id="driver-service-close-payment-btn" class="driver-fare-action-btn" type="button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff" stroke="#15803D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" fill="#ffffff"/>
+                    <path d="M8 12l3 3 5-5" stroke="#15803D" stroke-width="2.5" fill="none"/>
+                </svg>
+                <span data-i18n="driver.fare_collected">Fare Collected & Clear</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="js/platform/firebase-init.js"></script>
+    <script type="module" src="js/shared/loading.js"></script>
+    <script type="module" src="js/driver/driver-service.js?v=2.0.1"></script>
+    <script type="module" src="js/shared/i18n.js"></script>
+    <script src="js/shared/pwa.js" defer></script>
+</body>
+</html>

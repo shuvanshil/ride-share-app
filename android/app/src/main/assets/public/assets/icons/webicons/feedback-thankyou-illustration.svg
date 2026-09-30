@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Soft background circle -->
+  <circle cx="60" cy="60" r="54" fill="#FEF9C3" stroke="#FDE047" stroke-width="2"/>
+  
+  <!-- Subtle skyline / trees in background -->
+  <path d="M26 72 L26 58 L34 58 L34 72 Z" fill="#86EFAC" opacity="0.6"/>
+  <path d="M34 72 L34 50 L44 50 L44 72 Z" fill="#BBF7D0" opacity="0.7"/>
+  <path d="M76 72 L76 52 L86 52 L86 72 Z" fill="#BBF7D0" opacity="0.7"/>
+  <path d="M86 72 L86 60 L94 60 L94 72 Z" fill="#86EFAC" opacity="0.6"/>
+  <circle cx="22" cy="62" r="8" fill="#4ADE80" opacity="0.5"/>
+  <circle cx="98" cy="64" r="7" fill="#4ADE80" opacity="0.5"/>
+
+  <!-- Road base -->
+  <path d="M16 72 Q60 76 104 72" stroke="#CBD5E1" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Green Car -->
+  <g transform="translate(30, 44)">
+    <!-- Car body bottom -->
+    <rect x="4" y="16" width="52" height="14" rx="5" fill="#1A7A2E"/>
+    <!-- Car roof -->
+    <path d="M12 16 L18 6 L42 6 L48 16 Z" fill="#22C55E"/>
+    <!-- Windows -->
+    <path d="M16 14 L20 8 L29 8 L29 14 Z" fill="#DCFCE7"/>
+    <path d="M31 14 L31 8 L40 8 L44 14 Z" fill="#DCFCE7"/>
+    <!-- Headlight & Taillight -->
+    <circle cx="53" cy="20" r="2" fill="#F59E0B"/>
+    <circle cx="7" cy="20" r="2" fill="#EF4444"/>
+    <!-- Wheels -->
+    <circle cx="16" cy="30" r="6" fill="#1E293B"/>
+    <circle cx="16" cy="30" r="2.5" fill="#94A3B8"/>
+    <circle cx="44" cy="30" r="6" fill="#1E293B"/>
+    <circle cx="44" cy="30" r="2.5" fill="#94A3B8"/>
+  </g>
+
+  <!-- Green checkmark badge at top center -->
+  <circle cx="60" cy="20" r="14" fill="#1A7A2E" stroke="#FFFFFF" stroke-width="3"/>
+  <path d="M52 20 L57 25 L68 14" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

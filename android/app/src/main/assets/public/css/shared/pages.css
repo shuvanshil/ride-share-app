@@ -1,0 +1,53 @@
+/* Shared Pages, Navigation, Profile & History Styles */
+.side-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.side-drawer-content {
+    width: 280px;
+    height: 100%;
+    background: #fff;
+    box-shadow: -10px 0 30px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    padding-top: max(12px, env(safe-area-inset-top));
+}
+
+.profile-container {
+    padding: 0 14px calc(88px + env(safe-area-inset-bottom));
+}
+
+.profile-header-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
+    padding: 16px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    margin-bottom: 16px;
+}
+
+.history-container {
+    padding: 0 14px calc(88px + env(safe-area-inset-bottom));
+}
+
+.history-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.static-page-content {
+    padding: 16px 14px calc(88px + env(safe-area-inset-bottom));
+    margin: 0;
+    line-height: 1.6;
+}
