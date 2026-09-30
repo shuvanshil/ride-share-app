@@ -885,16 +885,16 @@ function bindProfileActions() {
     document.getElementById('profile-wallet-close-btn')?.addEventListener('click', closeWalletSheet);
     document.getElementById('profile-wallet-backdrop')?.addEventListener('click', closeWalletSheet);
     document.getElementById('profile-wallet-pay-ride-btn')?.addEventListener('click', payRideFromWalletShortcut);
-    document.getElementById('profile-terms-close-btn').addEventListener('click', closeTermsSheet);
-    document.getElementById('profile-terms-backdrop').addEventListener('click', closeTermsSheet);
-    document.getElementById('profile-account-close-btn').addEventListener('click', closeAccountSheet);
-    document.getElementById('profile-account-backdrop').addEventListener('click', closeAccountSheet);
-    document.getElementById('profile-account-logout-btn').addEventListener('click', logoutCurrentUser);
-    document.getElementById('profile-account-delete-open-btn').addEventListener('click', openDeleteSheet);
-    document.getElementById('profile-delete-close-btn').addEventListener('click', closeDeleteSheet);
-    document.getElementById('profile-delete-backdrop').addEventListener('click', closeDeleteSheet);
-    document.getElementById('profile-delete-cancel-btn').addEventListener('click', closeDeleteSheet);
-    deleteForm.addEventListener('submit', deleteAccount);
+    document.getElementById('profile-terms-close-btn')?.addEventListener('click', closeTermsSheet);
+    document.getElementById('profile-terms-backdrop')?.addEventListener('click', closeTermsSheet);
+    document.getElementById('profile-account-close-btn')?.addEventListener('click', closeAccountSheet);
+    document.getElementById('profile-account-backdrop')?.addEventListener('click', closeAccountSheet);
+    document.getElementById('profile-account-logout-btn')?.addEventListener('click', logoutCurrentUser);
+    document.getElementById('profile-account-delete-open-btn')?.addEventListener('click', openDeleteSheet);
+    document.getElementById('profile-delete-close-btn')?.addEventListener('click', closeDeleteSheet);
+    document.getElementById('profile-delete-backdrop')?.addEventListener('click', closeDeleteSheet);
+    document.getElementById('profile-delete-cancel-btn')?.addEventListener('click', closeDeleteSheet);
+    deleteForm?.addEventListener('submit', deleteAccount);
     document.querySelectorAll('[data-share-channel]').forEach((button) => {
         button.addEventListener('click', () => openShareChannel(button.dataset.shareChannel));
     });

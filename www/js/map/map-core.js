@@ -3392,6 +3392,8 @@ export async function fetchRoadRouteDetails(origin, destination) {
         } catch (matrixErr) {
             console.warn("Client-side DistanceMatrixService failed:", matrixErr);
         }
+    }
+
     // Tier 4: Fallback to Haversine distance with 1.25 road curvature factor
     try {
         const straightDistanceKm = calculateDistanceMeters(originCoords, destinationCoords) / 1000;

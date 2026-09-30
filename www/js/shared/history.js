@@ -530,7 +530,7 @@ function setErrorState(error) {
             <button id="history-retry-btn" class="gy-btn gy-btn-primary" type="button">${escapeHtml(t('common.refresh', 'Try Again'))}</button>
         </div>
     `;
-    document.getElementById('history-retry-btn').addEventListener('click', refreshHistory);
+    document.getElementById('history-retry-btn')?.addEventListener('click', refreshHistory);
 }
 
 async function refreshHistory() {

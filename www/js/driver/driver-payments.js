@@ -461,6 +461,8 @@ function switchDriverTab(targetTab) {
         walletContent?.classList.add('d-none');
         serviceFeeContent?.classList.remove('d-none');
     }
+}
+
 serviceFeeTabBtn?.addEventListener('click', () => switchDriverTab('service-fee'));
 walletTabBtn?.addEventListener('click', () => switchDriverTab('wallet'));
 
