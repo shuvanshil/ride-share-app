@@ -3,9 +3,8 @@
   "appName": "LiphtUp",
   "webDir": "www",
   "server": {
-    "url": "https://liphtup.in",
     "androidScheme": "https",
-    "cleartext": false,
+    "hostname": "localhost",
     "allowNavigation": [
       "liphtup.in",
       "*.liphtup.in",
