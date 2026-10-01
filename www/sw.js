@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.3.0-force-cache-invalidation-final";
+const CACHE_VERSION = "liphtup-v3.0.0-dispatch-engine";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [

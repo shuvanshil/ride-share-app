@@ -16,6 +16,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.auth import current_user
 from ..core.config import get_env
+from ..core.dispatch_config import (
+    DRIVER_CANCEL_COOLDOWN_SECONDS,
+    DRIVER_DECLINE_COOLDOWN_SECONDS,
+    DRIVER_POOL_LOCATION_UPDATE_INTERVAL_SECONDS,
+    DRIVER_POOL_MIN_DISTANCE_METERS,
+    PASSENGER_CANCEL_RECOVERY_PRIORITY_BOOST,
+    RADIUS_MAX_KM,
+    TIER_DWELL_SECONDS,
+    get_radius_for_tier,
+    get_tier_sequence,
+)
+from ..core.dispatch_engine import DispatchEngine
+from ..core.dispatch_pools import DispatchPools
 from ..core.errors import ApiError
 from ..core.failures import report_backend_failure
 from ..core.fare_policy import (
@@ -29,6 +42,7 @@ from ..core.fare_policy import (
 )
 from ..core.firebase import get_admin_app
 from ..core.geo import decode_polyline, haversine_km, road_distance_along_route_km
+from ..core.spatial_index import compute_zone_id, haversine_distance_km, lat_lng_to_cell_id
 from ..core.telegram import (
     claim_and_send_sensitive_ride_alert,
     is_sensitive_time_window,
@@ -189,6 +203,17 @@ class DemandEventBody(BaseModel):
     pickupLng: Optional[float] = None
     vehicleType: Optional[str] = Field(default="auto", max_length=20)
     metadata: Optional[dict[str, Any]] = None
+
+
+class OfferActionBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    reason: Optional[str] = Field(default="", max_length=100)
+
+
+class DispatchPingBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    requestId: Optional[str] = None
+    offerId: Optional[str] = None
 
 
 # RIDE_SERVICES, MAX_SERVICEABLE_DISTANCE_KM, FULL_FARE_PROGRESS_RATIO,
@@ -550,33 +575,6 @@ def _accumulate_online_seconds(db, uid: str, previous_moment: Any, still_online:
         _bump_daily_stats(db, uid, {"online_seconds": elapsed})
 
 
-def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
-    now = datetime.now(timezone.utc).timestamp()
-    candidates: list[dict[str, Any]] = []
-    for snapshot in db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).stream():
-        driver = snapshot.to_dict() or {}
-        location = driver.get("driverLocation") or {}
-        lat, lng = location.get("lat"), location.get("lng")
-        last_seen = _timestamp_seconds(driver.get("lastLocationAt") or driver.get("lastSeenAt") or driver.get("updatedAt"))
-        v_status = driver.get("verificationStatus") or driver.get("verification_status") or driver.get("status")
-        is_approved = v_status == "approved" or driver.get("is_verified") is True or driver.get("isApproved") is True
-        if (
-            not is_approved
-            or (last_seen is not None and now - last_seen > DRIVER_LOCATION_VISIBLE_SECONDS)
-            or (last_seen is None and not driver.get("isConnected"))
-            or not isinstance(lat, (int, float))
-            or not isinstance(lng, (int, float))
-            or _driver_type(driver) != vehicle_type
-        ):
-            continue
-        candidates.append({
-            "uid": str(driver.get("uid") or snapshot.id),
-            "distance": _haversine_km(pickup_lat, pickup_lng, float(lat), float(lng)),
-        })
-    candidates.sort(key=lambda item: item["distance"])
-    return candidates
-
-
 def _availability_for_location_update(profile: dict[str, Any], ride_id: str) -> tuple[str, str]:
     """Derive availability and persisted desiredAvailability for a location update.
 
@@ -746,9 +744,6 @@ async def create_passenger_ride(
         if not math.isfinite(distance_km) or distance_km < 0 or distance_km > MAX_SERVICEABLE_DISTANCE_KM:
             raise ApiError("This destination is outside LiphtUp's current service area.", 400)
         fare = _calculate_fare(service, distance_km)
-        drivers = _available_drivers(db, pickup_lat, pickup_lng, body.vehicleType.strip().lower())
-        first_batch = drivers[:DISPATCH_BATCH_SIZE]
-        driver_ids = [driver["uid"] for driver in first_batch]
         ride_ref = db.collection("rides").document()
         transaction = db.transaction()
 
@@ -793,10 +788,6 @@ async def create_passenger_ride(
             "drop_lng": drop_lng,
             "distance_km": round(distance_km, 2),
             "duration_minutes": duration_minutes,
-            # Saved so post-trip fare adjustment can measure how much of the
-            # trip the driver actually drove along the real road, instead of
-            # a straight line -- see road_distance_along_route_km() in
-            # api/core/geo.py and _driver_fare_adjustment() below.
             "route_polyline": route_polyline,
             "fare": fare,
             "quoted_fare": fare,
@@ -819,26 +810,37 @@ async def create_passenger_ride(
             "driverAvailabilitySnapshot": None,
             "payment_methods": ["cash", "upi"],
             "payment_status": "pending",
-            # No PIN is assigned at request time. It is only generated once a
-            # driver accepts the ride (see accept_driver_ride below), so the
-            # passenger never sees a pickup PIN before there is an assigned
-            # driver to share it with.
             "verification_pin": None,
-            "eligible_driver_ids": driver_ids,
-            "notified_driver_ids": driver_ids,
+            "eligible_driver_ids": [],
+            "notified_driver_ids": [],
             "rejected_driver_ids": [],
             "dispatch_batch_size": DISPATCH_BATCH_SIZE,
             "dispatch_timeout_ms": DISPATCH_TIMEOUT_MS,
-            "dispatch_total_candidates": len(drivers),
-            "dispatch_round": 1 if driver_ids else 0,
+            "dispatch_total_candidates": 0,
+            "dispatch_round": 1,
             "search_status": "searching_nearby_drivers",
             "createdAt": fb_firestore.SERVER_TIMESTAMP,
         }
         create_transaction(transaction)
+
+        # Register into DispatchPools and trigger matching engine pass
+        pools = DispatchPools(db)
+        pools.upsert_passenger(
+            request_id=ride_ref.id,
+            passenger_id=uid,
+            pickup={"lat": pickup_lat, "lng": pickup_lng, "name": body.pickupName.strip(), "address": body.pickupName.strip()},
+            drop={"lat": drop_lat, "lng": drop_lng, "name": body.dropName.strip(), "address": body.dropFullAddress.strip()},
+            vehicle_type=body.vehicleType.strip().lower(),
+            mode="searching",
+            fare=float(fare),
+            fare_estimate={"fare": fare, "distance_km": round(distance_km, 2)},
+        )
+        DispatchEngine(db).trigger_matching_pass(caller_id=f"passenger_ride_{uid}")
+
         return {
             "ok": True,
             "rideId": ride_ref.id,
-            "notifiedDriverIds": driver_ids,
+            "notifiedDriverIds": [],
             "ride": {key: value for key, value in ride_data.items() if key != "createdAt"},
         }
     except ApiError:
@@ -863,6 +865,22 @@ def get_active_pending_request(
         raise ApiError("Authenticated user identity is missing.", 401)
 
     db = fb_firestore.client(get_admin_app())
+    # Check dispatchPassengerPool first
+    pool_q = (
+        db.collection("dispatchPassengerPool")
+        .where("passenger_id", "==", uid)
+        .where("status", "in", ["searching", "offered", "no_drivers_found", "notify_me", "scheduled"])
+        .limit(1)
+    )
+    pool_docs = list(pool_q.stream())
+    if pool_docs:
+        p_doc = pool_docs[0]
+        p_data = dict(p_doc.to_dict() or {})
+        # Privacy sanitization: Never expose internal exclusion sets or driver IDs to the passenger
+        p_data.pop("excluded_driver_ids", None)
+        p_data.pop("active_offer", None)
+        return {"ok": True, "hasActivePending": True, "pendingRequest": {**p_data, "requestId": p_doc.id}}
+
     pending_q = (
         db.collection("pendingRideRequests")
         .where("passengerId", "==", uid)
@@ -874,7 +892,9 @@ def get_active_pending_request(
         return {"ok": True, "hasActivePending": False, "pendingRequest": None}
 
     doc = docs[0]
-    data = doc.to_dict() or {}
+    data = dict(doc.to_dict() or {})
+    data.pop("rejected_driver_ids", None)
+    data.pop("lockedByDriverId", None)
     now = datetime.now(timezone.utc)
     expires_at = data.get("expiresAt")
     if expires_at:
@@ -896,7 +916,7 @@ async def create_pending_request(
     body: PendingRideRequestBody,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Create or update a persistent pending ride request (Feature 3)."""
+    """Create or update a persistent pending ride request in the global dispatch pool."""
     uid = str(user.get("uid") or "").strip()
     if not uid:
         raise ApiError("Authenticated user identity is missing.", 401)
@@ -948,6 +968,9 @@ async def create_pending_request(
         req_ref = db.collection("pendingRideRequests").document()
 
     fare_estimate = body.fareEstimate or {}
+    fare_val = float(fare_estimate.get("fare") or 0)
+    dist_val = float(fare_estimate.get("distance_km") or 0)
+
     pending_doc_data = {
         "requestId": req_ref.id,
         "passengerId": uid,
@@ -973,20 +996,31 @@ async def create_pending_request(
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         "expiresAt": expires_at,
         "activatesAt": activates_at_dt,
-        "fare": float(fare_estimate.get("fare") or 0),
-        "distanceKm": float(fare_estimate.get("distance_km") or 0),
+        "fare": fare_val,
+        "distanceKm": dist_val,
         "fareEstimate": fare_estimate,
         "lockedByDriverId": None,
         "rejected_driver_ids": [],
     }
-
     req_ref.set(pending_doc_data, merge=True)
 
-    # Immediately trigger activation & driver matching sweep if due or searching
-    try:
-        activate_due_scheduled_requests(db)
-    except Exception as exc:
-        print(f"Immediate scheduled activation error: {exc}")
+    # Upsert into DispatchPools
+    pool_mode = "scheduled" if mode == "schedule" else ("notify_me" if mode == "notify_only" else "searching")
+    pools = DispatchPools(db)
+    pools.upsert_passenger(
+        request_id=req_ref.id,
+        passenger_id=uid,
+        pickup=pending_doc_data["pickup"],
+        drop=pending_doc_data["drop"],
+        vehicle_type=body.vehicleType.strip().lower() or "auto",
+        mode=pool_mode,
+        scheduled_for=activates_at_dt,
+        fare=fare_val,
+        fare_estimate=fare_estimate,
+    )
+
+    if pool_mode == "searching":
+        DispatchEngine(db).trigger_matching_pass(caller_id=f"pending_req_{uid}")
 
     _log_demand_event(db, "pending_created", {
         "requestId": req_ref.id,
@@ -1018,6 +1052,21 @@ def cancel_pending_request(
 
     try:
         db = fb_firestore.client(get_admin_app())
+        pools = DispatchPools(db)
+        p_snap = pools.passenger_pool_ref.document(clean_req_id).get()
+        if p_snap.exists:
+            p_data = p_snap.to_dict() or {}
+            active_off = p_data.get("active_offer") or {}
+            offered_driver = active_off.get("driver_id")
+            if offered_driver:
+                # Release driver back to available
+                pools.driver_pool_ref.document(offered_driver).update({
+                    "state": "available",
+                    "active_offer": None,
+                    "updated_at": fb_firestore.SERVER_TIMESTAMP,
+                })
+            pools.remove_passenger(clean_req_id, reason="passenger_cancelled")
+
         doc_ref = db.collection("pendingRideRequests").document(clean_req_id)
         doc_snap = doc_ref.get()
         if doc_snap.exists:
@@ -1035,10 +1084,319 @@ def cancel_pending_request(
                 })
             except Exception:
                 pass
+
+        DispatchEngine(db).trigger_matching_pass(caller_id=f"cancel_pending_{uid}")
     except Exception as exc:
         print(f"Cancel pending request exception handled: {exc}")
 
     return {"ok": True, "requestId": clean_req_id, "status": "cancelled"}
+
+
+@router.post("/pending-request/{request_id}/expand-tier")
+def expand_pending_request_tier(
+    request_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Manually advance passenger search radius tier up to the 25km cap."""
+    uid = str(user.get("uid") or "").strip()
+    clean_id = request_id.strip()[:160]
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    db = fb_firestore.client(get_admin_app())
+    pools = DispatchPools(db)
+    p_ref = pools.passenger_pool_ref.document(clean_id)
+    p_snap = p_ref.get()
+    if not p_snap.exists:
+        raise ApiError("Pending request not found.", 404)
+
+    p_data = p_snap.to_dict() or {}
+    if p_data.get("passenger_id") != uid:
+        raise ApiError("Only the passenger can expand this request.", 403)
+
+    curr_tier = int(p_data.get("tier", 0))
+    tier_seq = get_tier_sequence()
+    new_tier = min(len(tier_seq) - 1, curr_tier + 1)
+    new_radius = get_radius_for_tier(new_tier)
+    pickup = p_data.get("pickup", {})
+    new_zone = compute_zone_id(pickup.get("lat", 0.0), pickup.get("lng", 0.0), new_tier)
+    now = datetime.now(timezone.utc)
+
+    p_ref.update({
+        "tier": new_tier,
+        "current_radius_km": new_radius,
+        "zone_id": new_zone,
+        "next_tier_at": now + timedelta(seconds=TIER_DWELL_SECONDS),
+        "updated_at": fb_firestore.SERVER_TIMESTAMP,
+    })
+
+    DispatchEngine(db).trigger_matching_pass(caller_id=f"expand_tier_{uid}")
+    return {
+        "ok": True,
+        "requestId": clean_id,
+        "tier": new_tier,
+        "radiusKm": new_radius,
+    }
+
+
+@router.post("/pending-request/{request_id}/notify-me")
+def opt_in_notify_me(
+    request_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Explicitly switches a timed-out searching request into 'notify_me' mode with a 2-hour TTL."""
+    uid = str(user.get("uid") or "").strip()
+    clean_id = request_id.strip()[:160]
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    db = fb_firestore.client(get_admin_app())
+    pools = DispatchPools(db)
+    p_ref = pools.passenger_pool_ref.document(clean_id)
+    p_snap = p_ref.get()
+    if not p_snap.exists:
+        raise ApiError("Pending request not found.", 404)
+
+    p_data = p_snap.to_dict() or {}
+    if p_data.get("passenger_id") != uid:
+        raise ApiError("Only the passenger can update this request.", 403)
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=2)
+
+    p_ref.update({
+        "mode": "notify_me",
+        "status": "notify_me",
+        "search_expires_at": expires_at,
+        "updated_at": fb_firestore.SERVER_TIMESTAMP,
+    })
+
+    # Also sync pendingRideRequests collection
+    db.collection("pendingRideRequests").document(clean_id).set({
+        "mode": "notify_only",
+        "status": "pending",
+        "expiresAt": expires_at,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }, merge=True)
+
+    try:
+        db.collection("dispatchLogs").document().set({
+            "eventType": "passenger_opt_in_notify_me",
+            "requestId": clean_id,
+            "passengerId": uid,
+            "expiresAt": expires_at,
+            "createdAt": fb_firestore.SERVER_TIMESTAMP,
+        })
+    except Exception:
+        pass
+
+    _log_demand_event(db, "pending_opted_in_notify_me", {"requestId": clean_id, "passengerId": uid})
+    return {"ok": True, "requestId": clean_id, "mode": "notify_me", "expiresAt": expires_at.isoformat()}
+
+
+@router.post("/offers/{offer_id}/accept")
+def accept_ride_offer(
+    offer_id: str,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Transactionally accept an atomic ride offer for the authenticated driver."""
+    uid = str(user.get("uid") or "").strip()
+    clean_offer_id = offer_id.strip()[:160]
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    db = fb_firestore.client(get_admin_app())
+    profile = db.collection("users").document(uid).get().to_dict() or {}
+    _require_approved_driver(profile, "Only approved drivers can accept ride offers.")
+    driver_type = _driver_type(profile)
+
+    pools = DispatchPools(db)
+    d_ref = pools.driver_pool_ref.document(uid)
+    d_snap = d_ref.get()
+    if not d_snap.exists:
+        raise ApiError("Driver pool record not found.", 404)
+
+    d_data = d_snap.to_dict() or {}
+    active_off = d_data.get("active_offer") or {}
+    if str(active_off.get("offer_id")) != clean_offer_id:
+        raise ApiError("Offer is no longer active or was reassigned.", 409)
+
+    now = datetime.now(timezone.utc)
+    exp_at = active_off.get("expires_at")
+    exp_dt = exp_at if isinstance(exp_at, datetime) else (datetime.fromtimestamp(exp_at.timestamp(), tz=timezone.utc) if hasattr(exp_at, "timestamp") else None)
+    if exp_dt and now > exp_dt:
+        raise ApiError("Offer has expired.", 410)
+
+    req_id = str(active_off.get("request_id") or "")
+    p_ref = pools.passenger_pool_ref.document(req_id)
+    ride_ref = db.collection("rides").document()
+
+    verification_pin = f"{secrets.randbelow(10000):04d}"
+    service = RIDE_SERVICES.get(driver_type, RIDE_SERVICES["auto"])
+    fare_amount = float(active_off.get("fare") or 0.0)
+
+    ride_data = {
+        "passenger_id": active_off.get("passenger_id"),
+        "passengerId": active_off.get("passenger_id"),
+        "passenger_name": str(active_off.get("passenger_name") or "Passenger")[:80],
+        "passenger_phone": "",
+        "pickup_name": str(active_off.get("pickup", {}).get("name") or "Pickup")[:120],
+        "drop_name": str(active_off.get("drop", {}).get("name") or "Drop")[:120],
+        "drop_full_address": str(active_off.get("drop", {}).get("address") or "")[:240],
+        "pickup_lat": float(active_off.get("pickup", {}).get("lat", 0.0)),
+        "pickup_lng": float(active_off.get("pickup", {}).get("lng", 0.0)),
+        "drop_lat": float(active_off.get("drop", {}).get("lat", 0.0)),
+        "drop_lng": float(active_off.get("drop", {}).get("lng", 0.0)),
+        "distance_km": float(active_off.get("distance_km") or 0.0),
+        "duration_minutes": float(active_off.get("eta_minutes") or 0.0),
+        "fare": fare_amount,
+        "quoted_fare": fare_amount,
+        "fare_original": fare_amount,
+        "fare_base": service["base"],
+        "fare_per_km": service["per_km"],
+        "fare_min": service["min_fare"],
+        "fare_is_night": service["is_night_fare"],
+        "fare_requested_at": now.isoformat(),
+        "fare_currency": "INR",
+        "vehicle_type": driver_type,
+        "service_name": service["name"],
+        "passenger_capacity": service["capacity"],
+        "status": "accepted",
+        "driver_id": uid,
+        "driver_name": str(profile.get("name") or "Driver")[:80],
+        "driver_phone": str(profile.get("phone") or "")[:40],
+        "driver_profile_photo": str(profile.get("profilePhotoUrl") or "")[:500000],
+        "vehicle_model": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Vehicle")[:100],
+        "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
+        "payment_methods": ["cash", "upi"],
+        "payment_status": "pending",
+        "verification_pin": verification_pin,
+        "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
+        "createdAt": fb_firestore.SERVER_TIMESTAMP,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+
+    tx = db.transaction()
+
+    @fb_firestore.transactional
+    def _accept_offer_tx(transaction):
+        # Update driver pool
+        transaction.update(d_ref, {
+            "state": "busy",
+            "active_offer": None,
+            "version": int(d_data.get("version", 0)) + 1,
+            "updated_at": fb_firestore.SERVER_TIMESTAMP,
+        })
+        # Remove passenger from pool
+        transaction.delete(p_ref)
+        # Create authoritative ride doc
+        transaction.set(ride_ref, ride_data)
+
+    _accept_offer_tx(tx)
+
+    # Sync pendingRideRequests if exists
+    try:
+        db.collection("pendingRideRequests").document(req_id).update({
+            "status": "accepted",
+            "rideId": ride_ref.id,
+            "lockedByDriverId": uid,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        })
+    except Exception:
+        pass
+
+    try:
+        db.collection("dispatchLogs").document().set({
+            "eventType": "offer_accepted",
+            "offerId": clean_offer_id,
+            "rideId": ride_ref.id,
+            "requestId": req_id,
+            "driverId": uid,
+            "createdAt": fb_firestore.SERVER_TIMESTAMP,
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "rideId": ride_ref.id,
+        "pin": verification_pin,
+        "status": "accepted",
+        "ride": _safe_ride_dict(ride_data),
+    }
+
+
+@router.post("/offers/{offer_id}/decline")
+def decline_ride_offer(
+    offer_id: str,
+    body: OfferActionBody = OfferActionBody(),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Decline an active ride offer, adding driver to exclusion set and releasing driver."""
+    uid = str(user.get("uid") or "").strip()
+    clean_offer_id = offer_id.strip()[:160]
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+
+    db = fb_firestore.client(get_admin_app())
+    pools = DispatchPools(db)
+    d_ref = pools.driver_pool_ref.document(uid)
+    d_snap = d_ref.get()
+
+    if d_snap.exists:
+        d_data = d_snap.to_dict() or {}
+        active_off = d_data.get("active_offer") or {}
+        req_id = active_off.get("request_id")
+
+        d_ref.update({
+            "state": "available",
+            "active_offer": None,
+            "declines_recent": int(d_data.get("declines_recent", 0)) + 1,
+            "updated_at": fb_firestore.SERVER_TIMESTAMP,
+        })
+
+        if req_id:
+            p_ref = pools.passenger_pool_ref.document(req_id)
+            p_snap = p_ref.get()
+            if p_snap.exists:
+                p_data = p_snap.to_dict() or {}
+                excl = list(p_data.get("excluded_driver_ids") or [])
+                if uid not in excl:
+                    excl.append(uid)
+                p_ref.update({
+                    "status": "searching",
+                    "active_offer": None,
+                    "excluded_driver_ids": excl,
+                    "updated_at": fb_firestore.SERVER_TIMESTAMP,
+                })
+
+        try:
+            db.collection("dispatchLogs").document().set({
+                "eventType": "offer_declined",
+                "offerId": clean_offer_id,
+                "requestId": req_id,
+                "driverId": uid,
+                "reason": (body.reason or "driver_declined")[:100],
+                "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
+
+    DispatchEngine(db).trigger_matching_pass(caller_id=f"decline_offer_{uid}")
+    return {"ok": True, "offerId": clean_offer_id, "status": "declined"}
+
+
+@router.post("/dispatch/ping")
+def ping_dispatch(
+    request: Request,
+    body: DispatchPingBody = DispatchPingBody(),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Client keep-alive ping for searching passengers and offered drivers."""
+    uid = str(user.get("uid") or "").strip()
+    db = fb_firestore.client(get_admin_app())
+    metrics = DispatchEngine(db).trigger_matching_pass(caller_id=f"ping_{uid or 'client'}")
+    return {"ok": True, "status": "pong", "metrics": metrics}
 
 
 # ---------------------------------------------------------------------------
@@ -1205,8 +1563,48 @@ def transition_driver_ride(
             db.collection("users").document(uid).set(user_update, merge=True)
             db.collection("driverPresence").document(uid).set(presence_update, merge=True)
             db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
-            if availability_status == "searching":
-                _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+
+            pools = DispatchPools(db)
+            loc = profile.get("driverLocation") or profile.get("location") or {}
+            driver_lat = float(loc.get("lat") or 0.0)
+            driver_lng = float(loc.get("lng") or 0.0)
+
+            if action == "complete":
+                if availability_status == "searching" and driver_lat and driver_lng:
+                    pools.upsert_driver(
+                        driver_id=uid,
+                        lat=driver_lat,
+                        lng=driver_lng,
+                        vehicle_type=_driver_type(profile),
+                        state="available",
+                        available_since=datetime.now(timezone.utc),
+                    )
+                DispatchEngine(db).trigger_matching_pass(caller_id=f"complete_ride_{uid}")
+            elif action == "cancel":
+                if availability_status == "searching" and driver_lat and driver_lng:
+                    pools.upsert_driver(
+                        driver_id=uid,
+                        lat=driver_lat,
+                        lng=driver_lng,
+                        vehicle_type=_driver_type(profile),
+                        state="available",
+                        declines_recent=int(profile.get("declines_recent", 0)) + 2,
+                    )
+                p_uid = str(ride.get("passenger_id") or "")
+                if p_uid:
+                    p_pickup = {"lat": float(ride.get("pickup_lat", 0.0)), "lng": float(ride.get("pickup_lng", 0.0)), "name": ride.get("pickup_name", "Pickup")}
+                    p_drop = {"lat": float(ride.get("drop_lat", 0.0)), "lng": float(ride.get("drop_lng", 0.0)), "name": ride.get("drop_name", "Drop")}
+                    pools.upsert_passenger(
+                        request_id=f"rec_{clean_ride_id}",
+                        passenger_id=p_uid,
+                        pickup=p_pickup,
+                        drop=p_drop,
+                        vehicle_type=str(ride.get("vehicle_type", "auto")),
+                        mode="searching",
+                        fare=float(ride.get("fare", 0.0)),
+                        was_driver_cancelled=True,
+                    )
+                DispatchEngine(db).trigger_matching_pass(caller_id=f"driver_cancel_{uid}")
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": _safe_ride_dict(result)}
     except ApiError:
         raise
@@ -1219,7 +1617,7 @@ def expand_passenger_dispatch(
     ride_id: str,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Expand a passenger's pending driver search without client Firestore writes."""
+    """Expand a passenger's pending driver search tier."""
     uid = str(user.get("uid") or "").strip()
     clean_ride_id = str(ride_id or "").strip()[:160]
     if not uid:
@@ -1229,48 +1627,24 @@ def expand_passenger_dispatch(
 
     try:
         db = fb_firestore.client(get_admin_app())
-        profile = db.collection("users").document(uid).get().to_dict() or {}
-        _require_role(profile, "passenger", "Only passengers can expand this search.")
-        ride_ref = db.collection("rides").document(clean_ride_id)
-        snapshot = ride_ref.get()
-        if not snapshot.exists:
-            raise ApiError("Ride not found.", 404)
-        ride = snapshot.to_dict() or {}
-        if ride.get("passenger_id") != uid:
-            raise ApiError("Only the passenger can expand this search.", 403)
-        if ride.get("status") != "pending" or ride.get("driver_id"):
-            raise ApiError("Only pending unassigned rides can expand their search.", 409)
-
-        excluded = set(ride.get("notified_driver_ids") or []) | set(ride.get("rejected_driver_ids") or [])
-        all_candidates = _available_drivers(
-            db,
-            float(ride.get("pickup_lat")),
-            float(ride.get("pickup_lng")),
-            str(ride.get("vehicle_type") or ""),
-        )
-        batch_size = int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)
-        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][:batch_size]
-
-        # Retry search resilience: If no new unnotified drivers exist, but active drivers are currently online and searching,
-        # fallback to re-dispatching active candidates (excluding explicitly rejected drivers first, then all active candidates)
-        if not next_batch and all_candidates:
-            rejected = set(ride.get("rejected_driver_ids") or [])
-            next_batch = [item["uid"] for item in all_candidates if item["uid"] not in rejected][:batch_size]
-            if not next_batch:
-                next_batch = [item["uid"] for item in all_candidates][:batch_size]
-
-        notified = list(dict.fromkeys([*(ride.get("notified_driver_ids") or []), *next_batch]))
-        eligible = list(dict.fromkeys([*(ride.get("eligible_driver_ids") or []), *next_batch]))
-        updates = {
-            "eligible_driver_ids": eligible,
-            "notified_driver_ids": notified,
-            "dispatch_round": int(ride.get("dispatch_round") or 0) + (1 if next_batch else 0),
-            "last_dispatch_at": fb_firestore.SERVER_TIMESTAMP,
-            "search_status": "searching_nearby_drivers" if next_batch else "no_more_available_drivers",
-            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        ride_ref.update(updates)
-        return {"ok": True, "rideId": clean_ride_id, "driverIds": next_batch, "searchStatus": updates["search_status"]}
+        pools = DispatchPools(db)
+        p_ref = pools.passenger_pool_ref.document(clean_ride_id)
+        p_snap = p_ref.get()
+        if p_snap.exists:
+            p_data = p_snap.to_dict() or {}
+            curr_tier = int(p_data.get("tier", 0))
+            tier_seq = get_tier_sequence()
+            new_tier = min(len(tier_seq) - 1, curr_tier + 1)
+            new_radius = get_radius_for_tier(new_tier)
+            p_ref.update({
+                "tier": new_tier,
+                "current_radius_km": new_radius,
+                "next_tier_at": datetime.now(timezone.utc) + timedelta(seconds=TIER_DWELL_SECONDS),
+                "updated_at": fb_firestore.SERVER_TIMESTAMP,
+            })
+            DispatchEngine(db).trigger_matching_pass(caller_id=f"expand_dispatch_{uid}")
+            return {"ok": True, "rideId": clean_ride_id, "tier": new_tier, "radiusKm": new_radius, "searchStatus": "searching_nearby_drivers"}
+        return {"ok": True, "rideId": clean_ride_id, "searchStatus": "searching_nearby_drivers"}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
@@ -1310,11 +1684,18 @@ def update_driver_availability(
         db.collection("users").document(uid).set(user_update, merge=True)
         db.collection("driverPresence").document(uid).set(presence_update, merge=True)
         db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
-        if status == "searching":
-            activate_due_scheduled_requests(db)
-            _match_pending_requests_for_driver(
-                db, uid, profile, {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
+        if status in {"searching", "online"} and lat is not None and lng is not None:
+            DispatchPools(db).upsert_driver(
+                driver_id=uid,
+                lat=lat,
+                lng=lng,
+                vehicle_type=_driver_type(profile),
+                state="available",
             )
+            DispatchEngine(db).trigger_matching_pass(caller_id=f"driver_avail_{uid}")
+        elif status == "offline":
+            DispatchPools(db).remove_driver(uid, reason="driver_offline")
+
         return {"ok": True, "status": status}
     except ApiError:
         raise
@@ -1403,6 +1784,31 @@ def update_driver_location(
             "lastLocationAt": now,
             "updatedAt": now,
         }, merge=True)
+
+        # Throttled driver pool update: check distance and time thresholds
+        if availability in {"searching", "online"}:
+            prev_loc = profile.get("driverLocation") or {}
+            prev_lat, prev_lng = prev_loc.get("lat"), prev_loc.get("lng")
+            last_pool_time = _timestamp_seconds(profile.get("lastPoolUpdateAt"))
+            now_ts = now.timestamp()
+
+            should_update_pool = False
+            if prev_lat is None or prev_lng is None:
+                should_update_pool = True
+            elif (now_ts - (last_pool_time or 0)) >= DRIVER_POOL_LOCATION_UPDATE_INTERVAL_SECONDS:
+                should_update_pool = True
+            elif haversine_distance_km(lat, lng, float(prev_lat), float(prev_lng)) * 1000.0 >= DRIVER_POOL_MIN_DISTANCE_METERS:
+                should_update_pool = True
+
+            if should_update_pool:
+                DispatchPools(db).upsert_driver(
+                    driver_id=uid,
+                    lat=lat,
+                    lng=lng,
+                    vehicle_type=_driver_type(profile),
+                    state="available",
+                )
+                profile_ref.set({"lastPoolUpdateAt": now}, merge=True)
         if ride_id:
             ride_updates: dict[str, Any] = {
                 "driverLocation": location,
@@ -1444,9 +1850,6 @@ def update_driver_location(
                 db.collection("tripShareView").document(ride_id).set(
                     {"driverLocation": location, "status": ride.get("status"), "updatedAt": now}, merge=True
                 )
-        if availability == "searching" and not ride_id:
-            activate_due_scheduled_requests(db)
-            _match_pending_requests_for_driver(db, uid, profile, location)
         return {"ok": True, "rideId": ride_id or None, "status": availability}
     except ApiError:
         raise
@@ -1834,21 +2237,9 @@ def reject_driver_ride(
                             })
                 rollback_pending_tx(db.transaction())
 
-                # Cascading dispatch: immediately attempt to match next available driver
-                searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
-                for d_doc in searching_drivers:
-                    if d_doc.id == uid:
-                        continue
-                    driver_uid = d_doc.id
-                    d_data = d_doc.to_dict() or {}
-                    d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
-                    d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
-                    if driver_uid and d_loc:
-                        matched_id = _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
-                        if matched_id:
-                            break
+                DispatchEngine(db).trigger_matching_pass(caller_id=f"reject_ride_{uid}")
             except Exception as e:
-                print(f"Pending rollback cascading dispatch error: {e}")
+                print(f"Pending rollback error: {e}")
 
         _bump_daily_stats(db, uid, {"declined_count": 1})
         return {"ok": True, "rideId": clean_ride_id, "status": "declined"}
@@ -2294,379 +2685,12 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
         print(f"Driver notification skipped: {exc}")
 
 
-def _match_pending_requests_for_driver(
-    db,
-    driver_id: str,
-    driver_profile: dict[str, Any],
-    driver_location: Optional[dict[str, float]],
-) -> Optional[str]:
-    """FIFO matching of pending requests against a newly available driver with atomic race-condition lock."""
-    if not driver_location or "lat" not in driver_location or "lng" not in driver_location:
-        return None
-
-    driver_lat = float(driver_location["lat"])
-    driver_lng = float(driver_location["lng"])
-    driver_type = _driver_type(driver_profile)
-
-    now = datetime.now(timezone.utc)
-
-    # Clean up stale locks for requests locked > 45s without driver acceptance (ignored requests)
-    try:
-        stale_locks = list(
-            db.collection("pendingRideRequests")
-            .where("status", "==", "dispatching")
-            .limit(10)
-            .stream()
-        )
-        for sdoc in stale_locks:
-            sdata = sdoc.to_dict() or {}
-            locked_at = sdata.get("dispatchLockedAt")
-            locked_driver = sdata.get("lockedByDriverId")
-            if locked_at:
-                locked_dt = _to_utc_datetime(locked_at)
-                if locked_dt and (now - locked_dt) > timedelta(seconds=45):
-                    sdoc.reference.update({
-                        "status": "pending",
-                        "lockedByDriverId": None,
-                        "dispatchLockedAt": None,
-                        "rejected_driver_ids": fb_firestore.ArrayUnion([locked_driver]) if locked_driver else [],
-                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                    })
-    except Exception:
-        pass
-
-    pending_query = (
-        db.collection("pendingRideRequests")
-        .where("status", "==", "pending")
-        .order_by("createdAt", direction=fb_firestore.Query.ASCENDING)
-        .limit(20)
-    )
-
-    try:
-        docs = list(pending_query.stream())
-    except Exception:  # noqa: BLE001
-        return None
-
-    for doc in docs:
-        data = doc.to_dict() or {}
-        req_id = doc.id
-
-        # Skip if driver previously declined this pending request
-        if driver_id in (data.get("rejected_driver_ids") or []):
-            continue
-
-        # Check TTL expiry
-        expires_at = data.get("expiresAt")
-        if expires_at:
-            exp_time = (
-                expires_at
-                if isinstance(expires_at, datetime)
-                else (datetime.fromtimestamp(expires_at.timestamp(), tz=timezone.utc) if hasattr(expires_at, "timestamp") else None)
-            )
-            if exp_time and now > exp_time:
-                doc.reference.update({"status": "expired", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
-                _log_demand_event(db, "pending_expired", {"requestId": req_id, "passengerId": data.get("passengerId")})
-                continue
-
-        # Check scheduled activation time (lead window: 15 minutes before activatesAt up to 2 hours after)
-        activates_at = data.get("activatesAt")
-        act_time = None
-        if activates_at:
-            act_time = _to_utc_datetime(activates_at)
-            if act_time:
-                if now < (act_time - timedelta(minutes=15)):
-                    continue
-                if now > (act_time + timedelta(hours=2)):
-                    doc.reference.update({"status": "expired", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
-                    continue
-
-        # Check vehicle type match
-        req_vehicle = str(data.get("vehicleType") or "").strip().lower()
-        if req_vehicle and req_vehicle != "any" and req_vehicle != driver_type:
-            continue
-
-        # Check radius match
-        pickup = data.get("pickup") or {}
-        p_lat = pickup.get("lat")
-        p_lng = pickup.get("lng")
-        if p_lat is None or p_lng is None:
-            continue
-
-        search_radius_meters = float(data.get("searchRadius") or 5000.0)
-        search_radius_km = search_radius_meters / 1000.0
-        distance_km = _haversine_km(driver_lat, driver_lng, float(p_lat), float(p_lng))
-
-        if distance_km > search_radius_km:
-            continue
-
-        mode = str(data.get("mode") or "notify_only").strip().lower()
-        passenger_id = str(data.get("passengerId") or data.get("passenger_id") or "").strip()
-        # Support both "drop" (new) and "dropoff" (legacy) field names
-        drop = data.get("drop") or data.get("dropoff") or {}
-        d_lat = drop.get("lat") or p_lat
-        d_lng = drop.get("lng") or p_lng
-
-        if mode in {"notify_only", "notify"}:
-            if data.get("lastNotifiedAt"):
-                continue
-            doc.reference.update({
-                "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
-                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
-            _log_demand_event(db, "pending_matched_notify", {
-                "requestId": req_id,
-                "passengerId": passenger_id,
-                "driverId": driver_id,
-                "distanceKm": distance_km,
-            })
-            _send_passenger_push_and_inapp(
-                db,
-                passenger_id,
-                "Driver Available Nearby!",
-                f"An approved driver is now available near {pickup.get('name', 'your location')}. Tap to search now!",
-                {
-                    "url": f"{APP_BASE_URL}/services?restorePending={req_id}",
-                    "type": "pending_driver_available",
-                    "requestId": req_id,
-                }
-            )
-            continue
-
-        if mode == "schedule":
-            # Schedule mode: only search AFTER scheduled activation time
-            if not act_time or now < act_time:
-                continue
-            if data.get("lastNotifiedAt"):
-                continue
-
-            doc.reference.update({
-                "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
-                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
-            _log_demand_event(db, "pending_matched_schedule", {
-                "requestId": req_id,
-                "passengerId": passenger_id,
-                "driverId": driver_id,
-                "distanceKm": distance_km,
-            })
-            _send_passenger_push_and_inapp(
-                db,
-                passenger_id,
-                "Driver Available for Scheduled Ride!",
-                f"A driver is now available for your scheduled pickup near {pickup.get('name', 'your location')}. Tap to confirm and search.",
-                {
-                    "url": f"{APP_BASE_URL}/services?restorePending={req_id}",
-                    "type": "pending_driver_available",
-                    "requestId": req_id,
-                }
-            )
-            continue
-
-        if mode == "auto":
-            # Create standard live ride document targeting this driver
-            ride_ref = db.collection("rides").document()
-            pending_ref = db.collection("pendingRideRequests").document(req_id)
-            claimed = False
-
-            @fb_firestore.transactional
-            def claim_tx(tx):
-                snap = pending_ref.get(transaction=tx)
-                if not snap.exists:
-                    return False
-                curr = snap.to_dict() or {}
-                if curr.get("status") != "pending" or curr.get("lockedByDriverId"):
-                    return False
-                if driver_id in (curr.get("rejected_driver_ids") or []):
-                    return False
-                
-                update_fields = {
-                    "status": "dispatching",
-                    "rideId": ride_ref.id,
-                    "lockedByDriverId": driver_id,
-                    "dispatchLockedAt": fb_firestore.SERVER_TIMESTAMP,
-                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                }
-                if curr.get("mode") == "schedule":
-                    update_fields["mode"] = "auto"
-                    update_fields["sourceMode"] = "schedule"
-                    
-                tx.update(pending_ref, update_fields)
-                return True
-
-            try:
-                claimed = claim_tx(db.transaction())
-            except Exception as e:
-                claimed = False
-
-            if not claimed:
-                continue  # Another worker claimed it; gracefully evaluate next candidate
-
-            service = RIDE_SERVICES.get(driver_type, RIDE_SERVICES["bike"])
-            fare_amount = float(data.get("fare") or 0)
-            ride_data = {
-                "passenger_id": passenger_id,
-                "passengerId": passenger_id,
-                "passenger_name": str(data.get("passengerName") or "Passenger")[:80],
-                "passenger_phone": str(data.get("passengerPhone") or "")[:40],
-                "pickup_name": str(pickup.get("name") or "Pickup location")[:120],
-                "drop_name": str(drop.get("name") or "Destination")[:120],
-                "drop_full_address": str(drop.get("fullAddress") or "")[:240],
-                "pickup_lat": float(p_lat),
-                "pickup_lng": float(p_lng),
-                "drop_lat": float(d_lat),
-                "drop_lng": float(d_lng),
-                "distance_km": round(float(data.get("distanceKm") or 0), 2),
-                "duration_minutes": float(data.get("durationMinutes") or 0),
-                "fare": fare_amount,
-                "quoted_fare": fare_amount,
-                "fare_original": fare_amount,
-                "fare_base": service["base"],
-                "fare_per_km": service["per_km"],
-                "fare_min": service["min_fare"],
-                "fare_is_night": service["is_night_fare"],
-                "fare_requested_at": datetime.now(timezone.utc).isoformat(),
-                "fare_currency": "INR",
-                "vehicle_type": driver_type,
-                "service_name": service["name"],
-                "passenger_capacity": service["capacity"],
-                "status": "pending",
-                "sourceMode": data.get("sourceMode") or ("schedule" if data.get("mode") == "schedule" else "auto"),
-                "pendingRequestId": req_id,
-                "driver_id": None,
-                "driver_name": None,
-                "driver_phone": None,
-                "vehicle_model": None,
-                "vehicle_number": None,
-                "payment_methods": ["cash", "upi"],
-                "payment_status": "pending",
-                "verification_pin": None,
-                "eligible_driver_ids": [driver_id],
-                "notified_driver_ids": [driver_id],
-                "rejected_driver_ids": [],
-                "dispatch_batch_size": 1,
-                "dispatch_timeout_ms": 300000,
-                "dispatch_total_candidates": 1,
-                "dispatch_round": 1,
-                "search_status": "searching_nearby_drivers",
-                "createdAt": fb_firestore.SERVER_TIMESTAMP,
-            }
-            ride_ref.set(ride_data)
-            pending_ref.update({"rideId": ride_ref.id})
-
-            _log_demand_event(db, "pending_matched_auto", {
-                "requestId": req_id,
-                "rideId": ride_ref.id,
-                "passengerId": passenger_id,
-                "driverId": driver_id,
-                "distanceKm": distance_km,
-            })
-            _send_passenger_push_and_inapp(
-                db,
-                passenger_id,
-                "Driver Found!",
-                f"We found a driver for your ride to {drop.get('name', 'Destination')}.",
-                {"url": f"{APP_BASE_URL}/services", "type": "pending_matched_auto", "requestId": req_id, "rideId": ride_ref.id}
-            )
-            _send_driver_push_notification(
-                db,
-                driver_id,
-                "New Ride Request!",
-                f"Passenger: {data.get('passengerName', 'Rider')} - Pickup: {pickup.get('name', 'Pickup')}",
-                {
-                    "type": "NEW_PASSENGER_AVAILABLE",
-                    "rideId": ride_ref.id,
-                    "passengerName": str(data.get("passengerName") or "Rider"),
-                    "pickupLocation": str(pickup.get("name") or "Pickup"),
-                    "estimatedEarning": str(round(fare_amount)),
-                    "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push"
-                }
-            )
-            return req_id
-
-        elif mode == "notify_only":
-            if data.get("lastNotifiedAt"):
-                continue
-            # Never dispatch to individual driver; only notify passenger
-            doc.reference.update({
-                "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
-                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
-            _log_demand_event(db, "pending_matched_notify", {
-                "requestId": req_id,
-                "passengerId": passenger_id,
-                "driverId": driver_id,
-                "distanceKm": distance_km,
-            })
-            _send_passenger_push_and_inapp(
-                db,
-                passenger_id,
-                "Driver Available Nearby",
-                f"A driver is now available near {pickup.get('name', 'your location')}. Tap to book your ride.",
-                {
-                    "url": f"{APP_BASE_URL}/services?restorePending={req_id}",
-                    "type": "pending_driver_available",
-                    "requestId": req_id,
-                }
-            )
-
-    return None
-
-
-
-
 def activate_due_scheduled_requests(db) -> int:
-    """Evaluates due scheduled requests starting after their activatesAt time."""
-    now = datetime.now(timezone.utc)
-    try:
-        docs = list(
-            db.collection("pendingRideRequests")
-            .where("status", "==", "pending")
-            .where("mode", "==", "schedule")
-            .limit(50)
-            .stream()
-        )
-    except Exception:
-        return 0
-
-    evaluated_count = 0
-    for doc in docs:
-        data = doc.to_dict() or {}
-        activates_at = data.get("activatesAt")
-        if not activates_at:
-            continue
-        act_time = _to_utc_datetime(activates_at)
-        if not act_time:
-            continue
-
-        if now >= act_time:
-            evaluated_count += 1
-            # Check if 10 minutes pass after scheduled time with no driver match
-            if now >= (act_time + timedelta(minutes=10)) and not data.get("scheduleTimedOut"):
-                doc.reference.update({
-                    "scheduleTimedOut": True,
-                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                })
-                _send_passenger_push_and_inapp(
-                    db,
-                    str(data.get("passengerId") or ""),
-                    "Scheduled Ride Update",
-                    "No driver found within 10 minutes of your scheduled time. Tap to update scheduled time by 15 minutes or cancel.",
-                    {"url": f"{APP_BASE_URL}/services", "type": "schedule_timeout_prompt", "requestId": doc.id}
-                )
-
-    try:
-        searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
-        for d_doc in searching_drivers:
-            d_data = d_doc.to_dict() or {}
-            driver_uid = d_doc.id
-            d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
-            d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
-            if driver_uid and d_loc:
-                _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
-    except Exception as exc:
-        print(f"Scheduled activation driver sweep error: {exc}")
-
-    return evaluated_count
+    """Activates due scheduled requests and runs pool sweeper invariants."""
+    pools = DispatchPools(db)
+    metrics = pools.run_sweeper()
+    DispatchEngine(db).trigger_matching_pass(caller_id="sweeper_activation")
+    return int(metrics.get("scheduled_activations", 0))
 
 
 @router.post("/pending-request/{request_id}/reschedule-15min")
@@ -2707,6 +2731,19 @@ def reschedule_pending_request_15min(
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
     })
 
+    # Sync dispatchPassengerPool
+    pools = DispatchPools(db)
+    p_ref = pools.passenger_pool_ref.document(clean_id)
+    p_snap = p_ref.get()
+    if p_snap.exists:
+        p_ref.update({
+            "scheduled_for": new_activates_dt,
+            "search_expires_at": new_expires_dt,
+            "mode": "scheduled",
+            "status": "scheduled",
+            "updated_at": fb_firestore.SERVER_TIMESTAMP,
+        })
+
     _log_demand_event(db, "pending_rescheduled_15min", {"requestId": clean_id, "passengerId": uid})
     return {
         "ok": True,
@@ -2720,43 +2757,36 @@ def reschedule_pending_request_15min(
 def activate_scheduled_due_endpoint(
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Background trigger to activate scheduled requests due within 10 minutes."""
+    """Background trigger to activate scheduled requests due within 15 minutes and sweep pools."""
     db = fb_firestore.client(get_admin_app())
     count = activate_due_scheduled_requests(db)
     return {"ok": True, "activatedCount": count}
 
 
+@router.get("/cron/dispatch-sweep")
 @router.get("/cron/activate-scheduled")
 @router.get("/scheduled/activate-due-cron")
-def cron_activate_scheduled(request: Request) -> dict[str, Any]:
-    """Cron endpoint called periodically (e.g. Vercel Cron) to promote scheduled rides."""
+def cron_dispatch_sweep(request: Request) -> dict[str, Any]:
+    """Cron endpoint called periodically to run pool sweeper and trigger matching passes."""
     cron_secret = os.getenv("CRON_SECRET", "").strip()
     auth_header = request.headers.get("authorization") or request.headers.get("Authorization") or ""
     x_cron_header = request.headers.get("x-cron-secret") or request.headers.get("X-Cron-Secret") or ""
-    
+
     if cron_secret:
         valid_auth = (auth_header == f"Bearer {cron_secret}") or (x_cron_header == cron_secret)
         if not valid_auth:
             raise ApiError("Unauthorized cron request.", 401)
-            
-    db = fb_firestore.client(get_admin_app())
-    count = activate_due_scheduled_requests(db)
-    
-    # Trigger matching for active searching drivers against promoted schedule requests
-    if count > 0:
-        try:
-            searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
-            for doc in searching_drivers:
-                d_data = doc.to_dict() or {}
-                driver_uid = doc.id
-                d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
-                d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation")
-                if driver_uid and d_loc:
-                    _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
-        except Exception as exc:
-            print(f"Cron matching sweep skipped: {exc}")
 
-    return {"ok": True, "activatedCount": count}
+    db = fb_firestore.client(get_admin_app())
+    pools = DispatchPools(db)
+    sweeper_metrics = pools.run_sweeper()
+    pass_metrics = DispatchEngine(db).trigger_matching_pass(caller_id="cron_sweeper")
+
+    return {
+        "ok": True,
+        "sweeperMetrics": sweeper_metrics,
+        "passMetrics": pass_metrics,
+    }
 
 
 @router.get("/driver/nearby-demand")
@@ -3008,3 +3038,10 @@ def submit_ride_feedback(
         raise
     except Exception as error:  # noqa: BLE001
         raise ApiError("Could not submit feedback. Please try again.", 503)
+
+
+@router.post("/expand-tier")
+@router.post("/match")
+@router.post("/dispatch/expand")
+def legacy_dispatch_deprecated():
+    raise ApiError("Your app version is outdated. Please refresh to use the latest dispatch engine.", 410)
