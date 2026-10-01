@@ -368,23 +368,6 @@
         { "fieldPath": "severity", "order": "ASCENDING" },
         { "fieldPath": "lastSeenAt", "order": "ASCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "driverPresence",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "driverAvailability", "order": "ASCENDING" },
-        { "fieldPath": "zoneId", "order": "ASCENDING" },
-        { "fieldPath": "lastLocationAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "driverPresence",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "driverAvailability", "order": "ASCENDING" },
-        { "fieldPath": "zoneId", "order": "ASCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []

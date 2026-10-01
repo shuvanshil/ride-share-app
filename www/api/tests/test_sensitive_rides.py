@@ -214,7 +214,7 @@ def test_telegram_failure_allows_retry() -> None:
         def document(self, doc_id):
             return MockRideRef()
         def transaction(self):
-            return MockTx()
+            return None
 
     db = MockDb()
 

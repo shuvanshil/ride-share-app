@@ -87,27 +87,34 @@ function saveIgnoredRideIds(rideIds) {
 // ==========================================
 // 5-MINUTE RIDE REQUEST TIMEOUT & LIFECYCLE
 // ==========================================
+const RIDE_REQUEST_TTL_MS = 5 * 60 * 1000;
 const activeRideRequestTimers = new Map();
 
-function getRideRemainingMs(ride = {}) {
-    if (ride.currentOffer?.expiresAt) {
-        let expMs = 0;
-        if (typeof ride.currentOffer.expiresAt.toMillis === "function") {
-            expMs = ride.currentOffer.expiresAt.toMillis();
-        } else if (ride.currentOffer.expiresAt.seconds) {
-            expMs = ride.currentOffer.expiresAt.seconds * 1000;
-        } else {
-            expMs = new Date(ride.currentOffer.expiresAt).getTime();
-        }
-        if (!isNaN(expMs) && expMs > 0) {
-            return Math.max(0, expMs - Date.now());
-        }
+function getRideCreatedAtMs(ride = {}) {
+    if (ride.createdAt) {
+        if (typeof ride.createdAt.toMillis === "function") return ride.createdAt.toMillis();
+        if (typeof ride.createdAt.toDate === "function") return ride.createdAt.toDate().getTime();
+        if (typeof ride.createdAt === "number") return ride.createdAt;
+        if (typeof ride.createdAt.seconds === "number") return ride.createdAt.seconds * 1000;
     }
-    return null;
+    if (ride.fare_requested_at) {
+        const t = new Date(ride.fare_requested_at).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    if (ride.requested_at) {
+        const t = new Date(ride.requested_at).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    return Date.now();
+}
+
+function getRideRemainingMs(ride = {}) {
+    const createdMs = getRideCreatedAtMs(ride);
+    const elapsed = Date.now() - createdMs;
+    return Math.max(0, RIDE_REQUEST_TTL_MS - elapsed);
 }
 
 function formatCountdownTimer(remainingMs) {
-    if (remainingMs === null || remainingMs === undefined) return "";
     const totalSecs = Math.max(0, Math.floor(remainingMs / 1000));
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
@@ -152,9 +159,6 @@ function recheckIncomingRequestsCount() {
 function attachRideCardCountdown(rideId, ride) {
     clearRideRequestTimer(rideId);
     const initialRemaining = getRideRemainingMs(ride);
-    if (initialRemaining === null) {
-        return;
-    }
     if (initialRemaining <= 0) {
         removeExpiredRideCard(rideId);
         return;
@@ -2020,20 +2024,6 @@ async function writeDriverLocation(position) {
     if (Number.isFinite(Number(position.driverAccuracy))) telemetryData.driverAccuracy = Number(position.driverAccuracy);
     await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
 }
-
-let stationaryHeartbeatTimer = null;
-function startStationaryHeartbeat() {
-    if (stationaryHeartbeatTimer) clearInterval(stationaryHeartbeatTimer);
-    stationaryHeartbeatTimer = setInterval(() => {
-        if (!currentUser?.uid || document.hidden) return;
-        const isOffline = (currentUser?.driverAvailability || "offline") === "offline";
-        if (isOffline) return;
-        if (lastPosition && (Date.now() - lastWriteAt >= 20000)) {
-            writeDriverLocation(lastPosition).catch(() => {});
-        }
-    }, 20000);
-}
-startStationaryHeartbeat();
 
 let isLocationSettled = false;
 let gpsSampleCount = 0;
