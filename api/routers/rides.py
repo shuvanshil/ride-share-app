@@ -27,8 +27,9 @@ from ..core.fare_policy import (
     calculate_fare,
     get_service_fare_policy,
 )
+from ..core.dispatch_config import load_dispatch_config
 from ..core.firebase import get_admin_app
-from ..core.geo import decode_polyline, haversine_km, road_distance_along_route_km
+from ..core.geo import decode_polyline, haversine_km, is_in_lla, road_distance_along_route_km
 from ..core.telegram import (
     claim_and_send_sensitive_ride_alert,
     is_sensitive_time_window,
@@ -737,6 +738,13 @@ async def create_passenger_ride(
     if _haversine_km(pickup_lat, pickup_lng, drop_lat, drop_lng) < 0.01:
         raise ApiError("Pickup and destination must be different.", 400)
 
+    dispatch_cfg = load_dispatch_config()
+    if dispatch_cfg.lla_enforce:
+        if not is_in_lla(pickup_lat, pickup_lng):
+            raise ApiError("This pickup location is outside LiphtUp's Limited Lipht Area (LLA).", 400)
+        if dispatch_cfg.require_dropoff_inside and not is_in_lla(drop_lat, drop_lng):
+            raise ApiError("This destination is outside LiphtUp's Limited Lipht Area (LLA).", 400)
+
     try:
         db = fb_firestore.client(get_admin_app())
         profile_snapshot = db.collection("users").document(uid).get()
@@ -909,6 +917,14 @@ async def create_pending_request(
     pickup_lng = _coordinate(body.pickupLng, -180, 180)
     drop_lat = _coordinate(body.dropLat, -90, 90)
     drop_lng = _coordinate(body.dropLng, -180, 180)
+
+    dispatch_cfg = load_dispatch_config()
+    if dispatch_cfg.lla_enforce:
+        if not is_in_lla(pickup_lat, pickup_lng):
+            raise ApiError("This pickup location is outside LiphtUp's Limited Lipht Area (LLA).", 400)
+        if dispatch_cfg.require_dropoff_inside and not is_in_lla(drop_lat, drop_lng):
+            raise ApiError("This destination is outside LiphtUp's Limited Lipht Area (LLA).", 400)
+
     mode = body.mode.strip().lower()
     if mode not in {"auto", "notify_only", "schedule"}:
         mode = "notify_only"

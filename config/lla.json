@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "name": "Limited Lipht Area (LLA)",
+  "description": "Authoritative 6-vertex bounding hexagon covering Unakoti and North Tripura with buffer",
+  "buffer_km": 7.5,
+  "centroid": [
+    24.23,
+    92.175833
+  ],
+  "vertices": [
+    [
+      24.658143,
+      92.181886
+    ],
+    [
+      24.80144,
+      92.463475
+    ],
+    [
+      23.657598,
+      92.441727
+    ],
+    [
+      23.754801,
+      92.265515
+    ],
+    [
+      23.544134,
+      91.851539
+    ],
+    [
+      24.826917,
+      91.875929
+    ]
+  ],
+  "bounding_box": {
+    "min_lat": 23.544134,
+    "max_lat": 24.826917,
+    "min_lng": 91.851539,
+    "max_lng": 92.463475
+  }
+}
