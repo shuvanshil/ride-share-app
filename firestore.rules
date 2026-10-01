@@ -255,6 +255,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Authoritative Server-Side Dispatch Lease and Orchestration:
+    match /dispatch/{docId} {
+      allow read, write: if false;
+    }
+
+    // Dispatch Shadow Mode Simulation Logs:
+    // Admin read only; all writes server-owned by FastAPI Admin SDK.
+    match /dispatchShadowLogs/{logId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

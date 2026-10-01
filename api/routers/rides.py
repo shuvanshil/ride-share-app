@@ -28,6 +28,7 @@ from ..core.fare_policy import (
     get_service_fare_policy,
 )
 from ..core.dispatch_config import load_dispatch_config
+from ..core.dispatch_engine import run_dispatch_tick, trigger_opportunistic_tick
 from ..core.firebase import get_admin_app
 from ..core.geo import decode_polyline, haversine_km, is_in_lla, point_to_zone, road_distance_along_route_km
 from ..core.telegram import (
@@ -846,7 +847,17 @@ async def create_passenger_ride(
             "search_status": "searching_nearby_drivers",
             "createdAt": fb_firestore.SERVER_TIMESTAMP,
         }
+        if dispatch_cfg.algorithm == "hex_batch":
+            ride_data["searchRing"] = 1
+            ride_data["searchStartedAt"] = ride_requested_at
+            ride_data["dispatchNotBefore"] = ride_requested_at + timedelta(milliseconds=dispatch_cfg.batch_hold_ms)
+            ride_data["excludedDriverIds"] = []
+            ride_data["currentOffer"] = None
+            ride_data["eligible_driver_ids"] = []
+            ride_data["notified_driver_ids"] = []
+
         create_transaction(transaction)
+        await trigger_opportunistic_tick(caller_ride_id=ride_ref.id)
         return {
             "ok": True,
             "rideId": ride_ref.id,
@@ -1297,6 +1308,21 @@ def expand_passenger_dispatch(
         raise ApiError("Could not expand the driver search.", 503)
 
 
+@router.post("/dispatch-tick")
+async def manual_dispatch_tick(
+    request: Request,
+    ride_id: Optional[str] = Query(None),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Client/Cron triggerable authoritative dispatch tick."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is missing.", 401)
+    caller_ride_id = str(ride_id or "").strip()[:160] if ride_id else None
+    result = await run_dispatch_tick(caller_ride_id=caller_ride_id)
+    return {"ok": True, "result": result}
+
+
 @router.post("/driver-availability")
 def update_driver_availability(
     body: DriverAvailabilityBody,
@@ -1733,6 +1759,16 @@ def accept_driver_ride(
 
             if ride.get("vehicle_type") != driver_type:
                 raise ApiError("This ride requires a matching registered vehicle.", 403)
+
+            dispatch_cfg = load_dispatch_config()
+            if dispatch_cfg.algorithm == "hex_batch":
+                curr_off = ride.get("currentOffer") or {}
+                if curr_off.get("driverId") and curr_off.get("driverId") != uid:
+                    raise ApiError("This offer was assigned to another driver.", 403)
+                off_exp = _timestamp_to_dt(curr_off.get("expiresAt"))
+                if off_exp and now > off_exp:
+                    raise ApiError("This ride offer has expired.", 410)
+
             if uid not in (ride.get("eligible_driver_ids") or []):
                 raise ApiError("This ride request is no longer available for you.", 403)
             if uid in (ride.get("rejected_driver_ids") or []):
@@ -1781,6 +1817,7 @@ def accept_driver_ride(
 
         accept_transaction(transaction)
         db.collection("driverPresence").document(uid).set({
+            "dispatchLock": None,
             "driverAvailability": "busy",
             "desiredAvailability": "online",
             "isConnected": True,
@@ -1800,7 +1837,7 @@ def accept_driver_ride(
 
 
 @router.post("/{ride_id}/reject")
-def reject_driver_ride(
+async def reject_driver_ride(
     ride_id: str,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
@@ -1831,6 +1868,23 @@ def reject_driver_ride(
             return {"ok": True, "rideId": clean_ride_id, "status": ride.get("status") or "unavailable"}
         if uid not in (ride.get("eligible_driver_ids") or []):
             raise ApiError("This ride request is no longer available for you.", 403)
+
+        dispatch_cfg = load_dispatch_config()
+        if dispatch_cfg.algorithm == "hex_batch":
+            ride_ref.update({
+                "rejected_driver_ids": fb_firestore.ArrayUnion([uid]),
+                "excludedDriverIds": fb_firestore.ArrayUnion([uid]),
+                "eligible_driver_ids": [],
+                "currentOffer": None,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+            db.collection("driverPresence").document(uid).set({
+                "dispatchLock": None,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            }, merge=True)
+            _bump_daily_stats(db, uid, {"declined_count": 1})
+            await trigger_opportunistic_tick(caller_ride_id=clean_ride_id)
+            return {"ok": True, "rideId": clean_ride_id, "status": "pending"}
 
         ride_ref.update({
             "status": "declined",
