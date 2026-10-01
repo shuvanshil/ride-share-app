@@ -2025,6 +2025,18 @@ async function writeDriverLocation(position) {
     await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
 }
 
+let stationaryHeartbeatTimer = null;
+function startStationaryHeartbeat() {
+    if (stationaryHeartbeatTimer) clearInterval(stationaryHeartbeatTimer);
+    stationaryHeartbeatTimer = setInterval(() => {
+        if (!currentUser?.uid || document.hidden) return;
+        if (lastPosition && (Date.now() - lastWriteAt >= 20000)) {
+            writeDriverLocation(lastPosition).catch(() => {});
+        }
+    }, 20000);
+}
+startStationaryHeartbeat();
+
 let isLocationSettled = false;
 let gpsSampleCount = 0;
 let locationSettlementTimer = null;

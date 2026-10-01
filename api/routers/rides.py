@@ -29,7 +29,7 @@ from ..core.fare_policy import (
 )
 from ..core.dispatch_config import load_dispatch_config
 from ..core.firebase import get_admin_app
-from ..core.geo import decode_polyline, haversine_km, is_in_lla, road_distance_along_route_km
+from ..core.geo import decode_polyline, haversine_km, is_in_lla, point_to_zone, road_distance_along_route_km
 from ..core.telegram import (
     claim_and_send_sensitive_ride_alert,
     is_sensitive_time_window,
@@ -498,9 +498,13 @@ def _build_driver_availability_updates(
 
     if eff_loc and "lat" in eff_loc and "lng" in eff_loc:
         loc_dict = {"lat": float(eff_loc["lat"]), "lng": float(eff_loc["lng"])}
+        zone_id = point_to_zone(loc_dict["lat"], loc_dict["lng"])
         user_update["driverLocation"] = loc_dict
+        user_update["zoneId"] = zone_id
         presence_update["driverLocation"] = loc_dict
+        presence_update["zoneId"] = zone_id
         map_presence_update["driverLocation"] = _coarse_location(loc_dict)
+        map_presence_update["zoneId"] = zone_id
 
     return user_update, presence_update, map_presence_update
 
@@ -1379,6 +1383,7 @@ def update_driver_location(
                 raise ApiError("This ride is no longer active.", 409)
 
         location = {"lat": lat, "lng": lng}
+        zone_id = point_to_zone(lat, lng)
         telemetry = {key: value for key, value in {
             "driverHeading": body.driverHeading,
             "driverSpeed": body.driverSpeed,
@@ -1387,6 +1392,7 @@ def update_driver_location(
         now = datetime.now(timezone.utc)
         presence_update = {
             "driverLocation": location,
+            "zoneId": zone_id,
             **telemetry,
             "driverAvailability": availability,
             "desiredAvailability": persisted_desired,
@@ -1399,6 +1405,7 @@ def update_driver_location(
         }
         profile_ref.set({
             "driverLocation": location,
+            "zoneId": zone_id,
             **telemetry,
             "notificationEligibleUntil": now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS),
             "lastSeenAt": now,
@@ -1414,6 +1421,7 @@ def update_driver_location(
             "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
             "vehicle_type": _driver_type(profile),
             "driverLocation": _coarse_location(location),
+            "zoneId": zone_id,
             "isConnected": True,
             "lastSeenAt": now,
             "lastLocationAt": now,

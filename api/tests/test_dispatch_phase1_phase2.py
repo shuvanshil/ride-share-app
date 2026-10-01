@@ -32,16 +32,18 @@ def test_lla_inside_outside_points():
     # Centroid must be inside
     assert is_in_lla(centroid[0], centroid[1], lla) is True
 
-    # Known locations inside Unakoti & North Tripura
-    assert is_in_lla(24.32, 92.01, lla) is True  # Kumarghat
-    assert is_in_lla(24.36, 92.16, lla) is True  # Dharmanagar
-    assert is_in_lla(24.28, 92.14, lla) is True  # Panisagar
-    assert is_in_lla(23.97, 92.22, lla) is True  # Kanchanpur
+    # Survey of India / OSM standard town centroids inside Unakoti & North Tripura
+    assert is_in_lla(24.3314, 92.0084, lla) is True  # Kailashahar
+    assert is_in_lla(24.1612, 92.0305, lla) is True  # Kumarghat
+    assert is_in_lla(24.3768, 92.1643, lla) is True  # Dharmanagar
+    assert is_in_lla(24.3725, 92.0715, lla) is True  # Boulapassa
+    assert is_in_lla(24.3210, 92.0250, lla) is True  # Kacharghat
 
-    # Locations clearly outside LLA
-    assert is_in_lla(23.83, 91.28, lla) is False  # Agartala (West Tripura)
-    assert is_in_lla(24.83, 92.79, lla) is False  # Silchar (Assam)
-    assert is_in_lla(22.57, 88.36, lla) is False  # Kolkata
+    # Locations clearly outside LLA (West / South Tripura, Assam, etc.)
+    assert is_in_lla(23.8315, 91.2868, lla) is False  # Agartala
+    assert is_in_lla(23.5336, 91.4817, lla) is False  # Udaipur
+    assert is_in_lla(23.2505, 91.4542, lla) is False  # Belonia
+    assert is_in_lla(22.5726, 88.3639, lla) is False  # Kolkata
     assert is_in_lla(0.0, 0.0, lla) is False
 
 

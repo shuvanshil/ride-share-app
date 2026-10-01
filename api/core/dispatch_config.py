@@ -29,13 +29,50 @@ class DispatchConfig(BaseModel):
     exact_solver_timeout_ms: int = Field(default=400, ge=50, le=2000)
 
 
-def load_dispatch_config() -> DispatchConfig:
+import time
+
+_CONFIG_CACHE_TIME = 0.0
+_CACHED_DISPATCH_CONFIG: DispatchConfig | None = None
+_CACHE_TTL_SECONDS = 10.0
+
+
+def load_dispatch_config(force_refresh: bool = False) -> DispatchConfig:
+    global _CONFIG_CACHE_TIME, _CACHED_DISPATCH_CONFIG
+    now = time.time()
+    if not force_refresh and _CACHED_DISPATCH_CONFIG is not None and (now - _CONFIG_CACHE_TIME) < _CACHE_TTL_SECONDS:
+        return _CACHED_DISPATCH_CONFIG
+
+    # 1. Base from Environment Variables
     env_algo = get_env("DISPATCH_ALGORITHM") or "legacy"
     env_lla = (get_env("LLA_ENFORCE") or "").strip().lower() in ("true", "1", "yes")
-    return DispatchConfig(
-        algorithm=env_algo,
-        lla_enforce=env_lla,
-    )
+
+    config_data: dict[str, Any] = {
+        "algorithm": env_algo,
+        "lla_enforce": env_lla,
+    }
+
+    # 2. Check Firestore systemSettings/dispatch for runtime dynamic overrides
+    try:
+        from .firebase import get_admin_app
+        from firebase_admin import firestore as fb_firestore
+
+        db = fb_firestore.client(get_admin_app())
+        doc = db.collection("systemSettings").document("dispatch").get()
+        if doc.exists:
+            data = doc.to_dict() or {}
+            for k, v in data.items():
+                if v is not None:
+                    config_data[k] = v
+    except Exception:
+        pass
+
+    try:
+        _CACHED_DISPATCH_CONFIG = DispatchConfig(**config_data)
+    except Exception:
+        _CACHED_DISPATCH_CONFIG = DispatchConfig(algorithm=env_algo, lla_enforce=env_lla)
+
+    _CONFIG_CACHE_TIME = now
+    return _CACHED_DISPATCH_CONFIG
 
 
 def load_lla_config() -> dict[str, Any]:
