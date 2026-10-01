@@ -39,7 +39,6 @@ from ..core.telegram import (
 router = APIRouter(prefix="/rides", tags=["rides"])
 
 ACTIVE_PASSENGER_STATUSES = {"pending", "accepted", "arrived", "started", "en_route"}
-DISPATCH_BATCH_SIZE = 10
 DISPATCH_TIMEOUT_MS = 12000
 DRIVER_NOTIFICATION_ELIGIBLE_HOURS = 12
 DRIVER_LOCATION_VISIBLE_SECONDS = DRIVER_NOTIFICATION_ELIGIBLE_HOURS * 60 * 60
@@ -556,33 +555,6 @@ def _accumulate_online_seconds(db, uid: str, previous_moment: Any, still_online:
         _bump_daily_stats(db, uid, {"online_seconds": elapsed})
 
 
-def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
-    now = datetime.now(timezone.utc).timestamp()
-    candidates: list[dict[str, Any]] = []
-    for snapshot in db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).stream():
-        driver = snapshot.to_dict() or {}
-        location = driver.get("driverLocation") or {}
-        lat, lng = location.get("lat"), location.get("lng")
-        last_seen = _timestamp_seconds(driver.get("lastLocationAt") or driver.get("lastSeenAt") or driver.get("updatedAt"))
-        v_status = driver.get("verificationStatus") or driver.get("verification_status") or driver.get("status")
-        is_approved = v_status == "approved" or driver.get("is_verified") is True or driver.get("isApproved") is True
-        if (
-            not is_approved
-            or (last_seen is not None and now - last_seen > DRIVER_LOCATION_VISIBLE_SECONDS)
-            or (last_seen is None and not driver.get("isConnected"))
-            or not isinstance(lat, (int, float))
-            or not isinstance(lng, (int, float))
-            or _driver_type(driver) != vehicle_type
-        ):
-            continue
-        candidates.append({
-            "uid": str(driver.get("uid") or snapshot.id),
-            "distance": _haversine_km(pickup_lat, pickup_lng, float(lat), float(lng)),
-        })
-    candidates.sort(key=lambda item: item["distance"])
-    return candidates
-
-
 def _availability_for_location_update(profile: dict[str, Any], ride_id: str) -> tuple[str, str]:
     """Derive availability and persisted desiredAvailability for a location update.
 
@@ -759,9 +731,6 @@ async def create_passenger_ride(
         if not math.isfinite(distance_km) or distance_km < 0 or distance_km > MAX_SERVICEABLE_DISTANCE_KM:
             raise ApiError("This destination is outside LiphtUp's current service area.", 400)
         fare = _calculate_fare(service, distance_km)
-        drivers = _available_drivers(db, pickup_lat, pickup_lng, body.vehicleType.strip().lower())
-        first_batch = drivers[:DISPATCH_BATCH_SIZE]
-        driver_ids = [driver["uid"] for driver in first_batch]
         ride_ref = db.collection("rides").document()
         transaction = db.transaction()
 
@@ -837,31 +806,24 @@ async def create_passenger_ride(
             # passenger never sees a pickup PIN before there is an assigned
             # driver to share it with.
             "verification_pin": None,
-            "eligible_driver_ids": driver_ids,
-            "notified_driver_ids": driver_ids,
+            "eligible_driver_ids": [],
+            "notified_driver_ids": [],
             "rejected_driver_ids": [],
-            "dispatch_batch_size": DISPATCH_BATCH_SIZE,
-            "dispatch_timeout_ms": DISPATCH_TIMEOUT_MS,
-            "dispatch_total_candidates": len(drivers),
-            "dispatch_round": 1 if driver_ids else 0,
+            "excludedDriverIds": [],
+            "searchRing": 1,
+            "searchStartedAt": ride_requested_at,
+            "dispatchNotBefore": ride_requested_at + timedelta(milliseconds=dispatch_cfg.batch_hold_ms),
+            "currentOffer": None,
             "search_status": "searching_nearby_drivers",
             "createdAt": fb_firestore.SERVER_TIMESTAMP,
         }
-        if dispatch_cfg.algorithm == "hex_batch":
-            ride_data["searchRing"] = 1
-            ride_data["searchStartedAt"] = ride_requested_at
-            ride_data["dispatchNotBefore"] = ride_requested_at + timedelta(milliseconds=dispatch_cfg.batch_hold_ms)
-            ride_data["excludedDriverIds"] = []
-            ride_data["currentOffer"] = None
-            ride_data["eligible_driver_ids"] = []
-            ride_data["notified_driver_ids"] = []
 
         create_transaction(transaction)
         await trigger_opportunistic_tick(caller_ride_id=ride_ref.id)
         return {
             "ok": True,
             "rideId": ride_ref.id,
-            "notifiedDriverIds": driver_ids,
+            "notifiedDriverIds": [],
             "ride": {key: value for key, value in ride_data.items() if key != "createdAt"},
         }
     except ApiError:
@@ -1246,7 +1208,7 @@ def transition_driver_ride(
 
 
 @router.post("/{ride_id}/dispatch")
-def expand_passenger_dispatch(
+async def expand_passenger_dispatch(
     ride_id: str,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
@@ -1272,36 +1234,18 @@ def expand_passenger_dispatch(
         if ride.get("status") != "pending" or ride.get("driver_id"):
             raise ApiError("Only pending unassigned rides can expand their search.", 409)
 
-        excluded = set(ride.get("notified_driver_ids") or []) | set(ride.get("rejected_driver_ids") or [])
-        all_candidates = _available_drivers(
-            db,
-            float(ride.get("pickup_lat")),
-            float(ride.get("pickup_lng")),
-            str(ride.get("vehicle_type") or ""),
-        )
-        batch_size = int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)
-        next_batch = [item["uid"] for item in all_candidates if item["uid"] not in excluded][:batch_size]
-
-        # Retry search resilience: If no new unnotified drivers exist, but active drivers are currently online and searching,
-        # fallback to re-dispatching active candidates (excluding explicitly rejected drivers first, then all active candidates)
-        if not next_batch and all_candidates:
-            rejected = set(ride.get("rejected_driver_ids") or [])
-            next_batch = [item["uid"] for item in all_candidates if item["uid"] not in rejected][:batch_size]
-            if not next_batch:
-                next_batch = [item["uid"] for item in all_candidates][:batch_size]
-
-        notified = list(dict.fromkeys([*(ride.get("notified_driver_ids") or []), *next_batch]))
-        eligible = list(dict.fromkeys([*(ride.get("eligible_driver_ids") or []), *next_batch]))
+        search_ring = min(10, int(ride.get("searchRing") or 1) + 1)
+        dispatch_round = int(ride.get("dispatch_round") or 0) + 1
         updates = {
-            "eligible_driver_ids": eligible,
-            "notified_driver_ids": notified,
-            "dispatch_round": int(ride.get("dispatch_round") or 0) + (1 if next_batch else 0),
+            "searchRing": search_ring,
+            "dispatch_round": dispatch_round,
             "last_dispatch_at": fb_firestore.SERVER_TIMESTAMP,
-            "search_status": "searching_nearby_drivers" if next_batch else "no_more_available_drivers",
+            "search_status": "searching_nearby_drivers",
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
         ride_ref.update(updates)
-        return {"ok": True, "rideId": clean_ride_id, "driverIds": next_batch, "searchStatus": updates["search_status"]}
+        await run_dispatch_tick(caller_ride_id=clean_ride_id)
+        return {"ok": True, "rideId": clean_ride_id, "driverIds": [], "searchRing": search_ring, "searchStatus": "searching_nearby_drivers"}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
@@ -1760,14 +1704,12 @@ def accept_driver_ride(
             if ride.get("vehicle_type") != driver_type:
                 raise ApiError("This ride requires a matching registered vehicle.", 403)
 
-            dispatch_cfg = load_dispatch_config()
-            if dispatch_cfg.algorithm == "hex_batch":
-                curr_off = ride.get("currentOffer") or {}
-                if curr_off.get("driverId") and curr_off.get("driverId") != uid:
-                    raise ApiError("This offer was assigned to another driver.", 403)
-                off_exp = _timestamp_to_dt(curr_off.get("expiresAt"))
-                if off_exp and now > off_exp:
-                    raise ApiError("This ride offer has expired.", 410)
+            curr_off = ride.get("currentOffer") or {}
+            if curr_off.get("driverId") and curr_off.get("driverId") != uid:
+                raise ApiError("This offer was assigned to another driver.", 403)
+            off_exp = _to_utc_datetime(curr_off.get("expiresAt"))
+            if off_exp and now > off_exp:
+                raise ApiError("This ride offer has expired.", 410)
 
             if uid not in (ride.get("eligible_driver_ids") or []):
                 raise ApiError("This ride request is no longer available for you.", 403)
@@ -1869,28 +1811,20 @@ async def reject_driver_ride(
         if uid not in (ride.get("eligible_driver_ids") or []):
             raise ApiError("This ride request is no longer available for you.", 403)
 
-        dispatch_cfg = load_dispatch_config()
-        if dispatch_cfg.algorithm == "hex_batch":
-            ride_ref.update({
-                "rejected_driver_ids": fb_firestore.ArrayUnion([uid]),
-                "excludedDriverIds": fb_firestore.ArrayUnion([uid]),
-                "eligible_driver_ids": [],
-                "currentOffer": None,
-                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
-            db.collection("driverPresence").document(uid).set({
-                "dispatchLock": None,
-                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            }, merge=True)
-            _bump_daily_stats(db, uid, {"declined_count": 1})
-            await trigger_opportunistic_tick(caller_ride_id=clean_ride_id)
-            return {"ok": True, "rideId": clean_ride_id, "status": "pending"}
-
         ride_ref.update({
-            "status": "declined",
             "rejected_driver_ids": fb_firestore.ArrayUnion([uid]),
+            "excludedDriverIds": fb_firestore.ArrayUnion([uid]),
+            "eligible_driver_ids": [],
+            "currentOffer": None,
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         })
+        db.collection("driverPresence").document(uid).set({
+            "dispatchLock": None,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+        _bump_daily_stats(db, uid, {"declined_count": 1})
+        await trigger_opportunistic_tick(caller_ride_id=clean_ride_id)
+        return {"ok": True, "rideId": clean_ride_id, "status": "pending"}
 
         # Rollback pendingRideRequest to "pending" so the next candidate driver can claim it
         pending_req_id = ride.get("pendingRequestId")

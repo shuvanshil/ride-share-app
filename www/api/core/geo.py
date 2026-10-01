@@ -144,3 +144,132 @@ def road_distance_along_route_km(route_points: list[tuple[float, float]], positi
         return None
 
     return best_cumulative_km
+
+
+def is_point_in_polygon(lat: float, lng: float, polygon: list[list[float]] | list[tuple[float, float]]) -> bool:
+    if not polygon or len(polygon) < 3:
+        return False
+    inside = False
+    n = len(polygon)
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i][1], polygon[i][0]
+        xj, yj = polygon[j][1], polygon[j][0]
+        if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi + 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+_CACHED_LLA: dict | None = None
+_CACHED_ZONES: dict | None = None
+
+
+def get_cached_lla() -> dict:
+    global _CACHED_LLA
+    if _CACHED_LLA is None:
+        from .dispatch_config import load_lla_config
+        _CACHED_LLA = load_lla_config()
+    return _CACHED_LLA
+
+
+def get_cached_zones() -> dict:
+    global _CACHED_ZONES
+    if _CACHED_ZONES is None:
+        from .dispatch_config import load_zones_config
+        _CACHED_ZONES = load_zones_config()
+    return _CACHED_ZONES
+
+
+def is_in_lla(lat: float, lng: float, lla_config: dict | None = None) -> bool:
+    cfg = lla_config if lla_config is not None else get_cached_lla()
+    vertices = cfg.get("vertices")
+    if not vertices:
+        return True
+    return is_point_in_polygon(lat, lng, vertices)
+
+
+def _pixel_to_axial_hex(x: float, y: float, s: float, orientation: str = "pointy") -> tuple[int, int]:
+    if orientation == "pointy":
+        frac_q = (math.sqrt(3) / 3.0 * x - 1.0 / 3.0 * y) / s
+        frac_r = (2.0 / 3.0 * y) / s
+    else:
+        frac_q = (2.0 / 3.0 * x) / s
+        frac_r = (-1.0 / 3.0 * x + math.sqrt(3) / 3.0 * y) / s
+
+    frac_s = -frac_q - frac_r
+    q = round(frac_q)
+    r = round(frac_r)
+    sc = round(frac_s)
+
+    q_diff = abs(q - frac_q)
+    r_diff = abs(r - frac_r)
+    s_diff = abs(sc - frac_s)
+
+    if q_diff > r_diff and q_diff > s_diff:
+        q = -r - sc
+    elif r_diff > s_diff:
+        r = -q - sc
+    return int(q), int(r)
+
+
+def point_to_zone(lat: float, lng: float, zones_config: dict | None = None) -> str:
+    cfg = zones_config if zones_config is not None else get_cached_zones()
+    cells = cfg.get("cells", [])
+    if not cells:
+        return "Z01"
+
+    origin = cfg.get("origin", {})
+    lat0 = float(origin.get("lat0", 24.23))
+    lng0 = float(origin.get("lng0", 92.175833))
+    ox = float(origin.get("offset_x_km", 0.0))
+    oy = float(origin.get("offset_y_km", 0.0))
+    s = float(cfg.get("size_km", 21.6))
+    orientation = str(cfg.get("orientation", "pointy"))
+
+    km_lat = 110.574
+    km_lng = 111.320 * math.cos(math.radians(lat0))
+    x = (lng - lng0) * km_lng - ox
+    y = (lat - lat0) * km_lat - oy
+
+    q, r = _pixel_to_axial_hex(x, y, s, orientation)
+
+    for cell in cells:
+        if cell.get("q") == q and cell.get("r") == r:
+            return str(cell.get("id"))
+
+    # Fallback to closest cell center
+    best_id = str(cells[0].get("id"))
+    min_dist = float("inf")
+    for cell in cells:
+        center = cell.get("center", [lat0, lng0])
+        dist = haversine_km(lat, lng, center[0], center[1])
+        if dist < min_dist:
+            min_dist = dist
+            best_id = str(cell.get("id"))
+    return best_id
+
+
+def get_zone_neighbors(zone_id: str, zones_config: dict | None = None) -> list[str]:
+    cfg = zones_config if zones_config is not None else get_cached_zones()
+    neighbors = cfg.get("neighbors", {})
+    return list(neighbors.get(zone_id, []))
+
+
+def get_zone_ring(zone_id: str, ring_level: int = 1, zones_config: dict | None = None) -> list[str]:
+    cfg = zones_config if zones_config is not None else get_cached_zones()
+    rings = cfg.get("rings", {})
+    zone_rings = rings.get(zone_id, {})
+    accumulated = set()
+    for level in range(ring_level + 1):
+        for zid in zone_rings.get(str(level), []):
+            accumulated.add(zid)
+    if not accumulated:
+        accumulated.add(zone_id)
+    return sorted(accumulated)
+
+
+def get_all_zone_ids(zones_config: dict | None = None) -> list[str]:
+    cfg = zones_config if zones_config is not None else get_cached_zones()
+    return [c["id"] for c in cfg.get("cells", [])]
+

@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
+import sys
 import time
 from typing import Any
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from api.core.eta import compute_cheap_eta_minutes
 from api.core.geo import get_all_zone_ids, get_zone_ring, is_in_lla, point_to_zone
@@ -92,28 +96,63 @@ def run_scenario(
         if cands:
             cands.sort(key=lambda x: x[1])
             best_d, eta = cands[0]
-            legacy_assigned_drivers.add(best_d["id"])
-            legacy_waits.append(eta)
-            legacy_matches += 1
+            if eta <= 40.0:
+                legacy_assigned_drivers.add(best_d["id"])
+                legacy_waits.append(eta)
+                legacy_matches += 1
 
     t_legacy_ms = (time.time() - t0) * 1000.0
 
-    # Build Zone Candidate Map for Hex-Batch
-    candidate_map: dict[str, list[tuple[str, float]]] = {}
-    for r in rides:
-        active_zones = set(get_zone_ring(r["zoneId"], ring_level=1, zones_config=zones_data))
-        cands = []
-        for d in drivers:
-            if d["zoneId"] in active_zones:
-                eta = compute_cheap_eta_minutes(d["lat"], d["lng"], r["pickup_lat"], r["pickup_lng"], driver_location_age_sec=d["age_sec"])
-                cost = compute_pair_cost(eta, waiting_minutes=r["waiting_minutes"])
-                cands.append((d["id"], cost))
-        cands.sort(key=lambda x: x[1])
-        candidate_map[r["id"]] = cands[:8]
-
-    # --- Strategy B: Hex-Batch Exact (Hungarian) ---
+    # --- Strategy B: Hex-Batch Multi-Pass Exact (Hungarian) ---
     t0 = time.time()
-    exact_proposals = solve_batch_matching(rides, candidate_map)
+    exact_proposals: dict[str, str | None] = {}
+    active_rides = list(rides)
+    free_drivers = {d["id"]: d for d in drivers}
+
+    for pass_idx in range(1, 4):
+        if not active_rides or not free_drivers:
+            break
+        pass_candidate_map: dict[str, list[tuple[str, float]]] = {}
+        for r in active_rides:
+            if pass_idx == 1:
+                eff_ring = 1
+                eff_max_eta = 25.0
+            elif pass_idx == 2:
+                eff_ring = 2
+                eff_max_eta = 35.0
+            else:
+                eff_ring = 10
+                eff_max_eta = 40.0
+
+            eff_zones = set(get_zone_ring(r["zoneId"], ring_level=eff_ring, zones_config=zones_data))
+
+            cands = []
+            for d_id, d in free_drivers.items():
+                if pass_idx < 3 and d["zoneId"] not in eff_zones:
+                    continue
+                eta = compute_cheap_eta_minutes(d["lat"], d["lng"], r["pickup_lat"], r["pickup_lng"], driver_location_age_sec=d["age_sec"])
+                if eta > eff_max_eta:
+                    continue
+                cost = compute_pair_cost(eta, waiting_minutes=r["waiting_minutes"])
+                cands.append((d_id, cost))
+            cands.sort(key=lambda x: x[1])
+            pass_candidate_map[r["id"]] = cands[:8]
+
+        pass_res = solve_batch_matching(active_rides, pass_candidate_map)
+        new_matches = 0
+        remaining_rides = []
+        for r in active_rides:
+            d_id = pass_res.get(r["id"])
+            if d_id and d_id in free_drivers:
+                exact_proposals[r["id"]] = d_id
+                free_drivers.pop(d_id, None)
+                new_matches += 1
+            else:
+                remaining_rides.append(r)
+        active_rides = remaining_rides
+        if new_matches == 0:
+            break
+
     t_exact_ms = (time.time() - t0) * 1000.0
 
     exact_waits = []
@@ -127,9 +166,56 @@ def run_scenario(
             exact_waits.append(eta)
             exact_matches += 1
 
-    # --- Strategy C: Hex-Batch Greedy Regret ---
+    # --- Strategy C: Hex-Batch Multi-Pass Greedy Regret ---
     t0 = time.time()
-    regret_proposals = solve_greedy_regret(rides, candidate_map)
+    regret_proposals: dict[str, str | None] = {}
+    active_rides_regret = list(rides)
+    free_drivers_regret = {d["id"]: d for d in drivers}
+
+    for pass_idx in range(1, 4):
+        if not active_rides_regret or not free_drivers_regret:
+            break
+        pass_candidate_map_r: dict[str, list[tuple[str, float]]] = {}
+        for r in active_rides_regret:
+            if pass_idx == 1:
+                eff_ring = 1
+                eff_max_eta = 25.0
+            elif pass_idx == 2:
+                eff_ring = 2
+                eff_max_eta = 35.0
+            else:
+                eff_ring = 10
+                eff_max_eta = 40.0
+
+            eff_zones = set(get_zone_ring(r["zoneId"], ring_level=eff_ring, zones_config=zones_data))
+
+            cands = []
+            for d_id, d in free_drivers_regret.items():
+                if pass_idx < 3 and d["zoneId"] not in eff_zones:
+                    continue
+                eta = compute_cheap_eta_minutes(d["lat"], d["lng"], r["pickup_lat"], r["pickup_lng"], driver_location_age_sec=d["age_sec"])
+                if eta > eff_max_eta:
+                    continue
+                cost = compute_pair_cost(eta, waiting_minutes=r["waiting_minutes"])
+                cands.append((d_id, cost))
+            cands.sort(key=lambda x: x[1])
+            pass_candidate_map_r[r["id"]] = cands[:8]
+
+        pass_res_r = solve_greedy_regret(active_rides_regret, pass_candidate_map_r)
+        new_matches_r = 0
+        remaining_rides_r = []
+        for r in active_rides_regret:
+            d_id = pass_res_r.get(r["id"])
+            if d_id and d_id in free_drivers_regret:
+                regret_proposals[r["id"]] = d_id
+                free_drivers_regret.pop(d_id, None)
+                new_matches_r += 1
+            else:
+                remaining_rides_r.append(r)
+        active_rides_regret = remaining_rides_r
+        if new_matches_r == 0:
+            break
+
     t_regret_ms = (time.time() - t0) * 1000.0
 
     regret_waits = []
