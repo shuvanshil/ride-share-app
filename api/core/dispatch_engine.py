@@ -24,6 +24,50 @@ logger = logging.getLogger("liphtup.dispatch.engine")
 APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https://liphtup.in").rstrip("/")
 
 
+def _collect_tokens_from_doc(doc_dict: dict[str, Any]) -> list[str]:
+    tokens: set[str] = set()
+    for token in doc_dict.get("pushTokens") or []:
+        if isinstance(token, str) and token.strip():
+            tokens.add(token.strip())
+    for detail in doc_dict.get("pushTokenDetails") or []:
+        token = (detail or {}).get("token") if isinstance(detail, dict) else None
+        if isinstance(token, str) and token.strip():
+            tokens.add(token.strip())
+    fcm = doc_dict.get("fcmToken")
+    if isinstance(fcm, str) and fcm.strip():
+        tokens.add(fcm.strip())
+    return list(tokens)
+
+
+def _collect_driver_tokens(db, driver_id: str) -> list[str]:
+    tokens: set[str] = set()
+    try:
+        presence_snap = db.collection("driverPresence").document(driver_id).get()
+        if presence_snap.exists:
+            tokens.update(_collect_tokens_from_doc(presence_snap.to_dict() or {}))
+    except Exception:
+        pass
+    try:
+        user_snap = db.collection("users").document(driver_id).get()
+        if user_snap.exists:
+            tokens.update(_collect_tokens_from_doc(user_snap.to_dict() or {}))
+    except Exception:
+        pass
+    try:
+        token_snap = db.collection("driverPushTokens").document(driver_id).get()
+        if token_snap.exists:
+            t_data = token_snap.to_dict() or {}
+            for t in t_data.get("tokens") or []:
+                if isinstance(t, str) and t.strip():
+                    tokens.add(t.strip())
+            t_single = t_data.get("token")
+            if isinstance(t_single, str) and t_single.strip():
+                tokens.add(t_single.strip())
+    except Exception:
+        pass
+    return list(tokens)
+
+
 def _send_driver_offer_notification(
     db,
     driver_id: str,
@@ -34,14 +78,9 @@ def _send_driver_offer_notification(
     fare: float,
 ) -> None:
     try:
-        token_doc = db.collection("driverPushTokens").document(driver_id).get()
-        if not token_doc.exists:
-            return
-        token_data = token_doc.to_dict() or {}
-        tokens = token_data.get("tokens") or []
-        if not tokens and token_data.get("token"):
-            tokens = [token_data["token"]]
+        tokens = _collect_driver_tokens(db, driver_id)
         if not tokens:
+            logger.debug("No FCM push tokens found for driver %s", driver_id)
             return
 
         title = "New Ride Request"
@@ -50,6 +89,10 @@ def _send_driver_offer_notification(
 
         message = fb_messaging.MulticastMessage(
             tokens=tokens,
+            notification=fb_messaging.Notification(
+                title=title,
+                body=body,
+            ),
             data={
                 "type": "new_ride_offer",
                 "offerId": offer_id,
@@ -58,13 +101,35 @@ def _send_driver_offer_notification(
                 "dropName": drop_name[:60],
                 "fare": str(round(fare)),
                 "link": link_url,
+                "url": link_url,
+                "title": title,
+                "body": body,
             },
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body,
+                    sound="default",
+                    channel_id="ride_requests",
+                    priority="max",
+                    default_vibrate_timings=True,
+                    visibility="public",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1, content_available=True)
+                )
+            ),
             webpush=fb_messaging.WebpushConfig(
+                headers={"Urgency": "high", "TTL": "600"},
                 fcm_options=fb_messaging.WebpushFCMOptions(link=link_url),
                 notification=fb_messaging.WebpushNotification(
                     title=title,
                     body=body,
                     icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
                     tag=f"offer-{offer_id}",
                     renotify=True,
                     require_interaction=True,
@@ -72,8 +137,93 @@ def _send_driver_offer_notification(
             ),
         )
         fb_messaging.send_each_for_multicast(message)
+        logger.info("FCM offer notification sent to driver %s (%d tokens)", driver_id, len(tokens))
     except Exception as exc:
         logger.warning("FCM offer notification skipped for driver %s: %s", driver_id, exc)
+
+
+def _send_passenger_matched_notification(
+    db,
+    passenger_id: str,
+    request_id: str,
+    offer_id: str,
+    drop_name: str,
+    mode: str,
+) -> None:
+    try:
+        user_snap = db.collection("users").document(passenger_id).get()
+        if not user_snap.exists:
+            return
+        user_data = user_snap.to_dict() or {}
+
+        title = "Driver Available for Scheduled Ride!" if mode == "scheduled" else "Driver Available Nearby!"
+        body = f"A driver is nearby for your trip to {drop_name[:40]}. Confirm to start your ride."
+        link_url = f"{APP_BASE_URL}/services?requestId={request_id}"
+
+        # Record in-app notification
+        try:
+            db.collection("users").document(passenger_id).collection("inAppNotifications").document().set({
+                "title": title,
+                "body": body,
+                "data": {"type": "driver_matched", "requestId": request_id, "offerId": offer_id, "url": link_url},
+                "read": False,
+                "createdAt": fb_firestore.SERVER_TIMESTAMP,
+            })
+        except Exception:
+            pass
+
+        tokens = _collect_tokens_from_doc(user_data)
+        if not tokens:
+            return
+
+        message = fb_messaging.MulticastMessage(
+            tokens=tokens,
+            notification=fb_messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            data={
+                "type": "driver_matched",
+                "requestId": request_id,
+                "offerId": offer_id,
+                "url": link_url,
+                "title": title,
+                "body": body,
+            },
+            android=fb_messaging.AndroidConfig(
+                priority="high",
+                notification=fb_messaging.AndroidNotification(
+                    title=title,
+                    body=body,
+                    sound="default",
+                    channel_id="ride_requests",
+                    priority="high",
+                    default_vibrate_timings=True,
+                    visibility="public",
+                ),
+            ),
+            apns=fb_messaging.ApnsConfig(
+                payload=fb_messaging.ApnsPayload(
+                    aps=fb_messaging.Aps(sound="default", badge=1)
+                )
+            ),
+            webpush=fb_messaging.WebpushConfig(
+                headers={"Urgency": "high", "TTL": "600"},
+                fcm_options=fb_messaging.WebpushFCMOptions(link=link_url),
+                notification=fb_messaging.WebpushNotification(
+                    title=title,
+                    body=body,
+                    icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                    tag=f"passenger-match-{request_id}",
+                    renotify=True,
+                    require_interaction=True,
+                ),
+            ),
+        )
+        fb_messaging.send_each_for_multicast(message)
+    except Exception as exc:
+        logger.debug("Passenger matched notification skipped: %s", exc)
 
 
 class DispatchEngine:
@@ -256,10 +406,23 @@ class DispatchEngine:
                     fare=float(passenger.get("fare", 0.0)),
                 )
 
-                # Notify passenger via pendingRideRequests doc (frontend listens here).
-                # This is essential for notify_me passengers whose app may be in the
-                # background: stamping lastNotifiedAt causes listenToPendingRequestUpdates
-                # to show the "driver available" alert and trigger the local notification.
+                # Notify passenger via pendingRideRequests doc (frontend listens here)
+                # and send multiplatform FCM push + in-app notification.
+                # This ensures notify_me and scheduled passengers receive notifications
+                # both in real-time (if app is open) and via system push (if app is backgrounded/closed).
+                p_uid = passenger.get("passenger_id")
+                p_mode = passenger.get("mode", "searching")
+                p_drop_name = passenger.get("drop", {}).get("name", "your destination")
+                if p_uid:
+                    _send_passenger_matched_notification(
+                        self.db,
+                        passenger_id=p_uid,
+                        request_id=req_id,
+                        offer_id=offer_id,
+                        drop_name=p_drop_name,
+                        mode=p_mode,
+                    )
+
                 try:
                     pending_ref = self.db.collection("pendingRideRequests").document(req_id)
                     pending_snap = pending_ref.get()

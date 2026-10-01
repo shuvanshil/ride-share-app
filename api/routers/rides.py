@@ -1317,6 +1317,25 @@ def accept_ride_offer(
     except Exception:
         pass
 
+    # Send passenger push & in-app notification
+    p_uid = str(active_off.get("passenger_id") or "")
+    if p_uid:
+        driver_name = str(profile.get("name") or "Your driver")
+        _send_passenger_push_and_inapp(
+            db,
+            passenger_id=p_uid,
+            title="Ride Accepted!",
+            body=f"{driver_name} is on the way for your pickup.",
+            data_payload={
+                "type": "ride_accepted",
+                "rideId": ride_ref.id,
+                "requestId": req_id,
+                "pin": verification_pin,
+                "driverName": driver_name,
+                "url": f"{APP_BASE_URL}/services?rideId={ride_ref.id}",
+            },
+        )
+
     return {
         "ok": True,
         "rideId": ride_ref.id,
@@ -1981,7 +2000,7 @@ def cancel_passenger_ride(
 
             ride_ref.update(updates)
 
-            # Release driver presence back to searching if driver was assigned
+            # Release driver presence and driver pool back to available if driver was assigned
             if driver_id:
                 try:
                     drv_doc = db.collection("users").document(driver_id).get()
@@ -1996,6 +2015,20 @@ def cancel_passenger_ride(
                     db.collection("users").document(driver_id).set(u_upd, merge=True)
                     db.collection("driverPresence").document(driver_id).set(p_upd, merge=True)
                     db.collection("driverMapPresence").document(driver_id).set(m_upd, merge=True)
+
+                    if avail_status == "searching":
+                        loc = drv_profile.get("driverLocation") or drv_profile.get("location") or {}
+                        d_lat = float(loc.get("lat") or 0.0)
+                        d_lng = float(loc.get("lng") or 0.0)
+                        if d_lat and d_lng:
+                            DispatchPools(db).upsert_driver(
+                                driver_id=driver_id,
+                                lat=d_lat,
+                                lng=d_lng,
+                                vehicle_type=_driver_type(drv_profile),
+                                state="available",
+                            )
+                        DispatchEngine(db).trigger_matching_pass(caller_id=f"passenger_cancel_ride_{driver_id}")
                 except Exception as exc:
                     report_backend_failure(
                         service="rides",
@@ -2007,6 +2040,11 @@ def cancel_passenger_ride(
                         resource_id=driver_id,
                         context={"rideId": clean_ride_id},
                     )
+
+            try:
+                DispatchPools(db).remove_passenger(clean_ride_id, reason="passenger_cancelled")
+            except Exception:
+                pass
 
             try:
                 if ride.get("pinVerifiedAt"):

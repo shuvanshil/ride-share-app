@@ -317,7 +317,11 @@ async function sendDriverSos() {
 async function rejectRideThroughBackend(rideId) {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) return;
-    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/reject`, {
+    const isDispatchOffer = String(rideId).startsWith("off_");
+    const url = isDispatchOffer
+        ? `/api/rides/offers/${encodeURIComponent(rideId)}/decline`
+        : `/api/rides/${encodeURIComponent(rideId)}/reject`;
+    const response = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${idToken}` }
     });
@@ -1248,6 +1252,136 @@ function initDriverJobsStream() {
             btn.addEventListener('click', (event) => ignoreRideRequest(event.currentTarget.getAttribute('data-id')));
         });
     });
+
+    startDispatchOfferListener();
+}
+
+let dispatchOfferUnsubscribe = null;
+let _currentDispatchOfferId = null;
+
+function startDispatchOfferListener() {
+    if (!currentUser?.uid) return;
+    if (dispatchOfferUnsubscribe) dispatchOfferUnsubscribe();
+
+    const ridesContainer = document.getElementById('available-rides-list');
+    const noRidesMsg = document.getElementById('no-rides-msg');
+    const requestsBadge = document.getElementById('incoming-requests-badge');
+    const requestsCount = document.getElementById('incoming-requests-count');
+
+    const driverPoolRef = doc(db, "dispatchDriverPool", currentUser.uid);
+    dispatchOfferUnsubscribe = onSnapshot(driverPoolRef, (snap) => {
+        if (!snap.exists() || !isDriverDutyOnline()) {
+            _removeDispatchOfferCard();
+            return;
+        }
+        const data = snap.data() || {};
+        const state = data.state;
+        const activeOffer = data.active_offer;
+
+        if (state !== "offered" || !activeOffer || !activeOffer.offer_id) {
+            _removeDispatchOfferCard();
+            return;
+        }
+
+        const offerId = activeOffer.offer_id;
+        if (_currentDispatchOfferId === offerId) return;
+        _currentDispatchOfferId = offerId;
+
+        const expiresAt = activeOffer.expires_at;
+        const expMs = expiresAt
+            ? (typeof expiresAt.toMillis === "function" ? expiresAt.toMillis()
+                : (typeof expiresAt.seconds === "number" ? expiresAt.seconds * 1000
+                    : new Date(expiresAt).getTime()))
+            : (Date.now() + 60000);
+        const remainingMs = Math.max(0, expMs - Date.now());
+
+        const rideProxy = {
+            pickup_name: activeOffer.pickup?.name || "Pickup",
+            pickup_display_address: activeOffer.pickup?.name || "Pickup",
+            drop_name: activeOffer.drop?.name || "Drop",
+            drop_display_address: activeOffer.drop?.name || "Drop",
+            pickup_lat: activeOffer.pickup?.lat,
+            pickup_lng: activeOffer.pickup?.lng,
+            drop_lat: activeOffer.drop?.lat,
+            drop_lng: activeOffer.drop?.lng,
+            fare: activeOffer.fare || 0,
+            distance_km: activeOffer.distance_km,
+            duration_minutes: activeOffer.eta_minutes,
+            passenger_name: activeOffer.passenger_name || "Passenger",
+            status: "pending",
+            createdAt: { toMillis: () => Date.now() - (60000 - remainingMs) }
+        };
+
+        _removeDispatchOfferCard();
+
+        const card = document.createElement('div');
+        card.className = "ride-request-card card shadow-sm p-3 mb-3";
+        card.dataset.rideId = offerId;
+        card.dataset.isDispatchOffer = "1";
+        card.innerHTML = `
+            <div class="request-header-row">
+                <div class="passenger-name-wrap">
+                    <h5 class="passenger-name mb-1">${escapeHtml(rideProxy.passenger_name)}</h5>
+                    <span class="vehicle-capacity-badge">
+                        <span>👤</span> Auto / Bike · 1 passenger
+                    </span>
+                </div>
+                <div class="d-flex flex-column align-items-end gap-1">
+                    <span class="fare-badge">₹${Math.round(Number(rideProxy.fare) || 0)}</span>
+                    <div class="request-timer-pill ${remainingMs <= 60000 ? 'is-urgent' : ''}" id="req-timer-${offerId}">
+                        <span class="timer-icon">⏳</span>
+                        <span class="timer-label">${t('driver.expires_in', "Expires in")}</span>
+                        <strong class="timer-val" id="timer-val-${offerId}">${formatCountdownTimer(remainingMs)}</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="route-display-box my-3">
+                <div class="route-step pickup">
+                    <span class="route-dot green"></span>
+                    <div class="route-text-group">
+                        <span class="route-label">${t('driver.from_label', "From: ")}</span>
+                        <span class="route-address">${escapeHtml(rideProxy.pickup_name)}</span>
+                    </div>
+                </div>
+                <div class="route-step drop">
+                    <span class="route-dot red"></span>
+                    <div class="route-text-group">
+                        <span class="route-label">${t('driver.to_label', "To: ")}</span>
+                        <span class="route-address">${escapeHtml(rideProxy.drop_name)}</span>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-accept-ride accept-job-btn" data-id="${offerId}">
+                <span>✓</span> ${t('driver.accept_ride_request_btn', "Accept Ride Request")}
+            </button>
+            <button class="btn-ignore-ride ignore-job-btn" data-id="${offerId}">
+                <span>✕</span> ${t('driver.ignore_btn', "Ignore")}
+            </button>
+        `;
+
+        card.querySelector('.accept-job-btn')?.addEventListener('click', () => acceptRideJob(offerId));
+        card.querySelector('.ignore-job-btn')?.addEventListener('click', () => ignoreRideRequest(offerId));
+
+        ridesContainer?.insertBefore(card, ridesContainer.firstChild);
+        attachRideCardCountdown(offerId, rideProxy);
+        noRidesMsg?.classList.add('d-none');
+        if (requestsBadge && requestsCount) {
+            requestsCount.textContent = `1 New`;
+            requestsBadge.classList.remove('d-none');
+        }
+        startRideRequestRing({ id: offerId, body: `${rideProxy.pickup_name} to ${rideProxy.drop_name}` });
+    }, (err) => {
+        console.warn("Dispatch offer pool listener error on driver console:", err);
+    });
+}
+
+function _removeDispatchOfferCard() {
+    if (!_currentDispatchOfferId) return;
+    const ridesContainer = document.getElementById('available-rides-list');
+    const card = ridesContainer?.querySelector(`[data-ride-id="${_currentDispatchOfferId}"][data-is-dispatch-offer="1"]`);
+    if (card) card.remove();
+    clearRideRequestTimer(_currentDispatchOfferId);
+    _currentDispatchOfferId = null;
 }
 
 function attachDriverTripListener(rideRef) {
@@ -1419,7 +1553,11 @@ async function acceptRideJob(rideId) {
 async function acceptRideThroughBackend(rideId) {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) throw new Error("Authentication is required.");
-    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
+    const isDispatchOffer = String(rideId).startsWith("off_");
+    const url = isDispatchOffer
+        ? `/api/rides/offers/${encodeURIComponent(rideId)}/accept`
+        : `/api/rides/${encodeURIComponent(rideId)}/accept`;
+    const response = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${idToken}` }
     });
