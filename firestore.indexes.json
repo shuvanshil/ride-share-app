@@ -368,46 +368,6 @@
         { "fieldPath": "severity", "order": "ASCENDING" },
         { "fieldPath": "lastSeenAt", "order": "ASCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "dispatchDriverPool",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "state", "order": "ASCENDING" },
-        { "fieldPath": "cell_id", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "dispatchDriverPool",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "state", "order": "ASCENDING" },
-        { "fieldPath": "last_heartbeat", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "dispatchPassengerPool",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "passenger_id", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "dispatchPassengerPool",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "waiting_since", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "dispatchPassengerPool",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "mode", "order": "ASCENDING" },
-        { "fieldPath": "scheduled_for", "order": "ASCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []

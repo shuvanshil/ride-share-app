@@ -200,110 +200,6 @@ function ignoreRideRequest(rideId) {
         console.warn("Could not record ride decline server-side:", error);
     });
 }
-
-/**
- * Send a decline/reject signal to the backend.
- * Dispatch offers use the ID prefix "off_" and route to the new
- * /offers/{id}/decline endpoint; legacy ride IDs use the old /rides/{id}/reject path.
- */
-async function rejectRideThroughBackend(rideId) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) return;
-
-    const isDispatchOffer = String(rideId).startsWith("off_");
-    const url = isDispatchOffer
-        ? `/api/rides/offers/${encodeURIComponent(rideId)}/decline`
-        : `/api/rides/${encodeURIComponent(rideId)}/reject`;
-    const response = await fetch(url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${idToken}` }
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Could not decline this ride.");
-    }
-}
-
-// ===============================================================
-// DISPATCH POOL OFFER LISTENER (new bipartite-match engine)
-// Watches dispatchDriverPool/{uid} for active_offer and renders
-// an offer card alongside any legacy ride requests.
-// ===============================================================
-let dispatchOfferUnsubscribe = null;
-let _currentDispatchOfferId = null;
-
-function startDispatchOfferListener() {
-    if (!currentUser?.uid) return;
-    if (dispatchOfferUnsubscribe) dispatchOfferUnsubscribe();
-
-    const driverPoolRef = doc(db, "dispatchDriverPool", currentUser.uid);
-    dispatchOfferUnsubscribe = onSnapshot(driverPoolRef, (snap) => {
-        if (!snap.exists()) {
-            _removeDispatchOfferCard();
-            return;
-        }
-        const data = snap.data() || {};
-        const state = data.state;
-        const activeOffer = data.active_offer;
-
-        if (state !== "offered" || !activeOffer || !activeOffer.offer_id) {
-            _removeDispatchOfferCard();
-            return;
-        }
-
-        const offerId = activeOffer.offer_id;
-        // Avoid re-rendering the same offer
-        if (_currentDispatchOfferId === offerId) return;
-        _currentDispatchOfferId = offerId;
-
-        // Build a ride-like object from the offer for renderIncomingRideCard
-        const expiresAt = activeOffer.expires_at;
-        const expMs = expiresAt
-            ? (typeof expiresAt.toMillis === "function" ? expiresAt.toMillis()
-                : (typeof expiresAt.seconds === "number" ? expiresAt.seconds * 1000
-                    : new Date(expiresAt).getTime()))
-            : (Date.now() + 60000);
-        const remainingMs = Math.max(0, expMs - Date.now());
-
-        const rideProxy = {
-            pickup_name: activeOffer.pickup?.name || "Pickup",
-            pickup_display_address: activeOffer.pickup?.name || "Pickup",
-            drop_name: activeOffer.drop?.name || "Drop",
-            drop_display_address: activeOffer.drop?.name || "Drop",
-            pickup_lat: activeOffer.pickup?.lat,
-            pickup_lng: activeOffer.pickup?.lng,
-            drop_lat: activeOffer.drop?.lat,
-            drop_lng: activeOffer.drop?.lng,
-            fare: activeOffer.fare || 0,
-            distance_km: activeOffer.distance_km,
-            duration_minutes: activeOffer.eta_minutes,
-            passenger_name: activeOffer.passenger_name || "Passenger",
-            status: "pending",
-            createdAt: { toMillis: () => Date.now() - (60000 - remainingMs) }
-        };
-
-        // Remove any previous dispatch offer card before adding new one
-        _removeDispatchOfferCard();
-
-        const card = renderIncomingRideCard(offerId, rideProxy);
-        card.dataset.isDispatchOffer = "1";
-        ridesContainer?.insertBefore(card, ridesContainer.firstChild);
-        attachRideCardCountdown(offerId, rideProxy);
-        noRidesMsg?.classList.add('d-none');
-        startRideRequestRing({ id: offerId, body: `${rideProxy.pickup_name} to ${rideProxy.drop_name}` });
-        updateIncomingRequestsVisibility();
-    }, (err) => {
-        console.warn("Dispatch offer pool listener error:", err);
-    });
-}
-
-function _removeDispatchOfferCard() {
-    if (!_currentDispatchOfferId) return;
-    const card = ridesContainer?.querySelector(`[data-ride-id="${_currentDispatchOfferId}"][data-is-dispatch-offer="1"]`);
-    if (card) card.remove();
-    clearRideRequestTimer(_currentDispatchOfferId);
-    _currentDispatchOfferId = null;
-}
 const livePill = document.getElementById('driver-service-live-pill');
 const routePanel = document.getElementById('driver-route-panel');
 const routeLabel = document.getElementById('driver-route-label');
@@ -1002,10 +898,9 @@ async function acceptIncomingRide(rideId, button) {
     }
 
     try {
-        const acceptUrl = String(rideId).startsWith("off_")
-            ? `/api/rides/offers/${encodeURIComponent(rideId)}/accept`
-            : `/api/rides/${encodeURIComponent(rideId)}/accept`;
-        const response = await fetch(acceptUrl, {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Authentication is required.");
+        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
             method: "POST",
             headers: { Authorization: `Bearer ${idToken}` }
         });
@@ -2761,7 +2656,6 @@ window.addEventListener('beforeunload', () => {
     if (locationWatchId !== null) navigator.geolocation.clearWatch(locationWatchId);
     if (activeRideUnsubscribe) activeRideUnsubscribe();
     if (incomingRideUnsubscribe) incomingRideUnsubscribe();
-    if (dispatchOfferUnsubscribe) dispatchOfferUnsubscribe();
     if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
     mapShell?.destroy();
 });
@@ -2903,7 +2797,6 @@ async function bootstrapDriverService() {
 
         startActiveRideListener();
         startIncomingRideListener();
-        startDispatchOfferListener();
         startLocationTracking();
         hidePageLoader({ force: true });
         hideInitialLoader();
