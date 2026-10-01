@@ -19,7 +19,7 @@ from api.core.geo import (
 
 def test_lla_config_structure():
     lla = load_lla_config()
-    assert lla.get("version") == 1
+    assert lla.get("version") in (1, 2)
     assert len(lla.get("vertices", [])) == 6
     assert "centroid" in lla
     assert "bounding_box" in lla
@@ -36,13 +36,19 @@ def test_lla_inside_outside_points():
     assert is_in_lla(24.3314, 92.0084, lla) is True  # Kailashahar
     assert is_in_lla(24.1612, 92.0305, lla) is True  # Kumarghat
     assert is_in_lla(24.3768, 92.1643, lla) is True  # Dharmanagar
+    assert is_in_lla(24.2800, 92.1400, lla) is True  # Panisagar
     assert is_in_lla(24.3725, 92.0715, lla) is True  # Boulapassa
     assert is_in_lla(24.3210, 92.0250, lla) is True  # Kacharghat
+    assert is_in_lla(23.9700, 92.2200, lla) is True  # Kanchanpur
+    assert is_in_lla(24.4600, 92.2400, lla) is True  # Churaibari
+    assert is_in_lla(24.1200, 92.0800, lla) is True  # Pecharthal
 
-    # Locations clearly outside LLA (West / South Tripura, Assam, etc.)
+    # Locations clearly outside LLA (West / South Tripura, Khowai, Assam, etc.)
     assert is_in_lla(23.8315, 91.2868, lla) is False  # Agartala
     assert is_in_lla(23.5336, 91.4817, lla) is False  # Udaipur
     assert is_in_lla(23.2505, 91.4542, lla) is False  # Belonia
+    assert is_in_lla(23.8330, 91.6000, lla) is False  # Teliamura
+    assert is_in_lla(24.0625, 91.6042, lla) is False  # Khowai
     assert is_in_lla(22.5726, 88.3639, lla) is False  # Kolkata
     assert is_in_lla(0.0, 0.0, lla) is False
 
@@ -64,7 +70,7 @@ def test_lla_vertices_and_edges():
 
 def test_zones_config_structure():
     zones = load_zones_config()
-    assert zones.get("version") == 1
+    assert zones.get("version") in (1, 2)
     count = zones.get("zone_count")
     assert 10 <= count <= 12
     assert len(zones.get("cells", [])) == count

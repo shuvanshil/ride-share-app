@@ -10,6 +10,16 @@ import os
 import sys
 from typing import Any
 
+# Dense, calibrated boundary polygon for Unakoti + North Tripura Districts (approximate boundary)
+DENSE_DISTRICT_OUTLINE = [
+    [24.485, 92.245], [24.475, 92.195], [24.445, 92.155], [24.385, 92.045],
+    [24.340, 91.980], [24.280, 91.970], [24.200, 91.985], [24.150, 92.010],
+    [24.100, 92.065], [24.020, 92.110], [23.940, 92.140], [23.870, 92.180],
+    [23.800, 92.260], [23.850, 92.290], [23.950, 92.315], [24.050, 92.330],
+    [24.140, 92.340], [24.220, 92.290], [24.290, 92.240], [24.380, 92.235],
+    [24.440, 92.260],
+]
+
 KM_PER_LAT = 110.574
 
 
@@ -90,7 +100,6 @@ def hex_distance(q1: int, r1: int, q2: int, r2: int) -> int:
 
 
 def polygons_intersect(poly1: list[tuple[float, float]], poly2: list[tuple[float, float]]) -> bool:
-    # 1. Any vertex of poly1 in poly2 or vice versa
     for p in poly1:
         if point_in_polygon_2d(p[0], p[1], poly2):
             return True
@@ -98,7 +107,6 @@ def polygons_intersect(poly1: list[tuple[float, float]], poly2: list[tuple[float
         if point_in_polygon_2d(p[0], p[1], poly1):
             return True
 
-    # 2. Any edge intersection
     def ccw(A, B, C):
         return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
 
@@ -116,15 +124,12 @@ def polygons_intersect(poly1: list[tuple[float, float]], poly2: list[tuple[float
 
 
 def verify_coverage(lla_poly_xy: list[tuple[float, float]], cells: list[dict[str, Any]], s: float, orientation: str, origin_xy: tuple[float, float]) -> bool:
-    """Verify that every interior sample and vertex of LLA is covered by some cell."""
-    # Check LLA vertices
     ox, oy = origin_xy
     for vx, vy in lla_poly_xy:
         q, r = pixel_to_hex(vx - ox, vy - oy, s, orientation)
         if not any(c["q"] == q and c["r"] == r for c in cells):
             return False
 
-    # Check dense grid sample of LLA interior
     min_x = min(p[0] for p in lla_poly_xy)
     max_x = max(p[0] for p in lla_poly_xy)
     min_y = min(p[1] for p in lla_poly_xy)
@@ -146,25 +151,23 @@ def find_optimal_zones(lla_data: dict[str, Any]) -> dict[str, Any]:
     lat0, lng0 = lla_data["centroid"]
     vertices_latlng = lla_data["vertices"]
     lla_xy = [project_to_xy(v[0], v[1], lat0, lng0) for v in vertices_latlng]
+    district_xy = [project_to_xy(p[0], p[1], lat0, lng0) for p in DENSE_DISTRICT_OUTLINE]
 
     best_config = None
-    min_overhang_area = float("inf")
+    best_score = -1
 
-    # Search across pointy and flat orientations, circumradius s from 12 km to 35 km
+    # Search across pointy/flat and s in 11.0km to 20.0km
     for orientation in ["pointy", "flat"]:
-        for s_int in range(120, 360, 2):  # 12.0 to 36.0 km in steps of 0.2 km
+        for s_int in range(120, 200, 2):
             s = s_int / 10.0
             for off_x_step in range(-5, 6, 2):
                 for off_y_step in range(-5, 6, 2):
                     ox = (off_x_step / 10.0) * s
                     oy = (off_y_step / 10.0) * s
 
-                    # Identify candidate (q, r) cells
-                    q_range = 6
-                    r_range = 6
                     intersecting_cells = []
-                    for q in range(-q_range, q_range + 1):
-                        for r in range(-r_range, r_range + 1):
+                    for q in range(-6, 7):
+                        for r in range(-6, 7):
                             cx, cy = hex_to_pixel(q, r, s, orientation)
                             cx += ox
                             cy += oy
@@ -179,31 +182,34 @@ def find_optimal_zones(lla_data: dict[str, Any]) -> dict[str, Any]:
                                 })
 
                     count = len(intersecting_cells)
-                    if 10 <= count <= 12:
-                        # Verify 100% coverage
-                        if verify_coverage(lla_xy, intersecting_cells, s, orientation, (ox, oy)):
-                            # Calculate total cell area
-                            cell_area = (3.0 * math.sqrt(3) / 2.0) * (s ** 2)
-                            total_area = count * cell_area
-                            if total_area < min_overhang_area:
-                                min_overhang_area = total_area
-                                best_config = {
-                                    "orientation": orientation,
-                                    "size_km": s,
-                                    "origin_offset_xy": (ox, oy),
-                                    "cells": intersecting_cells,
-                                }
+                    if 10 <= count <= 12 and verify_coverage(lla_xy, intersecting_cells, s, orientation, (ox, oy)):
+                        # Score: reward configurations where all cells cover active district area
+                        district_hits = [0] * count
+                        for px, py in district_xy:
+                            for idx, c in enumerate(intersecting_cells):
+                                if point_in_polygon_2d(px, py, c["verts"]):
+                                    district_hits[idx] += 1
+                        non_zero = sum(1 for h in district_hits if h > 0)
+                        min_hits = min(district_hits)
+                        score = non_zero * 100 + min_hits * 10 - count
+
+                        if score > best_score:
+                            best_score = score
+                            best_config = {
+                                "orientation": orientation,
+                                "size_km": s,
+                                "origin_offset_xy": (ox, oy),
+                                "cells": intersecting_cells,
+                            }
 
     if not best_config:
         raise RuntimeError("Could not find a 10 to 12 cell valid covering grid for the LLA!")
 
-    # Format output
     orientation = best_config["orientation"]
     s = best_config["size_km"]
     ox, oy = best_config["origin_offset_xy"]
     raw_cells = best_config["cells"]
 
-    # Assign deterministic 1-based IDs sorted by (r, q)
     raw_cells.sort(key=lambda c: (c["r"], c["q"]))
     cell_list = []
     id_map = {}
@@ -220,7 +226,6 @@ def find_optimal_zones(lla_data: dict[str, Any]) -> dict[str, Any]:
             "vertices": cell_verts_latlng,
         })
 
-    # Precompute neighbors and rings for each cell
     neighbors_dict: dict[str, list[str]] = {}
     rings_dict: dict[str, dict[str, list[str]]] = {}
 
@@ -243,7 +248,7 @@ def find_optimal_zones(lla_data: dict[str, Any]) -> dict[str, Any]:
         rings_dict[cid] = {k: sorted(v) for k, v in sorted(ring_map.items(), key=lambda item: int(item[0]))}
 
     return {
-        "version": 1,
+        "version": 2,
         "name": "LiphtUp Hex Zone Grid",
         "zone_count": len(cell_list),
         "orientation": orientation,
@@ -261,23 +266,19 @@ def find_optimal_zones(lla_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def write_zone_outputs(zones_data: dict[str, Any], lla_data: dict[str, Any]):
-    # 1. config/zones.json
     with open("config/zones.json", "w", encoding="utf-8") as f:
         json.dump(zones_data, f, indent=2)
 
-    # 2. docs/zones-preview.geojson
     features = []
 
-    # Add LLA boundary
     lla_pts = [[v[1], v[0]] for v in lla_data["vertices"]]
     lla_pts.append(lla_pts[0])
     features.append({
         "type": "Feature",
-        "properties": {"name": "LLA Geofence Boundary"},
+        "properties": {"name": "Tight LLA Geofence Boundary"},
         "geometry": {"type": "Polygon", "coordinates": [lla_pts]}
     })
 
-    # Add Hex Zone Cells
     for cell in zones_data["cells"]:
         poly_pts = [[v[1], v[0]] for v in cell["vertices"]]
         poly_pts.append(poly_pts[0])
@@ -300,10 +301,9 @@ def write_zone_outputs(zones_data: dict[str, Any], lla_data: dict[str, Any]):
     with open("docs/zones-preview.geojson", "w", encoding="utf-8") as f:
         json.dump(geojson, f, indent=2)
 
-    # 3. docs/zones-preview.svg
     bbox = lla_data["bounding_box"]
-    min_lat, max_lat = bbox["min_lat"] - 0.15, bbox["max_lat"] + 0.15
-    min_lng, max_lng = bbox["min_lng"] - 0.15, bbox["max_lng"] + 0.15
+    min_lat, max_lat = bbox["min_lat"] - 0.10, bbox["max_lat"] + 0.10
+    min_lng, max_lng = bbox["min_lng"] - 0.10, bbox["max_lng"] + 0.10
 
     width, height = 750, 850
 
@@ -323,7 +323,7 @@ def write_zone_outputs(zones_data: dict[str, Any], lla_data: dict[str, Any]):
   </defs>
 
   <text x="40" y="45" fill="#f8fafc" font-size="22" font-weight="bold">LiphtUp Hex Zone Covering ({zones_data['zone_count']} Cells)</text>
-  <text x="40" y="70" fill="#94a3b8" font-size="14">Axial (q, r) Hex Grid covering Limited Lipht Area (Unakoti &amp; North Tripura)</text>
+  <text x="40" y="70" fill="#94a3b8" font-size="14">Tight Hex Grid covering Limited Lipht Area (Unakoti &amp; North Tripura)</text>
 
   <!-- LLA Boundary Background -->
   <polygon points="{lla_svg_pts}" fill="#38bdf8" fill-opacity="0.12" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6,4"/>
@@ -338,14 +338,13 @@ def write_zone_outputs(zones_data: dict[str, Any], lla_data: dict[str, Any]):
         svg += f'  <text x="{cx:.1f}" y="{cy-8:.1f}" fill="#ffffff" font-size="13" font-weight="bold" text-anchor="middle">{cell["id"]}</text>\n'
         svg += f'  <text x="{cx:.1f}" y="{cy+14:.1f}" fill="#cbd5e1" font-size="10" text-anchor="middle">({cell["q"]},{cell["r"]})</text>\n'
 
-    # Legend
     svg += f"""
   <g transform="translate(40, {height - 95})">
-    <rect width="360" height="70" rx="8" fill="#1e293b" stroke="#334155"/>
+    <rect width="380" height="70" rx="8" fill="#1e293b" stroke="#334155"/>
     <line x1="15" y1="22" x2="30" y2="22" stroke="#38bdf8" stroke-width="3" stroke-dasharray="4,2"/>
-    <text x="40" y="26" fill="#e2e8f0" font-size="12">Authoritative LLA Geofence Boundary</text>
+    <text x="40" y="26" fill="#e2e8f0" font-size="12">Tight Convex LLA Boundary ({lla_data.get('area_km2')} km²)</text>
     <rect x="15" y="42" width="16" height="16" rx="3" fill="#6366f1" fill-opacity="0.3" stroke="#818cf8" stroke-width="1.5"/>
-    <text x="40" y="55" fill="#e2e8f0" font-size="12">Covering Hex Zones (11 Cells, s={zones_data['size_km']}km)</text>
+    <text x="40" y="55" fill="#e2e8f0" font-size="12">Covering Hex Zones ({zones_data['zone_count']} Cells, s={zones_data['size_km']}km)</text>
   </g>
 </svg>"""
 
