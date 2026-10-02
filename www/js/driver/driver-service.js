@@ -2128,7 +2128,7 @@ function renderShareStopMarkers(remainingStops) {
     });
 }
 
-function refreshShareRoute(position, remainingStops, force = false) {
+async function refreshShareRoute(position, remainingStops, force = false) {
     if (!map || !window.google?.maps || !Array.isArray(remainingStops) || remainingStops.length === 0 || !position) return;
 
     if (remainingStops.length === 1) {

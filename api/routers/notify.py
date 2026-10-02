@@ -181,13 +181,15 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
         return {"ok": True, "sent": response.success_count, "failed": response.failure_count}
     except ApiError:
         raise
-    except Exception as error:  # noqa: BLE001
         report_backend_failure(
-            category="push_notification_failed",
+            service="notify",
+            operation="notify_ride_request",
+            error=error if isinstance(error, Exception) else None,
             error_message=f"FCM multicast notification failed: {error}",
-            severity="medium",
-            traceback_str=traceback.format_exc(),
+            severity="MEDIUM",
+            endpoint="/api/notify-ride-request",
+            resource_id=body.rideId if body else None,
             context={"rideId": body.rideId if body else None, "driverCount": len(body.driverIds) if body and body.driverIds else 0},
-            app=get_admin_app() if "get_admin_app" in globals() else None,
+            recommended_action="Check FCM server key and push tokens.",
         )
         return {"ok": False, "sent": 0, "error": "Could not send ride notifications.", "detail": str(error)}
