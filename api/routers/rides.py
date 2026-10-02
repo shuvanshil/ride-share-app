@@ -103,7 +103,7 @@ def _safe_ride_dict(ride: dict[str, Any]) -> dict[str, Any]:
 
 
 class RideCreateBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     pickupName: str = Field(min_length=1, max_length=200)
     dropName: str = Field(min_length=1, max_length=200)
