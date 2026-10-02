@@ -166,9 +166,13 @@ def _bg_scheduled_ride_sweeper():
                 pass
         time.sleep(10)
 
-_sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)
-_sweeper_thread.start()
+import os
+
+if not os.getenv("VERCEL"):
+    _sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)
+    _sweeper_thread.start()
 
 @app.get("/api/health")
-async def health() -> dict[str, bool]:
-    return {"ok": True}
+@app.get("/health")
+async def health() -> dict[str, Any]:
+    return {"ok": True, "version": "share-20261003-v1"}
