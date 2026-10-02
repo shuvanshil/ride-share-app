@@ -1263,8 +1263,11 @@ def transition_driver_ride(
             valid_statuses, next_status = allowed[action]
             if current_status not in valid_statuses:
                 raise ApiError("This ride cannot be updated from its current state.", 409)
-            if action == "verify_pin" and str(ride.get("verification_pin") or "") != body.pin.strip():
-                raise ApiError("Incorrect verification PIN. Please verify with the passenger.", 400)
+            if action == "verify_pin":
+                stored_pin = str(ride.get("verification_pin") or "").strip().zfill(4)
+                entered_pin = body.pin.strip().zfill(4)
+                if not stored_pin or stored_pin != entered_pin:
+                    raise ApiError("Incorrect verification PIN. Please verify with the passenger.", 400)
 
             updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
             if action == "arrive":

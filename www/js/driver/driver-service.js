@@ -2153,44 +2153,42 @@ function refreshShareRoute(position, remainingStops, force = false) {
     if (shareRouteRequestInFlight) return;
     shareRouteRequestInFlight = true;
 
-    const directionsService = new window.google.maps.DirectionsService();
-    const waypoints = remainingStops.slice(0, -1).map(s => ({
-        location: new window.google.maps.LatLng(Number(s.lat), Number(s.lng)),
-        stopover: true
-    }));
-    const dest = remainingStops[remainingStops.length - 1];
+    try {
+        let fullPath = [];
+        let totalDistanceKm = 0;
+        let totalDurationMinutes = 0;
 
-    directionsService.route({
-        origin: new window.google.maps.LatLng(position.lat, position.lng),
-        destination: new window.google.maps.LatLng(Number(dest.lat), Number(dest.lng)),
-        waypoints,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-        optimizeWaypoints: false
-    }, (result, status) => {
-        shareRouteRequestInFlight = false;
-        if (status === window.google.maps.DirectionsStatus.OK && result?.routes?.[0]?.overview_path) {
+        let currentOrigin = position;
+        for (let i = 0; i < remainingStops.length; i++) {
+            const nextStop = { lat: Number(remainingStops[i].lat), lng: Number(remainingStops[i].lng) };
+            const legDetails = await fetchRoadRouteDetails(currentOrigin, nextStop);
+            if (legDetails && Array.isArray(legDetails.routePath) && legDetails.routePath.length) {
+                if (fullPath.length > 0) {
+                    fullPath = fullPath.concat(legDetails.routePath.slice(1));
+                } else {
+                    fullPath = fullPath.concat(legDetails.routePath);
+                }
+                totalDistanceKm += Number(legDetails.distanceKm || 0);
+                totalDurationMinutes += Number(legDetails.durationMinutes || 0);
+            }
+            currentOrigin = nextStop;
+        }
+
+        if (fullPath.length >= 2) {
             lastShareStopOrderHash = stopOrderHash;
             lastShareRoutePositionBucket = positionBucket;
-            const path = result.routes[0].overview_path.map(p => ({ lat: p.lat(), lng: p.lng() }));
             hideRouteWarning();
-            drawRoute(path);
-
-            let totalMeters = 0;
-            let totalSeconds = 0;
-            (result.routes[0].legs || []).forEach(leg => {
-                totalMeters += leg.distance?.value || 0;
-                totalSeconds += leg.duration?.value || 0;
-            });
+            drawRoute(fullPath);
             updateRouteMetrics({
-                distanceKm: totalMeters / 1000,
-                durationMinutes: totalSeconds / 60
+                distanceKm: totalDistanceKm,
+                durationMinutes: totalDurationMinutes
             });
-        } else {
-            console.warn("Share DirectionsService request failed, falling back to straight line segments:", status);
-            const fallbackPath = [position].concat(remainingStops.map(s => ({ lat: Number(s.lat), lng: Number(s.lng) })));
-            drawDashedRoute(fallbackPath);
         }
-    });
+    } catch (error) {
+        console.warn("Share road route lookup error:", error);
+    } finally {
+        shareRouteRequestInFlight = false;
+    }
 }
 
 function drawDashedRoute(path) {
