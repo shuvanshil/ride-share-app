@@ -2231,7 +2231,7 @@ requestRideButton.addEventListener('click', async () => {
 
     try {
         const isShareRide = requestedVehicleType === "share";
-        const backendRide = await createRideThroughBackend({
+        const requestPayload = {
             pickupName: pickupText,
             dropName: dropText,
             pickupLat: Number(fareQuote.pickup_lat),
@@ -2239,14 +2239,17 @@ requestRideButton.addEventListener('click', async () => {
             dropLat: Number(fareQuote.drop_lat),
             dropLng: Number(fareQuote.drop_lng),
             vehicleType: isShareRide ? "auto" : requestedVehicleType,
-            rideType: isShareRide ? "share" : "normal",
             dropFullAddress: fareQuote.drop_full_address || "",
             dropSource: fareQuote.drop_source || "",
             dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",
             dropPlaceId: fareQuote.drop_place_id || "",
             dropEloc: fareQuote.drop_eloc || "",
             dropTypeHint: fareQuote.drop_type_hint || ""
-        });
+        };
+        if (isShareRide) {
+            requestPayload.rideType = "share";
+        }
+        const backendRide = await createRideThroughBackend(requestPayload);
         currentPassengerRideId = backendRide.rideId;
         notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
         showPassengerCancelButton(backendRide.rideId);
