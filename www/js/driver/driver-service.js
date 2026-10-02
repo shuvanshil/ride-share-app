@@ -2934,7 +2934,11 @@ async function cancelRideByDriver() {
         await showAlert(fareAdjustmentMessage(result.ride, t('driver.trip_cancelled_online', "Trip cancelled. You are back online.")));
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
-        await showAlert(t('driver.cancel_trip_failed', "Could not cancel the active trip."));
+        const errorMsg = error?.message || t('driver.cancel_trip_failed', "Could not cancel the active trip.");
+        await showAlert(errorMsg);
+        if (/already|not found|cancelled/i.test(errorMsg)) {
+            renderIdleState();
+        }
     }
 }
 

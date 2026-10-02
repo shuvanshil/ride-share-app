@@ -1266,6 +1266,10 @@ def transition_driver_ride(
                     result.update(ride)
                     result["status"] = current_status
                     return
+                if action == "cancel" and current_status in {"cancelled", "cancelled_by_driver", "cancelled_by_passenger"}:
+                    result.update(ride)
+                    result["status"] = current_status
+                    return
                 raise ApiError("This ride cannot be updated from its current state.", 409)
             if action == "verify_pin":
                 stored_pin = str(ride.get("verification_pin") or "").strip().zfill(4)
@@ -1486,23 +1490,36 @@ def transition_driver_ride(
 
 
         if action in {"complete", "cancel", "skip"}:
-            open_share_trips = list(
-                db.collection("shareTrips")
-                .where("driverId", "==", uid)
-                .where("status", "in", ["to_pickup", "active"])
-                .limit(1)
-                .stream()
-            )
+            open_share_trips = []
+            try:
+                open_share_trips = list(
+                    db.collection("shareTrips")
+                    .where("driverId", "==", uid)
+                    .where("status", "in", ["to_pickup", "active"])
+                    .limit(1)
+                    .stream()
+                )
+            except Exception:
+                try:
+                    for doc_snap in db.collection("shareTrips").where("driverId", "==", uid).stream():
+                        t_data = doc_snap.to_dict() or {}
+                        if t_data.get("status") in {"to_pickup", "active"}:
+                            open_share_trips.append(doc_snap)
+                except Exception:
+                    pass
             if not open_share_trips:
-                availability_status = "offline"
-                if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
-                    availability_status = "searching"
-                user_update, presence_update, map_presence_update = _build_driver_availability_updates(availability_status, profile)
-                db.collection("users").document(uid).set(user_update, merge=True)
-                db.collection("driverPresence").document(uid).set(presence_update, merge=True)
-                db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
-                if availability_status == "searching":
-                    _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+                try:
+                    availability_status = "offline"
+                    if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
+                        availability_status = "searching"
+                    user_update, presence_update, map_presence_update = _build_driver_availability_updates(availability_status, profile)
+                    db.collection("users").document(uid).set(user_update, merge=True)
+                    db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+                    db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
+                    if availability_status == "searching":
+                        _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+                except Exception:
+                    pass
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": _safe_ride_dict(result)}
     except ApiError:
         raise
@@ -1600,13 +1617,23 @@ def update_driver_availability(
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update driver availability.")
-        open_share_trips = list(
-            db.collection("shareTrips")
-            .where("driverId", "==", uid)
-            .where("status", "in", ["to_pickup", "active"])
-            .limit(1)
-            .stream()
-        )
+        open_share_trips = []
+        try:
+            open_share_trips = list(
+                db.collection("shareTrips")
+                .where("driverId", "==", uid)
+                .where("status", "in", ["to_pickup", "active"])
+                .limit(1)
+                .stream()
+            )
+        except Exception:
+            try:
+                for doc_snap in db.collection("shareTrips").where("driverId", "==", uid).stream():
+                    t_data = doc_snap.to_dict() or {}
+                    if t_data.get("status") in {"to_pickup", "active"}:
+                        open_share_trips.append(doc_snap)
+            except Exception:
+                pass
         if open_share_trips and status == "offline":
             raise ApiError("Cannot go offline while a shared trip is active.", 400)
         user_update, presence_update, map_presence_update = _build_driver_availability_updates(

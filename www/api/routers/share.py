@@ -78,13 +78,20 @@ def _sync_driver_availability_after_trip(db: Any, uid: str) -> None:
     if not uid or db is None:
         return
     try:
-        open_share_trips = list(
-            db.collection("shareTrips")
-            .where("driverId", "==", uid)
-            .where("status", "in", ["to_pickup", "active"])
-            .limit(1)
-            .stream()
-        )
+        open_share_trips = []
+        try:
+            open_share_trips = list(
+                db.collection("shareTrips")
+                .where("driverId", "==", uid)
+                .where("status", "in", ["to_pickup", "active"])
+                .limit(1)
+                .stream()
+            )
+        except Exception:
+            for doc_snap in db.collection("shareTrips").where("driverId", "==", uid).stream():
+                t_data = doc_snap.to_dict() or {}
+                if t_data.get("status") in {"to_pickup", "active"}:
+                    open_share_trips.append(doc_snap)
         if not open_share_trips:
             profile = db.collection("users").document(uid).get().to_dict() or {}
             from .rides import _build_driver_availability_updates, _match_pending_requests_for_driver
@@ -166,13 +173,21 @@ def accept_share_offer(
     if ride.get("status") != "pending" or (ride.get("driver_id") and ride.get("driver_id") != uid):
         raise ApiError("Ride request is no longer available.", 409)
 
-    parent_query = (
-        db.collection("shareTrips")
-        .where("driverId", "==", uid)
-        .where("status", "in", ["active", "to_pickup"])
-        .limit(1)
-    )
-    parent_docs = list(parent_query.stream())
+    parent_docs = []
+    try:
+        parent_docs = list(
+            db.collection("shareTrips")
+            .where("driverId", "==", uid)
+            .where("status", "in", ["active", "to_pickup"])
+            .limit(1)
+            .stream()
+        )
+    except Exception:
+        for doc_snap in db.collection("shareTrips").where("driverId", "==", uid).stream():
+            t_data = doc_snap.to_dict() or {}
+            if t_data.get("status") in {"active", "to_pickup"}:
+                parent_docs.append(doc_snap)
+                break
     if not parent_docs:
         raise ApiError("Active shared trip not found for driver.", 404)
 
