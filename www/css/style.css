@@ -1978,9 +1978,6 @@ select.gy-input:focus {
         font-size: 0.65rem;
     }
 }
-    box-shadow: 0 10px 20px rgba(26, 122, 46, 0.2);
-    margin-top: 24px;
-}
 
 .gy-btn-auth:active {
     transform: scale(0.98);
@@ -5500,11 +5497,6 @@ body.profile-editor-open {
     background: #FFFFFF;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
-    border: 1px solid #f1f1f1;
-    border-radius: 12px;
-    background: #fff;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-}
 
 .location-card-connector {
     position: absolute;
@@ -6468,6 +6460,8 @@ body.profile-editor-open {
     border-left: 2.5px solid #fff;
     border-bottom: 2.5px solid #fff;
     transform: rotate(-45deg);
+}
+
 .ride-service-card-share {
     border: 1.5px solid #FCD34D;
     background: #FFFEF5;
@@ -6690,7 +6684,6 @@ body.profile-editor-open {
 .ride-service-copy small {
     color: var(--gy-muted);
     font-size: 11px;
-}
 }
 
 .ride-service-fare {
