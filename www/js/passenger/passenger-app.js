@@ -2238,7 +2238,7 @@ requestRideButton.addEventListener('click', async () => {
             pickupLng: Number(fareQuote.pickup_lng),
             dropLat: Number(fareQuote.drop_lat),
             dropLng: Number(fareQuote.drop_lng),
-            vehicleType: isShareRide ? "auto" : requestedVehicleType,
+            vehicleType: requestedVehicleType,
             dropFullAddress: fareQuote.drop_full_address || "",
             dropSource: fareQuote.drop_source || "",
             dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",
@@ -2246,9 +2246,6 @@ requestRideButton.addEventListener('click', async () => {
             dropEloc: fareQuote.drop_eloc || "",
             dropTypeHint: fareQuote.drop_type_hint || ""
         };
-        if (isShareRide) {
-            requestPayload.rideType = "share";
-        }
         const backendRide = await createRideThroughBackend(requestPayload);
         currentPassengerRideId = backendRide.rideId;
         notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
