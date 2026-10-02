@@ -36,6 +36,24 @@ const requestedDestination = new URLSearchParams(window.location.search).get("de
 
 warmGoogleMaps();
 
+async function loadShareConfig() {
+    try {
+        const res = await fetch('/api/share/config');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok && data.config) {
+            const maxDetour = data.config.SHARE_MAX_DETOUR_MIN || 8;
+            const detourCopy = document.getElementById('share-detour-time-copy');
+            if (detourCopy) {
+                detourCopy.innerText = `may add up to ${maxDetour} min`;
+            }
+        }
+    } catch (e) {
+        console.warn("Could not load share config:", e);
+    }
+}
+loadShareConfig();
+
 function selectRideService(serviceType) {
     if (serviceSelectionLocked) return;
     const service = getRideService(serviceType);
@@ -49,6 +67,10 @@ function selectRideService(serviceType) {
         card.classList.toggle('is-selected', selected);
         card.setAttribute('aria-pressed', String(selected));
     });
+    const shareExplainer = document.getElementById('share-info-explainer');
+    if (shareExplainer) {
+        shareExplainer.classList.toggle('d-none', serviceType !== 'share');
+    }
     const fareAmountEl = document.getElementById('fare-amount');
     if (fareAmountEl) fareAmountEl.innerText = `₹${fare}`;
     const availPriceEl = document.getElementById('availability-price-amount');
@@ -63,6 +85,14 @@ function renderFareOptions(quote) {
     if (!quote?.fare_options) return;
     document.getElementById('bike-fare').innerText = `₹${quote.fare_options.bike}`;
     document.getElementById('auto-fare').innerText = `₹${quote.fare_options.auto}`;
+    const shareFareEl = document.getElementById('share-fare');
+    if (shareFareEl && Number.isFinite(quote.fare_options.share)) {
+        shareFareEl.innerText = `₹${quote.fare_options.share}`;
+    }
+    const shareOrigEl = document.getElementById('share-original-fare');
+    if (shareOrigEl && Number.isFinite(quote.fare_options.auto)) {
+        shareOrigEl.innerText = `₹${quote.fare_options.auto}`;
+    }
     distanceLabel.innerText = `${Number(quote.distance_km).toFixed(1)} km`;
     const headingCopy = serviceOptions.querySelector('.ride-service-heading p');
     if (headingCopy) {
@@ -80,6 +110,8 @@ function resetFareOptions() {
     if (serviceSelectionLocked) return;
     window.selectedRideService = null;
     serviceOptions.classList.add('d-none');
+    const shareExplainer = document.getElementById('share-info-explainer');
+    if (shareExplainer) shareExplainer.classList.add('d-none');
     const fareQuoteBox = document.getElementById('fare-quote-box');
     if (fareQuoteBox) {
         fareQuoteBox.classList.add('d-none');

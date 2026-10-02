@@ -75,8 +75,50 @@ function ensureMap(center) {
     return map;
 }
 
+let trackRoutePolyline = null;
+
+function decodeTrackPolyline(encoded = "") {
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
+    const coordinates = [];
+
+    while (index < encoded.length) {
+        let result = 0;
+        let shift = 0;
+        let byte = null;
+
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+
+        lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+        result = 0;
+        shift = 0;
+
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+
+        lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+        coordinates.push({ lat: lat / 1e5, lng: lng / 1e5 });
+    }
+
+    return coordinates;
+}
+
 function updateMarker(refHolder, key, position, options) {
-    if (!position) return;
+    if (!position) {
+        if (refHolder[key]?.setMap) {
+            refHolder[key].setMap(null);
+            delete refHolder[key];
+        }
+        return;
+    }
     const mapsApi = window.google.maps;
     if (!refHolder[key]) {
         refHolder[key] = new mapsApi.Marker({ map, position, ...options });
@@ -111,7 +153,8 @@ function renderSnapshot(data) {
     detailsCard.classList.remove('d-none');
 
     const driverLoc = data.driverLocation;
-    const pickup = (data.pickup_lat && data.pickup_lng) ? { lat: data.pickup_lat, lng: data.pickup_lng } : null;
+    const isPickedUp = ["started", "en_route", "completed"].includes(status);
+    const pickup = (!isPickedUp && data.pickup_lat && data.pickup_lng) ? { lat: data.pickup_lat, lng: data.pickup_lng } : null;
     const drop = (data.drop_lat && data.drop_lng) ? { lat: data.drop_lat, lng: data.drop_lng } : null;
     const center = driverLoc || pickup || drop;
     if (!center || !window.google?.maps) return;
@@ -121,9 +164,36 @@ function renderSnapshot(data) {
         updateMarker(markers, 'driver', driverLoc, { title: "Driver", label: "D" });
         map.panTo(driverLoc);
     }
-    if (pickup) updateMarker(markers, 'pickup', pickup, { title: "Pickup", label: "P" });
+    updateMarker(markers, 'pickup', pickup, { title: "Pickup", label: "P" });
     if (drop) updateMarker(markers, 'drop', drop, { title: "Destination", label: "X" });
+
+    const isShareRide = data.rideType === "share" && Boolean(data.parentTripId || data.sharedInfo?.parentTripId);
+    const shared = isShareRide ? data.sharedInfo : null;
+    if (shared?.nextPickup && Number.isFinite(Number(shared.nextPickup.lat)) && Number.isFinite(Number(shared.nextPickup.lng))) {
+        updateMarker(markers, 'nextPickup', { lat: Number(shared.nextPickup.lat), lng: Number(shared.nextPickup.lng) }, { title: "Next pickup", label: "N" });
+    } else {
+        updateMarker(markers, 'nextPickup', null);
+    }
+
+    if (shared?.routePolyline) {
+        const path = decodeTrackPolyline(shared.routePolyline);
+        if (path.length >= 2) {
+            const oldPolyline = trackRoutePolyline;
+            trackRoutePolyline = new window.google.maps.Polyline({
+                map,
+                path,
+                strokeColor: "#16723a",
+                strokeOpacity: 0.95,
+                strokeWeight: 5,
+                zIndex: 500
+            });
+            if (oldPolyline?.setMap) {
+                oldPolyline.setMap(null);
+            }
+        }
+    }
 }
+
 
 function showNotFound() {
     setStatusCardState('is-ended');

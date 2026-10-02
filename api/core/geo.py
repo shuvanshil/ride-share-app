@@ -73,6 +73,35 @@ def decode_polyline(encoded: str) -> list[tuple[float, float]]:
     return coordinates
 
 
+def encode_polyline(points: list[tuple[float, float]]) -> str:
+    if not points:
+        return ""
+
+    result: list[str] = []
+    prev_lat = 0
+    prev_lng = 0
+
+    for lat, lng in points:
+        late5 = int(round(lat * 1e5))
+        lnge5 = int(round(lng * 1e5))
+
+        d_lat = late5 - prev_lat
+        d_lng = lnge5 - prev_lng
+
+        prev_lat = late5
+        prev_lng = lnge5
+
+        for num in (d_lat, d_lng):
+            value = ~(num << 1) if num < 0 else (num << 1)
+            while value >= 0x20:
+                result.append(chr((0x20 | (value & 0x1F)) + 63))
+                value >>= 5
+            result.append(chr(value + 63))
+
+    return "".join(result)
+
+
+
 def _project_onto_segment_fraction(
     point: tuple[float, float], seg_start: tuple[float, float], seg_end: tuple[float, float]
 ) -> float:

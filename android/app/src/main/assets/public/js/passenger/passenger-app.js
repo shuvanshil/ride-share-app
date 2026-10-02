@@ -585,6 +585,7 @@ function sanitizeAvatarSrc(photoUrl) {
 }
 
 function showTripProgressPanel(ride) {
+    const isShareRide = ride.rideType === 'share' && Boolean(ride.parentTripId || ride.sharedInfo?.parentTripId);
     const dashboardView = document.getElementById('dashboard-view');
     const panel = document.getElementById('trip-progress-panel');
     const mapCard = document.getElementById('services-map-card');
@@ -603,11 +604,9 @@ function showTripProgressPanel(ride) {
 
     panel.classList.remove('d-none');
 
-    // Notify map and shared services that a driver is assigned and trip is live
     window.dispatchEvent(new CustomEvent('driver-assigned', { detail: { ride } }));
     window.dispatchEvent(new CustomEvent('ride-status-updated', { detail: { ride, status: ride.status } }));
 
-    // Requirement: Passenger ride-details card must be expanded by default for every newly accepted/active ride
     if (!panel.dataset.userToggled) {
         panel.classList.add('is-expanded');
         const handle = document.getElementById('trip-progress-handle');
@@ -617,7 +616,6 @@ function showTripProgressPanel(ride) {
     const statusText = document.getElementById('trip-progress-status-text');
     const statusSubtext = document.getElementById('trip-progress-status-subtext');
 
-    // Set dynamic status text based on ride status and distance
     let mainStatus = "Trip in progress";
     let subStatus = "Tap for ride details";
 
@@ -630,7 +628,6 @@ function showTripProgressPanel(ride) {
         mainStatus = "Trip in progress";
     }
 
-    // Calculate and show distance if driver location is available
     if (ride.driverLocation?.lat && ride.driverLocation?.lng) {
         const targetLat = (ride.status === "accepted" || ride.status === "arrived") ? ride.pickup_lat : ride.drop_lat;
         const targetLng = (ride.status === "accepted" || ride.status === "arrived") ? ride.pickup_lng : ride.drop_lng;
@@ -644,11 +641,17 @@ function showTripProgressPanel(ride) {
             );
 
             if (ride.status === "accepted") {
-                subStatus = `${distKm.toFixed(1)} km away`;
+                const stopsCount = Number(ride.sharedInfo?.stopsBeforeYou || 0);
+                if (isShareRide && stopsCount > 0) {
+                    subStatus = `${stopsCount} stop${stopsCount > 1 ? 's' : ''} before you • ${distKm.toFixed(1)} km away`;
+                } else {
+                    subStatus = `${distKm.toFixed(1)} km away`;
+                }
             } else if (ride.status === "started" || ride.status === "en_route") {
                 subStatus = `${distKm.toFixed(1)} km to destination`;
                 if (distKm < 0.5) mainStatus = "Almost there";
             }
+
         }
     }
 
@@ -667,7 +670,6 @@ function showTripProgressPanel(ride) {
 
     const driverBox = document.getElementById('trip-progress-driver');
     if (driverBox) {
-        // Use sanitized avatar src or SVG placeholder to avoid net::ERR_INVALID_URL
         const avatarSrc = sanitizeAvatarSrc(driverPhoto);
 
         driverBox.innerHTML = `
@@ -701,6 +703,53 @@ function showTripProgressPanel(ride) {
         pinBox?.classList.remove('d-none');
     } else {
         pinBox?.classList.add('d-none');
+    }
+
+    const shareBox = document.getElementById('trip-progress-share-box');
+    if (shareBox && isShareRide) {
+        shareBox.classList.remove('d-none');
+        const ridersEl = document.getElementById('trip-share-riders-count');
+        const delayBadge = document.getElementById('trip-share-delay-badge');
+        const joiningBanner = document.getElementById('trip-share-joining-banner');
+        const etaText = document.getElementById('trip-share-eta-text');
+
+        const shared = ride.sharedInfo || {};
+        const ridersCount = shared.ridersOnboard !== undefined ? shared.ridersOnboard : (shared.seatsOccupied || 1);
+        if (ridersEl) {
+            ridersEl.innerText = `${ridersCount} rider${ridersCount === 1 ? '' : 's'} on board`;
+        }
+
+        const delayMin = Number(shared.delayMin || 0);
+        if (delayBadge) {
+            if (delayMin > 0) {
+                delayBadge.innerText = `+${delayMin} min detour`;
+                delayBadge.classList.remove('d-none');
+            } else {
+                delayBadge.classList.add('d-none');
+            }
+        }
+
+        if (joiningBanner) {
+            if (shared.newRiderJoining) {
+                joiningBanner.classList.remove('d-none');
+            } else {
+                joiningBanner.classList.add('d-none');
+            }
+        }
+
+        if (etaText) {
+            if (shared.etaIso) {
+                const d = new Date(shared.etaIso);
+                etaText.innerText = isNaN(d.getTime()) ? shared.etaIso : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else if (ride.dropEtaIso) {
+                const d = new Date(ride.dropEtaIso);
+                etaText.innerText = isNaN(d.getTime()) ? ride.dropEtaIso : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else {
+                etaText.innerText = '--';
+            }
+        }
+    } else if (shareBox) {
+        shareBox.classList.add('d-none');
     }
 
     // Populate locations
@@ -2181,6 +2230,7 @@ requestRideButton.addEventListener('click', async () => {
     startSearchStateUi(35);
 
     try {
+        const isShareRide = requestedVehicleType === "share";
         const backendRide = await createRideThroughBackend({
             pickupName: pickupText,
             dropName: dropText,
@@ -2188,7 +2238,8 @@ requestRideButton.addEventListener('click', async () => {
             pickupLng: Number(fareQuote.pickup_lng),
             dropLat: Number(fareQuote.drop_lat),
             dropLng: Number(fareQuote.drop_lng),
-            vehicleType: requestedVehicleType,
+            vehicleType: isShareRide ? "auto" : requestedVehicleType,
+            rideType: isShareRide ? "share" : "normal",
             dropFullAddress: fareQuote.drop_full_address || "",
             dropSource: fareQuote.drop_source || "",
             dropProvider: fareQuote.drop_provider || fareQuote.drop_source || "",

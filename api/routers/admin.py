@@ -348,6 +348,15 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     yesterday_rides_count = _safe_count(rides_coll.where("createdAt", ">=", yesterday_start).where("createdAt", "<", today_start))
     rides_delta_percent = round(((today_total - yesterday_rides_count) / yesterday_rides_count * 100), 1) if yesterday_rides_count > 0 else (12.4 if today_total > 0 else 0.0)
 
+    total_share_rides = _safe_count(rides_coll.where("rideType", "==", "share"))
+    completed_share_trips = [_doc_dict(d) for d in _stream(db.collection("shareTrips").where("status", "==", "completed"))]
+    total_completed_share_trips = len(completed_share_trips)
+    if total_completed_share_trips > 0:
+        total_riders = sum(len(t.get("childRideIds") or []) + int(t.get("remoteSeq") or 0) for t in completed_share_trips)
+        avg_riders_per_share_trip = round(total_riders / total_completed_share_trips, 2)
+    else:
+        avg_riders_per_share_trip = 0.0
+
     # Attention items
     pending_payments = _safe_count(db.collection("driverPayments").where("status", "==", "submitted"))
     open_sos = _safe_count(db.collection("sosAlerts").where("status", "==", "open"))
@@ -560,6 +569,11 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
         "platform": {
             "totalRegisteredUsers": total_registered,
             "totalCompletedRides": total_completed_rides,
+        },
+        "share": {
+            "totalShareRides": total_share_rides,
+            "completedShareTrips": total_completed_share_trips,
+            "avgRidersPerShareTrip": avg_riders_per_share_trip,
         },
         "safety": {
             "openSosAlerts": open_sos,
@@ -875,6 +889,7 @@ def list_ride_history(
     admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
     status: Optional[str] = Query(default=None),
     vehicleType: Optional[str] = Query(default=None),
+    rideType: Optional[str] = Query(default=None),
     hasFeedback: Optional[bool] = Query(default=None),
     dateFrom: Optional[str] = Query(default=None),
     dateTo: Optional[str] = Query(default=None),
@@ -891,6 +906,8 @@ def list_ride_history(
             base = base.where("status", "in", allowed)
     if vehicleType:
         base = base.where("vehicle_type", "==", vehicleType)
+    if rideType:
+        base = base.where("rideType", "==", rideType)
     if hasFeedback is not None:
         base = base.where("feedback.submitted", "==", hasFeedback)
 
@@ -905,6 +922,40 @@ def list_ride_history(
     items, next_cursor = _paginate(base, cursor, limit, "rides")
     items = _apply_search(items, q, ["driver_name", "pickup_name", "drop_name", "passenger_id", "driver_id"])
     return {"ok": True, "rides": _backfill_driver_names(items), "nextCursor": next_cursor}
+
+
+@router.get("/rides/{ride_id}")
+def get_admin_ride(
+    ride_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    ref = db.collection("rides").document(ride_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Ride not found.", 404)
+    ride = _doc_dict(snap)
+    sibling_rides = []
+    parent_trip_id = ride.get("parentTripId")
+    if parent_trip_id:
+        try:
+            s_docs = db.collection("rides").where("parentTripId", "==", parent_trip_id).stream()
+            for s in s_docs:
+                if s.id != ride_id:
+                    s_data = s.to_dict() or {}
+                    sibling_rides.append({
+                        "rideId": s.id,
+                        "passenger_name": s_data.get("passenger_name") or "Passenger",
+                        "seatOrder": s_data.get("seatOrder") or 1,
+                        "status": s_data.get("status"),
+                        "fare": s_data.get("fare"),
+                        "pickup_name": s_data.get("pickup_name"),
+                        "drop_name": s_data.get("drop_name"),
+                    })
+        except Exception:
+            pass
+    ride["siblingChildRides"] = sibling_rides
+    return {"ok": True, "ride": ride, "siblingChildRides": sibling_rides}
 
 
 class RideActionBody(BaseModel):

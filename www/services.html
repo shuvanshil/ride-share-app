@@ -210,6 +210,24 @@
                                     <p class="pin-hint" data-i18n="services.share_pin_notice">Share this PIN only with your assigned driver.</p>
                                 </div>
 
+                                <!-- Share Trip In-Trip Panel -->
+                                <div class="trip-card-block trip-share-info-block d-none" id="trip-progress-share-box" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 16px;margin-bottom:12px;">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-teal-lt text-teal fw-bold" style="background:#d1fae5;color:#065f46;padding:4px 8px;border-radius:4px;font-size:12px;">Share Ride</span>
+                                            <span class="trip-share-riders-badge text-muted small" id="trip-share-riders-count" style="font-size:12px;">1 rider on board</span>
+                                        </div>
+                                        <span class="badge bg-warning-lt text-warning d-none" id="trip-share-delay-badge" style="background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:4px;font-size:11px;">+0 min detour</span>
+                                    </div>
+                                    <div class="alert alert-info py-1 px-2 small mb-2 d-none" id="trip-share-joining-banner" style="background:#e0f2fe;border:1px solid #bae6fd;color:#0369a1;border-radius:6px;font-size:12px;">
+                                        <span id="trip-share-joining-text">Another passenger is joining the ride</span>
+                                    </div>
+                                    <div class="d-flex align-items-center justify-content-between small text-muted">
+                                        <span>Estimated Drop-off:</span>
+                                        <strong class="text-dark" id="trip-share-eta-text">--</strong>
+                                    </div>
+                                </div>
+
                                 <!-- 3. Location Route Card -->
                                 <div class="trip-card-block trip-locations-block">
                                     <div class="trip-route-row">
@@ -396,6 +414,26 @@
                                     <div class="ride-service-check"></div>
                                 </div>
                             </button>
+                            <button class="ride-service-card ride-service-card-share" type="button" data-service-type="share" aria-pressed="false">
+                                <div class="share-offer-badge">OFFER</div>
+                                <div class="ride-service-img-wrap">
+                                    <img src="assets/vehicle-markers/auto-card.png" alt="Shared Ride">
+                                </div>
+                                <div class="ride-service-copy">
+                                    <strong data-i18n="services.share_ride">Shared Ride</strong>
+                                    <small data-i18n="services.share_desc">Up to 3 passengers</small>
+                                    <div class="share-pill-badge">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                        <span data-i18n="services.share_with_others">Share with other riders</span>
+                                    </div>
+                                </div>
+                                <div class="ride-service-price-wrap share-price-column">
+                                    <span class="ride-service-fare-strikethrough text-muted" id="share-original-fare" style="text-decoration: line-through; font-size: 11px;">₹0</span>
+                                    <strong class="ride-service-fare text-success" id="share-fare" style="color: #16723a; font-size: 18px;">₹0</strong>
+                                    <span id="share-detour-time-copy" class="share-detour-time-copy">may add up to 8 min</span>
+                                    <div class="ride-service-check mt-1"></div>
+                                </div>
+                            </button>
                         </div>
                     </section>
 
@@ -555,6 +593,29 @@
                         <button id="cancel-ride-request-btn" class="gy-btn-cancel-outline mt-2 d-none" type="button">
                             <span class="webicon webicon-trash" style="width: 18px; height: 18px;"></span> <span data-i18n="services.cancel_request">Cancel Ride Request</span>
                         </button>
+                        <div id="share-info-explainer" class="share-info-explainer d-none">
+                            <div class="share-info-header">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0284C7" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                <span>The driver may pick up other riders on the way.</span>
+                            </div>
+                            <div class="share-info-grid">
+                                <div class="share-info-item">
+                                    <span class="share-info-icon">₹</span>
+                                    <strong>Lower price</strong>
+                                    <small>Save money by sharing</small>
+                                </div>
+                                <div class="share-info-item">
+                                    <span class="share-info-icon">👥</span>
+                                    <strong>Same route area</strong>
+                                    <small>Only riders nearby</small>
+                                </div>
+                                <div class="share-info-item">
+                                    <span class="share-info-icon">⏱</span>
+                                    <strong>Slightly longer time</strong>
+                                    <small>May take a few extra minutes</small>
+                                </div>
+                            </div>
+                        </div>
                         <div class="safety-assurance-tag">
                             <span class="webicon webicon-safety-check" aria-hidden="true"></span>
                             <span data-i18n="services.safe_reliable_tag">Safe, secure and reliable rides</span>

@@ -399,6 +399,40 @@
                                     </div>
                                 </div>
                             </div>
+                        <!-- Share Rides KPI Row -->
+                        <div class="row row-cards mb-3">
+                            <div class="col-sm-6 col-lg-6">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="avatar avatar-md bg-teal-lt text-teal rounded-3"><i class="ti ti-share fs-2"></i></span>
+                                                <div>
+                                                    <div class="text-secondary small fw-medium">Total Share Rides</div>
+                                                    <div class="h1 mb-0 fw-bold text-dark" id="kpi-share-rides-value">--</div>
+                                                </div>
+                                            </div>
+                                            <span class="badge bg-teal-lt text-teal small fw-bold">Share Auto</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-lg-6">
+                                <div class="card border-0 shadow-xs h-100 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="avatar avatar-md bg-indigo-lt text-indigo rounded-3"><i class="ti ti-users-group fs-2"></i></span>
+                                                <div>
+                                                    <div class="text-secondary small fw-medium">Avg Riders / Completed Trip</div>
+                                                    <div class="h1 mb-0 fw-bold text-dark" id="kpi-share-avg-riders-value">--</div>
+                                                </div>
+                                            </div>
+                                            <span class="badge bg-indigo-lt text-indigo small fw-bold">Pool Utilization</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Second Row: Ride Activity Graph, Driver Availability Donut, Recent Activity -->
@@ -751,6 +785,11 @@
                                         <option value="">All vehicles</option>
                                         <option value="bike">Bike / Scooty</option>
                                         <option value="auto">Auto</option>
+                                    </select>
+                                    <select id="history-ridetype-filter" class="form-select form-select-sm w-auto">
+                                        <option value="">All Types</option>
+                                        <option value="normal">Normal</option>
+                                        <option value="share">Share</option>
                                     </select>
                                     <select id="history-feedback-filter" class="form-select form-select-sm w-auto">
                                         <option value="">All feedback</option>

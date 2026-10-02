@@ -29,10 +29,26 @@ from ..core.fare_policy import (
 )
 from ..core.firebase import get_admin_app
 from ..core.geo import decode_polyline, haversine_km, road_distance_along_route_km
+from ..core.share_config import (
+    SHARE_MAX_DETOUR_MIN,
+    SHARE_MAX_OFFER_DRIVERS,
+    SHARE_MAX_PICKUP_M,
+    SHARE_MAX_SEATS,
+    SHARE_OFFER_TIMEOUT_S,
+    SHARE_PICKUP_WAIT_S,
+    SHARE_PRIORITY_WINDOW_S,
+    SHARE_ZONE_RADIUS_M,
+    calculate_share_fare,
+)
+from ..core.share_routing import (
+    find_optimal_share_route,
+    recompute_shared_info_and_stops,
+)
 from ..core.telegram import (
     claim_and_send_sensitive_ride_alert,
     is_sensitive_time_window,
 )
+from .notify import _collect_tokens, _is_notification_eligible
 
 router = APIRouter(prefix="/rides", tags=["rides"])
 
@@ -102,6 +118,7 @@ class RideCreateBody(BaseModel):
     dropPlaceId: str = Field(default="", max_length=200)
     dropEloc: str = Field(default="", max_length=100)
     dropTypeHint: str = Field(default="", max_length=100)
+    rideType: Optional[str] = Field(default="normal", max_length=20)
 
 
 class DriverTransitionBody(BaseModel):
@@ -175,6 +192,7 @@ class PendingRideRequestBody(BaseModel):
     fareEstimate: Optional[dict[str, Any]] = None
     activatesAt: Optional[str] = None
     dropFullAddress: Optional[str] = Field(default="", max_length=500)
+    rideType: Optional[str] = Field(default="normal", max_length=20)
 
 
 class PendingRideCancelBody(BaseModel):
@@ -552,9 +570,23 @@ def _accumulate_online_seconds(db, uid: str, previous_moment: Any, still_online:
 
 def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc).timestamp()
+    busy_driver_ids = set()
+    try:
+        open_trips = db.collection("shareTrips").where("status", "in", ["to_pickup", "active"]).stream()
+        for ot in open_trips:
+            t_data = ot.to_dict() or {}
+            d_id = t_data.get("driverId")
+            if d_id:
+                busy_driver_ids.add(str(d_id))
+    except Exception:
+        pass
+
     candidates: list[dict[str, Any]] = []
     for snapshot in db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).stream():
         driver = snapshot.to_dict() or {}
+        uid = str(driver.get("uid") or snapshot.id)
+        if uid in busy_driver_ids:
+            continue
         location = driver.get("driverLocation") or {}
         lat, lng = location.get("lat"), location.get("lng")
         last_seen = _timestamp_seconds(driver.get("lastLocationAt") or driver.get("lastSeenAt") or driver.get("updatedAt"))
@@ -570,7 +602,7 @@ def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: s
         ):
             continue
         candidates.append({
-            "uid": str(driver.get("uid") or snapshot.id),
+            "uid": uid,
             "distance": _haversine_km(pickup_lat, pickup_lng, float(lat), float(lng)),
         })
     candidates.sort(key=lambda item: item["distance"])
@@ -727,7 +759,9 @@ async def create_passenger_ride(
         raise ApiError("Authenticated user identity is missing.", 401)
 
     ride_requested_at = datetime.now(timezone.utc)
-    service = get_service_fare_policy(body.vehicleType.strip().lower(), ride_requested_at)
+    is_share = (getattr(body, "rideType", "normal") == "share") or (body.vehicleType.strip().lower() == "share")
+    lookup_vehicle = "auto" if is_share else body.vehicleType.strip().lower()
+    service = get_service_fare_policy(lookup_vehicle, ride_requested_at)
     if not service:
         raise ApiError("Choose a supported ride service.", 400)
     pickup_lat = _coordinate(body.pickupLat, -90, 90)
@@ -745,10 +779,118 @@ async def create_passenger_ride(
         distance_km, duration_minutes, route_polyline = await _server_route(pickup_lat, pickup_lng, drop_lat, drop_lng)
         if not math.isfinite(distance_km) or distance_km < 0 or distance_km > MAX_SERVICEABLE_DISTANCE_KM:
             raise ApiError("This destination is outside LiphtUp's current service area.", 400)
-        fare = _calculate_fare(service, distance_km)
-        drivers = _available_drivers(db, pickup_lat, pickup_lng, body.vehicleType.strip().lower())
-        first_batch = drivers[:DISPATCH_BATCH_SIZE]
-        driver_ids = [driver["uid"] for driver in first_batch]
+        
+        fare = calculate_share_fare(distance_km * 1000) if is_share else _calculate_fare(service, distance_km)
+        priority_candidates: list[dict[str, Any]] = []
+        if is_share:
+            try:
+                active_trips = db.collection("shareTrips").where("status", "==", "active").stream()
+                for trip_snap in active_trips:
+                    trip_data = trip_snap.to_dict() or {}
+                    seats_used = int(trip_data.get("seatsUsed") or 0)
+                    if seats_used >= SHARE_MAX_SEATS:
+                        continue
+                    driver_id = trip_data.get("driverId")
+                    if not driver_id:
+                        continue
+
+                    anchor_id = trip_data.get("anchorRideId")
+                    anchor_drop_lat = None
+                    anchor_drop_lng = None
+                    if anchor_id:
+                        a_doc = db.collection("rides").document(anchor_id).get()
+                        if a_doc.exists:
+                            a_data = a_doc.to_dict() or {}
+                            anchor_drop_lat = a_data.get("drop_lat")
+                            anchor_drop_lng = a_data.get("drop_lng")
+
+                    if anchor_drop_lat is not None and anchor_drop_lng is not None:
+                        anchor_dist_m = (
+                            _haversine_km(
+                                drop_lat,
+                                drop_lng,
+                                float(anchor_drop_lat),
+                                float(anchor_drop_lng),
+                            )
+                            * 1000.0
+                        )
+                        if anchor_dist_m > SHARE_ZONE_RADIUS_M:
+                            continue
+
+                    drv_presence = db.collection("driverPresence").document(driver_id).get()
+                    drv_loc = drv_presence.to_dict().get("driverLocation", {}) if drv_presence.exists else {}
+                    drv_lat = drv_loc.get("lat")
+                    drv_lng = drv_loc.get("lng")
+                    if drv_lat is None or drv_lng is None:
+                        continue
+
+                    pickup_dist_m = (
+                        _haversine_km(
+                            pickup_lat,
+                            pickup_lng,
+                            float(drv_lat),
+                            float(drv_lng),
+                        )
+                        * 1000.0
+                    )
+                    if pickup_dist_m > SHARE_MAX_PICKUP_M:
+                        continue
+
+                    pending_stops = [
+                        s for s in trip_data.get("stopOrder", []) if s.get("status") != "completed"
+                    ]
+                    cand_pickup = {
+                        "rideId": "candidate",
+                        "kind": "pickup",
+                        "lat": pickup_lat,
+                        "lng": pickup_lng,
+                        "status": "pending",
+                    }
+                    cand_drop = {
+                        "rideId": "candidate",
+                        "kind": "drop",
+                        "lat": drop_lat,
+                        "lng": drop_lng,
+                        "status": "pending",
+                    }
+
+                    baseline_etas: dict[str, str] = {}
+                    for cid in trip_data.get("childRideIds", []):
+                        c_doc = db.collection("rides").document(cid).get()
+                        if c_doc.exists:
+                            c_data = c_doc.to_dict() or {}
+                            b = c_data.get("baselineEtaIso") or (c_data.get("sharedInfo") or {}).get("baselineEtaIso")
+                            if b:
+                                baseline_etas[cid] = str(b)
+
+                    opt_route = find_optimal_share_route(
+                        (float(drv_lat), float(drv_lng)),
+                        pending_stops,
+                        baseline_etas,
+                        candidate_stops=[cand_pickup, cand_drop],
+                    )
+                    if opt_route is not None and opt_route.get("valid"):
+                        priority_candidates.append({
+                            "driverId": driver_id,
+                            "pickupDistM": pickup_dist_m,
+                            "detourMin": float(opt_route.get("max_delay_min", 0.0)),
+                        })
+            except Exception:
+                pass
+
+        if priority_candidates:
+            priority_candidates.sort(key=lambda x: (x["pickupDistM"], x["detourMin"]))
+            priority_driver_ids = [c["driverId"] for c in priority_candidates[:SHARE_MAX_OFFER_DRIVERS]]
+            first_driver_id = priority_driver_ids[0]
+            driver_ids = [first_driver_id]
+            is_priority = True
+        else:
+            drivers = _available_drivers(db, pickup_lat, pickup_lng, "auto" if is_share else body.vehicleType.strip().lower())
+            first_batch = drivers[:DISPATCH_BATCH_SIZE]
+            driver_ids = [driver["uid"] for driver in first_batch]
+            is_priority = False
+            priority_driver_ids = []
+
         ride_ref = db.collection("rides").document()
         transaction = db.transaction()
 
@@ -801,15 +943,17 @@ async def create_passenger_ride(
             "fare": fare,
             "quoted_fare": fare,
             "fare_original": fare,
-            "fare_base": service["base"],
-            "fare_per_km": service["per_km"],
-            "fare_min": service["min_fare"],
-            "fare_is_night": service["is_night_fare"],
+            "fare_base": service["base"] if not is_share else fare,
+            "fare_per_km": service["per_km"] if not is_share else 0,
+            "fare_min": service["min_fare"] if not is_share else fare,
+            "fare_is_night": service["is_night_fare"] if not is_share else False,
             "fare_requested_at": ride_requested_at.isoformat(),
             "fare_currency": "INR",
-            "vehicle_type": body.vehicleType.strip().lower(),
-            "service_name": service["name"],
-            "passenger_capacity": service["capacity"],
+            "vehicle_type": "auto" if is_share else body.vehicleType.strip().lower(),
+            "service_name": "Shared Ride" if is_share else service["name"],
+            "passenger_capacity": SHARE_MAX_SEATS if is_share else service["capacity"],
+            "rideType": "share" if is_share else (getattr(body, "rideType", "normal") or "normal"),
+            "fareLocked": fare if is_share else None,
             "status": "pending",
             "driver_id": None,
             "driver_name": None,
@@ -824,17 +968,42 @@ async def create_passenger_ride(
             # passenger never sees a pickup PIN before there is an assigned
             # driver to share it with.
             "verification_pin": None,
+            "dispatch_mode": "priority_share" if is_priority else ("auto_share" if is_share else "normal"),
+            "priority_driver_ids": priority_driver_ids if is_priority else [],
+            "current_offer_driver_id": first_driver_id if is_priority else None,
+            "offer_expires_at": (ride_requested_at + timedelta(seconds=SHARE_OFFER_TIMEOUT_S)).isoformat() if is_priority else None,
+            "priority_window_expires_at": (ride_requested_at + timedelta(seconds=SHARE_PRIORITY_WINDOW_S)).isoformat() if is_priority else None,
+            "detour_minutes": round(priority_candidates[0]["detourMin"], 1) if is_priority else 0.0,
             "eligible_driver_ids": driver_ids,
             "notified_driver_ids": driver_ids,
             "rejected_driver_ids": [],
             "dispatch_batch_size": DISPATCH_BATCH_SIZE,
             "dispatch_timeout_ms": DISPATCH_TIMEOUT_MS,
-            "dispatch_total_candidates": len(drivers),
+            "dispatch_total_candidates": len(priority_candidates) if is_priority else len(drivers),
             "dispatch_round": 1 if driver_ids else 0,
             "search_status": "searching_nearby_drivers",
             "createdAt": fb_firestore.SERVER_TIMESTAMP,
         }
         create_transaction(transaction)
+        if is_share:
+            for d_id in driver_ids:
+                _send_driver_push_notification(
+                    db,
+                    d_id,
+                    "Share Ride Add-on" if is_priority else "Share Ride request",
+                    f"Shared Ride: {body.pickupName.strip()} -> {body.dropName.strip()} (₹{fare})",
+                    {
+                        "type": "share_addon" if is_priority else "share_ride",
+                        "rideId": ride_ref.id,
+                        "rideType": "share",
+                        "fare": str(fare),
+                        "pickupLocation": body.pickupName.strip(),
+                        "dropLocation": body.dropName.strip(),
+                        "detourMinutes": str(round(priority_candidates[0]["detourMin"], 1)) if is_priority else "0",
+                        "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push",
+                    },
+                )
+
         return {
             "ok": True,
             "rideId": ride_ref.id,
@@ -1062,6 +1231,7 @@ def transition_driver_ride(
         "verify_pin": ({"accepted", "arrived"}, "en_route"),
         "complete": ({"started", "en_route"}, "completed"),
         "cancel": ({"accepted", "arrived", "started", "en_route"}, "cancelled_by_driver"),
+        "skip": ({"arrived"}, "no_show"),
         "mark_paid": ({"completed"}, "completed"),
     }
     if not uid:
@@ -1097,7 +1267,35 @@ def transition_driver_ride(
                 raise ApiError("Incorrect verification PIN. Please verify with the passenger.", 400)
 
             updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
-            if action == "verify_pin":
+            if action == "arrive":
+                updates.update({
+                    "status": next_status,
+                    "arrivedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+            elif action == "skip":
+                arrived_at = ride.get("arrivedAt")
+                if not arrived_at:
+                    raise ApiError("Driver arrival time not recorded.", 400)
+                if isinstance(arrived_at, datetime):
+                    arrived_dt = arrived_at
+                elif hasattr(arrived_at, "timestamp"):
+                    arrived_dt = datetime.fromtimestamp(arrived_at.timestamp(), tz=timezone.utc)
+                else:
+                    try:
+                        arrived_dt = datetime.fromisoformat(str(arrived_at).replace("Z", "+00:00"))
+                    except Exception:
+                        raise ApiError("Invalid arrival time.", 400)
+                if arrived_dt.tzinfo is None:
+                    arrived_dt = arrived_dt.replace(tzinfo=timezone.utc)
+                now_utc = datetime.now(timezone.utc)
+                if (now_utc - arrived_dt).total_seconds() < SHARE_PICKUP_WAIT_S:
+                    raise ApiError(f"Must wait at least {SHARE_PICKUP_WAIT_S} seconds before skipping no-show passenger.", 400)
+                updates.update({
+                    "status": "no_show",
+                    "cancellation_reason": "no_show",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+            elif action == "verify_pin":
                 now_utc = datetime.now(timezone.utc)
                 is_night = is_sensitive_time_window(now_utc, KOLKATA_TZ)
                 p_gender = ride.get("passenger_gender")
@@ -1166,6 +1364,53 @@ def transition_driver_ride(
                 updates.update({"payment_status": "paid", "payment_confirmed_by": uid, "paymentConfirmedAt": fb_firestore.SERVER_TIMESTAMP})
             tx.update(ride_ref, updates)
 
+            parent_trip_id = ride.get("parentTripId")
+            if parent_trip_id:
+                parent_ref = db.collection("shareTrips").document(parent_trip_id)
+                p_snap = parent_ref.get(transaction=tx)
+                if p_snap.exists:
+                    p_data = p_snap.to_dict() or {}
+                    child_ids = p_data.get("childRideIds") or []
+                    stop_order = p_data.get("stopOrder") or []
+                    updated_stops = []
+                    for st in stop_order:
+                        st_copy = dict(st)
+                        if action in {"verify_pin", "start"} and st_copy.get("rideId") == clean_ride_id and st_copy.get("kind") == "pickup":
+                            st_copy["status"] = "completed"
+                        elif action == "complete" and st_copy.get("rideId") == clean_ride_id and st_copy.get("kind") == "drop":
+                            st_copy["status"] = "completed"
+                        elif action in {"cancel", "skip"} and st_copy.get("rideId") == clean_ride_id:
+                            st_copy["status"] = "completed"
+                        updated_stops.append(st_copy)
+
+                    remote_onboard = int(p_data.get("remoteOnBoard") or 0)
+                    if action in {"verify_pin", "start"}:
+                        tx.update(parent_ref, {
+                            "status": "active",
+                            "stopOrder": updated_stops,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        })
+                    elif action in {"complete", "cancel", "skip"}:
+                        active_children = [cid for cid in child_ids if cid != clean_ride_id]
+                        new_seats = max(0, len(active_children) + remote_onboard)
+                        if not active_children and remote_onboard == 0:
+                            tx.update(parent_ref, {
+                                "status": "completed",
+                                "seatsUsed": 0,
+                                "stopOrder": updated_stops,
+                                "endedAt": fb_firestore.SERVER_TIMESTAMP,
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            })
+                        else:
+                            new_anchor = active_children[0] if active_children else p_data.get("anchorRideId")
+                            tx.update(parent_ref, {
+                                "anchorRideId": new_anchor,
+                                "childRideIds": active_children,
+                                "seatsUsed": new_seats,
+                                "stopOrder": updated_stops,
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            })
+
             result.update(ride)
             if action == "complete":
                 result.update(complete_updates)
@@ -1180,11 +1425,8 @@ def transition_driver_ride(
             if action == "complete":
                 tx.update(user_ref, {"lifetime_earnings": fb_firestore.Increment(float(final_fare_val)), "total_completed_trips": fb_firestore.Increment(1)})
             if ride.get("share_enabled"):
-                # Keep the public live-tracking snapshot (see set_trip_share
-                # below) in sync with real ride status, and stop sharing the
-                # moment the trip reaches a terminal state.
                 share_ref = db.collection("tripShareView").document(clean_ride_id)
-                if next_status in {"completed", "cancelled_by_driver"}:
+                if next_status in {"completed", "cancelled_by_driver", "no_show"}:
                     tx.delete(share_ref)
                 else:
                     tx.set(share_ref, {"status": next_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
@@ -1197,16 +1439,63 @@ def transition_driver_ride(
                 pass
         if action == "complete":
             _bump_daily_stats(db, uid, {"completed_rides": 1, "earnings": float(result.get("fare") or 0)})
-        if action in {"complete", "cancel"}:
-            availability_status = "offline"
-            if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
-                availability_status = "searching"
-            user_update, presence_update, map_presence_update = _build_driver_availability_updates(availability_status, profile)
-            db.collection("users").document(uid).set(user_update, merge=True)
-            db.collection("driverPresence").document(uid).set(presence_update, merge=True)
-            db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
-            if availability_status == "searching":
-                _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+
+        parent_trip_id = result.get("parentTripId") or (result.get("sharedInfo") or {}).get("parentTripId")
+        if parent_trip_id and action in {"verify_pin", "start", "arrived", "complete", "cancel", "skip"}:
+            try:
+                from .share import finalize_trip_if_done
+                if action in {"complete", "cancel", "skip"}:
+                    finalize_trip_if_done(parent_trip_id, db)
+                p_doc = db.collection("shareTrips").document(parent_trip_id).get()
+                if p_doc.exists:
+                    p_info = p_doc.to_dict() or {}
+                    c_ids = list(p_info.get("childRideIds") or [])
+                    active_child_rides = []
+                    for cid in c_ids:
+                        cr_doc = db.collection("rides").document(cid).get()
+                        if cr_doc.exists:
+                            cr_data = cr_doc.to_dict() or {}
+                            if cr_data.get("status") in {"accepted", "arrived", "started", "en_route"}:
+                                cr_data["ride_id"] = cid
+                                active_child_rides.append(cr_data)
+                    driver_loc = profile.get("driverLocation") or {}
+                    d_pos = (float(driver_loc.get("lat") or 0.0), float(driver_loc.get("lng") or 0.0))
+                    full_stops, shared_info_map = recompute_shared_info_and_stops(d_pos, p_info, active_child_rides)
+                    db.collection("shareTrips").document(parent_trip_id).update({
+                        "stopOrder": full_stops,
+                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                    })
+                    for acr in active_child_rides:
+                        cid = acr["ride_id"]
+                        if cid in shared_info_map:
+                            db.collection("rides").document(cid).update({
+                                "sharedInfo": shared_info_map[cid],
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            })
+                            if cid == clean_ride_id:
+                                result["sharedInfo"] = shared_info_map[cid]
+            except Exception:
+                pass
+
+
+        if action in {"complete", "cancel", "skip"}:
+            open_share_trips = list(
+                db.collection("shareTrips")
+                .where("driverId", "==", uid)
+                .where("status", "in", ["to_pickup", "active"])
+                .limit(1)
+                .stream()
+            )
+            if not open_share_trips:
+                availability_status = "offline"
+                if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
+                    availability_status = "searching"
+                user_update, presence_update, map_presence_update = _build_driver_availability_updates(availability_status, profile)
+                db.collection("users").document(uid).set(user_update, merge=True)
+                db.collection("driverPresence").document(uid).set(presence_update, merge=True)
+                db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
+                if availability_status == "searching":
+                    _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": _safe_ride_dict(result)}
     except ApiError:
         raise
@@ -1269,6 +1558,9 @@ def expand_passenger_dispatch(
             "search_status": "searching_nearby_drivers" if next_batch else "no_more_available_drivers",
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
+        if ride.get("dispatch_mode") == "priority_share":
+            updates["dispatch_mode"] = "auto_share"
+            updates["current_offer_driver_id"] = None
         ride_ref.update(updates)
         return {"ok": True, "rideId": clean_ride_id, "driverIds": next_batch, "searchStatus": updates["search_status"]}
     except ApiError:
@@ -1301,6 +1593,15 @@ def update_driver_availability(
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update driver availability.")
+        open_share_trips = list(
+            db.collection("shareTrips")
+            .where("driverId", "==", uid)
+            .where("status", "in", ["to_pickup", "active"])
+            .limit(1)
+            .stream()
+        )
+        if open_share_trips and status == "offline":
+            raise ApiError("Cannot go offline while a shared trip is active.", 400)
         user_update, presence_update, map_presence_update = _build_driver_availability_updates(
             status,
             {**profile, "uid": uid},
@@ -1441,9 +1742,17 @@ def update_driver_location(
             if ride and ride.get("share_enabled"):
                 # Mirror only coordinates/status into the public, sanitized
                 # live-tracking snapshot -- see set_trip_share() below.
+                share_view_payload: dict[str, Any] = {
+                    "driverLocation": location,
+                    "status": ride.get("status"),
+                    "updatedAt": now,
+                }
+                if ride.get("sharedInfo"):
+                    share_view_payload["sharedInfo"] = ride.get("sharedInfo")
                 db.collection("tripShareView").document(ride_id).set(
-                    {"driverLocation": location, "status": ride.get("status"), "updatedAt": now}, merge=True
+                    share_view_payload, merge=True
                 )
+
         if availability == "searching" and not ride_id:
             activate_due_scheduled_requests(db)
             _match_pending_requests_for_driver(db, uid, profile, location)
@@ -1578,6 +1887,35 @@ def cancel_passenger_ride(
 
             ride_ref.update(updates)
 
+            parent_trip_id = ride.get("parentTripId")
+            if parent_trip_id:
+                try:
+                    parent_ref = db.collection("shareTrips").document(parent_trip_id)
+                    p_snap = parent_ref.get()
+                    if p_snap.exists:
+                        p_data = p_snap.to_dict() or {}
+                        child_ids = p_data.get("childRideIds") or []
+                        active_children = [cid for cid in child_ids if cid != clean_ride_id]
+                        stop_order = [s for s in (p_data.get("stopOrder") or []) if s.get("rideId") != clean_ride_id]
+                        if not active_children:
+                            parent_ref.update({
+                                "status": "cancelled",
+                                "seatsUsed": 0,
+                                "stopOrder": stop_order,
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            })
+                        else:
+                            new_anchor = active_children[0]
+                            parent_ref.update({
+                                "anchorRideId": new_anchor,
+                                "childRideIds": active_children,
+                                "seatsUsed": max(0, len(active_children) + int(p_data.get("remoteOnBoard") or 0)),
+                                "stopOrder": stop_order,
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            })
+                except Exception:
+                    pass
+
             # Release driver presence back to searching if driver was assigned
             if driver_id:
                 try:
@@ -1709,6 +2047,9 @@ def accept_driver_ride(
 
             if ride.get("vehicle_type") != driver_type:
                 raise ApiError("This ride requires a matching registered vehicle.", 403)
+            is_share = (ride.get("rideType") == "share")
+            if is_share and driver_type != "auto":
+                raise ApiError("Shared rides are only supported for auto rickshaw drivers.", 403)
             if uid not in (ride.get("eligible_driver_ids") or []):
                 raise ApiError("This ride request is no longer available for you.", 403)
             if uid in (ride.get("rejected_driver_ids") or []):
@@ -1730,7 +2071,70 @@ def accept_driver_ride(
                 "vehicle_type": driver_type,
                 "verification_pin": verification_pin,
             })
-            tx.update(ride_ref, {
+
+            parent_trip_id = None
+            shared_info = None
+            baseline_eta_iso = None
+            if is_share:
+                parent_trip_ref = db.collection("shareTrips").document()
+                parent_trip_id = parent_trip_ref.id
+                duration_min = float(ride.get("duration_minutes") or 10)
+                baseline_eta = now + timedelta(minutes=duration_min)
+                baseline_eta_iso = baseline_eta.isoformat()
+
+                stop_order = [
+                    {
+                        "kind": "pickup",
+                        "rideId": clean_ride_id,
+                        "passengerName": str(ride.get("passenger_name") or "Passenger")[:80],
+                        "name": str(ride.get("pickup_name") or "Pickup location")[:200],
+                        "lat": ride.get("pickup_lat"),
+                        "lng": ride.get("pickup_lng"),
+                        "status": "pending",
+                    },
+                    {
+                        "kind": "drop",
+                        "rideId": clean_ride_id,
+                        "passengerName": str(ride.get("passenger_name") or "Passenger")[:80],
+                        "name": str(ride.get("drop_name") or "Destination")[:200],
+                        "lat": ride.get("drop_lat"),
+                        "lng": ride.get("drop_lng"),
+                        "status": "pending",
+                    },
+                ]
+
+                parent_trip_data = {
+                    "tripId": parent_trip_id,
+                    "driverId": uid,
+                    "driverName": str(profile.get("name") or "Driver")[:80],
+                    "driverPhone": str(profile.get("phone") or "")[:40],
+                    "vehicleNumber": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
+                    "vehicleModel": str(profile.get("vehicle_model") or profile.get("vehicleModel") or "Registered Auto")[:100],
+                    "status": "to_pickup",
+                    "seatsUsed": 1,
+                    "maxSeats": SHARE_MAX_SEATS,
+                    "anchorRideId": clean_ride_id,
+                    "childRideIds": [clean_ride_id],
+                    "stopOrder": stop_order,
+                    "createdAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                }
+                tx.set(parent_trip_ref, parent_trip_data)
+
+                shared_info = {
+                    "parentTripId": parent_trip_id,
+                    "seatOrder": 1,
+                    "baselineEtaIso": baseline_eta_iso,
+                    "seatsOccupied": 1,
+                }
+                accepted_ride.update({
+                    "parentTripId": parent_trip_id,
+                    "seatOrder": 1,
+                    "baselineEtaIso": baseline_eta_iso,
+                    "sharedInfo": shared_info,
+                })
+
+            update_data = {
                 "status": "accepted",
                 "driver_id": uid,
                 "driver_name": accepted_ride["driver_name"],
@@ -1742,7 +2146,15 @@ def accept_driver_ride(
                 "verification_pin": verification_pin,
                 "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            })
+            }
+            if is_share:
+                update_data.update({
+                    "parentTripId": parent_trip_id,
+                    "seatOrder": 1,
+                    "baselineEtaIso": baseline_eta_iso,
+                    "sharedInfo": shared_info,
+                })
+            tx.update(ride_ref, update_data)
 
             # Synchronize pendingRideRequest status if this was an auto/scheduled dispatch
             pending_req_id = ride.get("pendingRequestId")
@@ -1966,8 +2378,12 @@ def _trip_share_snapshot(ride: dict[str, Any]) -> dict[str, Any]:
         "pickup_lng": ride.get("pickup_lng"),
         "drop_lat": ride.get("drop_lat"),
         "drop_lng": ride.get("drop_lng"),
+        "rideType": ride.get("rideType"),
+        "parentTripId": ride.get("parentTripId"),
+        "sharedInfo": ride.get("sharedInfo"),
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
     }
+
 
 
 @router.post("/{ride_id}/share")

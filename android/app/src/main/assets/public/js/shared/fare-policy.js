@@ -68,7 +68,21 @@ export const RIDE_SERVICES = Object.freeze(
 );
 
 export function getRideService(serviceType) {
-    return RIDE_SERVICES[String(serviceType || "").toLowerCase()] || null;
+    const key = String(serviceType || "").toLowerCase();
+    if (key === "share") {
+        return {
+            id: "share",
+            name: "Shared Ride",
+            shortName: "Shared Ride",
+            capacity: 3,
+            baseFare: 10,
+            perKmRate: 0,
+            minFare: 10,
+            rideType: "share",
+            vehicleType: "auto"
+        };
+    }
+    return RIDE_SERVICES[key] || null;
 }
 
 function getTimePartsInFareTimezone(requestedAt) {
@@ -124,6 +138,14 @@ export function isDistanceServiceable(distanceKm) {
     return Number.isFinite(distance) && distance >= 0 && distance <= MAX_SERVICEABLE_DISTANCE_KM;
 }
 
+export function calculateShareFare(distanceMeters) {
+    const d = Math.max(0, Math.round(Number(distanceMeters) || 0));
+    if (d <= 1000) return 10;
+    const extra = d - 1000;
+    const steps = Math.ceil(extra / 300);
+    return 10 + (steps * 5);
+}
+
 /**
  * Computes the fare for a single service type given a road distance in km.
  * fare = base_fare + (full distance to destination in km * per_km_rate),
@@ -132,6 +154,11 @@ export function isDistanceServiceable(distanceKm) {
  * "can't price this" from a real fare of 0.
  */
 export function calculateServiceFare(serviceType, distanceKm, requestedAt = new Date()) {
+    const key = String(serviceType || "").toLowerCase();
+    if (key === "share") {
+        if (!isDistanceServiceable(distanceKm)) return null;
+        return calculateShareFare(Number(distanceKm) * 1000);
+    }
     const service = getServiceFarePolicy(serviceType, requestedAt);
     if (!service || !isDistanceServiceable(distanceKm)) return null;
 
@@ -142,10 +169,13 @@ export function calculateServiceFare(serviceType, distanceKm, requestedAt = new 
 }
 
 export function calculateFareOptions(distanceKm, requestedAt = new Date()) {
-    return Object.fromEntries(
+    const options = Object.fromEntries(
         Object.keys(RIDE_SERVICES).map((serviceType) => [
             serviceType,
             calculateServiceFare(serviceType, distanceKm, requestedAt)
         ])
     );
+    options.share = calculateServiceFare("share", distanceKm, requestedAt);
+    return options;
 }
+

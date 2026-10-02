@@ -1036,11 +1036,28 @@ function renderAssignedDriverTracking(routeDetails, straightLineDistanceKm = nul
     }
 }
 
+let passengerNextPickupMarker = null;
+let passengerNextPickupKey = "";
+let passengerReturnToFollowTimer = null;
+
+function clearPassengerNextPickup() {
+    if (passengerNextPickupMarker?.setMap) {
+        passengerNextPickupMarker.setMap(null);
+    }
+    passengerNextPickupMarker = null;
+    passengerNextPickupKey = "";
+    if (passengerReturnToFollowTimer) {
+        clearTimeout(passengerReturnToFollowTimer);
+        passengerReturnToFollowTimer = null;
+    }
+}
+
 function clearAssignedDriverRoute() {
     if (assignedDriverRoutePolyline?.setMap) {
         assignedDriverRoutePolyline.setMap(null);
     }
     assignedDriverRoutePolyline = null;
+    clearPassengerNextPickup();
     if (assignedDriverTrackingElement) {
         assignedDriverTrackingElement.remove();
         assignedDriverTrackingElement = null;
@@ -1048,18 +1065,105 @@ function clearAssignedDriverRoute() {
     assignedDriverLastDistanceKm = null;
 }
 
-function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinationPosition = null) {
+function getNextPickupMarkerIcon() {
+    const maps = getGoogleMaps();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44">`
+        + `<path d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 26 18 26s18-12.5 18-26C36 8.06 27.94 0 18 0z" fill="#0284c7" stroke="#ffffff" stroke-width="2"/>`
+        + `<circle cx="18" cy="18" r="12" fill="#ffffff"/>`
+        + `<path d="M18 10l-6 7h4v7h4v-7h4z" fill="#0284c7"/>`
+        + `</svg>`;
+    return {
+        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+        scaledSize: new maps.Size(36, 44),
+        anchor: new maps.Point(18, 44)
+    };
+}
+
+function renderPassengerNextPickup(nextPickup, driverPosition) {
     if (!window.mapInstance || !window.google?.maps) return;
 
-    if (assignedDriverRoutePolyline?.setMap) {
-        assignedDriverRoutePolyline.setMap(null);
+    if (!nextPickup || !Number.isFinite(Number(nextPickup.lat)) || !Number.isFinite(Number(nextPickup.lng))) {
+        clearPassengerNextPickup();
+        return;
     }
+
+    const pos = { lat: Number(nextPickup.lat), lng: Number(nextPickup.lng) };
+    const nextKey = `${pos.lat.toFixed(5)}:${pos.lng.toFixed(5)}`;
+
+    if (passengerNextPickupKey === nextKey && passengerNextPickupMarker) {
+        passengerNextPickupMarker.setPosition(pos);
+        return;
+    }
+
+    if (passengerNextPickupMarker?.setMap) {
+        passengerNextPickupMarker.setMap(null);
+    }
+
+    const maps = getGoogleMaps();
+    passengerNextPickupMarker = new maps.Marker({
+        map: window.mapInstance,
+        position: pos,
+        title: "Next pickup",
+        icon: getNextPickupMarkerIcon(),
+        zIndex: 910
+    });
+    passengerNextPickupKey = nextKey;
+
+    const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!prefersReducedMotion) {
+        const pulseCircle = new maps.Circle({
+            map: window.mapInstance,
+            center: pos,
+            radius: 30,
+            strokeColor: "#0284c7",
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: "#38bdf8",
+            fillOpacity: 0.35,
+            zIndex: 905
+        });
+        const pulseStart = performance.now();
+        const animatePulse = (now) => {
+            const elapsed = now - pulseStart;
+            if (elapsed < 3000) {
+                const frac = (elapsed % 1000) / 1000;
+                pulseCircle.setRadius(20 + frac * 40);
+                pulseCircle.setOptions({
+                    strokeOpacity: 0.8 * (1 - frac),
+                    fillOpacity: 0.35 * (1 - frac)
+                });
+                requestAnimationFrame(animatePulse);
+            } else {
+                pulseCircle.setMap(null);
+            }
+        };
+        requestAnimationFrame(animatePulse);
+
+        if (driverPosition) {
+            const bounds = new maps.LatLngBounds();
+            bounds.extend(driverPosition);
+            bounds.extend(pos);
+            window.mapInstance.fitBounds(bounds, { top: 70, right: 50, bottom: 90, left: 50 });
+            if (passengerReturnToFollowTimer) clearTimeout(passengerReturnToFollowTimer);
+            passengerReturnToFollowTimer = setTimeout(() => {
+                passengerReturnToFollowTimer = null;
+                if (passengerNavigationModeEnabled && activeDriverMarker) {
+                    applyPassengerNavigationCamera(activeDriverMarker.marker?.position || activeDriverMarker, lastPassengerCameraHeading, true);
+                }
+            }, 4000);
+        }
+    }
+}
+
+function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinationPosition = null) {
+    if (!window.mapInstance || !window.google?.maps) return;
 
     const routePath = Array.isArray(path) && path.length >= 2
         ? path
         : [driverPosition, targetPosition].filter(Boolean);
     if (routePath.length < 2) return;
 
+    const oldPolyline = assignedDriverRoutePolyline;
     assignedDriverRoutePolyline = new window.google.maps.Polyline({
         map: window.mapInstance,
         path: routePath,
@@ -1068,6 +1172,10 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinati
         strokeWeight: 6,
         zIndex: 640
     });
+
+    if (oldPolyline?.setMap) {
+        oldPolyline.setMap(null);
+    }
 
     const isDestinationLeg = Boolean(
         destinationPosition &&
@@ -1088,7 +1196,6 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinati
         window.mapInstance.fitBounds(bounds, { top: 68, right: 45, bottom: 105, left: 45 });
         passengerFirstRouteFitComplete = true;
 
-        // If pickup route is relatively short (nearby driver), avoid zooming out too far
         if (!isDestinationLeg && driverPosition && targetPosition) {
             const distMeters = calculateDistanceMeters(driverPosition, targetPosition);
             if (distMeters <= 1500) {
@@ -1102,6 +1209,7 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinati
         }
     }
 }
+
 
 function stopPassengerCameraAnimation() {
     if (passengerCameraAnimationFrame) {
@@ -2014,6 +2122,29 @@ async function refreshActiveDriverRoute(detail, position, target) {
         return;
     }
 
+    const isShareRide = detail.rideType === "share" && Boolean(detail.parentTripId || detail.sharedInfo?.parentTripId);
+    if (isShareRide && detail.sharedInfo?.routePolyline) {
+        const decodedRoute = decodePolyline(detail.sharedInfo.routePolyline);
+        activeDriverRouteState.driverId = driverId;
+        activeDriverRouteState.targetKey = targetKey;
+        activeDriverRouteState.routePath = decodedRoute;
+        activeDriverRouteState.lastRoutePosition = position;
+        activeDriverRouteState.lastRouteAt = Date.now();
+        drawAssignedDriverRoute(decodedRoute, position, target, destinationPosition);
+        renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
+        if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
+            clearPickupMarker();
+        }
+        renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
+        return;
+    }
+    if (isShareRide && detail.sharedInfo) {
+        renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
+        if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
+            clearPickupMarker();
+        }
+    }
+
     if (activeDriverRouteState.routeRequestInFlight) {
         activeDriverRouteState.queuedDetail = detail;
         return;
@@ -2023,6 +2154,7 @@ async function refreshActiveDriverRoute(detail, position, target) {
     const hadRoutePath = activeDriverRouteState.routePath.length > 0;
     try {
         const routeDetails = await fetchRoadRouteDetails(position, target);
+
         if (!routeDetails?.routePath?.length) {
             const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
             drawAssignedDriverRoute([], position, target, destinationPosition);

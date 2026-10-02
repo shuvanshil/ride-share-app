@@ -186,7 +186,7 @@ function attachRideCardCountdown(rideId, ride) {
     activeRideRequestTimers.set(rideId, timer);
 }
 
-function ignoreRideRequest(rideId) {
+function ignoreRideRequest(rideId, isAddon = false) {
     if (!rideId || !currentUser?.uid) return;
     clearRideRequestTimer(rideId);
 
@@ -196,9 +196,25 @@ function ignoreRideRequest(rideId) {
 
     removeExpiredRideCard(rideId);
 
-    rejectRideThroughBackend(rideId).catch((error) => {
+    rejectRideThroughBackend(rideId, isAddon).catch((error) => {
         console.warn("Could not record ride decline server-side:", error);
     });
+}
+
+async function rejectRideThroughBackend(rideId, isAddon = false) {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) return;
+    const endpoint = isAddon
+        ? `/api/share/offers/${encodeURIComponent(rideId)}/decline`
+        : `/api/rides/${encodeURIComponent(rideId)}/reject`;
+    const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${idToken}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Could not decline this ride.");
+    }
 }
 const livePill = document.getElementById('driver-service-live-pill');
 const routePanel = document.getElementById('driver-route-panel');
@@ -608,27 +624,70 @@ function updateIncomingRequestsVisibility() {
 }
 
 function renderIncomingRideCard(rideId, ride = {}) {
+    const isShare = ride.rideType === "share";
+    const isPriorityAddon = ride.dispatch_mode === "priority_share" || Boolean(currentRide?.parentTripId && isShare);
     const passengerPhone = String(ride.passenger_phone || ride.passengerPhone || "").trim();
     const callablePhone = passengerPhone.replace(/[^\d+]/g, "");
     const passengerName = escapeHtml(ride.passenger_name || "Passenger");
     const fareAmount = Math.round(Number(ride.fare) || 0);
     const passCount = ride.passenger_capacity || (ride.vehicle_type === "auto" ? 3 : 1);
     const passLabel = Number(passCount) === 1 ? t('common.passenger', "passenger") : t('driver.passengers_count', "passengers");
-    const remainingMs = getRideRemainingMs(ride);
+    const remainingMs = isPriorityAddon ? Math.min(getRideRemainingMs(ride), 15000) : getRideRemainingMs(ride);
+    const detourMin = Math.round(Number(ride.detour_minutes || ride.detourMin || 0));
+
+    let pickupDistText = "";
+    if (lastPosition && ride.pickup_lat && ride.pickup_lng) {
+        const dM = distanceMeters(lastPosition, { lat: ride.pickup_lat, lng: ride.pickup_lng });
+        pickupDistText = dM < 1000 ? `${Math.round(dM)} m away` : `${(dM / 1000).toFixed(1)} km away`;
+    } else {
+        pickupDistText = formatRideDistance(ride.distance_km);
+    }
 
     const card = document.createElement('div');
-    card.className = "ride-request-card card shadow-sm p-3 mb-3 driver-service-request-card";
+    card.className = `ride-request-card card shadow-sm p-3 mb-3 driver-service-request-card ${isShare ? 'driver-share-request-card' : ''} ${isPriorityAddon ? 'driver-share-addon-card' : ''}`;
     card.dataset.rideId = rideId;
+    card.dataset.rideType = ride.rideType || "normal";
+    card.dataset.isAddon = isPriorityAddon ? "true" : "false";
+    card.dataset.fare = String(fareAmount);
+
+    if (isPriorityAddon) {
+        card.innerHTML = `
+            <div class="share-addon-header d-flex justify-content-between align-items-center mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-success text-white" style="font-size:11px;padding:4px 8px;">SHARE ADD-ON</span>
+                    <strong style="font-size:15px;color:#0F172A;">₹${fareAmount}</strong>
+                </div>
+                <div class="request-timer-pill is-urgent" id="srv-timer-${rideId}" style="padding:2px 8px;font-size:12px;">
+                    <span class="timer-icon">⏳</span>
+                    <strong class="timer-val" id="srv-timer-val-${rideId}">${formatCountdownTimer(remainingMs)}</strong>
+                </div>
+            </div>
+            <div class="share-addon-body mb-2" style="font-size:13px;color:#334155;">
+                <div>📍 <strong>${pickupDistText}</strong> • ${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</div>
+                <div class="text-success fw-semibold mt-1">⏱ +${detourMin} min for existing riders</div>
+            </div>
+            <div class="d-flex gap-2 mt-2">
+                <button class="btn btn-success flex-grow-1 py-2 fw-semibold accept-job-btn driver-service-accept-btn" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-is-addon="true" data-fare="${fareAmount}" style="border-radius:10px;">
+                    ✓ Accept
+                </button>
+                <button class="btn btn-outline-secondary py-2 px-3 fw-semibold ignore-job-btn driver-service-ignore-btn" data-id="${rideId}" data-ride-id="${rideId}" data-is-addon="true" style="border-radius:10px;">
+                    ✕ Decline
+                </button>
+            </div>
+        `;
+        return card;
+    }
+
     card.innerHTML = `
         <div class="request-header-row">
             <div class="passenger-name-wrap">
                 <h5 class="passenger-name mb-1">${passengerName}</h5>
                 <span class="vehicle-capacity-badge">
-                    <span>👤</span> ${ride.service_name || getServiceLabel(ride.vehicle_type)} · ${passCount} ${passLabel}
+                    ${isShare ? `<span class="badge bg-success text-white me-1" style="font-size:10px;padding:3px 6px;">SHARE RIDE</span>` : `<span>👤</span>`} ${isShare ? 'Shared Ride' : (ride.service_name || getServiceLabel(ride.vehicle_type))} · ${passCount} ${passLabel}
                 </span>
             </div>
             <div class="d-flex flex-column align-items-end gap-1">
-                <span class="fare-badge">₹${fareAmount}</span>
+                <span class="fare-badge ${isShare ? 'text-success' : ''}">₹${fareAmount}${isShare ? ' (Fixed)' : ''}</span>
                 <div class="request-timer-pill ${remainingMs <= 60000 ? 'is-urgent' : ''}" id="srv-timer-${rideId}">
                     <span class="timer-icon">⏳</span>
                     <span class="timer-label">${t('driver.expires_in', "Expires in")}</span>
@@ -679,7 +738,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
             </div>
         </div>
 
-        <button class="btn-accept-ride accept-job-btn driver-service-accept-btn" data-id="${rideId}" data-ride-id="${rideId}">
+        <button class="btn-accept-ride accept-job-btn driver-service-accept-btn" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="${ride.rideType || 'normal'}" data-fare="${fareAmount}">
             <span>✓</span> ${t('driver.accept_ride_request_btn', "Accept Ride Request")}
         </button>
         <button class="btn-ignore-ride ignore-job-btn driver-service-ignore-btn" data-id="${rideId}" data-ride-id="${rideId}">
@@ -889,6 +948,17 @@ async function setServiceDriverAvailability(status) {
 async function acceptIncomingRide(rideId, button) {
     if (!rideId || !currentUser?.uid || acceptRideInProgress) return;
 
+    const rideType = button?.dataset?.rideType || "";
+    const isAddon = button?.dataset?.isAddon === "true" || Boolean(currentRide?.parentTripId && rideType === "share");
+    const rideFare = button?.dataset?.fare || "";
+    if (rideType === "share" && !isAddon) {
+        const confirmed = await showConfirm(
+            `Accept Shared Ride request for ₹${rideFare || '10'}?\nFixed fare applies. Additional riders along the route are not guaranteed.`,
+            { okText: "Accept Shared Ride", cancelText: "Cancel" }
+        );
+        if (!confirmed) return;
+    }
+
     acceptRideInProgress = true;
     clearRideRequestTimer(rideId);
     stopRideRequestRing();
@@ -900,13 +970,20 @@ async function acceptIncomingRide(rideId, button) {
     try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");
-        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
+        const endpoint = isAddon
+            ? `/api/share/offers/${encodeURIComponent(rideId)}/accept`
+            : `/api/rides/${encodeURIComponent(rideId)}/accept`;
+        const response = await fetch(endpoint, {
             method: "POST",
             headers: { Authorization: `Bearer ${idToken}` }
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) {
             throw new Error(data.error || "Could not accept this ride.");
+        }
+        if (isAddon) {
+            await showAlert("Add-on passenger added to shared route!");
+            return;
         }
         const acceptedRideData = data.ride || {};
         driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
@@ -1366,6 +1443,99 @@ function renderLifecycleState(status, rideData = currentRide) {
     if (sosBtn) {
         sosBtn.addEventListener('click', () => sendDriverSos());
     }
+
+    const isShareRide = Boolean(currentRide.rideType === "share" || currentRide.parentTripId);
+    renderShareMcard(currentRide, showPinVerification);
+}
+
+async function renderShareMcard(ride, showPinVerification) {
+    const isShareRide = Boolean(ride.rideType === "share" || ride.parentTripId);
+    const mcardSection = document.getElementById('driver-share-mcard-section');
+    if (!mcardSection) return;
+    if (!isShareRide || showPinVerification) {
+        mcardSection.classList.add('d-none');
+        return;
+    }
+    mcardSection.classList.remove('d-none');
+
+    const parentTripId = ride.parentTripId;
+    let tripData = null;
+
+    if (parentTripId) {
+        try {
+            const tripDoc = await getDoc(doc(db, "shareTrips", parentTripId));
+            if (tripDoc.exists()) {
+                tripData = tripDoc.data();
+            }
+        } catch (e) {
+            console.warn("Could not fetch shareTrip:", e);
+        }
+    }
+
+    const seatsUsed = tripData ? (tripData.seatsUsed || 1) : 1;
+    const remoteOnBoard = tripData ? (tripData.remoteOnBoard || 0) : 0;
+    const appPassengers = Math.max(0, seatsUsed - remoteOnBoard);
+    const seatsAvail = Math.max(0, 3 - seatsUsed);
+
+    const seatsText = document.getElementById('share-mcard-seats-text');
+    if (seatsText) seatsText.innerText = `${seatsUsed} / 3 seats occupied`;
+
+    const seg1 = document.getElementById('seat-seg-1');
+    const seg2 = document.getElementById('seat-seg-2');
+    const seg3 = document.getElementById('seat-seg-3');
+    if (seg1) seg1.classList.toggle('is-filled', seatsUsed >= 1);
+    if (seg2) seg2.classList.toggle('is-filled', seatsUsed >= 2);
+    if (seg3) seg3.classList.toggle('is-filled', seatsUsed >= 3);
+
+    const metricSeatsUsed = document.getElementById('share-metric-seats-used');
+    if (metricSeatsUsed) metricSeatsUsed.innerText = `${seatsUsed} / 3`;
+    const metricApp = document.getElementById('share-metric-app-passengers');
+    if (metricApp) metricApp.innerText = String(appPassengers);
+    const metricRemote = document.getElementById('share-metric-remote-passengers');
+    if (metricRemote) metricRemote.innerText = String(remoteOnBoard);
+    const metricAvail = document.getElementById('share-metric-seats-avail');
+    if (metricAvail) metricAvail.innerText = String(seatsAvail);
+
+    const addRemoteBtn = document.getElementById('driver-share-add-remote-btn');
+    if (addRemoteBtn) {
+        addRemoteBtn.disabled = seatsUsed >= 3;
+        addRemoteBtn.style.opacity = seatsUsed >= 3 ? "0.5" : "1";
+    }
+
+    const ridersContainer = document.getElementById('share-mcard-riders-container');
+    if (ridersContainer) {
+        const pInitial = (ride.passenger_name || "P").charAt(0).toUpperCase();
+        const pName = escapeHtml(ride.passenger_name || "Passenger");
+        let html = `
+            <div class="share-rider-card" style="display:flex;align-items:center;gap:12px;padding:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:12px;">
+                <div class="rider-avatar" style="width:36px;height:36px;border-radius:50%;background:#166534;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${pInitial}</div>
+                <div class="rider-name-box" style="flex:1;">
+                    <strong class="rider-name" style="display:block;font-size:13px;color:#0F172A;">${pName}</strong>
+                    <div class="rider-status-dot-row" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#16A34A;font-weight:600;">
+                        <span class="status-dot" style="width:6px;height:6px;border-radius:50%;background:#16A34A;"></span>
+                        <span>Onboard · ₹${Math.round(Number(ride.fare) || 0)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        for (let i = 1; i <= remoteOnBoard; i++) {
+            html += `
+                <div class="share-rider-card share-remote-rider-card" style="display:flex;align-items:center;gap:12px;padding:12px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;margin-bottom:12px;">
+                    <div class="rider-avatar" style="width:36px;height:36px;border-radius:50%;background:#15803D;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">R${i}</div>
+                    <div class="rider-name-box" style="flex:1;">
+                        <strong class="rider-name" style="display:block;font-size:13px;color:#0F172A;">Remote Passenger ${i}</strong>
+                        <div class="rider-status-dot-row" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#16A34A;font-weight:600;">
+                            <span class="status-dot" style="width:6px;height:6px;border-radius:50%;background:#16A34A;"></span>
+                            <span>Street Hailed · Onboard</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger drop-remote-btn" type="button" style="border-radius:8px;font-size:12px;padding:4px 10px;">Drop</button>
+                </div>
+            `;
+        }
+        ridersContainer.innerHTML = html;
+    }
 }
 
 function showLifecyclePanel(status, rideData = currentRide) {
@@ -1788,6 +1958,266 @@ function upsertTargetMarker() {
     targetMarker.setLabel(null);
 }
 
+
+let shareTripUnsubscribe = null;
+
+let shareStopMarkers = new Map();
+let lastShareStopOrderHash = "";
+let lastShareRoutePositionBucket = "";
+let shareRouteRequestInFlight = false;
+let shareReturnToFollowTimer = null;
+let lastKnownShareStops = [];
+
+function clearShareMapState() {
+    if (shareTripUnsubscribe) {
+        shareTripUnsubscribe();
+        shareTripUnsubscribe = null;
+    }
+    shareStopMarkers.forEach((marker) => {
+        if (marker?.setMap) marker.setMap(null);
+    });
+    shareStopMarkers.clear();
+    lastShareStopOrderHash = "";
+    lastShareRoutePositionBucket = "";
+    shareRouteRequestInFlight = false;
+    lastKnownShareStops = [];
+    if (shareReturnToFollowTimer) {
+        clearTimeout(shareReturnToFollowTimer);
+        shareReturnToFollowTimer = null;
+    }
+}
+
+function getShareStopMarkerIcon(stop, sequenceNum, isNext) {
+    const seatOrder = Number(stop.seatOrder) || 1;
+    const colors = {
+        1: "#2563eb",
+        2: "#d97706",
+        3: "#7c3aed"
+    };
+    const color = colors[seatOrder] || "#10b981";
+    const isPickup = stop.kind === "pickup";
+    const width = isNext ? 44 : 34;
+    const height = isNext ? 54 : 42;
+    const iconPath = isPickup
+        ? `<path d="M${width / 2} ${height * 0.22}l-${width * 0.16} ${height * 0.14}h${width * 0.1}v${height * 0.14}h${width * 0.12}v-${height * 0.14}h${width * 0.1}z" fill="${color}"/>`
+        : `<path d="M${width * 0.35} ${height * 0.2}h${width * 0.3}l-${width * 0.08} ${height * 0.1} ${width * 0.08} ${height * 0.1}h-${width * 0.3}v${height * 0.14}h-${width * 0.05}v-${height * 0.34}h${width * 0.05}z" fill="${color}"/>`;
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
+        + `<path d="M${width / 2} 0C${width * 0.22} 0 0 ${height * 0.18} 0 ${height * 0.4}c0 ${height * 0.3} ${width / 2} ${height * 0.6} ${width / 2} ${height * 0.6}s${width / 2}-${height * 0.3} ${width / 2}-${height * 0.6}C${width} ${height * 0.18} ${width * 0.78} 0 ${width / 2} 0z" fill="${color}" stroke="#ffffff" stroke-width="${isNext ? 3 : 2}"/>`
+        + `<circle cx="${width / 2}" cy="${height * 0.38}" r="${width * 0.32}" fill="#ffffff"/>`
+        + iconPath
+        + `<text x="${width / 2}" y="${height * 0.44}" font-family="system-ui,-apple-system,sans-serif" font-size="${isNext ? 13 : 11}" font-weight="700" fill="${color}" text-anchor="middle" dominant-baseline="middle">${sequenceNum}</text>`
+        + `</svg>`;
+
+    return {
+        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+        scaledSize: new window.google.maps.Size(width, height),
+        anchor: new window.google.maps.Point(width / 2, height)
+    };
+}
+
+function highlightShareRiderCard(rideId) {
+    if (!rideId) return;
+    const container = document.getElementById('share-mcard-riders-container');
+    if (!container) return;
+    const card = container.querySelector(`[data-ride-id="${rideId}"]`) || container.querySelector('.share-rider-card');
+    if (card) {
+        card.style.transition = 'all 0.3s ease';
+        card.style.outline = '2px solid #2563eb';
+        card.style.backgroundColor = '#eff6ff';
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        setTimeout(() => {
+            card.style.outline = 'none';
+            card.style.backgroundColor = '';
+        }, 2000);
+    }
+}
+
+function renderShareStopMarkers(remainingStops) {
+    if (!map || !window.google?.maps || !Array.isArray(remainingStops)) return;
+
+    const currentKeys = new Set();
+    const isNewStopAdded = remainingStops.length > lastKnownShareStops.length;
+    lastKnownShareStops = remainingStops;
+
+    remainingStops.forEach((stop, index) => {
+        const seq = index + 1;
+        const isNext = index === 0;
+        const stopLat = Number(stop.lat);
+        const stopLng = Number(stop.lng);
+        if (!Number.isFinite(stopLat) || !Number.isFinite(stopLng)) return;
+
+        const key = `${stop.rideId || 'stop'}:${stop.kind}:${stopLat.toFixed(5)},${stopLng.toFixed(5)}`;
+        currentKeys.add(key);
+        const pos = { lat: stopLat, lng: stopLng };
+        const icon = getShareStopMarkerIcon(stop, seq, isNext);
+        const title = `${isNext ? 'Next: ' : ''}${stop.kind === 'pickup' ? 'Pickup' : 'Drop'} ${seq} — ${stop.name || 'Passenger'}`;
+
+        const existing = shareStopMarkers.get(key);
+        if (existing) {
+            existing.setPosition(pos);
+            existing.setIcon(icon);
+            existing.setTitle(title);
+            existing.setZIndex(isNext ? 950 : 910 - seq);
+        } else {
+            const marker = new window.google.maps.Marker({
+                map,
+                position: pos,
+                title,
+                icon,
+                zIndex: isNext ? 950 : 910 - seq,
+                animation: window.google.maps.Animation.DROP
+            });
+            marker.addListener('click', () => {
+                highlightShareRiderCard(stop.rideId);
+            });
+            shareStopMarkers.set(key, marker);
+
+            const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (!prefersReducedMotion && map) {
+                const pulseCircle = new window.google.maps.Circle({
+                    map,
+                    center: pos,
+                    radius: 30,
+                    strokeColor: stop.kind === 'pickup' ? '#2563eb' : '#d97706',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    fillColor: stop.kind === 'pickup' ? '#3b82f6' : '#f59e0b',
+                    fillOpacity: 0.35,
+                    zIndex: 905
+                });
+                const pulseStart = performance.now();
+                const animatePulse = (now) => {
+                    const elapsed = now - pulseStart;
+                    if (elapsed < 3000) {
+                        const frac = (elapsed % 1000) / 1000;
+                        pulseCircle.setRadius(20 + frac * 40);
+                        pulseCircle.setOptions({
+                            strokeOpacity: 0.8 * (1 - frac),
+                            fillOpacity: 0.35 * (1 - frac)
+                        });
+                        requestAnimationFrame(animatePulse);
+                    } else {
+                        pulseCircle.setMap(null);
+                    }
+                };
+                requestAnimationFrame(animatePulse);
+
+                if (isNewStopAdded && lastPosition) {
+                    const bounds = new window.google.maps.LatLngBounds();
+                    bounds.extend(lastPosition);
+                    bounds.extend(pos);
+                    map.fitBounds(bounds, { top: 90, right: 45, bottom: 80, left: 45 });
+                    if (shareReturnToFollowTimer) clearTimeout(shareReturnToFollowTimer);
+                    shareReturnToFollowTimer = setTimeout(() => {
+                        shareReturnToFollowTimer = null;
+                        if (navigationModeEnabled && lastPosition) {
+                            applyNavigationCamera(lastPosition, lastDriverHeading, true);
+                        }
+                    }, 4000);
+                }
+            }
+        }
+    });
+
+    shareStopMarkers.forEach((marker, key) => {
+        if (!currentKeys.has(key)) {
+            marker.setMap(null);
+            shareStopMarkers.delete(key);
+        }
+    });
+}
+
+function refreshShareRoute(position, remainingStops, force = false) {
+    if (!map || !window.google?.maps || !Array.isArray(remainingStops) || remainingStops.length === 0 || !position) return;
+
+    if (remainingStops.length === 1) {
+        const single = remainingStops[0];
+        currentTarget = {
+            kind: single.kind,
+            position: { lat: Number(single.lat), lng: Number(single.lng) },
+            place: single.name || "Passenger"
+        };
+        currentTargetKey = `${single.kind}:${single.lat}:${single.lng}`;
+        refreshRoute(position, force);
+        return;
+    }
+
+    const stopOrderHash = remainingStops.map(s => `${s.rideId || ''}:${s.kind}:${s.lat},${s.lng}`).join("|");
+    const positionBucket = `${Math.round(position.lat * 4000)}:${Math.round(position.lng * 4000)}`;
+
+    if (!force && stopOrderHash === lastShareStopOrderHash && positionBucket === lastShareRoutePositionBucket && activeRoutePath.length) {
+        return;
+    }
+
+    if (shareRouteRequestInFlight) return;
+    shareRouteRequestInFlight = true;
+
+    const directionsService = new window.google.maps.DirectionsService();
+    const waypoints = remainingStops.slice(0, -1).map(s => ({
+        location: new window.google.maps.LatLng(Number(s.lat), Number(s.lng)),
+        stopover: true
+    }));
+    const dest = remainingStops[remainingStops.length - 1];
+
+    directionsService.route({
+        origin: new window.google.maps.LatLng(position.lat, position.lng),
+        destination: new window.google.maps.LatLng(Number(dest.lat), Number(dest.lng)),
+        waypoints,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+        optimizeWaypoints: false
+    }, (result, status) => {
+        shareRouteRequestInFlight = false;
+        if (status === window.google.maps.DirectionsStatus.OK && result?.routes?.[0]?.overview_path) {
+            lastShareStopOrderHash = stopOrderHash;
+            lastShareRoutePositionBucket = positionBucket;
+            const path = result.routes[0].overview_path.map(p => ({ lat: p.lat(), lng: p.lng() }));
+            hideRouteWarning();
+            drawRoute(path);
+
+            let totalMeters = 0;
+            let totalSeconds = 0;
+            (result.routes[0].legs || []).forEach(leg => {
+                totalMeters += leg.distance?.value || 0;
+                totalSeconds += leg.duration?.value || 0;
+            });
+            updateRouteMetrics({
+                distanceKm: totalMeters / 1000,
+                durationMinutes: totalSeconds / 60
+            });
+        } else {
+            console.warn("Share DirectionsService request failed, falling back to straight line segments:", status);
+            const fallbackPath = [position].concat(remainingStops.map(s => ({ lat: Number(s.lat), lng: Number(s.lng) })));
+            drawDashedRoute(fallbackPath);
+        }
+    });
+}
+
+function drawDashedRoute(path) {
+    if (!map || !Array.isArray(path) || path.length < 2 || !window.google?.maps) return;
+    clearRoute();
+    activeRoutePath = path;
+    const lineSymbol = {
+        path: "M 0,-1 0,1",
+        strokeOpacity: 1,
+        scale: 4
+    };
+    routeRemainingPolyline = new window.google.maps.Polyline({
+        map,
+        path,
+        strokeOpacity: 0,
+        strokeColor: ROUTE_PROGRESS_REMAINING_COLOR,
+        icons: [{
+            icon: lineSymbol,
+            offset: "0",
+            repeat: "20px"
+        }],
+        zIndex: 500
+    });
+    fitActiveRoute(path);
+}
+
+
 function fitActiveRoute(path) {
     if (!map || !currentTarget || firstRouteFitComplete || !window.google?.maps) return;
 
@@ -2108,15 +2538,16 @@ async function handleLocation(position) {
         telemetryResult.heading
     );
 
-    if (currentTarget) {
+    const isShareRide = currentRide?.rideType === "share" || Boolean(currentRide?.parentTripId);
+    if (isShareRide && lastKnownShareStops.length > 1) {
+        updateDriverRouteProgress();
+        const deviated = activeRoutePath.length > 1 && driverRouteMatchIndex === -1;
+        refreshShareRoute(coords, lastKnownShareStops, deviated);
+    } else if (currentTarget) {
         upsertTargetMarker();
         const arrivalDistance = distanceMeters(coords, currentTarget.position);
         driverMarker?.setArriving?.(Number.isFinite(arrivalDistance) && arrivalDistance <= DRIVER_ARRIVAL_THRESHOLD_METERS);
         updateDriverRouteProgress();
-        // If the route-match snap just failed (driverRouteMatchIndex === -1)
-        // while we already had a route, the driver has genuinely drifted off
-        // it - request a fresh route immediately instead of waiting for the
-        // normal recalculation throttle.
         const deviated = activeRoutePath.length > 1 && driverRouteMatchIndex === -1;
         refreshRoute(coords, deviated);
     } else {
@@ -2124,6 +2555,7 @@ async function handleLocation(position) {
         map.panTo(coords);
         hideRouteWarning();
     }
+
 }
 
 function handleLocationError(error) {
@@ -2206,6 +2638,7 @@ function getRideTarget(ride) {
 
 function renderIdleState() {
     releaseWakeLock();
+    clearShareMapState();
     clearTarget();
     currentRide = null;
     currentRideId = null;
@@ -2213,6 +2646,8 @@ function renderIdleState() {
     driverMarker?.setActiveRide?.(false);
     routePanel.classList.add('d-none');
     openConsoleButton.classList.add('d-none');
+    const mcardSection = document.getElementById('driver-share-mcard-section');
+    if (mcardSection) mcardSection.classList.add('d-none');
     hideLifecyclePanel();
     hideRouteWarning();
     statusText.innerText = "Online and ready for ride requests";
@@ -2230,8 +2665,43 @@ function renderActiveRideState(rideId, ride) {
     updateIncomingRequestsVisibility();
     showLifecyclePanel(currentRideStatus, ride);
 
+    const isShareRide = Boolean(ride?.rideType === "share" && (ride?.parentTripId || ride?.sharedInfo?.parentTripId));
+    if (isShareRide && (ride.parentTripId || ride.sharedInfo?.parentTripId)) {
+        const parentTripId = ride.parentTripId || ride.sharedInfo?.parentTripId;
+        if (!shareTripUnsubscribe) {
+            shareTripUnsubscribe = onSnapshot(doc(db, "shareTrips", parentTripId), (docSnap) => {
+                if (!docSnap.exists()) return;
+                const tripData = docSnap.data() || {};
+                const remainingStops = (tripData.stopOrder || []).filter(s => s.status !== "completed");
+                if (remainingStops.length > 0) {
+                    if (targetMarker?.setMap) {
+                        targetMarker.setMap(null);
+                        targetMarker = null;
+                    }
+                    const nextStop = remainingStops[0];
+                    currentTarget = {
+                        kind: nextStop.kind,
+                        position: { lat: Number(nextStop.lat), lng: Number(nextStop.lng) },
+                        place: nextStop.name || (nextStop.kind === "pickup" ? "Passenger pickup" : "Passenger drop")
+                    };
+                    currentTargetKey = `${nextStop.kind}:${nextStop.lat}:${nextStop.lng}`;
+                    routeLabel.innerText = nextStop.kind === "pickup" ? "Next: Pickup" : "Next: Drop";
+                    routePlace.innerText = nextStop.name || (nextStop.kind === "pickup" ? "Passenger pickup" : "Passenger drop");
+                    statusText.innerText = nextStop.kind === "pickup" ? `Next: Pickup — ${nextStop.name || 'Passenger'}` : `Next: Drop — ${nextStop.name || 'Passenger'}`;
+                    routePanel.classList.remove('d-none');
+                    renderShareStopMarkers(remainingStops);
+                    if (lastPosition) {
+                        refreshShareRoute(lastPosition, remainingStops);
+                    }
+                }
+            });
+        }
+    } else {
+        clearShareMapState();
+    }
+
     const target = getRideTarget(ride);
-    if (!target) {
+    if (!target && (!isShareRide || lastKnownShareStops.length === 0)) {
         clearTarget();
         routePanel.classList.add('d-none');
         statusText.innerText = "Active ride coordinates are unavailable";
@@ -2239,35 +2709,39 @@ function renderActiveRideState(rideId, ride) {
         return;
     }
 
-    const nextTargetKey = `${target.kind}:${target.position.lat}:${target.position.lng}`;
-    const targetChanged = nextTargetKey !== currentTargetKey;
-    if (targetChanged) {
-        if (targetMarker?.setMap) targetMarker.setMap(null);
-        targetMarker = null;
-        clearRoute();
-        currentTargetKey = nextTargetKey;
-        firstRouteFitComplete = false;
-        lastRoutePosition = null;
-        lastRouteAt = 0;
-        routeRefreshQueued = false;
-        if (routeRetryTimer) {
-            window.clearTimeout(routeRetryTimer);
-            routeRetryTimer = null;
+    if (!isShareRide || lastKnownShareStops.length <= 1) {
+        if (!target) return;
+        const nextTargetKey = `${target.kind}:${target.position.lat}:${target.position.lng}`;
+        const targetChanged = nextTargetKey !== currentTargetKey;
+        if (targetChanged) {
+            if (targetMarker?.setMap) targetMarker.setMap(null);
+            targetMarker = null;
+            clearRoute();
+            currentTargetKey = nextTargetKey;
+            firstRouteFitComplete = false;
+            lastRoutePosition = null;
+            lastRouteAt = 0;
+            routeRefreshQueued = false;
+            if (routeRetryTimer) {
+                window.clearTimeout(routeRetryTimer);
+                routeRetryTimer = null;
+            }
         }
+
+        currentTarget = target;
+        if (targetChanged) driverMarker?.pulseSelect?.();
+        routeLabel.innerText = target.kind === "pickup" ? "Navigate to pickup" : "Navigate to destination";
+        routePlace.innerText = target.place;
+        routePanel.classList.remove('d-none');
+        statusText.innerText = target.kind === "pickup"
+            ? "Live route to passenger pickup"
+            : "Passenger verified - navigating to destination";
+
+        if (map) upsertTargetMarker();
+        if (lastPosition) refreshRoute(lastPosition, targetChanged);
     }
-
-    currentTarget = target;
-    if (targetChanged) driverMarker?.pulseSelect?.();
-    routeLabel.innerText = target.kind === "pickup" ? "Navigate to pickup" : "Navigate to destination";
-    routePlace.innerText = target.place;
-    routePanel.classList.remove('d-none');
-    statusText.innerText = target.kind === "pickup"
-        ? "Live route to passenger pickup"
-        : "Passenger verified - navigating to destination";
-
-    if (map) upsertTargetMarker();
-    if (lastPosition) refreshRoute(lastPosition, targetChanged);
 }
+
 
 async function verifyAndStartTrip(rideId) {
     if (!rideId) {
@@ -2624,13 +3098,55 @@ cancelButton?.addEventListener('click', cancelRideByDriver);
 ridesContainer?.addEventListener('click', (event) => {
     const ignoreButton = event.target.closest('.driver-service-ignore-btn');
     if (ignoreButton) {
-        ignoreRideRequest(ignoreButton.dataset.rideId);
+        ignoreRideRequest(ignoreButton.dataset.rideId, ignoreButton.dataset.isAddon === "true");
         return;
     }
 
     const acceptButton = event.target.closest('.driver-service-accept-btn');
     if (!acceptButton) return;
     acceptIncomingRide(acceptButton.dataset.rideId, acceptButton);
+});
+
+document.getElementById('driver-share-add-remote-btn')?.addEventListener('click', async () => {
+    const parentTripId = currentRide?.parentTripId;
+    if (!parentTripId) return;
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        const res = await fetch(`/api/share/trips/${encodeURIComponent(parentTripId)}/remote/add`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await res.json();
+        if (data.ok) {
+            renderShareMcard(currentRide, false);
+        } else {
+            await showAlert(data.error || "Could not add remote passenger.");
+        }
+    } catch (e) {
+        console.error("Add remote error:", e);
+    }
+});
+
+document.getElementById('share-mcard-riders-container')?.addEventListener('click', async (e) => {
+    const dropBtn = e.target.closest('.drop-remote-btn');
+    if (!dropBtn) return;
+    const parentTripId = currentRide?.parentTripId;
+    if (!parentTripId) return;
+    try {
+        const idToken = await auth.currentUser?.getIdToken();
+        const res = await fetch(`/api/share/trips/${encodeURIComponent(parentTripId)}/remote/drop`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${idToken}` }
+        });
+        const data = await res.json();
+        if (data.ok) {
+            renderShareMcard(currentRide, false);
+        } else {
+            await showAlert(data.error || "Could not drop remote passenger.");
+        }
+    } catch (e) {
+        console.error("Drop remote error:", e);
+    }
 });
 
 closePaymentButton?.addEventListener('click', async () => {

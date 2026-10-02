@@ -33,6 +33,7 @@ from .routers import (
     notify,
     otp,
     rides,
+    share,
     wallet,
 )
 from .routers import driver_payments
@@ -126,6 +127,8 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(auth.router)
 app.include_router(rides.router, prefix="/api")
 app.include_router(rides.router)
+app.include_router(share.router, prefix="/api")
+app.include_router(share.router)
 app.include_router(wallet.router, prefix="/api")
 app.include_router(wallet.router)
 app.include_router(coupons.router, prefix="/api")

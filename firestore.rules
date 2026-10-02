@@ -51,6 +51,15 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /shareTrips/{tripId} {
+      allow read: if signedIn()
+        && (resource == null
+          || ('driverId' in resource.data && resource.data.driverId == request.auth.uid)
+          || ('driver_id' in resource.data && resource.data.driver_id == request.auth.uid)
+          || isAdmin());
+      allow create, update, delete: if false;
+    }
+
     match /driverPresence/{driverId} {
       // Private presence, GPS telemetry, and push tokens are server-only.
       allow read: if false;

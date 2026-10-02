@@ -133,6 +133,56 @@
                 </div>
             </section>
 
+            <section id="driver-share-mcard-section" class="driver-share-mcard-section d-none" aria-live="polite">
+                <div class="share-mcard-header">
+                    <div class="share-mcard-title-wrap">
+                        <div class="share-mcard-icon-badge">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                        <div>
+                            <h5 class="share-mcard-title mb-0">Shared Ride</h5>
+                            <span class="share-mcard-status-pill">In Progress</span>
+                        </div>
+                    </div>
+                    <div class="share-mcard-seats-indicator">
+                        <span id="share-mcard-seats-text">1 / 3 seats occupied</span>
+                        <div class="share-seats-progress-bar">
+                            <div class="seat-segment is-filled" id="seat-seg-1"></div>
+                            <div class="seat-segment" id="seat-seg-2"></div>
+                            <div class="seat-segment" id="seat-seg-3"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="share-mcard-riders-container" class="share-mcard-riders-container"></div>
+                <div class="share-mcard-summary-strip">
+                    <div class="summary-metric">
+                        <span class="metric-icon">👥</span>
+                        <span id="share-metric-seats-used">1 / 3</span>
+                        <small>seats used</small>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-icon">📱</span>
+                        <span id="share-metric-app-passengers">1</span>
+                        <small>App passenger</small>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-icon">👤</span>
+                        <span id="share-metric-remote-passengers">0</span>
+                        <small>Remote passenger</small>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-icon">💺</span>
+                        <span id="share-metric-seats-avail">2</span>
+                        <small>seat available</small>
+                    </div>
+                </div>
+                <div class="share-mcard-actions mt-2">
+                    <button id="driver-share-add-remote-btn" class="gy-btn gy-btn-outline w-100 py-2 fw-semibold" style="border:1.5px dashed #16A34A;color:#166534;background:#F0FDF4;border-radius:10px;" type="button">
+                        + Add Passenger
+                    </button>
+                </div>
+            </section>
+
             <section id="driver-service-lifecycle" class="active-trip-card-container driver-service-lifecycle d-none" aria-live="polite">
                 <div class="active-trip-header-bar">
                     <span class="active-trip-header-title" data-i18n="services.active_trip">Active Trip</span>

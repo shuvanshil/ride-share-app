@@ -467,7 +467,7 @@ function goToSection(name, filters = {}) {
 }
 
 $("driver-status-filter")?.addEventListener("change", () => loadDrivers(true));
-["history-status-filter", "history-vehicle-filter", "history-feedback-filter", "history-month-filter"].forEach((id) =>
+["history-status-filter", "history-vehicle-filter", "history-ridetype-filter", "history-feedback-filter", "history-month-filter"].forEach((id) =>
     $(id)?.addEventListener("change", () => loadHistory(true))
 );
 $("history-day-filter")?.addEventListener("change", () => loadHistory(true));
@@ -1010,6 +1010,12 @@ async function loadDashboard() {
         if (driversOnline) driversOnline.textContent = onlineCount;
         if (driversBusy) driversBusy.textContent = busyCount;
         if (driversOffline) driversOffline.textContent = offlineCount;
+
+        // Bind Share KPI Cards
+        const shareRidesVal = $("kpi-share-rides-value");
+        const shareAvgVal = $("kpi-share-avg-riders-value");
+        if (shareRidesVal) shareRidesVal.textContent = data.share?.totalShareRides ?? 0;
+        if (shareAvgVal) shareAvgVal.textContent = Number(data.share?.avgRidersPerShareTrip ?? 0).toFixed(1);
 
         // 4. Second Row Charts
         renderRideActivityChart(data.rideActivity?.hourly || {}, currentChartTimeframe);
@@ -1564,6 +1570,7 @@ function ensureHistoryTable() {
             { key: "driver_name", label: "Driver", sortable: true, render: (r) => escapeHtml(r.driver_name || "Unassigned") },
             { key: "passenger_id", label: "Passenger", sortable: false, render: (r) => (r.passenger_id || "").slice(0, 8) },
             { key: "route", label: "Route", render: (r) => `${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}` },
+            { key: "rideType", label: "Type", sortable: true, render: (r) => r.rideType === "share" ? `<span class="badge bg-teal-lt text-teal">Share</span>` : `<span class="badge bg-secondary-lt text-secondary">Normal</span>` },
             { key: "fare", label: "Fare", sortable: true, render: (r) => `Rs ${r.fare || 0}` },
             { key: "feedback", label: "Feedback", sortable: false, render: (r) => r.feedback?.submitted ? `<span class="badge bg-success-lt text-success"><i class="ti ti-check me-1"></i>Feedback</span>` : `<span class="text-secondary">&mdash;</span>` },
             { key: "status", label: "Status", sortable: true, render: (r) => statusChip(r.status) },
@@ -1593,6 +1600,7 @@ async function loadHistory(reset) {
     if (reset) cursors.history = null;
     const status = $("history-status-filter")?.value || "";
     const vehicleType = $("history-vehicle-filter")?.value || "";
+    const rideType = $("history-ridetype-filter")?.value || "";
     const hasFeedbackVal = $("history-feedback-filter")?.value;
     let hasFeedback = undefined;
     if (hasFeedbackVal === "true") hasFeedback = true;
@@ -1616,6 +1624,7 @@ async function loadHistory(reset) {
         const data = await adminGet("/rides/history", {
             status: status || (dateFrom ? "all" : undefined),
             vehicleType,
+            rideType: rideType || undefined,
             hasFeedback,
             dateFrom,
             dateTo,
@@ -1628,28 +1637,39 @@ async function loadHistory(reset) {
     }
 }
 
-function openRideDrawer(ride) {
+async function openRideDrawer(ride) {
+    let fullRide = ride;
+    let siblingChildRides = [];
+    try {
+        const res = await adminGet(`/rides/${ride.id}`);
+        if (res?.ride) {
+            fullRide = res.ride;
+            siblingChildRides = res.siblingChildRides || [];
+        }
+    } catch (_) {}
+
+    const r = fullRide;
     const timeline = [
-        ["Requested", ride.createdAt],
-        ["Accepted", ride.acceptedAt],
-        ["Started", ride.startedAt || ride.pinVerifiedAt],
-        ["Completed", ride.completedAt],
-        ["Cancelled", ride.cancelledAt],
+        ["Requested", r.createdAt],
+        ["Accepted", r.acceptedAt],
+        ["Started", r.startedAt || r.pinVerifiedAt],
+        ["Completed", r.completedAt],
+        ["Cancelled", r.cancelledAt],
     ].filter(([, ts]) => ts);
 
-    const notes = Array.isArray(ride.adminNotes) ? ride.adminNotes : [];
+    const notes = Array.isArray(r.adminNotes) ? r.adminNotes : [];
 
     let feedbackHtml = "";
-    if (ride.feedback && ride.feedback.submitted) {
+    if (r.feedback && r.feedback.submitted) {
         const expMap = {
             poor: "🔴 Poor",
             decent: "🟠 Decent",
             good: "🟢 Good",
             loved: "🟢 Loved it!"
         };
-        const expLabel = expMap[ride.feedback.experience] || ride.feedback.experience;
-        const reasonsList = (ride.feedback.reasons || [])
-            .map(r => r.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()))
+        const expLabel = expMap[r.feedback.experience] || r.feedback.experience;
+        const reasonsList = (r.feedback.reasons || [])
+            .map(x => x.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()))
             .join(", ");
         feedbackHtml = `
             <h4 class="admin-drawer-subsection text-success">Passenger Feedback</h4>
@@ -1658,32 +1678,77 @@ function openRideDrawer(ride) {
         `;
     }
 
+    let shareHtml = "";
+    if (r.rideType === "share" || r.parentTripId) {
+        let siblingsHtml = "";
+        if (siblingChildRides.length) {
+            siblingsHtml = `
+                <div class="table-responsive mt-2">
+                    <table class="table table-sm table-vcenter card-table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Ride ID</th>
+                                <th>Status</th>
+                                <th>Seats</th>
+                                <th>Fare</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${siblingChildRides.map(s => `
+                                <tr class="${s.id === r.id ? 'table-active fw-bold' : ''}">
+                                    <td>${escapeHtml(s.id.slice(0, 8))} ${s.id === r.id ? '(This)' : ''}</td>
+                                    <td>${statusChip(s.status)}</td>
+                                    <td>${s.seatsBooked || 1}</td>
+                                    <td>Rs ${s.fare || 0}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } else {
+            siblingsHtml = `<p class="text-secondary small mb-0">No sibling rides found.</p>`;
+        }
+
+        shareHtml = `
+            <h4 class="admin-drawer-subsection text-teal">Share Ride Details</h4>
+            ${detailRow("Ride Type", '<span class="badge bg-teal-lt text-teal">Share Auto</span>')}
+            ${detailRow("Parent Trip ID", escapeHtml(r.parentTripId || "None"))}
+            ${detailRow("Seats Booked", r.seatsBooked || 1)}
+            <div class="admin-detail-row flex-column align-items-start gap-1">
+                <span class="fw-medium">Sibling Child Rides:</span>
+                ${siblingsHtml}
+            </div>
+        `;
+    }
+
     const html = `
         ${feedbackHtml}
+        ${shareHtml}
 
         <h4 class="admin-drawer-subsection">Timeline</h4>
         ${timeline.length ? timeline.map(([label, ts]) => detailRow(label, formatTimestamp(ts))).join("") : `<p class="text-secondary text-center py-2">No timestamps recorded.</p>`}
 
         <h4 class="admin-drawer-subsection">Route</h4>
-        ${detailRow("Pickup", ride.pickup_name || ride.pickupName || "")}
-        ${detailRow("Drop", ride.drop_name || ride.dropName || "")}
+        ${detailRow("Pickup", r.pickup_name || r.pickupName || "")}
+        ${detailRow("Drop", r.drop_name || r.dropName || "")}
 
         <h4 class="admin-drawer-subsection">Fare &amp; Payment</h4>
-        ${detailRow("Fare", `Rs ${ride.fare || 0}${ride.fareAdjustedByAdmin ? " (admin-adjusted)" : ""}`)}
-        ${detailRow("Payment status", ride.payment_status || "pending")}
+        ${detailRow("Fare", `Rs ${r.fare || 0}${r.fareAdjustedByAdmin ? " (admin-adjusted)" : ""}`)}
+        ${detailRow("Payment status", r.payment_status || "pending")}
 
         <h4 class="admin-drawer-subsection">People</h4>
-        ${detailRow("Driver", ride.driver_name || "Unassigned")}
-        ${detailRow("Passenger", (ride.passenger_id || "").slice(0, 10))}
+        ${detailRow("Driver", r.driver_name || "Unassigned")}
+        ${detailRow("Passenger", (r.passenger_id || "").slice(0, 10))}
 
         <h4 class="admin-drawer-subsection">Status &amp; Cancellation</h4>
-        ${detailRow("Status", ride.status)}
-        ${detailRow("Cancellation reason", ride.cancellationReason || "Not recorded")}
+        ${detailRow("Status", r.status)}
+        ${detailRow("Cancellation reason", r.cancellationReason || "Not recorded")}
 
         <h4 class="admin-drawer-subsection">Adjust Fare</h4>
         <div class="input-group mb-3">
             <span class="input-group-text">₹</span>
-            <input type="number" min="0" id="ride-fare-input" class="form-control" value="${ride.fare || 0}">
+            <input type="number" min="0" id="ride-fare-input" class="form-control" value="${r.fare || 0}">
             <button id="ride-fare-save" class="btn btn-outline-secondary" type="button">Save</button>
         </div>
 
@@ -1705,7 +1770,7 @@ function openRideDrawer(ride) {
         if (!(fare >= 0)) return toast("Enter a valid fare.", "error");
         await withButtonSpinner(saveFareBtn, async () => {
             try {
-                await adminPatch(`/rides/${ride.id}`, { action: "update_fare", fare });
+                await adminPatch(`/rides/${r.id}`, { action: "update_fare", fare });
                 toast("Fare updated.");
                 loadHistory(true);
             } catch (error) {
@@ -1720,7 +1785,7 @@ function openRideDrawer(ride) {
         if (!notesText) return;
         await withButtonSpinner(saveNoteBtn, async () => {
             try {
-                const result = await adminPatch(`/rides/${ride.id}`, { action: "add_note", notes: notesText });
+                const result = await adminPatch(`/rides/${r.id}`, { action: "add_note", notes: notesText });
                 toast("Note added.");
                 openRideDrawer(result.ride);
             } catch (error) {

@@ -1130,3 +1130,260 @@ body {
     font-weight: 700;
     cursor: pointer;
 }
+
+/* Share Ride Request Card (Idle Driver) */
+.driver-share-request-card {
+    border: 2px solid #F59E0B !important;
+    background: #FFFBEB !important;
+}
+
+.share-ride-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: #FFFFFF;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+}
+
+/* Driver Share MCARD Section */
+.driver-share-mcard-section {
+    margin: 12px 16px;
+    padding: 16px;
+    background: #FFFFFF;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.share-mcard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #F1F5F9;
+}
+
+.share-mcard-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.share-mcard-icon-badge {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: #DCFCE7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.share-mcard-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.share-mcard-status-pill {
+    display: inline-block;
+    background: #16A34A;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+}
+
+.share-mcard-seats-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.share-mcard-seats-indicator span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+}
+
+.share-seats-progress-bar {
+    display: flex;
+    gap: 4px;
+    width: 90px;
+}
+
+.seat-segment {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: #E2E8F0;
+    transition: background 0.3s ease;
+}
+
+.seat-segment.is-filled {
+    background: #16A34A;
+}
+
+/* MCARD Riders Container */
+.share-mcard-riders-container {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+}
+
+.share-rider-card, .remote-passenger-card, .add-passenger-btn-card {
+    flex: 0 0 140px;
+    min-width: 140px;
+    background: #F8FAFC;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.share-rider-card.is-active-focus {
+    border-color: #16A34A;
+    background: #F0FDF4;
+}
+
+.seat-number-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #16A34A;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.seat-number-badge.remote {
+    background: #F59E0B;
+}
+
+.rider-card-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    margin-bottom: 6px;
+}
+
+.rider-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #0D9488;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rider-avatar.remote {
+    background: #6366F1;
+}
+
+.rider-name-box {
+    overflow: hidden;
+}
+
+.rider-name {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #0F172A;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rider-status-dot-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #16A34A;
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #16A34A;
+}
+
+.add-passenger-btn-card {
+    border: 1.5px dashed #CBD5E1;
+    background: #FAF5FF;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    gap: 6px;
+    color: #16A34A;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.add-passenger-btn-card:hover {
+    background: #F0FDF4;
+    border-color: #16A34A;
+}
+
+.add-passenger-btn-card.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.share-mcard-summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    border-top: 1px solid #F1F5F9;
+    padding-top: 10px;
+    text-align: center;
+}
+
+.summary-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.summary-metric .metric-icon {
+    font-size: 13px;
+}
+
+.summary-metric span {
+    font-size: 12px;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.summary-metric small {
+    font-size: 9.5px;
+    color: #64748B;
+    white-space: nowrap;
+}
+

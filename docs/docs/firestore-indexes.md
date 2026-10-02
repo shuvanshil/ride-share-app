@@ -36,6 +36,9 @@ exactly the index that query needs.)
 | `rides` | `passenger_id`, `createdAt` | Ride History filtered by a specific passenger with "All statuses" + a date range |
 | `sosAlerts` | `status`, `createdAt` | Admin Safety section: SOS Alerts list filtered to open/resolved, newest first |
 | `safetyReports` | `status`, `createdAt` | Admin Safety section: Reports list filtered to open/resolved, newest first |
+| `rides` | `parentTripId`, `createdAt` | Child rides of a shared parent trip |
+| `rides` | `rideType`, `createdAt` | Ride list filtered by share ride type |
+| `shareTrips` | `driverId`, `status` | Active/open share trips for driver and admin dispatch |
 
 `driverDailyStats` (Feature 1, driver dashboard) is read by direct document
 ID (`{driverId}_{YYYY-MM-DD}`), never queried with a `.where(...)`, so it
