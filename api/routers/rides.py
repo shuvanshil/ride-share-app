@@ -122,14 +122,14 @@ class RideCreateBody(BaseModel):
 
 
 class DriverTransitionBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     action: str = Field(min_length=1, max_length=30)
     pin: str = Field(default="", max_length=4)
 
 
 class DriverAvailabilityBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     status: str = Field(min_length=1, max_length=20)
     lat: Optional[float] = None
@@ -137,7 +137,7 @@ class DriverAvailabilityBody(BaseModel):
 
 
 class DriverLocationBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     lat: float
     lng: float
@@ -148,7 +148,7 @@ class DriverLocationBody(BaseModel):
 
 
 class DriverPushTokenBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     token: str = Field(min_length=20, max_length=4096)
     userAgent: str = Field(default="", max_length=500)
@@ -156,7 +156,7 @@ class DriverPushTokenBody(BaseModel):
 
 
 class SosBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     lat: Optional[float] = None
     lng: Optional[float] = None
@@ -164,13 +164,13 @@ class SosBody(BaseModel):
 
 
 class ShareTripBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     enable: bool = True
 
 
 class SafetyReportBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     rideId: str = Field(default="", max_length=160)
     category: str = Field(min_length=1, max_length=40)
@@ -3325,7 +3325,7 @@ VALID_REASONS: dict[str, set[str]] = {
 
 
 class RideFeedbackBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     experience: str = Field(..., description="One of: poor, decent, good, loved")
     reasons: list[str] = Field(default_factory=list, description="Up to 3 secondary reason keys")
