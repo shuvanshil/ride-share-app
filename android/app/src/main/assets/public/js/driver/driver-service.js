@@ -2741,11 +2741,14 @@ function renderActiveRideState(rideId, ride) {
 }
 
 
+let isVerifyingPin = false;
+
 async function verifyAndStartTrip(rideId) {
     if (!rideId) {
         await showAlert(t('driver.no_active_ride_pin', "No active ride found for PIN verification."));
         return;
     }
+    if (isVerifyingPin) return;
 
     const typedPin = getEnteredPin();
 
@@ -2754,6 +2757,7 @@ async function verifyAndStartTrip(rideId) {
         return;
     }
 
+    isVerifyingPin = true;
     try {
         const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
         const updatedRide = result.ride || { ...currentRide, status: "en_route" };
@@ -2761,7 +2765,15 @@ async function verifyAndStartTrip(rideId) {
         checkAndRecoverLocationInconsistencyInBackground(updatedRide, lastPosition);
     } catch (error) {
         console.error("PIN verification failed:", error);
-        await showAlert(t('driver.verify_pin_failed', "Could not verify PIN. Please try again."));
+        const errorMsg = error?.message || t('driver.verify_pin_failed', "Could not verify PIN. Please try again.");
+        await showAlert(errorMsg);
+        const boxes = document.querySelectorAll('.at-pin-digit-box');
+        if (boxes.length) {
+            boxes.forEach(b => { b.value = ''; });
+            boxes[0]?.focus();
+        }
+    } finally {
+        isVerifyingPin = false;
     }
 }
 

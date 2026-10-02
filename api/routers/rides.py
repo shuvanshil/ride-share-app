@@ -1262,6 +1262,10 @@ def transition_driver_ride(
             current_status = ride.get("status")
             valid_statuses, next_status = allowed[action]
             if current_status not in valid_statuses:
+                if action == "verify_pin" and current_status in {"en_route", "started"}:
+                    result.update(ride)
+                    result["status"] = current_status
+                    return
                 raise ApiError("This ride cannot be updated from its current state.", 409)
             if action == "verify_pin":
                 stored_pin = str(ride.get("verification_pin") or "").strip().zfill(4)
