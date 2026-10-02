@@ -33,6 +33,7 @@ from .routers import (
     notify,
     otp,
     rides,
+    share,
     wallet,
 )
 from .routers import driver_payments
@@ -126,6 +127,8 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(auth.router)
 app.include_router(rides.router, prefix="/api")
 app.include_router(rides.router)
+app.include_router(share.router, prefix="/api")
+app.include_router(share.router)
 app.include_router(wallet.router, prefix="/api")
 app.include_router(wallet.router)
 app.include_router(coupons.router, prefix="/api")
@@ -163,9 +166,13 @@ def _bg_scheduled_ride_sweeper():
                 pass
         time.sleep(10)
 
-_sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)
-_sweeper_thread.start()
+import os
+
+if not os.getenv("VERCEL"):
+    _sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)
+    _sweeper_thread.start()
 
 @app.get("/api/health")
-async def health() -> dict[str, bool]:
-    return {"ok": True}
+@app.get("/health")
+async def health() -> dict[str, Any]:
+    return {"ok": True, "version": "share-20261003-v1"}
