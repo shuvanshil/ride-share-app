@@ -165,12 +165,82 @@
 
                         <div id="dashboard-saved-places" class="redesign-saved-places" aria-label="Saved places"></div>
 
-                        <section id="dashboard-recent-section" class="dashboard-recent-section redesign-recent-section d-none" aria-labelledby="dashboard-recent-heading">
-                            <div class="section-header">
-                                <h2 id="dashboard-recent-heading" data-i18n="home.recent_rides">Recent rides</h2>
-                                <a href="/history.html" class="see-all-link" data-i18n="common.see_all">See all</a>
+                        <section id="our-services-section" class="our-services-section" aria-labelledby="our-services-heading">
+                            <div class="section-header d-flex align-items-center justify-content-between mb-3">
+                                <h2 id="our-services-heading" class="our-services-title" data-i18n="home.our_services">Our Services</h2>
+                                <a href="/services.html" class="see-all-services-link d-inline-flex align-items-center gap-1" data-i18n="common.see_all">
+                                    <span>See all</span>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+                                </a>
                             </div>
-                            <div id="dashboard-recent-rides" class="redesign-recent-rides"></div>
+                            <div class="services-shortcut-grid">
+                                <!-- 1. Auto Service -->
+                                <button type="button" class="service-shortcut-card card-auto" data-service-shortcut="auto" aria-label="Auto Service">
+                                    <div class="service-shortcut-img-wrap">
+                                        <img src="assets/vehicle-markers/auto-card.png" alt="" aria-hidden="true">
+                                    </div>
+                                    <div class="service-shortcut-copy">
+                                        <strong class="service-shortcut-title" data-i18n="home.service_auto_title">Auto Service</strong>
+                                        <p class="service-shortcut-sub" data-i18n="home.service_auto_sub">Comfortable rides for up to 3 passengers</p>
+                                    </div>
+                                    <div class="service-shortcut-action">
+                                        <div class="shortcut-arrow-circle arrow-green" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <!-- 2. Bike / Scooty -->
+                                <button type="button" class="service-shortcut-card card-bike" data-service-shortcut="bike" aria-label="Bike / Scooty">
+                                    <div class="service-shortcut-img-wrap">
+                                        <img src="assets/vehicle-markers/bike-card.png" alt="" aria-hidden="true">
+                                    </div>
+                                    <div class="service-shortcut-copy">
+                                        <strong class="service-shortcut-title" data-i18n="home.service_bike_title">Bike / Scooty</strong>
+                                        <p class="service-shortcut-sub" data-i18n="home.service_bike_sub">Quick and affordable rides for 1 passenger</p>
+                                    </div>
+                                    <div class="service-shortcut-action">
+                                        <div class="shortcut-arrow-circle arrow-blue" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <!-- 3. Share Ride -->
+                                <button type="button" class="service-shortcut-card card-share" data-service-shortcut="share" aria-label="Share Ride">
+                                    <div class="discount-badge-corner" aria-hidden="true">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 5L5 19M7 6.5C7 7.32843 6.32843 8 5.5 8C4.67157 8 4 7.32843 4 6.5C4 5.67157 4.67157 5 5.5 5C6.32843 5 7 5.67157 7 6.5ZM20 17.5C20 18.3284 19.3284 19 18.5 19C17.6716 19 17 18.3284 17 17.5C17 16.6716 17.6716 16 18.5 16C19.3284 16 20 16.6716 20 17.5Z" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                    </div>
+                                    <div class="service-shortcut-img-wrap">
+                                        <img src="assets/icons/share-auto.png" alt="" aria-hidden="true">
+                                    </div>
+                                    <div class="service-shortcut-copy">
+                                        <strong class="service-shortcut-title" data-i18n="home.service_share_title">Share Ride</strong>
+                                        <p class="service-shortcut-sub" data-i18n="home.service_share_sub">Lower price, ride together</p>
+                                    </div>
+                                    <div class="service-shortcut-action">
+                                        <div class="shortcut-arrow-circle arrow-orange" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <!-- 4. Parcel Service -->
+                                <button type="button" class="service-shortcut-card card-parcel" data-service-shortcut="parcel" aria-label="Parcel Service">
+                                    <div class="service-shortcut-img-wrap">
+                                        <img src="assets/icons/parcel-box.svg" alt="" aria-hidden="true">
+                                    </div>
+                                    <div class="service-shortcut-copy">
+                                        <strong class="service-shortcut-title" data-i18n="home.service_parcel_title">Parcel Service</strong>
+                                        <p class="service-shortcut-sub" data-i18n="home.service_parcel_sub">Send packages across the city</p>
+                                    </div>
+                                    <div class="service-shortcut-action">
+                                        <div class="shortcut-arrow-circle arrow-purple" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
                         </section>
 
                         <div class="home-trust-features">
@@ -358,6 +428,60 @@
                     <button type="submit" id="save-address-submit-btn" class="gy-btn gy-btn-primary px-4" data-i18n="services.save_address">Save Address</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- ===== Parcel Service Coming Soon Modal ===== -->
+    <div id="parcel-service-modal" class="parcel-modal-shell d-none" role="dialog" aria-modal="true" aria-labelledby="parcel-modal-title">
+        <div class="parcel-modal-backdrop" id="parcel-modal-backdrop"></div>
+        <div class="parcel-modal-card">
+            <button type="button" class="parcel-modal-close-btn" id="parcel-modal-close-btn" aria-label="Close modal">&times;</button>
+            
+            <div class="parcel-modal-illustration-wrap">
+                <img src="assets/icons/parcel-modal-illustration.svg" alt="" class="parcel-illustration-img" aria-hidden="true">
+            </div>
+
+            <div class="parcel-modal-content">
+                <div class="parcel-coming-soon-badge" data-i18n="parcel.coming_soon">COMING SOON</div>
+                <h3 id="parcel-modal-title" class="parcel-modal-title" data-i18n="parcel.modal_title">Parcel Service</h3>
+                <p class="parcel-modal-desc" data-i18n="parcel.modal_desc">We're working hard to bring you a fast, safe and reliable parcel delivery service across the city.</p>
+
+                <div class="parcel-features-box">
+                    <div class="parcel-feature-item">
+                        <div class="parcel-feature-icon-badge badge-shield">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                <path d="m9 12 2 2 4-4"/>
+                            </svg>
+                        </div>
+                        <span class="parcel-feature-label" data-i18n="parcel.feat_safe">Safe &amp; Secure Delivery</span>
+                    </div>
+
+                    <div class="parcel-feature-divider"></div>
+
+                    <div class="parcel-feature-item">
+                        <div class="parcel-feature-icon-badge badge-lightning">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                        </div>
+                        <span class="parcel-feature-label" data-i18n="parcel.feat_fast">Fast &amp; Reliable Service</span>
+                    </div>
+
+                    <div class="parcel-feature-divider"></div>
+
+                    <div class="parcel-feature-item">
+                        <div class="parcel-feature-icon-badge badge-map-pin">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                            </svg>
+                        </div>
+                        <span class="parcel-feature-label" data-i18n="parcel.feat_city">Wide City Coverage</span>
+                    </div>
+                </div>
+
+                <button type="button" class="parcel-modal-action-btn" id="parcel-modal-got-it-btn" data-i18n="parcel.got_it">Got it</button>
+            </div>
         </div>
     </div>
 

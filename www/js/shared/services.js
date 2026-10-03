@@ -26,6 +26,93 @@ const selectOnMapBtn = document.getElementById('select-on-map-btn');
 
 let servicesSessionStarted = false;
 let selectedServiceType = "auto";
+let tempServiceSelection = null;
+
+try {
+    tempServiceSelection = sessionStorage.getItem('liphtup_temp_selected_service');
+    if (tempServiceSelection) {
+        sessionStorage.removeItem('liphtup_temp_selected_service');
+    }
+} catch (e) {
+    console.warn("Could not read temporary service selection:", e);
+}
+
+if (tempServiceSelection && ['auto', 'bike', 'share'].includes(tempServiceSelection)) {
+    selectedServiceType = tempServiceSelection;
+}
+
+const SERVICE_BANNER_CONFIG = {
+    auto: {
+        img: 'assets/vehicle-markers/auto-card.png',
+        titleKey: 'services.auto_selected',
+        titleFallback: 'Auto selected',
+        subKey: 'services.auto_selected_sub',
+        subFallback: 'Up to 3 passengers'
+    },
+    bike: {
+        img: 'assets/vehicle-markers/bike-card.png',
+        titleKey: 'services.bike_selected',
+        titleFallback: 'Bike / Scooty selected',
+        subKey: 'services.bike_selected_sub',
+        subFallback: 'Quick and affordable rides for 1 passenger'
+    },
+    share: {
+        img: 'assets/icons/share-auto.png',
+        titleKey: 'services.share_selected',
+        titleFallback: 'Share Ride selected',
+        subKey: 'services.share_selected_sub',
+        subFallback: 'Lower fare • may take a little longer'
+    }
+};
+
+let activeBannerService = null;
+let bannerDismissTimer = null;
+
+function showSelectedServiceBanner(serviceType) {
+    const banner = document.getElementById('selected-service-banner');
+    const bannerImg = document.getElementById('banner-vehicle-img');
+    const bannerTitle = document.getElementById('banner-service-title');
+    const bannerSub = document.getElementById('banner-service-sub');
+    const closeBtn = document.getElementById('banner-close-btn');
+
+    if (!banner || !SERVICE_BANNER_CONFIG[serviceType]) return;
+
+    activeBannerService = serviceType;
+    const config = SERVICE_BANNER_CONFIG[serviceType];
+    if (bannerImg) bannerImg.src = config.img;
+    if (bannerTitle) bannerTitle.textContent = t(config.titleKey, config.titleFallback);
+    if (bannerSub) bannerSub.textContent = t(config.subKey, config.subFallback);
+
+    document.querySelectorAll('[data-service-type]').forEach((card) => {
+        const isTarget = card.dataset.serviceType === serviceType;
+        card.classList.toggle('is-selected', isTarget);
+        card.setAttribute('aria-pressed', String(isTarget));
+    });
+
+    banner.classList.remove('d-none');
+
+    const dismissBanner = () => {
+        if (bannerDismissTimer) {
+            clearTimeout(bannerDismissTimer);
+            bannerDismissTimer = null;
+        }
+        banner.classList.add('is-fading-out');
+        setTimeout(() => {
+            banner.classList.add('d-none');
+            banner.classList.remove('is-fading-out');
+        }, 250);
+    };
+
+    closeBtn?.addEventListener('click', dismissBanner, { once: true });
+
+    if (bannerDismissTimer) clearTimeout(bannerDismissTimer);
+    bannerDismissTimer = setTimeout(dismissBanner, 15000);
+}
+
+if (tempServiceSelection && SERVICE_BANNER_CONFIG[tempServiceSelection]) {
+    showSelectedServiceBanner(tempServiceSelection);
+}
+
 let serviceSelectionLocked = false;
 let isAuthenticatedPassenger = false;
 let currentPickup = null;
@@ -747,6 +834,16 @@ bootstrapServices();
 
 window.addEventListener('languageChanged', () => {
     updateShareDetourCopy();
+    if (activeBannerService && SERVICE_BANNER_CONFIG[activeBannerService]) {
+        const banner = document.getElementById('selected-service-banner');
+        if (banner && !banner.classList.contains('d-none')) {
+            const config = SERVICE_BANNER_CONFIG[activeBannerService];
+            const bannerTitle = document.getElementById('banner-service-title');
+            const bannerSub = document.getElementById('banner-service-sub');
+            if (bannerTitle) bannerTitle.textContent = t(config.titleKey, config.titleFallback);
+            if (bannerSub) bannerSub.textContent = t(config.subKey, config.subFallback);
+        }
+    }
     if (window.selectedRideService && Number.isFinite(window.selectedRideService.fare)) {
         findRideBtn.innerText = `${t('services.confirm', 'Confirm')} ${window.selectedRideService.shortName} · ₹${window.selectedRideService.fare}`;
     } else if (!dropInput.value.trim()) {

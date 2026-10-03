@@ -45,6 +45,29 @@
                 </div>
             </header>
 
+            <!-- Floating Selected Service Notification Banner -->
+            <aside id="selected-service-banner" class="selected-service-banner d-none" aria-label="Selected service notification" role="status">
+                <div class="banner-vehicle-avatar">
+                    <img id="banner-vehicle-img" src="assets/vehicle-markers/bike-card.png" alt="" aria-hidden="true">
+                </div>
+                <div class="banner-text-content">
+                    <div class="banner-title-row">
+                        <span class="banner-check-icon" aria-hidden="true">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="#2563EB"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                        </span>
+                        <strong id="banner-service-title" class="banner-service-title">Bike / Scooty selected</strong>
+                    </div>
+                    <p id="banner-service-sub" class="banner-service-sub">Quick and affordable rides for 1 passenger</p>
+                </div>
+                <div class="banner-divider" aria-hidden="true"></div>
+                <button type="button" id="banner-close-btn" class="banner-close-btn" aria-label="Dismiss notification">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </aside>
+
             <section class="services-title-block">
                 <div class="title-with-car-icon">
                     <div class="car-graphic-badge">

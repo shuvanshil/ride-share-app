@@ -16,12 +16,9 @@ import { waitForAuth } from '../shared/auth.js';
 import { t } from '../shared/i18n.js';
 
 const UNCLEAR_LOCATION_LABELS = new Set(["current location", "current", "my location", "pinned pickup", "pinned destination"]);
-const RECENT_RIDES_LIMIT = 3;
 const SAVED_PLACE_SLOTS = ["home", "work"];
 const TRIPURA_CENTER = { lat: 23.8315, lng: 91.2868 };
 
-const recentRidesList = document.getElementById('dashboard-recent-rides');
-const recentRidesSection = document.getElementById('dashboard-recent-section');
 const savedPlacesRow = document.getElementById('dashboard-saved-places');
 const dashboardSearchForm = document.getElementById('dashboard-search-form');
 const dashboardSearchInput = document.getElementById('dashboard-search-input');
@@ -71,34 +68,6 @@ function escapeHtml(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
-}
-
-function formatMoney(value) {
-    const amount = Number(value || 0);
-    return `₹${Math.round(amount)}`;
-}
-
-function getTripTime(trip) {
-    const timestamp = trip.finalStatusAt || trip.completedAt || trip.cancelledAt || trip.verifiedAt;
-    return timestamp?.toMillis ? timestamp.toMillis() : 0;
-}
-
-function getTripDestination(trip) {
-    if (!isUnclearLocation(trip.drop_display_address)) return trip.drop_display_address;
-    if (!isUnclearLocation(trip.drop_location)) return trip.drop_location;
-    return t('history.drop_not_recorded', "Destination not recorded");
-}
-
-function formatRelativeDay(millis) {
-    if (!millis) return "";
-    const diffDays = Math.floor((Date.now() - millis) / (24 * 60 * 60 * 1000));
-    if (diffDays <= 0) return t('history.today', "Today");
-    if (diffDays === 1) return t('history.yesterday', "Yesterday");
-    if (diffDays < 7) {
-        const lang = (window.LiphtUpI18n && window.LiphtUpI18n.getCurrentLang) ? window.LiphtUpI18n.getCurrentLang() : 'en';
-        return lang === 'bn' ? `${diffDays} দিন আগে` : `${diffDays} days ago`;
-    }
-    return new Date(millis).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 // ==========================================
@@ -330,73 +299,57 @@ function setupSideDrawer(profile) {
 }
 
 // ==========================================
-// Recent rides
+// Our Services Shortcuts & Parcel Modal
 // ==========================================
 
-async function loadRecentRides(uid) {
-    const q = query(collection(db, "tripHistory"), where("passenger_id", "==", uid));
-    const snap = await getDocs(q);
-    return snap.docs
-        .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-        .sort((a, b) => getTripTime(b) - getTripTime(a))
-        .slice(0, RECENT_RIDES_LIMIT);
+function openParcelModal() {
+    const modal = document.getElementById('parcel-service-modal');
+    if (modal) modal.classList.remove('d-none');
 }
 
-function renderRecentRides(trips) {
-    if (!recentRidesList) return;
+function closeParcelModal() {
+    const modal = document.getElementById('parcel-service-modal');
+    if (modal) modal.classList.add('d-none');
+}
 
-    if (!trips.length) {
-        recentRidesSection?.classList.add('d-none');
-        return;
-    }
+function initOurServices() {
+    document.querySelectorAll('[data-service-shortcut]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const serviceType = btn.dataset.serviceShortcut;
+            if (serviceType === 'parcel') {
+                openParcelModal();
+                return;
+            }
+            if (serviceType === 'auto' || serviceType === 'bike' || serviceType === 'share') {
+                try {
+                    sessionStorage.setItem('liphtup_temp_selected_service', serviceType);
+                } catch (e) {
+                    console.warn("Could not save temporary service selection:", e);
+                }
+                window.location.href = '/services.html';
+            }
+        });
+    });
 
-    recentRidesSection?.classList.remove('d-none');
-    const tCancelled = (window.LiphtUpI18n && typeof window.LiphtUpI18n.t === 'function') ? window.LiphtUpI18n.t('history.status_cancelled') : "Cancelled";
-    recentRidesList.innerHTML = trips.map((trip) => {
-        const destination = getTripDestination(trip);
-        const when = formatRelativeDay(getTripTime(trip)) || "Recently";
-        const cancelled = trip.final_status === "cancelled" || trip.status === "cancelled";
-        const fareFormatted = formatMoney(trip.fare_amount || trip.price || 0);
+    document.getElementById('parcel-modal-close-btn')?.addEventListener('click', closeParcelModal);
+    document.getElementById('parcel-modal-backdrop')?.addEventListener('click', closeParcelModal);
+    document.getElementById('parcel-modal-got-it-btn')?.addEventListener('click', closeParcelModal);
 
-        return `
-            <button type="button" class="dashboard-recent-item${cancelled ? ' is-cancelled' : ''}" data-destination="${escapeHtml(destination)}">
-                <div class="recent-item-icon-badge">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A7A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                        <path d="M3 3v5h5"/>
-                        <path d="M12 7v5l4 2"/>
-                    </svg>
-                </div>
-                <div class="dashboard-recent-item-text">
-                    <strong>${escapeHtml(destination)}</strong>
-                    <small>
-                        <span>${escapeHtml(when)}</span>
-                        ${cancelled ? `<span class="dot-separator">•</span><span class="status-cancelled">${tCancelled}</span>` : ''}
-                    </small>
-                </div>
-                <div class="dashboard-recent-item-right">
-                    <strong class="recent-fare-amount${cancelled ? ' is-cancelled' : ''}">${escapeHtml(cancelled ? '₹0' : fareFormatted)}</strong>
-                    <span class="chevron-right-arrow">&rsaquo;</span>
-                </div>
-            </button>
-        `;
-    }).join('');
-
-    recentRidesList.querySelectorAll('.dashboard-recent-item').forEach((btn) => {
-        btn.addEventListener('click', () => goToServicesWithDestination(btn.dataset.destination));
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('parcel-service-modal');
+            if (modal && !modal.classList.contains('d-none')) {
+                closeParcelModal();
+            }
+        }
     });
 }
-
-let cachedTripsForLanguageSwitch = [];
 
 window.addEventListener('languageChanged', () => {
     updateGreeting();
     updateDynamicSubGreeting();
     renderSavedPlaces();
     renderSavedPlacesModalList();
-    if (cachedTripsForLanguageSwitch.length) {
-        renderRecentRides(cachedTripsForLanguageSwitch);
-    }
 });
 
 function goToServicesWithDestination(destinationText) {
@@ -408,27 +361,6 @@ function goToServicesWithDestination(destinationText) {
     const url = new URL('/services.html', window.location.href);
     url.searchParams.set('destination', clean);
     window.location.href = url.href;
-}
-
-async function initRecentRides(uid) {
-    if (!recentRidesList) return;
-    const clearSkeleton = showSkeleton(recentRidesList, { kind: 'avatar-row', count: 2 });
-    try {
-        const user = await waitForAuth();
-        const activeUid = uid || user?.uid;
-        if (!activeUid) {
-            clearSkeleton();
-            recentRidesSection?.classList.add('d-none');
-            return;
-        }
-        const trips = await loadRecentRides(activeUid);
-        clearSkeleton();
-        renderRecentRides(trips);
-    } catch (error) {
-        console.warn("Could not load recent rides:", error);
-        clearSkeleton();
-        recentRidesSection?.classList.add('d-none');
-    }
 }
 
 // ==========================================
@@ -888,6 +820,7 @@ dashboardSearchForm?.addEventListener('submit', (event) => {
 // Run initial greeting calculation immediately on script load for instant display
 updateGreeting();
 updateDynamicSubGreeting();
+initOurServices();
 
 window.addEventListener('user-session-ready', (event) => {
     const profile = event.detail || {};
@@ -896,6 +829,5 @@ window.addEventListener('user-session-ready', (event) => {
     updateGreeting(profile.name || profile.displayName);
     updateDynamicSubGreeting();
     setupSideDrawer(profile);
-    initRecentRides(profile.uid);
     initSavedPlaces(profile.uid);
 });
