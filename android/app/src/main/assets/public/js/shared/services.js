@@ -36,20 +36,26 @@ const requestedDestination = new URLSearchParams(window.location.search).get("de
 
 warmGoogleMaps();
 
+let cachedMaxDetourMin = 8;
+
 async function loadShareConfig() {
     try {
         const res = await fetch('/api/share/config');
         if (!res.ok) return;
         const data = await res.json();
         if (data.ok && data.config) {
-            const maxDetour = data.config.SHARE_MAX_DETOUR_MIN || 8;
-            const detourCopy = document.getElementById('share-detour-time-copy');
-            if (detourCopy) {
-                detourCopy.innerText = `may add up to ${maxDetour} min`;
-            }
+            cachedMaxDetourMin = Number(data.config.SHARE_MAX_DETOUR_MIN) || 8;
+            updateShareDetourCopy();
         }
     } catch (e) {
         console.warn("Could not load share config:", e);
+    }
+}
+
+function updateShareDetourCopy() {
+    const detourCopy = document.getElementById('share-detour-time-copy');
+    if (detourCopy) {
+        detourCopy.innerText = t('services.may_add_detour', { min: cachedMaxDetourMin }, `may add up to ${cachedMaxDetourMin} min`);
     }
 }
 loadShareConfig();
@@ -740,6 +746,7 @@ window.addEventListener("ride-completed-clear-map", () => {
 bootstrapServices();
 
 window.addEventListener('languageChanged', () => {
+    updateShareDetourCopy();
     if (window.selectedRideService && Number.isFinite(window.selectedRideService.fare)) {
         findRideBtn.innerText = `${t('services.confirm', 'Confirm')} ${window.selectedRideService.shortName} · ₹${window.selectedRideService.fare}`;
     } else if (!dropInput.value.trim()) {

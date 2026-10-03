@@ -643,7 +643,10 @@ function showTripProgressPanel(ride) {
             if (ride.status === "accepted") {
                 const stopsCount = Number(ride.sharedInfo?.stopsBeforeYou || 0);
                 if (isShareRide && stopsCount > 0) {
-                    subStatus = `${stopsCount} stop${stopsCount > 1 ? 's' : ''} before you • ${distKm.toFixed(1)} km away`;
+                    const stopsText = stopsCount === 1 
+                        ? t('services.stops_before_you', { count: 1 }, "1 stop before you")
+                        : t('services.stops_before_you_plural', { count: stopsCount }, `${stopsCount} stops before you`);
+                    subStatus = `${stopsText} • ${distKm.toFixed(1)} km away`;
                 } else {
                     subStatus = `${distKm.toFixed(1)} km away`;
                 }
@@ -716,13 +719,15 @@ function showTripProgressPanel(ride) {
         const shared = ride.sharedInfo || {};
         const ridersCount = shared.ridersOnboard !== undefined ? shared.ridersOnboard : (shared.seatsOccupied || 1);
         if (ridersEl) {
-            ridersEl.innerText = `${ridersCount} rider${ridersCount === 1 ? '' : 's'} on board`;
+            ridersEl.innerText = Number(ridersCount) === 1
+                ? t('services.riders_onboard', { count: 1 }, "1 rider on board")
+                : t('services.riders_onboard_plural', { count: ridersCount }, `${ridersCount} riders on board`);
         }
 
         const delayMin = Number(shared.delayMin || 0);
         if (delayBadge) {
             if (delayMin > 0) {
-                delayBadge.innerText = `+${delayMin} min detour`;
+                delayBadge.innerText = t('services.min_detour', { min: delayMin }, `+${delayMin} min detour`);
                 delayBadge.classList.remove('d-none');
             } else {
                 delayBadge.classList.add('d-none');
@@ -2222,8 +2227,8 @@ requestRideButton.addEventListener('click', async () => {
     const isShareRide = requestedVehicleType === "share";
     if (isShareRide) {
         const confirmed = await showConfirm(
-            "Shared Ride: The driver may pick up other passengers along the way or from nearby areas. This may add a little extra time to your journey.",
-            { okText: "Confirm", cancelText: "Cancel" }
+            t('services.share_passenger_modal_notice', "Shared Ride: The driver may pick up other passengers along the way or from nearby areas. This may add a little extra time to your journey."),
+            { okText: t('common.confirm', "Confirm"), cancelText: t('common.cancel', "Cancel") }
         );
         if (!confirmed) {
             return;

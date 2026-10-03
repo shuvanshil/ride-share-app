@@ -667,7 +667,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
     card.dataset.fare = String(fareAmount);
 
     if (isShare) {
-        const detourText = detourMin > 0 ? ` • +${detourMin} min for existing riders` : '';
+        const detourText = detourMin > 0 ? ` • ${t('driver.for_existing_riders', { min: detourMin }, `+${detourMin} min for existing riders`)}` : '';
         const countdownSecs = Math.max(1, Math.ceil(remainingMs / 1000));
         const pickupAddr = escapeHtml(getRideDisplayAddress(ride, "pickup"));
         const dropAddr = escapeHtml(getRideDisplayAddress(ride, "drop"));
@@ -680,7 +680,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
                     </div>
                     <div class="share-req-info-col">
                         <div class="share-req-header-row">
-                            <h5 class="share-req-title">New Share Ride Request</h5>
+                            <h5 class="share-req-title">${t('driver.new_share_ride_request', 'New Share Ride Request')}</h5>
                             <span class="share-req-fare-pill d-md-none">₹${fareAmount}</span>
                         </div>
                         <div class="share-req-subline">
@@ -689,7 +689,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
                         </div>
                         <div class="share-req-route-row">
                             <svg class="share-req-pin-icon" width="14" height="14" viewBox="0 0 24 24" fill="#64748B" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                            <span class="share-req-route-text">Pickup near ${pickupAddr}</span>
+                            <span class="share-req-route-text">${t('driver.pickup_near', { address: pickupAddr }, `Pickup near ${pickupAddr}`)}</span>
                             <svg class="share-req-arrow-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             <svg class="share-req-pin-icon" width="14" height="14" viewBox="0 0 24 24" fill="#DC2626" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                             <span class="share-req-route-text">${dropAddr}</span>
@@ -698,8 +698,8 @@ function renderIncomingRideCard(rideId, ride = {}) {
                 </div>
                 <div class="share-req-right-actions">
                     <span class="share-req-fare-pill d-none d-md-inline-flex">₹${fareAmount}</span>
-                    <button class="share-req-decline-btn driver-service-ignore-btn ignore-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-is-addon="${isPriorityAddon ? 'true' : 'false'}">Decline</button>
-                    <button class="share-req-accept-btn driver-service-accept-btn accept-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-is-addon="${isPriorityAddon ? 'true' : 'false'}" data-fare="${fareAmount}">Accept <span id="srv-accept-secs-${rideId}">${countdownSecs}s</span></button>
+                    <button class="share-req-decline-btn driver-service-ignore-btn ignore-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-is-addon="${isPriorityAddon ? 'true' : 'false'}">${t('driver.decline', 'Decline')}</button>
+                    <button class="share-req-accept-btn driver-service-accept-btn accept-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-is-addon="${isPriorityAddon ? 'true' : 'false'}" data-fare="${fareAmount}">${t('driver.accept', 'Accept')} <span id="srv-accept-secs-${rideId}">${countdownSecs}s</span></button>
                 </div>
             </div>
         `;
@@ -984,8 +984,8 @@ async function acceptIncomingRide(rideId, button) {
 
     if (rideType === "share" && !isAddon && !hasRidersOnBoard) {
         const confirmed = await showConfirm(
-            `Shared Ride: You can pick up up to 3 additional passengers through app requests or along the way. Each passenger pays a fixed ₹${rideFare || '10'}. Pickup requests are not guaranteed.`,
-            { okText: "Confirm", cancelText: "Cancel" }
+            t('driver.share_first_accept_notice', { fare: rideFare || '10' }, `Shared Ride: You can pick up up to 3 additional passengers through app requests or along the way. Each passenger pays a fixed ₹${rideFare || '10'}. Pickup requests are not guaranteed.`),
+            { okText: t('common.confirm', "Confirm"), cancelText: t('common.cancel', "Cancel") }
         );
         if (!confirmed) return;
     }
@@ -1013,7 +1013,7 @@ async function acceptIncomingRide(rideId, button) {
             throw new Error(data.error || "Could not accept this ride.");
         }
         if (isAddon) {
-            await showAlert("Add-on passenger added to shared route!");
+            await showAlert(t('driver.addon_passenger_added', "Add-on passenger added to shared route!"));
             return;
         }
         const acceptedRideData = data.ride || {};
@@ -1566,9 +1566,9 @@ function buildShareRiderCard(entry, position) {
                 <span class="seat-number-badge seat-${entry.seat}">${entry.seat}</span>
                 <span class="rider-avatar remote">${SHARE_SVG.group}</span>
                 <span class="rider-name-box">
-                    <span class="rider-name">Remote Passenger ${entry.index}</span>
-                    <span class="rider-sub">Added by you (Cash)</span>
-                    <span class="rider-status-dot-row"><span class="status-dot"></span>On board</span>
+                    <span class="rider-name">${t('driver.remote_passenger_named', { index: entry.index }, `Remote Passenger ${entry.index}`)}</span>
+                    <span class="rider-sub">${t('driver.added_by_you_cash', 'Added by you (Cash)')}</span>
+                    <span class="rider-status-dot-row"><span class="status-dot"></span>${t('driver.on_board', 'On board')}</span>
                 </span>
                 ${SHARE_SVG.chevron}
             </button>`;
@@ -1576,7 +1576,7 @@ function buildShareRiderCard(entry, position) {
     const ride = entry.ride;
     const rawName = String(ride.passenger_name || "Passenger").trim() || "Passenger";
     const onBoard = isShareRideOnBoard(ride);
-    const statusText = onBoard ? "On board" : (ride.status === "arrived" ? "Waiting at pickup" : "Heading to pickup");
+    const statusText = onBoard ? t('driver.on_board', 'On board') : (ride.status === "arrived" ? t('driver.waiting_at_pickup', 'Waiting at pickup') : t('driver.heading_to_pickup', 'Heading to pickup'));
     const fare = Math.round(Number(ride.fareLocked ?? ride.fare) || 0);
     return `
         <button type="button" class="share-rider-card${primaryClass}" data-ride-id="${escapeHtml(ride.id)}">
@@ -1584,7 +1584,7 @@ function buildShareRiderCard(entry, position) {
             <span class="rider-avatar">${escapeHtml(rawName.charAt(0).toUpperCase())}</span>
             <span class="rider-name-box">
                 <span class="rider-name">${escapeHtml(rawName)}</span>
-                <span class="rider-sub">App passenger • ₹${fare}</span>
+                <span class="rider-sub">${t('driver.app_passenger', 'App passenger')} • ₹${fare}</span>
                 <span class="rider-status-dot-row${onBoard ? "" : " is-waiting"}"><span class="status-dot"></span>${statusText}</span>
             </span>
             ${SHARE_SVG.chevron}
@@ -1619,9 +1619,9 @@ function renderShareSection() {
         const el = document.getElementById(id);
         if (el) el.innerText = value;
     };
-    setText('share-mcard-seats-text', `${seatsUsed} / 3 seats occupied`);
-    setText('share-mcard-avail-text', seatsAvail === 0 ? "Full" : `${seatsAvail} seat${seatsAvail === 1 ? "" : "s"} available`);
-    setText('share-mcard-status-pill', anyOnBoard ? "In Progress" : "Pickup pending");
+    setText('share-mcard-seats-text', t('driver.seats_occupied', { used: seatsUsed, total: 3 }, `${seatsUsed} / 3 seats occupied`));
+    setText('share-mcard-avail-text', seatsAvail === 0 ? t('driver.full_label', 'Full') : (seatsAvail === 1 ? t('driver.seat_available_label', '1 seat available') : t('driver.seats_available_label', { count: seatsAvail }, `${seatsAvail} seats available`)));
+    setText('share-mcard-status-pill', anyOnBoard ? t('driver.in_progress', 'In Progress') : t('driver.pickup_pending', 'Pickup pending'));
     setText('share-metric-seats-used', `${seatsUsed}/3`);
     setText('share-metric-app-passengers', String(appCount));
     setText('share-metric-remote-passengers', String(remoteOnBoard));
@@ -1698,7 +1698,7 @@ async function notifyRemovedShareChildren(previousIds, currentIds) {
             const snap = await getDoc(doc(db, "rides", rideId));
             const status = snap.exists() ? snap.data()?.status : "";
             if (status === "cancelled_by_passenger") {
-                await showAlert("A passenger cancelled their ride.");
+                await showAlert(t('driver.passenger_cancelled_ride', "A passenger cancelled their ride."));
             }
         } catch (error) {
             console.warn("Could not check removed share ride:", error);
@@ -1740,98 +1740,98 @@ function buildAppSheetHtml(ride, seat) {
     const pickedAt = formatShareClock(ride.pinVerifiedAt || ride.startedAt);
 
     const pill = onBoard
-        ? '<span class="sheet-state-pill"><span class="status-dot"></span>On board</span>'
-        : `<span class="sheet-state-pill is-waiting"><span class="status-dot"></span>${arrived ? "At pickup" : "To pickup"}</span>`;
+        ? `<span class="sheet-state-pill"><span class="status-dot"></span>${t('driver.on_board', 'On board')}</span>`
+        : `<span class="sheet-state-pill is-waiting"><span class="status-dot"></span>${arrived ? t('driver.at_pickup', 'At pickup') : t('driver.to_pickup', 'To pickup')}</span>`;
 
-    let bannerTitle = "Trip in progress";
-    let bannerSub = "Driving passenger to destination";
+    let bannerTitle = t('driver.trip_in_progress', 'Trip in progress');
+    let bannerSub = t('driver.driving_to_dest', 'Driving passenger to destination');
     if (!onBoard) {
-        bannerTitle = arrived ? "Waiting for passenger" : "Heading to pickup";
-        bannerSub = arrived ? "Ask the passenger for their 4-digit PIN" : "Drive to the passenger's pickup point";
+        bannerTitle = arrived ? t('driver.waiting_for_passenger', 'Waiting for passenger') : t('driver.heading_to_pickup', 'Heading to pickup');
+        bannerSub = arrived ? t('driver.ask_pin_notice', 'Ask the passenger for their 4-digit PIN') : t('driver.drive_to_pickup', "Drive to the passenger's pickup point");
     }
     const bannerEta = onBoard ? `
         <div class="sheet-banner-eta">
             <span class="sheet-banner-icon">${SHARE_SVG.car}</span>
-            <span class="sheet-banner-eta-text"><strong>~${remainingMins} mins</strong><small>remaining</small></span>
+            <span class="sheet-banner-eta-text"><strong>~${remainingMins} mins</strong><small>${t('driver.remaining', 'remaining')}</small></span>
         </div>` : "";
 
     let actions = "";
     if (status === "accepted") {
-        actions += '<button type="button" class="sheet-btn sheet-btn-dark" data-share-action="arrive">I\'ve Arrived</button>';
+        actions += `<button type="button" class="sheet-btn sheet-btn-dark" data-share-action="arrive">${t('driver.ive_arrived', "I've Arrived")}</button>`;
     }
     if (!onBoard) {
         actions += `
             <div class="sheet-pin-wrap">
-                <strong>Enter the passenger's 4-digit PIN</strong>
+                <strong>${t('driver.enter_passenger_4digit_pin', "Enter the passenger's 4-digit PIN")}</strong>
                 <div class="sheet-pin-boxes">
                     <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 1">
                     <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 2">
                     <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 3">
                     <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 4">
                 </div>
-                <button type="button" class="sheet-btn sheet-btn-primary" data-share-action="verify">Start Trip</button>
+                <button type="button" class="sheet-btn sheet-btn-primary" data-share-action="verify">${t('driver.start_trip', 'Start Trip')}</button>
             </div>`;
     }
     if (arrived) {
-        actions += '<button type="button" class="sheet-btn sheet-btn-ghost" data-share-action="skip" disabled>Skip (no-show)</button>';
+        actions += `<button type="button" class="sheet-btn sheet-btn-ghost" data-share-action="skip" disabled>${t('driver.skip_noshow', 'Skip (no-show)')}</button>`;
     }
     if (onBoard) {
-        actions += '<button type="button" class="sheet-btn sheet-btn-dark" data-share-action="drop">Drop off &amp; collect fare</button>';
+        actions += `<button type="button" class="sheet-btn sheet-btn-dark" data-share-action="drop">${t('driver.drop_off_collect_fare', 'Drop off & collect fare')}</button>`;
     }
     actions += phone
-        ? `<a class="sheet-btn sheet-btn-primary" href="tel:${phone}">${SHARE_SVG.phone}<span>Call Passenger</span></a>`
-        : `<button type="button" class="sheet-btn sheet-btn-primary" disabled>${SHARE_SVG.phone}<span>Call Passenger</span></button>`;
+        ? `<a class="sheet-btn sheet-btn-primary" href="tel:${phone}">${SHARE_SVG.phone}<span>${t('driver.call_passenger', 'Call Passenger')}</span></a>`
+        : `<button type="button" class="sheet-btn sheet-btn-primary" disabled>${SHARE_SVG.phone}<span>${t('driver.call_passenger', 'Call Passenger')}</span></button>`;
 
     return `
-        ${buildShareSheetHead(`<span class="rider-avatar">${escapeHtml(rawName.charAt(0).toUpperCase())}</span>`, seat, name, `App passenger • ₹${fare}`, pill)}
+        ${buildShareSheetHead(`<span class="rider-avatar">${escapeHtml(rawName.charAt(0).toUpperCase())}</span>`, seat, name, `${t('driver.app_passenger', 'App passenger')} • ₹${fare}`, pill)}
         <div class="sheet-banner${onBoard ? "" : " is-waiting"}">
             <span class="sheet-banner-icon">${SHARE_SVG.bell}</span>
             <span class="sheet-banner-text"><strong>${bannerTitle}</strong><span>${bannerSub}</span></span>
             ${bannerEta}
         </div>
         <div class="sheet-route-card">
-            <h6>Route Details</h6>
+            <h6>${t('driver.route_details', 'Route Details')}</h6>
             <div class="sheet-route-inner">
                 <div class="sheet-route-stops">
                     <div class="sheet-route-stop pickup">
                         <span class="sheet-route-dot"></span>
-                        <span class="sheet-route-stop-body"><small>Pickup</small><strong>${pickup}</strong></span>
+                        <span class="sheet-route-stop-body"><small>${t('services.pickup_label', 'Pickup')}</small><strong>${pickup}</strong></span>
                         <span class="sheet-route-stop-meta">${pickedAt ? `<span>${pickedAt}</span>` : ""}${onBoard ? `<span class="sheet-check">${SHARE_SVG.check}</span>` : ""}</span>
                     </div>
                     <div class="sheet-route-stop drop">
                         <span class="sheet-route-dot"></span>
-                        <span class="sheet-route-stop-body"><small>Destination</small><strong>${drop}</strong></span>
+                        <span class="sheet-route-stop-body"><small>${t('services.destination_label', 'Destination')}</small><strong>${drop}</strong></span>
                         <span class="sheet-route-stop-meta"><span>${durationLabel}</span><span class="muted">${kmLabel}</span></span>
                     </div>
                 </div>
                 <div class="sheet-route-footer">
-                    <div>${SHARE_SVG.road}<span><strong>${kmLabel}</strong><small>Total distance</small></span></div>
-                    <div>${SHARE_SVG.clock}<span><strong>${durationLabel}</strong><small>Estimated time</small></span></div>
+                    <div>${SHARE_SVG.road}<span><strong>${kmLabel}</strong><small>${t('driver.total_distance', 'Total distance')}</small></span></div>
+                    <div>${SHARE_SVG.clock}<span><strong>${durationLabel}</strong><small>${t('driver.estimated_time', 'Estimated time')}</small></span></div>
                 </div>
             </div>
         </div>
         <div class="sheet-fare-row">
             <span class="sheet-fare-icon">${SHARE_SVG.wallet}</span>
-            <span class="sheet-fare-text"><strong>Passenger fare</strong><small>Fixed price (Shared Ride)</small></span>
+            <span class="sheet-fare-text"><strong>${t('driver.passenger_fare', 'Passenger fare')}</strong><small>${t('driver.fixed_price_shared', 'Fixed price (Shared Ride)')}</small></span>
             <span class="sheet-fare-amount">₹${fare}</span>
         </div>
         <div class="sheet-info-box">
             ${SHARE_SVG.info}
-            <span><strong>This is a shared ride</strong><span>There may be other riders on the way. Fare will not change.</span></span>
+            <span><strong>${t('driver.this_is_shared_ride', 'This is a shared ride')}</strong><span>${t('driver.shared_ride_notice', 'There may be other riders on the way. Fare will not change.')}</span></span>
         </div>
         <div class="sheet-btn-row">${actions}</div>`;
 }
 
 function buildRemoteSheetHtml(entry) {
     return `
-        ${buildShareSheetHead(`<span class="rider-avatar remote">${SHARE_SVG.group}</span>`, entry.seat, `Remote Passenger ${entry.index}`, "Added by you (Cash)", '<span class="sheet-state-pill"><span class="status-dot"></span>On board</span>')}
+        ${buildShareSheetHead(`<span class="rider-avatar remote">${SHARE_SVG.group}</span>`, entry.seat, t('driver.remote_passenger_named', { index: entry.index }, `Remote Passenger ${entry.index}`), t('driver.added_by_you_cash', 'Added by you (Cash)'), `<span class="sheet-state-pill"><span class="status-dot"></span>${t('driver.on_board', 'On board')}</span>`)}
         <div class="sheet-info-box is-remote">
             ${SHARE_SVG.info}
-            <span><strong>This is a remote passenger</strong><span>This rider was added by you and is not booked through the app. The fare for this rider is not decided by LiphtUp — agree on it and collect it directly from the passenger.</span></span>
+            <span><strong>${t('driver.this_is_remote_passenger', 'This is a remote passenger')}</strong><span>${t('driver.remote_passenger_notice', 'This rider was added by you and is not booked through the app. The fare for this rider is not decided by LiphtUp — agree on it and collect it directly from the passenger.')}</span></span>
         </div>
         <div class="sheet-btn-row">
-            <button type="button" class="sheet-btn sheet-btn-danger" data-share-action="drop-remote">Drop passenger</button>
-            <button type="button" class="sheet-btn sheet-btn-ghost" data-share-action="close">Close</button>
+            <button type="button" class="sheet-btn sheet-btn-danger" data-share-action="drop-remote">${t('driver.drop_passenger_short', 'Drop passenger')}</button>
+            <button type="button" class="sheet-btn sheet-btn-ghost" data-share-action="close">${t('common.close', 'Close')}</button>
         </div>`;
 }
 
@@ -1877,17 +1877,17 @@ function updateShareSkipButton() {
     const arrivedMs = shareTimestampMs(ride?.arrivedAt) || shareLocalArrivedAt.get(shareModalTarget.rideId) || null;
     if (!arrivedMs) {
         skipBtn.disabled = true;
-        skipBtn.innerText = "Skip (no-show)";
+        skipBtn.innerText = t('driver.skip_noshow', "Skip (no-show)");
         return;
     }
     const waitLeftMs = SHARE_PICKUP_WAIT_MS - (Date.now() - arrivedMs);
     if (waitLeftMs > 0) {
         const secs = Math.ceil(waitLeftMs / 1000);
         skipBtn.disabled = true;
-        skipBtn.innerText = `Skip (no-show) in ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+        skipBtn.innerText = t('driver.skip_noshow_in', { time: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` }, `Skip (no-show) in ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`);
     } else {
         skipBtn.disabled = false;
-        skipBtn.innerText = "Skip (no-show)";
+        skipBtn.innerText = t('driver.skip_noshow', "Skip (no-show)");
     }
 }
 
@@ -1953,18 +1953,18 @@ async function arriveAtShareRider(rideId) {
         patchShareChildStatus(rideId, "arrived");
     } catch (error) {
         console.error("Share arrive failed:", error);
-        await showAlert(error?.message || "Could not mark arrival. Please try again.");
+        await showAlert(error?.message || t('driver.could_not_mark_arrival', "Could not mark arrival. Please try again."));
     }
 }
 
 async function skipShareRider(rideId) {
-    if (!(await showConfirm("Skip this passenger as a no-show?"))) return;
+    if (!(await showConfirm(t('driver.skip_passenger_confirm', "Skip this passenger as a no-show?")))) return;
     try {
         await callShareApi(`/rides/${encodeURIComponent(rideId)}/skip`);
         closeShareSheet();
     } catch (error) {
         console.error("Share skip failed:", error);
-        await showAlert(error?.message || "Could not skip this passenger.");
+        await showAlert(error?.message || t('driver.could_not_skip_passenger', "Could not skip this passenger."));
     }
 }
 
@@ -1972,11 +1972,11 @@ async function addRemotePassenger() {
     const tripId = shareTripData?.id || currentRide?.parentTripId;
     if (!tripId) return;
     try {
-        window.LiphtUpLoading?.showPageLoader?.("Adding passenger...");
+        window.LiphtUpLoading?.showPageLoader?.(t('driver.adding_passenger', "Adding passenger..."));
         await callShareApi(`/trips/${encodeURIComponent(tripId)}/remote/add`);
     } catch (error) {
         console.error("Add remote passenger failed:", error);
-        await showAlert(error?.message || "Could not add remote passenger.");
+        await showAlert(error?.message || t('driver.could_not_add_remote', "Could not add remote passenger."));
     } finally {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
@@ -1986,12 +1986,12 @@ async function dropRemotePassenger() {
     const tripId = shareTripData?.id || currentRide?.parentTripId;
     if (!tripId) return;
     try {
-        window.LiphtUpLoading?.showPageLoader?.("Dropping passenger...");
+        window.LiphtUpLoading?.showPageLoader?.(t('driver.dropping_passenger', "Dropping passenger..."));
         await callShareApi(`/trips/${encodeURIComponent(tripId)}/remote/drop`);
         closeShareSheet();
     } catch (error) {
         console.error("Drop remote passenger failed:", error);
-        await showAlert(error?.message || "Could not drop remote passenger.");
+        await showAlert(error?.message || t('driver.could_not_drop_remote', "Could not drop remote passenger."));
     } finally {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
     }
@@ -2003,7 +2003,7 @@ async function cancelShareTripByDriver() {
         await showAlert(t('driver.no_active_trip_to_cancel', "No active trip found to cancel."));
         return;
     }
-    const confirmed = await showConfirm("Cancel this shared ride? Riders who are not picked up yet will be cancelled and riders on board will be marked as dropped.");
+    const confirmed = await showConfirm(t('driver.cancel_shared_ride_confirm', "Cancel this shared ride? Riders who are not picked up yet will be cancelled and riders on board will be marked as dropped."));
     if (!confirmed) return;
     try {
         window.LiphtUpLoading?.showPageLoader?.(t('driver.updating_trip_status', "Updating trip status..."));
