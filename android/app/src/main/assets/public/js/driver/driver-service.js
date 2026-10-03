@@ -875,7 +875,7 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(15000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -895,7 +895,7 @@ async function pollDriverNearbyDemand() {
         if (!idToken) return;
         const res = await fetch("/api/rides/driver/nearby-demand", {
             headers: { Authorization: `Bearer ${idToken}` },
-            signal: AbortSignal.timeout(6000)
+            signal: AbortSignal.timeout(12000)
         });
         const data = await res.json().catch(() => ({}));
         if (data.ok && (data.waitingCount > 0 || data.scheduledSoonCount > 0)) {
@@ -979,10 +979,13 @@ async function acceptIncomingRide(rideId, button) {
     const rideType = button?.dataset?.rideType || "";
     const isAddon = button?.dataset?.isAddon === "true" || Boolean(currentRide?.parentTripId && rideType === "share");
     const rideFare = button?.dataset?.fare || "";
-    if (rideType === "share" && !isAddon) {
+    const onboardCount = (currentRide?.childRides || []).filter(r => r.status === "en_route" || r.status === "started" || r.pinVerifiedAt).length + (Number(currentRide?.remoteOnBoard) || 0);
+    const hasRidersOnBoard = Boolean(currentRide?.parentTripId && onboardCount > 0);
+
+    if (rideType === "share" && !isAddon && !hasRidersOnBoard) {
         const confirmed = await showConfirm(
-            `Accept Shared Ride request for ₹${rideFare || '10'}?\nFixed fare applies. Additional riders along the route are not guaranteed.`,
-            { okText: "Accept Shared Ride", cancelText: "Cancel" }
+            `Shared Ride: You can pick up up to 3 additional passengers through app requests or along the way. Each passenger pays a fixed ₹${rideFare || '10'}. Pickup requests are not guaranteed.`,
+            { okText: "Confirm", cancelText: "Cancel" }
         );
         if (!confirmed) return;
     }

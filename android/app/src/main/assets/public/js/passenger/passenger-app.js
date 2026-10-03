@@ -2219,6 +2219,17 @@ requestRideButton.addEventListener('click', async () => {
         return;
     }
 
+    const isShareRide = requestedVehicleType === "share";
+    if (isShareRide) {
+        const confirmed = await showConfirm(
+            "Shared Ride: The driver may pick up other passengers along the way or from nearby areas. This may add a little extra time to your journey.",
+            { okText: "Confirm", cancelText: "Cancel" }
+        );
+        if (!confirmed) {
+            return;
+        }
+    }
+
     // UI updates only happen if the user has no active bookings
     setPassengerDestinationLocked(true, dropText, pickupText);
     setPassengerServiceLocked(true, {
@@ -2230,7 +2241,6 @@ requestRideButton.addEventListener('click', async () => {
     startSearchStateUi(35);
 
     try {
-        const isShareRide = requestedVehicleType === "share";
         const requestPayload = {
             pickupName: pickupText,
             dropName: dropText,
@@ -2458,7 +2468,7 @@ async function cancelRideByPassenger(rideId) {
     } catch (error) {
         console.warn("Failed to cancel ride silently:", error);
     } finally {
-        await showAlert(t('services.waiting_request_cancelled', "Your ride request has been cancelled."));
+        await showAlert(t('services.ride_request_cancelled', "Ride request has been cancelled."));
         window.location.reload();
     }
 }
@@ -2545,7 +2555,7 @@ const handleCancelRideAction = async () => {
         await cancelRideByPassenger(currentPassengerRideId);
     } else {
         resetPassengerBookingUi();
-        await showAlert(t('services.waiting_request_cancelled', "Ride request cancelled."));
+        await showAlert(t('services.ride_request_cancelled', "Ride request has been cancelled."));
     }
 };
 addOptionalClickListener('cancel-ride-request-btn', handleCancelRideAction);

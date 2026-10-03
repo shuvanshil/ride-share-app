@@ -647,7 +647,7 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
-        signal: AbortSignal.timeout(6000)
+        signal: AbortSignal.timeout(15000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -708,7 +708,7 @@ async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "se
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({ lat, lng, rideId: currentlyAssignedRideId || null, ...telemetry }),
-            signal: AbortSignal.timeout(6000)
+            signal: AbortSignal.timeout(15000)
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) {
@@ -1155,6 +1155,8 @@ function initDriverJobsStream() {
             const card = document.createElement('div');
             card.className = "ride-request-card card shadow-sm p-3 mb-3";
             card.dataset.rideId = rideId;
+            card.dataset.rideType = ride.rideType || "normal";
+            card.dataset.fare = String(fareAmount);
             card.innerHTML = `
                 <div class="request-header-row">
                     <div class="passenger-name-wrap">
@@ -1368,8 +1370,19 @@ function setRideListBusy(busy) {
 }
 
 async function acceptRideJob(rideId) {
-    setRideListBusy(true);
     const clickedBtn = document.querySelector(`.accept-job-btn[data-id="${CSS.escape(rideId)}"]`);
+    const rideCard = clickedBtn?.closest('.ride-request-card, .card');
+    const rideType = rideCard?.dataset?.rideType || clickedBtn?.dataset?.rideType || "";
+    const rideFare = rideCard?.dataset?.fare || clickedBtn?.dataset?.fare || "";
+    if (rideType === "share") {
+        const confirmed = await showConfirm(
+            `Shared Ride: You can pick up up to 3 additional passengers through app requests or along the way. Each passenger pays a fixed ₹${rideFare || '10'}. Pickup requests are not guaranteed.`,
+            { okText: "Confirm", cancelText: "Cancel" }
+        );
+        if (!confirmed) return;
+    }
+
+    setRideListBusy(true);
     const restoreBtn = setButtonBusy(clickedBtn, "Accepting…");
 
     try {
