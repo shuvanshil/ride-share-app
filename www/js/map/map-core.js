@@ -385,7 +385,9 @@ async function loadGoogleMaps(retryAttempt = 0) {
             const cleanup = () => {
                 finished = true;
                 clearTimeout(timeoutId);
-                try { delete window[callbackName]; } catch {}
+                if (typeof window[callbackName] === "function") {
+                    window[callbackName] = () => {};
+                }
             };
 
             const timeoutId = setTimeout(() => {
@@ -412,7 +414,7 @@ async function loadGoogleMaps(retryAttempt = 0) {
             script.id = GOOGLE_MAP_SCRIPT_ID;
             script.async = true;
             script.defer = true;
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places&v=${GOOGLE_MAP_SCRIPT_VERSION}&callback=${callbackName}&loading=async`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(browserKey)}&libraries=places,geometry,marker&v=${GOOGLE_MAP_SCRIPT_VERSION}&callback=${callbackName}&loading=async`;
             
             script.onerror = (err) => {
                 if (finished) return;
@@ -1747,8 +1749,9 @@ class UserLocationMarkerOverlay {
 
         this.overlay.onAdd = () => {
             const panes = this.overlay.getPanes();
-            if (panes?.overlayMouseTarget) {
-                panes.overlayMouseTarget.appendChild(this.element);
+            const targetPane = panes?.overlayMouseTarget || panes?.overlayLayer || panes?.floatPane;
+            if (targetPane) {
+                targetPane.appendChild(this.element);
             }
         };
 
