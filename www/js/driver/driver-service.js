@@ -178,6 +178,11 @@ function attachRideCardCountdown(rideId, ride) {
         if (timerVal) {
             timerVal.textContent = formatCountdownTimer(remaining);
         }
+        const acceptSecs = document.getElementById(`srv-accept-secs-${rideId}`);
+        if (acceptSecs) {
+            const secs = Math.max(1, Math.ceil(remaining / 1000));
+            acceptSecs.textContent = `${secs}s`;
+        }
         if (timerPill) {
             timerPill.classList.toggle('is-urgent', remaining <= 60000);
         }
@@ -661,29 +666,41 @@ function renderIncomingRideCard(rideId, ride = {}) {
     card.dataset.isAddon = isPriorityAddon ? "true" : "false";
     card.dataset.fare = String(fareAmount);
 
-    if (isPriorityAddon) {
+    if (isShare) {
+        const detourText = detourMin > 0 ? ` • +${detourMin} min for existing riders` : '';
+        const countdownSecs = Math.max(1, Math.ceil(remainingMs / 1000));
+        const pickupAddr = escapeHtml(getRideDisplayAddress(ride, "pickup"));
+        const dropAddr = escapeHtml(getRideDisplayAddress(ride, "drop"));
+
         card.innerHTML = `
-            <div class="share-addon-header d-flex justify-content-between align-items-center mb-2">
-                <div class="d-flex align-items-center gap-2">
-                    <span class="badge bg-success text-white" style="font-size:11px;padding:4px 8px;">SHARE ADD-ON</span>
-                    <strong style="font-size:15px;color:#0F172A;">₹${fareAmount}</strong>
+            <div class="share-req-card-main">
+                <div class="share-req-left-group">
+                    <div class="share-req-avatar-badge" aria-hidden="true">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                    </div>
+                    <div class="share-req-info-col">
+                        <div class="share-req-header-row">
+                            <h5 class="share-req-title">New Share Ride Request</h5>
+                            <span class="share-req-fare-pill d-md-none">₹${fareAmount}</span>
+                        </div>
+                        <div class="share-req-subline">
+                            <span>${pickupDistText}${detourText}</span>
+                            <svg class="share-req-info-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                        </div>
+                        <div class="share-req-route-row">
+                            <svg class="share-req-pin-icon" width="14" height="14" viewBox="0 0 24 24" fill="#64748B" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            <span class="share-req-route-text">Pickup near ${pickupAddr}</span>
+                            <svg class="share-req-arrow-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            <svg class="share-req-pin-icon" width="14" height="14" viewBox="0 0 24 24" fill="#DC2626" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            <span class="share-req-route-text">${dropAddr}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="request-timer-pill is-urgent" id="srv-timer-${rideId}" style="padding:2px 8px;font-size:12px;">
-                    <span class="timer-icon">⏳</span>
-                    <strong class="timer-val" id="srv-timer-val-${rideId}">${formatCountdownTimer(remainingMs)}</strong>
+                <div class="share-req-right-actions">
+                    <span class="share-req-fare-pill d-none d-md-inline-flex">₹${fareAmount}</span>
+                    <button class="share-req-decline-btn driver-service-ignore-btn ignore-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-is-addon="${isPriorityAddon ? 'true' : 'false'}">Decline</button>
+                    <button class="share-req-accept-btn driver-service-accept-btn accept-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-is-addon="${isPriorityAddon ? 'true' : 'false'}" data-fare="${fareAmount}">Accept <span id="srv-accept-secs-${rideId}">${countdownSecs}s</span></button>
                 </div>
-            </div>
-            <div class="share-addon-body mb-2" style="font-size:13px;color:#334155;">
-                <div>📍 <strong>${pickupDistText}</strong> • ${escapeHtml(getRideDisplayAddress(ride, "pickup"))}</div>
-                <div class="text-success fw-semibold mt-1">⏱ +${detourMin} min for existing riders</div>
-            </div>
-            <div class="d-flex gap-2 mt-2">
-                <button class="btn btn-success flex-grow-1 py-2 fw-semibold accept-job-btn driver-service-accept-btn" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-is-addon="true" data-fare="${fareAmount}" style="border-radius:10px;">
-                    ✓ Accept
-                </button>
-                <button class="btn btn-outline-secondary py-2 px-3 fw-semibold ignore-job-btn driver-service-ignore-btn" data-id="${rideId}" data-ride-id="${rideId}" data-is-addon="true" style="border-radius:10px;">
-                    ✕ Decline
-                </button>
             </div>
         `;
         return card;

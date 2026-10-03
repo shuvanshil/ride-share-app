@@ -1503,6 +1503,24 @@ def transition_driver_ride(
                     tx.set(share_ref, {"status": next_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
 
         transition_transaction(transaction)
+        if action == "arrive":
+            p_id = str(result.get("passenger_id") or result.get("passengerId") or "")
+            d_name = str(profile.get("name") or "Driver")
+            if p_id:
+                try:
+                    _send_passenger_push_and_inapp(
+                        db,
+                        p_id,
+                        "Driver Arrived!",
+                        f"Your driver {d_name} has arrived at your pickup location.",
+                        {
+                            "url": f"{APP_BASE_URL}/services?rideId={clean_ride_id}",
+                            "type": "driver_arrived",
+                            "rideId": clean_ride_id,
+                        }
+                    )
+                except Exception:
+                    pass
         if action == "verify_pin" and result.get("is_sensitive"):
             try:
                 claim_and_send_sensitive_ride_alert(db, clean_ride_id)
@@ -1512,7 +1530,7 @@ def transition_driver_ride(
             _bump_daily_stats(db, uid, {"completed_rides": 1, "earnings": float(result.get("fare") or 0)})
 
         parent_trip_id = result.get("parentTripId") or (result.get("sharedInfo") or {}).get("parentTripId")
-        if parent_trip_id and action in {"verify_pin", "start", "arrived", "complete", "cancel", "skip"}:
+        if parent_trip_id and action in {"arrive", "verify_pin", "start", "arrived", "complete", "cancel", "skip"}:
             try:
                 from .share import finalize_trip_if_done
                 if action in {"complete", "cancel", "skip"}:
