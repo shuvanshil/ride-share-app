@@ -89,6 +89,11 @@ function showSelectedServiceBanner(serviceType) {
         card.setAttribute('aria-pressed', String(isTarget));
     });
 
+    const shareExplainer = document.getElementById('share-info-explainer');
+    if (shareExplainer) {
+        shareExplainer.classList.toggle('d-none', serviceType !== 'share');
+    }
+
     banner.classList.remove('d-none');
 
     const dismissBanner = () => {
@@ -150,11 +155,9 @@ loadShareConfig();
 function selectRideService(serviceType) {
     if (serviceSelectionLocked) return;
     const service = getRideService(serviceType);
-    const fare = window.latestFareQuote?.fare_options?.[serviceType];
-    if (!service || !Number.isFinite(fare)) return;
+    if (!service) return;
 
     selectedServiceType = serviceType;
-    window.selectedRideService = { ...service, fare };
     document.querySelectorAll('[data-service-type]').forEach((card) => {
         const selected = card.dataset.serviceType === serviceType;
         card.classList.toggle('is-selected', selected);
@@ -164,6 +167,11 @@ function selectRideService(serviceType) {
     if (shareExplainer) {
         shareExplainer.classList.toggle('d-none', serviceType !== 'share');
     }
+
+    const fare = window.latestFareQuote?.fare_options?.[serviceType];
+    if (!Number.isFinite(fare)) return;
+
+    window.selectedRideService = { ...service, fare };
     const fareAmountEl = document.getElementById('fare-amount');
     if (fareAmountEl) fareAmountEl.innerText = `₹${fare}`;
     const availPriceEl = document.getElementById('availability-price-amount');
