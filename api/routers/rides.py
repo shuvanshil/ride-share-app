@@ -1257,6 +1257,9 @@ def transition_driver_ride(
             if not snapshot.exists:
                 raise ApiError("Ride not found.", 404)
             ride = snapshot.to_dict() or {}
+            pre_parent_trip_id = ride.get("parentTripId")
+            pre_parent_ref = db.collection("shareTrips").document(pre_parent_trip_id) if pre_parent_trip_id else None
+            pre_parent_snap = pre_parent_ref.get(transaction=tx) if pre_parent_ref is not None else None
             if ride.get("driver_id") != uid:
                 raise ApiError("Only the assigned driver can update this ride.", 403)
             current_status = ride.get("status")
@@ -1375,11 +1378,11 @@ def transition_driver_ride(
                 updates.update({"payment_status": "paid", "payment_confirmed_by": uid, "paymentConfirmedAt": fb_firestore.SERVER_TIMESTAMP})
             tx.update(ride_ref, updates)
 
-            parent_trip_id = ride.get("parentTripId")
+            parent_trip_id = pre_parent_trip_id
             if parent_trip_id:
-                parent_ref = db.collection("shareTrips").document(parent_trip_id)
-                p_snap = parent_ref.get(transaction=tx)
-                if p_snap.exists:
+                parent_ref = pre_parent_ref
+                p_snap = pre_parent_snap
+                if p_snap is not None and p_snap.exists:
                     p_data = p_snap.to_dict() or {}
                     child_ids = p_data.get("childRideIds") or []
                     stop_order = p_data.get("stopOrder") or []
@@ -1524,6 +1527,8 @@ def transition_driver_ride(
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
         raise ApiError("Could not update this ride.", 503)
 
 
