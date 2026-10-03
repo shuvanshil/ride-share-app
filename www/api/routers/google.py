@@ -5,6 +5,7 @@ Google Maps endpoints. Direct port of:
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, Optional
 from urllib.parse import quote
@@ -256,24 +257,31 @@ async def google_autocomplete(
         debug_entries: list[dict[str, Any]] = []
         results: list[dict[str, Any]] = []
 
-        for variant in _build_query_variants(query):
-            results.extend(await _collect_safe(f"autocomplete:{variant}", debug_entries, lambda v=variant: _fetch_autocomplete(v, key, lat_num, lng_num)))
-            if len(results) >= 8:
-                break
+        # 1. Primary fast autocomplete lookup
+        primary = await _collect_safe(f"autocomplete:{query}", debug_entries, lambda: _fetch_autocomplete(query, key, lat_num, lng_num))
+        results.extend(primary)
 
-            results.extend(await _collect_safe(f"text:{variant}", debug_entries, lambda v=variant: _fetch_text_search(v, key, lat_num, lng_num)))
-            if len(results) >= 8:
-                break
+        # 2. If fewer than 4 results, run targeted additional lookups concurrently
+        if len(results) < 4:
+            tasks = [
+                _collect_safe(f"autocomplete:{query} Tripura", debug_entries, lambda: _fetch_autocomplete(f"{query} Tripura", key, lat_num, lng_num)),
+                _collect_safe(f"text:{query}", debug_entries, lambda: _fetch_text_search(query, key, lat_num, lng_num)),
+            ]
+            additional = await asyncio.gather(*tasks, return_exceptions=True)
+            for chunk in additional:
+                if isinstance(chunk, list):
+                    results.extend(chunk)
 
-            results.extend(await _collect_safe(f"geocode:{variant}", debug_entries, lambda v=variant: _fetch_geocode(v, key)))
-            if len(results) >= 8:
-                break
+        # 3. Fallback geocode only if still no results found
+        if not results:
+            geocode_res = await _collect_safe(f"geocode:{query}", debug_entries, lambda: _fetch_geocode(f"{query} Tripura", key))
+            results.extend(geocode_res)
 
         payload: dict[str, Any] = {"results": _dedupe(results)[:8]}
         return payload
     except ApiError:
         raise
-    except Exception as error:  # noqa: BLE001 - mirror the catch-all in the original handler
+    except Exception as error:  # noqa: BLE001
         raise ApiError("Google autocomplete failed", 500)
 
 

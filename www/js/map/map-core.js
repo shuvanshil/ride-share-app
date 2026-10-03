@@ -10,7 +10,7 @@ import {
 const DEFAULT_PICKUP = { lat: 23.8315, lng: 91.2868 };
 const TRIPURA_CENTER = { lat: 23.8315, lng: 91.2868 };
 const PICKUP_CACHE_KEY = "liphtup_last_passenger_pickup";
-const DESTINATION_SEARCH_DEBOUNCE_MS = 90;
+const DESTINATION_SEARCH_DEBOUNCE_MS = 50;
 const AUTOCOMPLETE_CACHE_TTL_MS = 2 * 60 * 1000;
 const AUTOCOMPLETE_CACHE_MAX_ENTRIES = 40;
 const MAX_VISIBLE_SUGGESTIONS = 5;
@@ -1605,8 +1605,6 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
         rotateControl: false,
         fullscreenControl: options.fullscreenControl ?? true,
         streetViewControl: false,
-        mapTypeControl: false,
-        styles: CLEAN_MAP_POI_STYLES,
         gestureHandling: options.gestureHandling || "greedy",
         clickableIcons: true,
         ...(wantsRotatableCamera ? {
@@ -1615,7 +1613,9 @@ export async function createRideMapSurface(hostElementOrId, options = {}) {
             tilt: options.tilt ?? 0,
             headingInteractionEnabled: true,
             tiltInteractionEnabled: true
-        } : {})
+        } : {
+            styles: CLEAN_MAP_POI_STYLES
+        })
     });
 
     return {
@@ -3032,29 +3032,17 @@ function searchClientGoogleAutocomplete(query) {
     const maps = getGoogleMaps();
     const places = maps?.places;
     if (!query.trim()) return Promise.resolve(null);
-    if (!places?.AutocompleteService) {
+    if (!places) {
         return loadGoogleMaps()
             .then(() => searchClientGoogleAutocomplete(query))
             .catch(() => null);
-    }
-
-    // On standard web environment, prefer the Legacy SDK AutocompleteService.
-    // The "New" Places API (fetch based) often returns 403 Forbidden if not
-    // explicitly enabled in the Google Cloud Console for the same API key.
-    if (!window.LIPHTUP_IS_NATIVE) {
-        return searchLegacyGoogleAutocomplete(query, maps, places)
-            .then((results) => {
-                if (Array.isArray(results) && results.length) return results;
-                // Fallback to "New" logic only if Legacy returns nothing.
-                return tryModernGoogleAutocomplete(query, maps, places);
-            });
     }
 
     return tryModernGoogleAutocomplete(query, maps, places);
 }
 
 function tryModernGoogleAutocomplete(query, maps, places) {
-    if (places.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+    if (places?.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
         const center = {
             lat: Number(userLatitude || TRIPURA_CENTER.lat),
             lng: Number(userLongitude || TRIPURA_CENTER.lng)
@@ -3062,34 +3050,37 @@ function tryModernGoogleAutocomplete(query, maps, places) {
         return places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
             input: query.trim(),
             includedRegionCodes: ["in"],
-            locationBias: { circle: { center, radius: 180000 } }
-        }).then(({ suggestions = [] }) => suggestions
-            .map((suggestion) => suggestion.placePrediction)
-            .filter(Boolean)
-            .map((prediction) => {
-                const mainName = prediction.structuredFormat?.mainText?.text
-                    || prediction.mainText?.text
-                    || prediction.text?.text
-                    || "";
-                const fullAddress = prediction.structuredFormat?.secondaryText?.text
-                    || prediction.secondaryText?.text
-                    || prediction.text?.text
-                    || "";
-                return {
-                    placeId: prediction.placeId || "",
-                    name: mainName,
-                    mainName,
-                    fullAddress,
-                    types: Array.isArray(prediction.types) ? prediction.types : [],
-                    lat: null,
-                    lng: null,
-                    typeHint: getPlaceTypeHint(prediction),
-                    source: "google",
-                    provider: "google"
-                };
-            }))
-            .catch(() => searchDirectGoogleAutocomplete(query)
-                .then((results) => results?.length ? results : searchLegacyGoogleAutocomplete(query, maps, places)));
+            locationBias: { circle: { center, radius: 50000 } }
+        }).then(({ suggestions = [] }) => {
+            const results = suggestions
+                .map((suggestion) => suggestion.placePrediction)
+                .filter(Boolean)
+                .map((prediction) => {
+                    const mainName = prediction.structuredFormat?.mainText?.text
+                        || prediction.mainText?.text
+                        || prediction.text?.text
+                        || "";
+                    const fullAddress = prediction.structuredFormat?.secondaryText?.text
+                        || prediction.secondaryText?.text
+                        || prediction.text?.text
+                        || "";
+                    return {
+                        placeId: prediction.placeId || "",
+                        name: mainName || fullAddress,
+                        mainName: mainName || fullAddress,
+                        fullAddress: fullAddress || mainName,
+                        types: Array.isArray(prediction.types) ? prediction.types : [],
+                        lat: null,
+                        lng: null,
+                        typeHint: getPlaceTypeHint(prediction),
+                        source: "google",
+                        provider: "google"
+                    };
+                });
+            if (results.length) return results;
+            return searchDirectGoogleAutocomplete(query).then((directRes) => directRes?.length ? directRes : searchLegacyGoogleAutocomplete(query, maps, places));
+        }).catch(() => searchDirectGoogleAutocomplete(query)
+            .then((results) => results?.length ? results : searchLegacyGoogleAutocomplete(query, maps, places)));
     }
 
     return searchDirectGoogleAutocomplete(query)
@@ -3099,6 +3090,7 @@ function tryModernGoogleAutocomplete(query, maps, places) {
 async function searchDirectGoogleAutocomplete(query) {
     try {
         const key = await getGoogleBrowserKey();
+        if (!key) return null;
         if (!autocompleteSessionToken) {
             autocompleteSessionToken = globalThis.crypto?.randomUUID?.()
                 || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -3121,7 +3113,7 @@ async function searchDirectGoogleAutocomplete(query) {
                             latitude: Number(userLatitude || TRIPURA_CENTER.lat),
                             longitude: Number(userLongitude || TRIPURA_CENTER.lng)
                         },
-                        radius: 180000
+                        radius: 50000
                     }
                 }
             })
@@ -3141,9 +3133,9 @@ async function searchDirectGoogleAutocomplete(query) {
                     || "";
                 return {
                     placeId: prediction.placeId || "",
-                    name: mainName,
-                    mainName,
-                    fullAddress,
+                    name: mainName || fullAddress,
+                    mainName: mainName || fullAddress,
+                    fullAddress: fullAddress || mainName,
                     types: Array.isArray(prediction.types) ? prediction.types : [],
                     lat: null,
                     lng: null,
@@ -3159,10 +3151,14 @@ async function searchDirectGoogleAutocomplete(query) {
 }
 
 function searchLegacyGoogleAutocomplete(query, maps, places) {
-    if (!places.AutocompleteService) return Promise.resolve(null);
+    if (!places?.AutocompleteService) return Promise.resolve(null);
 
     if (!googleAutocompleteService) {
-        googleAutocompleteService = new places.AutocompleteService();
+        try {
+            googleAutocompleteService = new places.AutocompleteService();
+        } catch {
+            return Promise.resolve(null);
+        }
     }
 
     const location = new maps.LatLng(
@@ -3171,36 +3167,37 @@ function searchLegacyGoogleAutocomplete(query, maps, places) {
     );
 
     return new Promise((resolve) => {
-        googleAutocompleteService.getPlacePredictions({
-            input: query.trim(),
-            locationBias: {
-                center: location,
-                radius: 180000
-            },
-            componentRestrictions: { country: "in" }
-        }, (predictions, status) => {
-            if (status !== places.PlacesServiceStatus.OK && status !== "OK") {
-                resolve([]);
-                return;
-            }
+        try {
+            googleAutocompleteService.getPlacePredictions({
+                input: query.trim(),
+                locationBias: {
+                    center: location,
+                    radius: 50000
+                },
+                componentRestrictions: { country: "in" }
+            }, (predictions, status) => {
+                if (status !== places.PlacesServiceStatus?.OK && status !== "OK") {
+                    resolve([]);
+                    return;
+                }
 
-            resolve((Array.isArray(predictions) ? predictions : []).map((prediction) => ({
-                placeId: prediction.place_id || "",
-                name: prediction.structured_formatting?.main_text || prediction.description || "",
-                mainName: prediction.structured_formatting?.main_text || prediction.description || "",
-                fullAddress: prediction.structured_formatting?.secondary_text || prediction.description || "",
-                types: Array.isArray(prediction.types) ? prediction.types : [],
-                lat: null,
-                lng: null,
-                typeHint: getPlaceTypeHint(prediction),
-                source: "google",
-                provider: "google"
-            })));
-        });
-    }).catch((error) => {
-        console.warn("Google client autocomplete failed:", error);
-        return null;
-    });
+                resolve((Array.isArray(predictions) ? predictions : []).map((prediction) => ({
+                    placeId: prediction.place_id || "",
+                    name: prediction.structured_formatting?.main_text || prediction.description || "",
+                    mainName: prediction.structured_formatting?.main_text || prediction.description || "",
+                    fullAddress: prediction.structured_formatting?.secondary_text || prediction.description || "",
+                    types: Array.isArray(prediction.types) ? prediction.types : [],
+                    lat: null,
+                    lng: null,
+                    typeHint: getPlaceTypeHint(prediction),
+                    source: "google",
+                    provider: "google"
+                })));
+            });
+        } catch {
+            resolve([]);
+        }
+    }).catch(() => null);
 }
 
 async function resolveGooglePlace(destination) {
@@ -3216,6 +3213,35 @@ async function resolveGooglePlace(destination) {
     }
 
     if (!destination.placeId) return null;
+
+    const maps = getGoogleMaps();
+    if (maps?.places?.Place) {
+        try {
+            const place = new maps.places.Place({ id: destination.placeId });
+            await place.fetchFields({ fields: ["displayName", "formattedAddress", "location", "types"] });
+            const lat = typeof place.location?.lat === "function" ? place.location.lat() : place.location?.latitude;
+            const lng = typeof place.location?.lng === "function" ? place.location.lng() : place.location?.longitude;
+            const coords = normalizeCoordinatePair(lat, lng);
+            if (Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
+                const name = place.displayName || destination.name || destination.mainName || "";
+                const fullAddress = place.formattedAddress || destination.fullAddress || "";
+                return {
+                    ...destination,
+                    name: name || destination.name,
+                    mainName: name || destination.mainName,
+                    fullAddress: fullAddress || destination.fullAddress,
+                    lat: coords.lat,
+                    lng: coords.lng,
+                    types: place.types || destination.types || [],
+                    placeId: destination.placeId,
+                    source: "google",
+                    provider: "google"
+                };
+            }
+        } catch (sdkError) {
+            console.warn("Client-side Place.fetchFields failed, trying backend:", sdkError);
+        }
+    }
 
     try {
         const params = new URLSearchParams({ placeId: destination.placeId });
