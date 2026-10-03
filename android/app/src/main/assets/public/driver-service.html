@@ -25,7 +25,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=20261003-share">
     <link rel="stylesheet" href="css/driver/driver.css?v=20261003-share">
-    <link rel="stylesheet" href="css/driver-service.css?v=20261003-share">
+    <link rel="stylesheet" href="css/driver-service.css?v=20261003-share3">
 </head>
 <body>
     <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
@@ -135,53 +135,87 @@
 
             <section id="driver-share-mcard-section" class="driver-share-mcard-section d-none" aria-live="polite">
                 <div class="share-mcard-header">
-                    <div class="share-mcard-title-wrap">
-                        <div class="share-mcard-icon-badge">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <div class="share-mcard-icon-badge" aria-hidden="true">
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <div class="share-mcard-title-block">
+                        <div class="share-mcard-title-row">
+                            <h5 class="share-mcard-title">Shared Ride</h5>
+                            <span id="share-mcard-status-pill" class="share-mcard-status-pill">In Progress</span>
                         </div>
-                        <div>
-                            <h5 class="share-mcard-title mb-0">Shared Ride</h5>
-                            <span class="share-mcard-status-pill">In Progress</span>
+                        <span id="share-mcard-seats-text" class="share-mcard-seats-text">1 / 3 seats occupied</span>
+                    </div>
+                    <div class="share-mcard-kebab-wrap">
+                        <button id="share-mcard-kebab-btn" class="share-mcard-kebab-btn" type="button" aria-label="More options" aria-haspopup="true" aria-expanded="false">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                        </button>
+                        <div id="share-mcard-menu" class="share-mcard-menu d-none" role="menu">
+                            <button id="share-menu-console-btn" class="share-mcard-menu-item" type="button" role="menuitem">Open Driver Console</button>
                         </div>
                     </div>
-                    <div class="share-mcard-seats-indicator">
-                        <span id="share-mcard-seats-text">1 / 3 seats occupied</span>
-                        <div class="share-seats-progress-bar">
-                            <div class="seat-segment is-filled" id="seat-seg-1"></div>
-                            <div class="seat-segment" id="seat-seg-2"></div>
-                            <div class="seat-segment" id="seat-seg-3"></div>
-                        </div>
+                </div>
+                <div class="share-mcard-seatbar-row">
+                    <div class="share-seats-progress-bar" aria-hidden="true">
+                        <div class="seat-segment is-filled" id="seat-seg-1"></div>
+                        <div class="seat-segment" id="seat-seg-2"></div>
+                        <div class="seat-segment" id="seat-seg-3"></div>
                     </div>
+                    <span class="share-seat-available-label">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v9a2 2 0 0 0 2 2h5l1.5 6.5"/><path d="M5 20h9"/></svg>
+                        <span id="share-mcard-avail-text">2 seats available</span>
+                    </span>
                 </div>
                 <div id="share-mcard-riders-container" class="share-mcard-riders-container"></div>
+                <button id="driver-share-add-remote-btn" class="share-add-card" type="button">
+                    <span class="share-add-card-icon" aria-hidden="true">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                    </span>
+                    <span class="share-add-card-text">
+                        <strong>Add Passenger</strong>
+                        <small>Add a rider you meet on the way</small>
+                    </span>
+                    <svg class="share-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+                </button>
                 <div class="share-mcard-summary-strip">
                     <div class="summary-metric">
-                        <span class="metric-icon">👥</span>
-                        <span id="share-metric-seats-used">1 / 3</span>
-                        <small>seats used</small>
+                        <svg class="metric-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <div class="metric-text"><span id="share-metric-seats-used">1 / 3</span><small>seats occupied</small></div>
                     </div>
                     <div class="summary-metric">
-                        <span class="metric-icon">📱</span>
-                        <span id="share-metric-app-passengers">1</span>
-                        <small>App passenger</small>
+                        <svg class="metric-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+                        <div class="metric-text"><span id="share-metric-app-passengers">1</span><small>App passenger</small></div>
                     </div>
                     <div class="summary-metric">
-                        <span class="metric-icon">👤</span>
-                        <span id="share-metric-remote-passengers">0</span>
-                        <small>Remote passenger</small>
+                        <svg class="metric-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <div class="metric-text"><span id="share-metric-remote-passengers">0</span><small>Remote passenger</small></div>
                     </div>
                     <div class="summary-metric">
-                        <span class="metric-icon">💺</span>
-                        <span id="share-metric-seats-avail">2</span>
-                        <small>seat available</small>
+                        <svg class="metric-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3v9a2 2 0 0 0 2 2h5l1.5 6.5"/><path d="M5 20h9"/></svg>
+                        <div class="metric-text"><span id="share-metric-seats-avail">2</span><small>seat available</small></div>
                     </div>
                 </div>
-                <div class="share-mcard-actions mt-2">
-                    <button id="driver-share-add-remote-btn" class="gy-btn gy-btn-outline w-100 py-2 fw-semibold" style="border:1.5px dashed #16A34A;color:#166534;background:#F0FDF4;border-radius:10px;" type="button">
-                        + Add Passenger
+                <div class="share-mcard-bottom-actions">
+                    <button id="driver-share-cancel-btn" class="share-cancel-btn" type="button">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+                        <span>Cancel this ride</span>
+                    </button>
+                    <button id="driver-share-sos-btn" class="share-sos-btn" type="button">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18v-6a5 5 0 0 1 10 0v6"/><path d="M5 18h14v3H5z"/><path d="M12 2v2M4.2 5.2l1.4 1.4M19.8 5.2l-1.4 1.4M2 12h2M20 12h2"/></svg>
+                        <span>SOS</span>
                     </button>
                 </div>
             </section>
+
+            <div id="share-passenger-modal" class="share-sheet-overlay d-none" role="dialog" aria-modal="true" aria-labelledby="share-sheet-title">
+                <div class="share-sheet-backdrop" data-share-sheet-close="true"></div>
+                <div class="share-sheet" id="share-sheet">
+                    <div class="share-sheet-handle" aria-hidden="true"></div>
+                    <button id="share-sheet-close-btn" class="share-sheet-close" type="button" aria-label="Close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                    </button>
+                    <div id="share-sheet-body" class="share-sheet-body"></div>
+                </div>
+            </div>
 
             <section id="driver-service-lifecycle" class="active-trip-card-container driver-service-lifecycle d-none" aria-live="polite">
                 <div class="active-trip-header-bar">
@@ -323,7 +357,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
-    <script type="module" src="js/driver/driver-service.js?v=20261003-share2"></script>
+    <script type="module" src="js/driver/driver-service.js?v=20261003-share3"></script>
     <script type="module" src="js/shared/i18n.js"></script>
     <script src="js/shared/pwa.js" defer></script>
 </body>

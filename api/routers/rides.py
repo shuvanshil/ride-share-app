@@ -363,6 +363,16 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
         reason = "full_trip_threshold"
         note = f"At least 90% of the trip was completed. Fare stays {_format_rupees(final_fare)}."
 
+    if (
+        action == "complete"
+        and onboard
+        and str(ride.get("rideType") or "") == "share"
+        and ride.get("fareLocked") is not None
+    ):
+        final_fare = _finite_float(ride.get("fareLocked")) or original_fare
+        reason = "share_fixed_fare"
+        note = f"Shared ride fixed fare is {_format_rupees(final_fare)}."
+
     return {
         "original_fare": round(original_fare),
         "final_fare": round(final_fare),
@@ -568,18 +578,52 @@ def _accumulate_online_seconds(db, uid: str, previous_moment: Any, still_online:
         _bump_daily_stats(db, uid, {"online_seconds": elapsed})
 
 
-def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
-    now = datetime.now(timezone.utc).timestamp()
-    busy_driver_ids = set()
+_SHARE_LIVE_CHILD_STATUSES = {"accepted", "arrived", "started", "en_route"}
+
+
+def _open_share_trip_driver_ids(db, driver_id: Optional[str] = None) -> set[str]:
+    busy: set[str] = set()
     try:
-        open_trips = db.collection("shareTrips").where("status", "in", ["to_pickup", "active"]).stream()
-        for ot in open_trips:
-            t_data = ot.to_dict() or {}
-            d_id = t_data.get("driverId")
-            if d_id:
-                busy_driver_ids.add(str(d_id))
+        if driver_id:
+            stream = db.collection("shareTrips").where("driverId", "==", driver_id).stream()
+        else:
+            stream = db.collection("shareTrips").where("status", "in", ["to_pickup", "active"]).stream()
+        for trip_snap in stream:
+            trip = trip_snap.to_dict() or {}
+            if trip.get("status") not in {"to_pickup", "active"}:
+                continue
+            trip_driver = str(trip.get("driverId") or "").strip()
+            if not trip_driver:
+                continue
+            if int(trip.get("remoteOnBoard") or 0) > 0:
+                busy.add(trip_driver)
+                continue
+            live = False
+            for child_id in trip.get("childRideIds") or []:
+                child_snap = db.collection("rides").document(str(child_id)).get()
+                if child_snap.exists and (child_snap.to_dict() or {}).get("status") in _SHARE_LIVE_CHILD_STATUSES:
+                    live = True
+                    break
+            if live:
+                busy.add(trip_driver)
+            else:
+                try:
+                    trip_snap.reference.update({
+                        "status": "completed",
+                        "seatsUsed": 0,
+                        "endedAt": fb_firestore.SERVER_TIMESTAMP,
+                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                    })
+                except Exception:
+                    pass
     except Exception:
         pass
+    return busy
+
+
+def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: str) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc).timestamp()
+    busy_driver_ids = _open_share_trip_driver_ids(db)
 
     candidates: list[dict[str, Any]] = []
     for snapshot in db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).stream():
@@ -1117,6 +1161,18 @@ async def create_pending_request(
         req_ref = db.collection("pendingRideRequests").document()
 
     fare_estimate = body.fareEstimate or {}
+    pending_vehicle_type = body.vehicleType.strip().lower() or "auto"
+    pending_is_share = (
+        str(getattr(body, "rideType", "") or "").strip().lower() == "share"
+        or pending_vehicle_type == "share"
+    )
+    pending_fare = float(fare_estimate.get("fare") or 0)
+    pending_distance_km = float(fare_estimate.get("distance_km") or 0)
+    if pending_is_share:
+        pending_vehicle_type = "auto"
+        if pending_distance_km <= 0:
+            pending_distance_km = _haversine_km(pickup_lat, pickup_lng, drop_lat, drop_lng)
+        pending_fare = float(calculate_share_fare(pending_distance_km * 1000.0))
     pending_doc_data = {
         "requestId": req_ref.id,
         "passengerId": uid,
@@ -1134,7 +1190,8 @@ async def create_pending_request(
             "lat": drop_lat,
             "lng": drop_lng,
         },
-        "vehicleType": body.vehicleType.strip().lower() or "auto",
+        "vehicleType": pending_vehicle_type,
+        "rideType": "share" if pending_is_share else "normal",
         "searchRadius": float(body.searchRadius or 5000.0),
         "mode": mode,
         "status": "pending",
@@ -1142,8 +1199,8 @@ async def create_pending_request(
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         "expiresAt": expires_at,
         "activatesAt": activates_at_dt,
-        "fare": float(fare_estimate.get("fare") or 0),
-        "distanceKm": float(fare_estimate.get("distance_km") or 0),
+        "fare": pending_fare,
+        "distanceKm": pending_distance_km,
         "fareEstimate": fare_estimate,
         "lockedByDriverId": None,
         "rejected_driver_ids": [],
@@ -1493,23 +1550,7 @@ def transition_driver_ride(
 
 
         if action in {"complete", "cancel", "skip"}:
-            open_share_trips = []
-            try:
-                open_share_trips = list(
-                    db.collection("shareTrips")
-                    .where("driverId", "==", uid)
-                    .where("status", "in", ["to_pickup", "active"])
-                    .limit(1)
-                    .stream()
-                )
-            except Exception:
-                try:
-                    for doc_snap in db.collection("shareTrips").where("driverId", "==", uid).stream():
-                        t_data = doc_snap.to_dict() or {}
-                        if t_data.get("status") in {"to_pickup", "active"}:
-                            open_share_trips.append(doc_snap)
-                except Exception:
-                    pass
+            open_share_trips = _open_share_trip_driver_ids(db, uid)
             if not open_share_trips:
                 try:
                     availability_status = "offline"
@@ -1622,23 +1663,7 @@ def update_driver_availability(
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update driver availability.")
-        open_share_trips = []
-        try:
-            open_share_trips = list(
-                db.collection("shareTrips")
-                .where("driverId", "==", uid)
-                .where("status", "in", ["to_pickup", "active"])
-                .limit(1)
-                .stream()
-            )
-        except Exception:
-            try:
-                for doc_snap in db.collection("shareTrips").where("driverId", "==", uid).stream():
-                    t_data = doc_snap.to_dict() or {}
-                    if t_data.get("status") in {"to_pickup", "active"}:
-                        open_share_trips.append(doc_snap)
-            except Exception:
-                pass
+        open_share_trips = _open_share_trip_driver_ids(db, uid)
         if open_share_trips and status == "offline":
             raise ApiError("Cannot go offline while a shared trip is active.", 400)
         user_update, presence_update, map_presence_update = _build_driver_availability_updates(
@@ -2763,6 +2788,9 @@ def _match_pending_requests_for_driver(
     driver_lng = float(driver_location["lng"])
     driver_type = _driver_type(driver_profile)
 
+    if driver_id in _open_share_trip_driver_ids(db, driver_id):
+        return None
+
     now = datetime.now(timezone.utc)
 
     # Clean up stale locks for requests locked > 45s without driver acceptance (ignored requests)
@@ -2837,6 +2865,9 @@ def _match_pending_requests_for_driver(
 
         # Check vehicle type match
         req_vehicle = str(data.get("vehicleType") or "").strip().lower()
+        req_is_share = str(data.get("rideType") or "").strip().lower() == "share" or req_vehicle == "share"
+        if req_is_share:
+            req_vehicle = "auto"
         if req_vehicle and req_vehicle != "any" and req_vehicle != driver_type:
             continue
 
@@ -2958,6 +2989,8 @@ def _match_pending_requests_for_driver(
 
             service = RIDE_SERVICES.get(driver_type, RIDE_SERVICES["bike"])
             fare_amount = float(data.get("fare") or 0)
+            if req_is_share:
+                fare_amount = float(calculate_share_fare(float(data.get("distanceKm") or 0) * 1000.0))
             ride_data = {
                 "passenger_id": passenger_id,
                 "passengerId": passenger_id,
@@ -2975,15 +3008,18 @@ def _match_pending_requests_for_driver(
                 "fare": fare_amount,
                 "quoted_fare": fare_amount,
                 "fare_original": fare_amount,
-                "fare_base": service["base"],
-                "fare_per_km": service["per_km"],
-                "fare_min": service["min_fare"],
-                "fare_is_night": service["is_night_fare"],
+                "fare_base": fare_amount if req_is_share else service["base"],
+                "fare_per_km": 0 if req_is_share else service["per_km"],
+                "fare_min": fare_amount if req_is_share else service["min_fare"],
+                "fare_is_night": False if req_is_share else service["is_night_fare"],
                 "fare_requested_at": datetime.now(timezone.utc).isoformat(),
                 "fare_currency": "INR",
                 "vehicle_type": driver_type,
-                "service_name": service["name"],
-                "passenger_capacity": service["capacity"],
+                "service_name": "Shared Ride" if req_is_share else service["name"],
+                "passenger_capacity": SHARE_MAX_SEATS if req_is_share else service["capacity"],
+                "rideType": "share" if req_is_share else "normal",
+                "fareLocked": fare_amount if req_is_share else None,
+                "dispatch_mode": "auto_share" if req_is_share else "normal",
                 "status": "pending",
                 "sourceMode": data.get("sourceMode") or ("schedule" if data.get("mode") == "schedule" else "auto"),
                 "pendingRequestId": req_id,

@@ -427,6 +427,7 @@ def test_driver_availability_gating_during_share_trip_and_remote_occupancy() -> 
     mock_db.collection.return_value.where.return_value.where.return_value.limit.return_value.stream.return_value = [
         mock_share_snap
     ]
+    mock_db.collection.return_value.where.return_value.stream.return_value = [mock_share_snap]
 
     app.dependency_overrides[current_user] = lambda: mock_user
     try:

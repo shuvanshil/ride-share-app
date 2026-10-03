@@ -618,8 +618,19 @@ function setMapStageExpanded(expanded) {
 
 function updateIncomingRequestsVisibility() {
     if (!requestsPanel) return;
-    const hasRide = Boolean(currentRideId);
-    requestsPanel.classList.toggle('d-none', hasRide);
+    const hasRide = Boolean(currentRideId) || shareUiVisible;
+    if (shareUiVisible) {
+        const hasAddonCard = Boolean(ridesContainer?.querySelector('.driver-share-addon-card'));
+        requestsPanel.classList.toggle('d-none', !hasAddonCard);
+        noRidesMsg?.classList.add('d-none');
+        shareRequestsModeActive = true;
+    } else {
+        requestsPanel.classList.toggle('d-none', hasRide);
+        if (shareRequestsModeActive && !hasRide && ridesContainer && !ridesContainer.querySelector('.driver-service-request-card')) {
+            renderNoIncomingRequests();
+        }
+        shareRequestsModeActive = false;
+    }
     setMapStageExpanded(hasRide);
 }
 
@@ -1156,6 +1167,12 @@ function renderLifecycleState(status, rideData = currentRide) {
     currentRideStatus = status;
     currentRide = { ...(currentRide || {}), ...(rideData || {}), status };
 
+    if (isShareChildRide(currentRide)) {
+        hideLifecyclePanel();
+        renderShareSection();
+        return;
+    }
+
     const headerBadge = document.getElementById('active-trip-header-badge');
     const showPinVerification = ["accepted", "arrived"].includes(status);
 
@@ -1444,101 +1461,605 @@ function renderLifecycleState(status, rideData = currentRide) {
         sosBtn.addEventListener('click', () => sendDriverSos());
     }
 
-    const isShareRide = Boolean(currentRide.rideType === "share" || currentRide.parentTripId);
-    renderShareMcard(currentRide, showPinVerification);
 }
 
-async function renderShareMcard(ride, showPinVerification) {
-    const isShareRide = Boolean(ride.rideType === "share" || ride.parentTripId);
-    const mcardSection = document.getElementById('driver-share-mcard-section');
-    if (!mcardSection) return;
-    if (!isShareRide || showPinVerification) {
-        mcardSection.classList.add('d-none');
+const SHARE_SVG = {
+    chevron: '<svg class="share-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+    group: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    groupSmall: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    bell: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+    car: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14v-5l-2-5H7l-2 5z"/><path d="M3 12h18"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/></svg>',
+    road: '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 3h3l-2 18H5zM13 3h3l3 18h-4z" opacity=".85"/></svg>',
+    clock: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    wallet: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1"/></svg>',
+    phone: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11 11 0 0 0 3.5.56 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.2.2 2.4.56 3.5a1 1 0 0 1-.25 1z"/></svg>',
+    check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
+    info: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+};
+
+const SHARE_PICKUP_WAIT_MS = 120000;
+
+let shareTripData = null;
+let shareChildRides = new Map();
+let shareActiveRidesLoaded = false;
+let shareTripsWatchUnsubscribe = null;
+let shareModalTarget = null;
+let shareModalRenderKey = "";
+let shareModalTicker = null;
+let shareStaleCheckedTripId = "";
+let shareUiVisible = false;
+let shareRequestsModeActive = false;
+const shareLocalArrivedAt = new Map();
+
+function isShareChildRide(ride) {
+    return Boolean(ride && ride.rideType === "share" && (ride.parentTripId || ride.sharedInfo?.parentTripId));
+}
+
+function isShareTripOpen(trip) {
+    return Boolean(trip && ["to_pickup", "active"].includes(trip.status));
+}
+
+function shareTimestampMs(value) {
+    if (!value) return null;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    if (typeof value.seconds === "number") return value.seconds * 1000;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatShareClock(value) {
+    const ms = shareTimestampMs(value);
+    if (!ms) return "";
+    return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function getShareRiderEntries() {
+    const trip = isShareTripOpen(shareTripData) ? shareTripData : null;
+    const used = new Set();
+    const entries = Array.from(shareChildRides.values())
+        .sort((a, b) => (Number(a.seatOrder) || 9) - (Number(b.seatOrder) || 9))
+        .map((ride) => {
+            let seat = Math.min(3, Math.max(1, Number(ride.seatOrder) || 1));
+            while (used.has(seat) && seat < 3) seat += 1;
+            used.add(seat);
+            return { type: "app", ride, seat };
+        });
+    const remoteCount = trip ? Math.max(0, Number(trip.remoteOnBoard) || 0) : 0;
+    for (let i = 1; i <= remoteCount; i += 1) {
+        let seat = 1;
+        while (used.has(seat) && seat < 3) seat += 1;
+        used.add(seat);
+        entries.push({ type: "remote", index: i, seat });
+    }
+    return entries.sort((a, b) => a.seat - b.seat);
+}
+
+function isShareRideOnBoard(ride) {
+    return ["started", "en_route"].includes(ride?.status);
+}
+
+function buildShareRiderCard(entry, position) {
+    const primaryClass = position === 0 ? " is-primary" : "";
+    if (entry.type === "remote") {
+        return `
+            <button type="button" class="share-rider-card${primaryClass}" data-remote-index="${entry.index}">
+                <span class="seat-number-badge seat-${entry.seat}">${entry.seat}</span>
+                <span class="rider-avatar remote">${SHARE_SVG.group}</span>
+                <span class="rider-name-box">
+                    <span class="rider-name">Remote Passenger ${entry.index}</span>
+                    <span class="rider-sub">Added by you (Cash)</span>
+                    <span class="rider-status-dot-row"><span class="status-dot"></span>On board</span>
+                </span>
+                ${SHARE_SVG.chevron}
+            </button>`;
+    }
+    const ride = entry.ride;
+    const rawName = String(ride.passenger_name || "Passenger").trim() || "Passenger";
+    const onBoard = isShareRideOnBoard(ride);
+    const statusText = onBoard ? "On board" : (ride.status === "arrived" ? "Waiting at pickup" : "Heading to pickup");
+    const fare = Math.round(Number(ride.fareLocked ?? ride.fare) || 0);
+    return `
+        <button type="button" class="share-rider-card${primaryClass}" data-ride-id="${escapeHtml(ride.id)}">
+            <span class="seat-number-badge seat-${entry.seat}">${entry.seat}</span>
+            <span class="rider-avatar">${escapeHtml(rawName.charAt(0).toUpperCase())}</span>
+            <span class="rider-name-box">
+                <span class="rider-name">${escapeHtml(rawName)}</span>
+                <span class="rider-sub">App passenger • ₹${fare}</span>
+                <span class="rider-status-dot-row${onBoard ? "" : " is-waiting"}"><span class="status-dot"></span>${statusText}</span>
+            </span>
+            ${SHARE_SVG.chevron}
+        </button>`;
+}
+
+function renderShareSection() {
+    const section = document.getElementById('driver-share-mcard-section');
+    if (!section) return;
+    const trip = isShareTripOpen(shareTripData) ? shareTripData : null;
+    const entries = getShareRiderEntries();
+    const remoteOnBoard = trip ? Math.max(0, Number(trip.remoteOnBoard) || 0) : 0;
+    const visible = shareChildRides.size > 0 || remoteOnBoard > 0;
+
+    shareUiVisible = visible;
+    if (!visible) {
+        section.classList.add('d-none');
+        closeShareSheet();
+        updateIncomingRequestsVisibility();
         return;
     }
-    mcardSection.classList.remove('d-none');
 
-    const parentTripId = ride.parentTripId;
-    let tripData = null;
+    section.classList.remove('d-none');
+    hideLifecyclePanel();
 
-    if (parentTripId) {
-        try {
-            const tripDoc = await getDoc(doc(db, "shareTrips", parentTripId));
-            if (tripDoc.exists()) {
-                tripData = tripDoc.data();
-            }
-        } catch (e) {
-            console.warn("Could not fetch shareTrip:", e);
-        }
-    }
-
-    const seatsUsed = tripData ? (tripData.seatsUsed || 1) : 1;
-    const remoteOnBoard = tripData ? (tripData.remoteOnBoard || 0) : 0;
-    const appPassengers = Math.max(0, seatsUsed - remoteOnBoard);
+    const seatsUsed = Math.min(3, entries.length);
     const seatsAvail = Math.max(0, 3 - seatsUsed);
+    const appCount = shareChildRides.size;
+    const anyOnBoard = remoteOnBoard > 0 || Array.from(shareChildRides.values()).some(isShareRideOnBoard);
 
-    const seatsText = document.getElementById('share-mcard-seats-text');
-    if (seatsText) seatsText.innerText = `${seatsUsed} / 3 seats occupied`;
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = value;
+    };
+    setText('share-mcard-seats-text', `${seatsUsed} / 3 seats occupied`);
+    setText('share-mcard-avail-text', seatsAvail === 0 ? "Full" : `${seatsAvail} seat${seatsAvail === 1 ? "" : "s"} available`);
+    setText('share-mcard-status-pill', anyOnBoard ? "In Progress" : "Pickup pending");
+    setText('share-metric-seats-used', `${seatsUsed}/3`);
+    setText('share-metric-app-passengers', String(appCount));
+    setText('share-metric-remote-passengers', String(remoteOnBoard));
+    setText('share-metric-seats-avail', String(seatsAvail));
+    [1, 2, 3].forEach((n) => {
+        document.getElementById(`seat-seg-${n}`)?.classList.toggle('is-filled', seatsUsed >= n);
+    });
 
-    const seg1 = document.getElementById('seat-seg-1');
-    const seg2 = document.getElementById('seat-seg-2');
-    const seg3 = document.getElementById('seat-seg-3');
-    if (seg1) seg1.classList.toggle('is-filled', seatsUsed >= 1);
-    if (seg2) seg2.classList.toggle('is-filled', seatsUsed >= 2);
-    if (seg3) seg3.classList.toggle('is-filled', seatsUsed >= 3);
-
-    const metricSeatsUsed = document.getElementById('share-metric-seats-used');
-    if (metricSeatsUsed) metricSeatsUsed.innerText = `${seatsUsed} / 3`;
-    const metricApp = document.getElementById('share-metric-app-passengers');
-    if (metricApp) metricApp.innerText = String(appPassengers);
-    const metricRemote = document.getElementById('share-metric-remote-passengers');
-    if (metricRemote) metricRemote.innerText = String(remoteOnBoard);
-    const metricAvail = document.getElementById('share-metric-seats-avail');
-    if (metricAvail) metricAvail.innerText = String(seatsAvail);
-
-    const addRemoteBtn = document.getElementById('driver-share-add-remote-btn');
-    if (addRemoteBtn) {
-        addRemoteBtn.disabled = seatsUsed >= 3;
-        addRemoteBtn.style.opacity = seatsUsed >= 3 ? "0.5" : "1";
-    }
+    const addBtn = document.getElementById('driver-share-add-remote-btn');
+    if (addBtn) addBtn.disabled = !trip || seatsUsed >= 3;
 
     const ridersContainer = document.getElementById('share-mcard-riders-container');
     if (ridersContainer) {
-        const pInitial = (ride.passenger_name || "P").charAt(0).toUpperCase();
-        const pName = escapeHtml(ride.passenger_name || "Passenger");
-        let html = `
-            <div class="share-rider-card" style="display:flex;align-items:center;gap:12px;padding:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;margin-bottom:12px;">
-                <div class="rider-avatar" style="width:36px;height:36px;border-radius:50%;background:#166534;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">${pInitial}</div>
-                <div class="rider-name-box" style="flex:1;">
-                    <strong class="rider-name" style="display:block;font-size:13px;color:#0F172A;">${pName}</strong>
-                    <div class="rider-status-dot-row" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#16A34A;font-weight:600;">
-                        <span class="status-dot" style="width:6px;height:6px;border-radius:50%;background:#16A34A;"></span>
-                        <span>Onboard · ₹${Math.round(Number(ride.fare) || 0)}</span>
-                    </div>
-                </div>
-            </div>
-        `;
+        ridersContainer.innerHTML = entries.map((entry, i) => buildShareRiderCard(entry, i)).join("");
+    }
 
-        for (let i = 1; i <= remoteOnBoard; i++) {
-            html += `
-                <div class="share-rider-card share-remote-rider-card" style="display:flex;align-items:center;gap:12px;padding:12px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;margin-bottom:12px;">
-                    <div class="rider-avatar" style="width:36px;height:36px;border-radius:50%;background:#15803D;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;">R${i}</div>
-                    <div class="rider-name-box" style="flex:1;">
-                        <strong class="rider-name" style="display:block;font-size:13px;color:#0F172A;">Remote Passenger ${i}</strong>
-                        <div class="rider-status-dot-row" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#16A34A;font-weight:600;">
-                            <span class="status-dot" style="width:6px;height:6px;border-radius:50%;background:#16A34A;"></span>
-                            <span>Street Hailed · Onboard</span>
-                        </div>
-                    </div>
-                    <button class="btn btn-sm btn-outline-danger drop-remote-btn" type="button" style="border-radius:8px;font-size:12px;padding:4px 10px;">Drop</button>
-                </div>
-            `;
+    updateIncomingRequestsVisibility();
+    renderShareSheet(false);
+}
+
+function maybeFinalizeStaleShareTrip() {
+    if (!isShareTripOpen(shareTripData) || !shareActiveRidesLoaded) return;
+    if (shareChildRides.size > 0 || (Number(shareTripData.remoteOnBoard) || 0) > 0) return;
+    if (shareStaleCheckedTripId === shareTripData.id) return;
+    shareStaleCheckedTripId = shareTripData.id;
+    callShareApi(`/trips/${encodeURIComponent(shareTripData.id)}`, "GET").catch((error) => {
+        console.warn("Stale share trip cleanup skipped:", error);
+    });
+}
+
+function reconcileShareUI() {
+    renderShareSection();
+    maybeFinalizeStaleShareTrip();
+}
+
+function startShareTripsWatcher() {
+    if (!currentUser?.uid) return;
+    if (shareTripsWatchUnsubscribe) shareTripsWatchUnsubscribe();
+    shareTripsWatchUnsubscribe = onSnapshot(
+        query(collection(db, "shareTrips"), where("driverId", "==", currentUser.uid)),
+        (snapshot) => {
+            let open = null;
+            snapshot.forEach((tripDoc) => {
+                const trip = tripDoc.data() || {};
+                if (isShareTripOpen(trip) && !open) open = { ...trip, id: tripDoc.id };
+            });
+            shareTripData = open;
+            reconcileShareUI();
+        },
+        (error) => {
+            console.warn("Share trip watcher failed:", error);
         }
-        ridersContainer.innerHTML = html;
+    );
+}
+
+async function callShareApi(path, method = "POST") {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error("Authentication is required.");
+    const response = await fetch(`/api/share${path}`, {
+        method,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok === false) {
+        throw new Error(data.error || data.detail || "Request failed. Please try again.");
+    }
+    return data;
+}
+
+async function notifyRemovedShareChildren(previousIds, currentIds) {
+    for (const rideId of previousIds) {
+        if (currentIds.has(rideId)) continue;
+        try {
+            const snap = await getDoc(doc(db, "rides", rideId));
+            const status = snap.exists() ? snap.data()?.status : "";
+            if (status === "cancelled_by_passenger") {
+                await showAlert("A passenger cancelled their ride.");
+            }
+        } catch (error) {
+            console.warn("Could not check removed share ride:", error);
+        }
     }
 }
 
+function buildShareSheetHead(avatarHtml, seat, title, subtitle, pillHtml) {
+    return `
+        <div class="sheet-head">
+            <div class="sheet-head-avatar-wrap">
+                <span class="seat-number-badge seat-${seat}">${seat}</span>
+                ${avatarHtml}
+            </div>
+            <div class="sheet-head-info">
+                <strong id="share-sheet-title">${title}</strong>
+                <span>${subtitle}</span>
+            </div>
+            ${pillHtml}
+        </div>`;
+}
+
+function buildAppSheetHtml(ride, seat) {
+    const status = ride.status;
+    const onBoard = isShareRideOnBoard(ride);
+    const arrived = status === "arrived";
+    const rawName = String(ride.passenger_name || "Passenger").trim() || "Passenger";
+    const name = escapeHtml(rawName);
+    const fare = Math.round(Number(ride.fareLocked ?? ride.fare) || 0);
+    const phone = String(ride.passenger_phone || "").replace(/[^\d+]/g, "");
+    const pickup = escapeHtml(getRideDisplayAddress(ride, "pickup"));
+    const drop = escapeHtml(getRideDisplayAddress(ride, "drop"));
+    const km = Number(ride.distance_km) || 0;
+    const kmLabel = km > 0 ? `${km.toFixed(1)} km` : "—";
+    const plannedMins = Math.max(1, Math.round(Number(ride.duration_minutes) || 0));
+    const etaMs = shareTimestampMs(ride.sharedInfo?.etaIso);
+    const remainingMins = etaMs ? Math.max(1, Math.round((etaMs - Date.now()) / 60000)) : plannedMins;
+    const durationLabel = `~${plannedMins} mins`;
+    const pickedAt = formatShareClock(ride.pinVerifiedAt || ride.startedAt);
+
+    const pill = onBoard
+        ? '<span class="sheet-state-pill"><span class="status-dot"></span>On board</span>'
+        : `<span class="sheet-state-pill is-waiting"><span class="status-dot"></span>${arrived ? "At pickup" : "To pickup"}</span>`;
+
+    let bannerTitle = "Trip in progress";
+    let bannerSub = "Driving passenger to destination";
+    if (!onBoard) {
+        bannerTitle = arrived ? "Waiting for passenger" : "Heading to pickup";
+        bannerSub = arrived ? "Ask the passenger for their 4-digit PIN" : "Drive to the passenger's pickup point";
+    }
+    const bannerEta = onBoard ? `
+        <div class="sheet-banner-eta">
+            <span class="sheet-banner-icon">${SHARE_SVG.car}</span>
+            <span class="sheet-banner-eta-text"><strong>~${remainingMins} mins</strong><small>remaining</small></span>
+        </div>` : "";
+
+    let actions = "";
+    if (status === "accepted") {
+        actions += '<button type="button" class="sheet-btn sheet-btn-dark" data-share-action="arrive">I\'ve Arrived</button>';
+    }
+    if (!onBoard) {
+        actions += `
+            <div class="sheet-pin-wrap">
+                <strong>Enter the passenger's 4-digit PIN</strong>
+                <div class="sheet-pin-boxes">
+                    <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 1">
+                    <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 2">
+                    <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 3">
+                    <input class="sheet-pin-box" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" aria-label="PIN digit 4">
+                </div>
+                <button type="button" class="sheet-btn sheet-btn-primary" data-share-action="verify">Start Trip</button>
+            </div>`;
+    }
+    if (arrived) {
+        actions += '<button type="button" class="sheet-btn sheet-btn-ghost" data-share-action="skip" disabled>Skip (no-show)</button>';
+    }
+    if (onBoard) {
+        actions += '<button type="button" class="sheet-btn sheet-btn-dark" data-share-action="drop">Drop off &amp; collect fare</button>';
+    }
+    actions += phone
+        ? `<a class="sheet-btn sheet-btn-primary" href="tel:${phone}">${SHARE_SVG.phone}<span>Call Passenger</span></a>`
+        : `<button type="button" class="sheet-btn sheet-btn-primary" disabled>${SHARE_SVG.phone}<span>Call Passenger</span></button>`;
+
+    return `
+        ${buildShareSheetHead(`<span class="rider-avatar">${escapeHtml(rawName.charAt(0).toUpperCase())}</span>`, seat, name, `App passenger • ₹${fare}`, pill)}
+        <div class="sheet-banner${onBoard ? "" : " is-waiting"}">
+            <span class="sheet-banner-icon">${SHARE_SVG.bell}</span>
+            <span class="sheet-banner-text"><strong>${bannerTitle}</strong><span>${bannerSub}</span></span>
+            ${bannerEta}
+        </div>
+        <div class="sheet-route-card">
+            <h6>Route Details</h6>
+            <div class="sheet-route-inner">
+                <div class="sheet-route-stops">
+                    <div class="sheet-route-stop pickup">
+                        <span class="sheet-route-dot"></span>
+                        <span class="sheet-route-stop-body"><small>Pickup</small><strong>${pickup}</strong></span>
+                        <span class="sheet-route-stop-meta">${pickedAt ? `<span>${pickedAt}</span>` : ""}${onBoard ? `<span class="sheet-check">${SHARE_SVG.check}</span>` : ""}</span>
+                    </div>
+                    <div class="sheet-route-stop drop">
+                        <span class="sheet-route-dot"></span>
+                        <span class="sheet-route-stop-body"><small>Destination</small><strong>${drop}</strong></span>
+                        <span class="sheet-route-stop-meta"><span>${durationLabel}</span><span class="muted">${kmLabel}</span></span>
+                    </div>
+                </div>
+                <div class="sheet-route-footer">
+                    <div>${SHARE_SVG.road}<span><strong>${kmLabel}</strong><small>Total distance</small></span></div>
+                    <div>${SHARE_SVG.clock}<span><strong>${durationLabel}</strong><small>Estimated time</small></span></div>
+                </div>
+            </div>
+        </div>
+        <div class="sheet-fare-row">
+            <span class="sheet-fare-icon">${SHARE_SVG.wallet}</span>
+            <span class="sheet-fare-text"><strong>Passenger fare</strong><small>Fixed price (Shared Ride)</small></span>
+            <span class="sheet-fare-amount">₹${fare}</span>
+        </div>
+        <div class="sheet-info-box">
+            ${SHARE_SVG.info}
+            <span><strong>This is a shared ride</strong><span>There may be other riders on the way. Fare will not change.</span></span>
+        </div>
+        <div class="sheet-btn-row">${actions}</div>`;
+}
+
+function buildRemoteSheetHtml(entry) {
+    return `
+        ${buildShareSheetHead(`<span class="rider-avatar remote">${SHARE_SVG.group}</span>`, entry.seat, `Remote Passenger ${entry.index}`, "Added by you (Cash)", '<span class="sheet-state-pill"><span class="status-dot"></span>On board</span>')}
+        <div class="sheet-info-box is-remote">
+            ${SHARE_SVG.info}
+            <span><strong>This is a remote passenger</strong><span>This rider was added by you and is not booked through the app. The fare for this rider is not decided by LiphtUp — agree on it and collect it directly from the passenger.</span></span>
+        </div>
+        <div class="sheet-btn-row">
+            <button type="button" class="sheet-btn sheet-btn-danger" data-share-action="drop-remote">Drop passenger</button>
+            <button type="button" class="sheet-btn sheet-btn-ghost" data-share-action="close">Close</button>
+        </div>`;
+}
+
+function renderShareSheet(force) {
+    const overlay = document.getElementById('share-passenger-modal');
+    const body = document.getElementById('share-sheet-body');
+    if (!overlay || !body || !shareModalTarget) return;
+
+    let html = "";
+    let key = "";
+    const entries = getShareRiderEntries();
+    if (shareModalTarget.type === "remote") {
+        const entry = entries.find((e) => e.type === "remote");
+        if (!entry) {
+            closeShareSheet();
+            return;
+        }
+        key = `remote:${entry.index}:${entries.filter((e) => e.type === "remote").length}`;
+        if (!force && key === shareModalRenderKey) return;
+        html = buildRemoteSheetHtml(entry);
+    } else {
+        const entry = entries.find((e) => e.type === "app" && e.ride.id === shareModalTarget.rideId);
+        if (!entry) {
+            closeShareSheet();
+            return;
+        }
+        const ride = entry.ride;
+        key = [ride.id, ride.status, ride.fareLocked ?? ride.fare, shareTimestampMs(ride.arrivedAt) || "", entry.seat].join("|");
+        if (!force && key === shareModalRenderKey) return;
+        html = buildAppSheetHtml(ride, entry.seat);
+    }
+    shareModalRenderKey = key;
+    body.innerHTML = html;
+    updateShareSkipButton();
+    const firstPin = body.querySelector('.sheet-pin-box');
+    if (force && firstPin) firstPin.focus({ preventScroll: true });
+}
+
+function updateShareSkipButton() {
+    const skipBtn = document.querySelector('#share-sheet-body [data-share-action="skip"]');
+    if (!skipBtn || shareModalTarget?.type !== "app") return;
+    const ride = shareChildRides.get(shareModalTarget.rideId);
+    const arrivedMs = shareTimestampMs(ride?.arrivedAt) || shareLocalArrivedAt.get(shareModalTarget.rideId) || null;
+    if (!arrivedMs) {
+        skipBtn.disabled = true;
+        skipBtn.innerText = "Skip (no-show)";
+        return;
+    }
+    const waitLeftMs = SHARE_PICKUP_WAIT_MS - (Date.now() - arrivedMs);
+    if (waitLeftMs > 0) {
+        const secs = Math.ceil(waitLeftMs / 1000);
+        skipBtn.disabled = true;
+        skipBtn.innerText = `Skip (no-show) in ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+    } else {
+        skipBtn.disabled = false;
+        skipBtn.innerText = "Skip (no-show)";
+    }
+}
+
+function openShareSheet(target) {
+    const overlay = document.getElementById('share-passenger-modal');
+    if (!overlay) return;
+    shareModalTarget = target;
+    shareModalRenderKey = "";
+    renderShareSheet(true);
+    if (!shareModalTarget) return;
+    overlay.classList.remove('d-none');
+    document.body.style.overflow = "hidden";
+    if (shareModalTicker) clearInterval(shareModalTicker);
+    shareModalTicker = setInterval(updateShareSkipButton, 1000);
+}
+
+function closeShareSheet() {
+    shareModalTarget = null;
+    shareModalRenderKey = "";
+    if (shareModalTicker) {
+        clearInterval(shareModalTicker);
+        shareModalTicker = null;
+    }
+    document.getElementById('share-passenger-modal')?.classList.add('d-none');
+    document.body.style.overflow = "";
+}
+
+function patchShareChildStatus(rideId, status) {
+    const existing = shareChildRides.get(rideId);
+    if (!existing) return;
+    shareChildRides.set(rideId, { ...existing, status });
+    renderShareSection();
+    renderShareSheet(true);
+}
+
+async function verifySharePin(rideId) {
+    if (isVerifyingPin) return;
+    const boxes = Array.from(document.querySelectorAll('#share-sheet-body .sheet-pin-box'));
+    const pin = boxes.map((box) => box.value).join("");
+    if (!/^\d{4}$/.test(pin)) {
+        await showAlert(t('driver.enter_4digit_pin', "Please enter the 4-digit passenger PIN."));
+        return;
+    }
+    isVerifyingPin = true;
+    try {
+        await transitionRideThroughBackend(rideId, "verify_pin", pin);
+        patchShareChildStatus(rideId, "en_route");
+    } catch (error) {
+        console.error("Share PIN verification failed:", error);
+        await showAlert(error?.message || t('driver.verify_pin_failed', "Could not verify PIN. Please try again."));
+        const freshBoxes = document.querySelectorAll('#share-sheet-body .sheet-pin-box');
+        freshBoxes.forEach((box) => { box.value = ""; });
+        freshBoxes[0]?.focus();
+    } finally {
+        isVerifyingPin = false;
+    }
+}
+
+async function arriveAtShareRider(rideId) {
+    try {
+        await transitionRideThroughBackend(rideId, "arrive");
+        shareLocalArrivedAt.set(rideId, Date.now());
+        patchShareChildStatus(rideId, "arrived");
+    } catch (error) {
+        console.error("Share arrive failed:", error);
+        await showAlert(error?.message || "Could not mark arrival. Please try again.");
+    }
+}
+
+async function skipShareRider(rideId) {
+    if (!(await showConfirm("Skip this passenger as a no-show?"))) return;
+    try {
+        await callShareApi(`/rides/${encodeURIComponent(rideId)}/skip`);
+        closeShareSheet();
+    } catch (error) {
+        console.error("Share skip failed:", error);
+        await showAlert(error?.message || "Could not skip this passenger.");
+    }
+}
+
+async function addRemotePassenger() {
+    const tripId = shareTripData?.id || currentRide?.parentTripId;
+    if (!tripId) return;
+    try {
+        window.LiphtUpLoading?.showPageLoader?.("Adding passenger...");
+        await callShareApi(`/trips/${encodeURIComponent(tripId)}/remote/add`);
+    } catch (error) {
+        console.error("Add remote passenger failed:", error);
+        await showAlert(error?.message || "Could not add remote passenger.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
+
+async function dropRemotePassenger() {
+    const tripId = shareTripData?.id || currentRide?.parentTripId;
+    if (!tripId) return;
+    try {
+        window.LiphtUpLoading?.showPageLoader?.("Dropping passenger...");
+        await callShareApi(`/trips/${encodeURIComponent(tripId)}/remote/drop`);
+        closeShareSheet();
+    } catch (error) {
+        console.error("Drop remote passenger failed:", error);
+        await showAlert(error?.message || "Could not drop remote passenger.");
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
+
+async function cancelShareTripByDriver() {
+    const tripId = shareTripData?.id || currentRide?.parentTripId || currentRide?.sharedInfo?.parentTripId;
+    if (!tripId) {
+        await showAlert(t('driver.no_active_trip_to_cancel', "No active trip found to cancel."));
+        return;
+    }
+    const confirmed = await showConfirm("Cancel this shared ride? Riders who are not picked up yet will be cancelled and riders on board will be marked as dropped.");
+    if (!confirmed) return;
+    try {
+        window.LiphtUpLoading?.showPageLoader?.(t('driver.updating_trip_status', "Updating trip status..."));
+        await callShareApi(`/trips/${encodeURIComponent(tripId)}/cancel`);
+        closeShareSheet();
+        shareTripData = null;
+        shareChildRides = new Map();
+        renderIdleState();
+        await showAlert(t('driver.trip_cancelled_online', "Trip cancelled. You are back online."));
+    } catch (error) {
+        console.error("Share trip cancel failed:", error);
+        await showAlert(error?.message || t('driver.cancel_trip_failed', "Could not cancel the active trip."));
+    } finally {
+        window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+    }
+}
+
+function handleShareSheetClick(event) {
+    if (event.target.closest('[data-share-sheet-close]') || event.target.closest('#share-sheet-close-btn')) {
+        closeShareSheet();
+        return;
+    }
+    const actionBtn = event.target.closest('[data-share-action]');
+    if (!actionBtn || actionBtn.disabled || !shareModalTarget) return;
+    const action = actionBtn.dataset.shareAction;
+    const rideId = shareModalTarget.rideId;
+    if (action === "close") closeShareSheet();
+    else if (action === "arrive") arriveAtShareRider(rideId);
+    else if (action === "verify") verifySharePin(rideId);
+    else if (action === "skip") skipShareRider(rideId);
+    else if (action === "drop") completeRideJob(rideId);
+    else if (action === "drop-remote") dropRemotePassenger();
+}
+
+function handleShareSheetInput(event) {
+    const box = event.target.closest('.sheet-pin-box');
+    if (!box) return;
+    const boxes = Array.from(document.querySelectorAll('#share-sheet-body .sheet-pin-box'));
+    const index = boxes.indexOf(box);
+    const digit = box.value.replace(/[^\d]/g, "");
+    box.value = digit ? digit.charAt(digit.length - 1) : "";
+    if (box.value && index < boxes.length - 1) boxes[index + 1].focus();
+    const pin = boxes.map((b) => b.value).join("");
+    if (/^\d{4}$/.test(pin) && shareModalTarget?.type === "app") verifySharePin(shareModalTarget.rideId);
+}
+
+function handleShareSheetKeydown(event) {
+    const box = event.target.closest('.sheet-pin-box');
+    if (!box || event.key !== "Backspace" || box.value) return;
+    const boxes = Array.from(document.querySelectorAll('#share-sheet-body .sheet-pin-box'));
+    const index = boxes.indexOf(box);
+    if (index > 0) {
+        boxes[index - 1].value = "";
+        boxes[index - 1].focus();
+        event.preventDefault();
+    }
+}
+
+function handleShareSheetPaste(event) {
+    const box = event.target.closest('.sheet-pin-box');
+    if (!box) return;
+    event.preventDefault();
+    const pasted = (event.clipboardData || window.clipboardData).getData('text').replace(/[^\d]/g, "");
+    if (pasted.length < 4) return;
+    const boxes = Array.from(document.querySelectorAll('#share-sheet-body .sheet-pin-box'));
+    boxes.forEach((b, i) => { b.value = pasted.charAt(i) || ""; });
+    boxes[3]?.focus();
+    if (shareModalTarget?.type === "app") verifySharePin(shareModalTarget.rideId);
+}
+
 function showLifecyclePanel(status, rideData = currentRide) {
+    if (isShareChildRide(rideData)) {
+        hideLifecyclePanel();
+        renderLifecycleState(status, rideData);
+        return;
+    }
     lifecyclePanel.classList.remove('d-none');
     renderLifecycleState(status, rideData);
 }
@@ -2646,6 +3167,8 @@ function renderIdleState() {
     openConsoleButton.classList.add('d-none');
     const mcardSection = document.getElementById('driver-share-mcard-section');
     if (mcardSection) mcardSection.classList.add('d-none');
+    shareUiVisible = false;
+    closeShareSheet();
     hideLifecyclePanel();
     hideRouteWarning();
     statusText.innerText = "Online and ready for ride requests";
@@ -2838,21 +3361,20 @@ async function transitionRideThroughBackend(rideId, action, pin = "") {
     }
 }
 
-async function completeRideJob() {
-    if (!currentRideId) {
+async function completeRideJob(targetRideId) {
+    const explicitRideId = typeof targetRideId === "string" ? targetRideId : "";
+    const completedRideId = explicitRideId || currentRideId;
+    if (!completedRideId) {
         await showAlert(t('driver.no_active_trip_complete', "No active trip found to complete."));
         return;
     }
 
-    // Keep the ID locally because the realtime listener may clear
-    // currentRideId immediately after the server changes the ride to
-    // `completed`.
-    const completedRideId = currentRideId;
+    const completedIsShare = Boolean(explicitRideId) && shareChildRides.has(explicitRideId);
     pendingPaymentRideId = completedRideId;
 
     try {
         const result = await transitionRideThroughBackend(completedRideId, "complete");
-        const rideData = result.ride || currentRide || {};
+        const rideData = result.ride || shareChildRides.get(completedRideId) || currentRide || {};
         const totalFarePaise = Number(rideData.farePaise) || Math.round(parseFloat(rideData.fare || 0) * 100);
         const walletPaidPaise = Number(rideData.walletPaidAmountPaise) || Math.round(parseFloat(rideData.wallet_paid_amount || 0) * 100);
         const couponApplied = rideData.couponApplied;
@@ -2909,10 +3431,13 @@ async function completeRideJob() {
             }
         }
 
+        if (completedIsShare) closeShareSheet();
         paymentModal.classList.remove('d-none');
         renderFareAdjustmentNote('driver-service-fare-note', result.ride);
-        await setServiceDriverAvailability(driverPostRideAvailability);
-        hideLifecyclePanel();
+        if (!completedIsShare) {
+            await setServiceDriverAvailability(driverPostRideAvailability);
+            hideLifecyclePanel();
+        }
     } catch (error) {
         console.error("Error finalizing ride transaction:", error);
         await showAlert(t('driver.db_dropped_checkout', "Database connection dropped during checkout."));
@@ -2920,6 +3445,10 @@ async function completeRideJob() {
 }
 
 async function cancelRideByDriver() {
+    if (isShareTripOpen(shareTripData) || isShareChildRide(currentRide)) {
+        await cancelShareTripByDriver();
+        return;
+    }
     if (!currentRideId) {
         await showAlert(t('driver.no_active_trip_to_cancel', "No active trip found to cancel."));
         return;
@@ -2943,7 +3472,8 @@ async function cancelRideByDriver() {
 }
 
 async function sendDriverSos() {
-    if (!currentRideId) {
+    const sosRideId = currentRideId || shareTripData?.anchorRideId || (shareTripData?.childRideIds || [])[0] || "";
+    if (!sosRideId) {
         await showAlert(t('driver.no_active_ride_sos', "No active ride found to trigger SOS emergency."));
         return;
     }
@@ -2959,7 +3489,7 @@ async function sendDriverSos() {
         if (!idToken) throw new Error("Authentication is required.");
 
         window.LiphtUpLoading?.showPageLoader?.(t('driver.sending_emergency_sos', "Sending Emergency SOS..."));
-        const response = await fetch(`/api/rides/${encodeURIComponent(currentRideId)}/sos`, {
+        const response = await fetch(`/api/rides/${encodeURIComponent(sosRideId)}/sos`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({ role: "driver" })
@@ -3008,6 +3538,18 @@ function startActiveRideListener() {
     );
 
     activeRideUnsubscribe = onSnapshot(activeRideQuery, async (snapshot) => {
+        const previousShareIds = new Set(shareChildRides.keys());
+        const nextShareChildren = new Map();
+        snapshot.docs.forEach((rideDoc) => {
+            const rideValue = rideDoc.data() || {};
+            if (isShareChildRide(rideValue)) nextShareChildren.set(rideDoc.id, { ...rideValue, id: rideDoc.id });
+        });
+        shareChildRides = nextShareChildren;
+        shareActiveRidesLoaded = true;
+        if (!snapshot.empty && previousShareIds.size > 0) {
+            notifyRemovedShareChildren(previousShareIds, new Set(nextShareChildren.keys()));
+        }
+
         if (snapshot.empty) {
             lastObservedWalletPaidPaise = 0;
             lastObservedCouponDiscountPaise = 0;
@@ -3024,7 +3566,15 @@ function startActiveRideListener() {
                     console.warn("Could not check final ride status:", error);
                 }
             }
+            if (isShareTripOpen(shareTripData) && (Number(shareTripData.remoteOnBoard) || 0) > 0) {
+                currentRide = null;
+                currentRideId = null;
+                currentRideStatus = "";
+                reconcileShareUI();
+                return;
+            }
             renderIdleState();
+            maybeFinalizeStaleShareTrip();
             return;
         }
 
@@ -3121,46 +3671,44 @@ ridesContainer?.addEventListener('click', (event) => {
     acceptIncomingRide(acceptButton.dataset.rideId, acceptButton);
 });
 
-document.getElementById('driver-share-add-remote-btn')?.addEventListener('click', async () => {
-    const parentTripId = currentRide?.parentTripId;
-    if (!parentTripId) return;
-    try {
-        const idToken = await auth.currentUser?.getIdToken();
-        const res = await fetch(`/api/share/trips/${encodeURIComponent(parentTripId)}/remote/add`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` }
-        });
-        const data = await res.json();
-        if (data.ok) {
-            renderShareMcard(currentRide, false);
-        } else {
-            await showAlert(data.error || "Could not add remote passenger.");
-        }
-    } catch (e) {
-        console.error("Add remote error:", e);
+document.getElementById('driver-share-add-remote-btn')?.addEventListener('click', addRemotePassenger);
+
+document.getElementById('share-mcard-riders-container')?.addEventListener('click', (event) => {
+    const card = event.target.closest('.share-rider-card');
+    if (!card) return;
+    if (card.dataset.rideId) {
+        openShareSheet({ type: "app", rideId: card.dataset.rideId });
+    } else if (card.dataset.remoteIndex) {
+        openShareSheet({ type: "remote", index: Number(card.dataset.remoteIndex) || 1 });
     }
 });
 
-document.getElementById('share-mcard-riders-container')?.addEventListener('click', async (e) => {
-    const dropBtn = e.target.closest('.drop-remote-btn');
-    if (!dropBtn) return;
-    const parentTripId = currentRide?.parentTripId;
-    if (!parentTripId) return;
-    try {
-        const idToken = await auth.currentUser?.getIdToken();
-        const res = await fetch(`/api/share/trips/${encodeURIComponent(parentTripId)}/remote/drop`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` }
-        });
-        const data = await res.json();
-        if (data.ok) {
-            renderShareMcard(currentRide, false);
-        } else {
-            await showAlert(data.error || "Could not drop remote passenger.");
-        }
-    } catch (e) {
-        console.error("Drop remote error:", e);
-    }
+const shareSheetOverlay = document.getElementById('share-passenger-modal');
+shareSheetOverlay?.addEventListener('click', handleShareSheetClick);
+shareSheetOverlay?.addEventListener('input', handleShareSheetInput);
+shareSheetOverlay?.addEventListener('keydown', handleShareSheetKeydown);
+shareSheetOverlay?.addEventListener('paste', handleShareSheetPaste);
+document.addEventListener('keydown', (event) => {
+    if (event.key === "Escape" && shareModalTarget) closeShareSheet();
+});
+
+document.getElementById('driver-share-cancel-btn')?.addEventListener('click', cancelRideByDriver);
+document.getElementById('driver-share-sos-btn')?.addEventListener('click', sendDriverSos);
+
+const shareKebabBtn = document.getElementById('share-mcard-kebab-btn');
+const shareKebabMenu = document.getElementById('share-mcard-menu');
+shareKebabBtn?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const willOpen = shareKebabMenu?.classList.contains('d-none');
+    shareKebabMenu?.classList.toggle('d-none', !willOpen);
+    shareKebabBtn.setAttribute('aria-expanded', String(Boolean(willOpen)));
+});
+document.addEventListener('click', () => {
+    shareKebabMenu?.classList.add('d-none');
+    shareKebabBtn?.setAttribute('aria-expanded', 'false');
+});
+document.getElementById('share-menu-console-btn')?.addEventListener('click', () => {
+    window.location.href = '/driver.html';
 });
 
 closePaymentButton?.addEventListener('click', async () => {
@@ -3186,6 +3734,7 @@ window.addEventListener('beforeunload', () => {
     if (locationWatchId !== null) navigator.geolocation.clearWatch(locationWatchId);
     if (activeRideUnsubscribe) activeRideUnsubscribe();
     if (incomingRideUnsubscribe) incomingRideUnsubscribe();
+    if (shareTripsWatchUnsubscribe) shareTripsWatchUnsubscribe();
     if (driverMarkerAnimationFrame) cancelAnimationFrame(driverMarkerAnimationFrame);
     mapShell?.destroy();
 });
@@ -3325,6 +3874,7 @@ async function bootstrapDriverService() {
             if (map) map.setZoom((map.getZoom() || 15) - 1);
         });
 
+        startShareTripsWatcher();
         startActiveRideListener();
         startIncomingRideListener();
         startLocationTracking();
