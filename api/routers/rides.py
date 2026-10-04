@@ -956,7 +956,8 @@ async def create_passenger_ride(
                 .where("passenger_id", "==", uid)
                 .where("status", "in", ["pending", "searching", "dispatching"])
             )
-            for old_doc in unaccepted_query.stream(transaction=tx):
+            old_docs = list(unaccepted_query.stream(transaction=tx))
+            for old_doc in old_docs:
                 tx.update(old_doc.reference, {
                     "status": "cancelled_by_passenger",
                     "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
@@ -1047,6 +1048,19 @@ async def create_passenger_ride(
                         "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push",
                     },
                 )
+
+        try:
+            from ..services.db import record_ride_audit
+            record_ride_audit(
+                db,
+                ride_ref.id,
+                action="created",
+                actor_id=uid,
+                actor_role="passenger",
+                details={"vehicle_type": body.vehicleType, "ride_type": ride_data.get("rideType"), "fare": fare},
+            )
+        except Exception:
+            pass
 
         return {
             "ok": True,
@@ -1528,6 +1542,35 @@ def transition_driver_ride(
                 pass
         if action == "complete":
             _bump_daily_stats(db, uid, {"completed_rides": 1, "earnings": float(result.get("fare") or 0)})
+            try:
+                from ..services.db import record_financial_ledger_entry
+                final_fare_val = float(result.get("fare") or 0)
+                final_paise = int(round(final_fare_val * 100))
+                record_financial_ledger_entry(
+                    db,
+                    entry_id=f"ride_fare_{clean_ride_id}",
+                    amount_paise=final_paise,
+                    entry_type="ride_completed_fare",
+                    from_user_id=result.get("passenger_id"),
+                    to_user_id=uid,
+                    ride_id=clean_ride_id,
+                    details={"status": "completed", "fare": final_fare_val},
+                )
+            except Exception:
+                pass
+
+        try:
+            from ..services.db import record_ride_audit
+            record_ride_audit(
+                db,
+                clean_ride_id,
+                action=f"transition_{action}",
+                actor_id=uid,
+                actor_role="driver",
+                details={"next_status": result.get("status"), "fare": result.get("fare")},
+            )
+        except Exception:
+            pass
 
         parent_trip_id = result.get("parentTripId") or (result.get("sharedInfo") or {}).get("parentTripId")
         if parent_trip_id and action in {"arrive", "verify_pin", "start", "arrived", "complete", "cancel", "skip"}:
@@ -1619,10 +1662,12 @@ def expand_passenger_dispatch(
             raise ApiError("Only pending unassigned rides can expand their search.", 409)
 
         excluded = set(ride.get("notified_driver_ids") or []) | set(ride.get("rejected_driver_ids") or [])
+        p_lat = float(ride.get("pickup_lat") or 0.0)
+        p_lng = float(ride.get("pickup_lng") or 0.0)
         all_candidates = _available_drivers(
             db,
-            float(ride.get("pickup_lat")),
-            float(ride.get("pickup_lng")),
+            p_lat,
+            p_lng,
             str(ride.get("vehicle_type") or ""),
         )
         batch_size = int(ride.get("dispatch_batch_size") or DISPATCH_BATCH_SIZE)
@@ -1650,6 +1695,25 @@ def expand_passenger_dispatch(
             updates["dispatch_mode"] = "auto_share"
             updates["current_offer_driver_id"] = None
         ride_ref.update(updates)
+
+        for d_id in next_batch:
+            try:
+                _send_driver_push_notification(
+                    db,
+                    d_id,
+                    "New Ride Request",
+                    f"Ride: {ride.get('pickup_name')} -> {ride.get('drop_name')} (₹{ride.get('fare')})",
+                    {
+                        "type": "NEW_PASSENGER_AVAILABLE",
+                        "rideId": clean_ride_id,
+                        "rideType": str(ride.get("rideType") or "normal"),
+                        "fare": str(ride.get("fare") or 0),
+                        "url": f"{APP_BASE_URL}/driver?rideId={clean_ride_id}&from=push",
+                    },
+                )
+            except Exception:
+                pass
+
         return {"ok": True, "rideId": clean_ride_id, "driverIds": next_batch, "searchStatus": updates["search_status"]}
     except ApiError:
         raise
@@ -1836,7 +1900,6 @@ def update_driver_location(
                 )
 
         if availability == "searching" and not ride_id:
-            activate_due_scheduled_requests(db)
             _match_pending_requests_for_driver(db, uid, profile, location)
         return {"ok": True, "rideId": ride_id or None, "status": availability}
     except ApiError:
@@ -1949,6 +2012,14 @@ def cancel_passenger_ride(
 
         if ride_snap.exists:
             ride = ride_snap.to_dict() or {}
+            passenger_id = str(ride.get("passenger_id") or ride.get("passengerId") or "").strip()
+            is_admin = bool(user.get("admin") or user.get("role") == "admin")
+            if passenger_id and uid != passenger_id and not is_admin:
+                raise ApiError("You can only cancel your own ride request.", 403)
+
+            if ride.get("status") in {"completed", "cancelled", "cancelled_by_passenger", "cancelled_by_driver", "no_show"}:
+                return {"ok": True, "rideId": clean_ride_id, "status": ride.get("status")}
+
             driver_id = str(ride.get("driver_id") or ride.get("driverId") or "").strip()
 
             updates: dict[str, Any] = {
@@ -1998,21 +2069,29 @@ def cancel_passenger_ride(
                 except Exception:
                     pass
 
-            # Release driver presence back to searching if driver was assigned
+            # Release driver presence back to searching if driver was assigned and has no other active rides
             if driver_id:
                 try:
-                    drv_doc = db.collection("users").document(driver_id).get()
-                    drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
-                    avail_status = "offline"
-                    if (
-                        str(drv_profile.get("desiredAvailability") or "").strip().lower() != "offline"
-                        and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
-                    ):
-                        avail_status = "searching"
-                    u_upd, p_upd, m_upd = _build_driver_availability_updates(avail_status, drv_profile)
-                    db.collection("users").document(driver_id).set(u_upd, merge=True)
-                    db.collection("driverPresence").document(driver_id).set(p_upd, merge=True)
-                    db.collection("driverMapPresence").document(driver_id).set(m_upd, merge=True)
+                    open_share_trips = _open_share_trip_driver_ids(db, driver_id)
+                    from ..services.db import driver_has_other_active_rides
+                    has_other_rides = driver_has_other_active_rides(db, driver_id, exclude_ride_id=clean_ride_id)
+                    if not open_share_trips and not has_other_rides:
+                        drv_doc = db.collection("users").document(driver_id).get()
+                        drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
+                        avail_status = "offline"
+                        if (
+                            str(drv_profile.get("desiredAvailability") or "").strip().lower() != "offline"
+                            and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
+                        ):
+                            avail_status = "searching"
+                        u_upd, p_upd, m_upd = _build_driver_availability_updates(avail_status, drv_profile)
+                        db.collection("users").document(driver_id).set(u_upd, merge=True)
+                        db.collection("driverPresence").document(driver_id).set(p_upd, merge=True)
+                        db.collection("driverMapPresence").document(driver_id).set(m_upd, merge=True)
+                        if avail_status == "searching":
+                            _match_pending_requests_for_driver(
+                                db, driver_id, drv_profile, drv_profile.get("driverLocation") or drv_profile.get("location")
+                            )
                 except Exception as exc:
                     report_backend_failure(
                         service="rides",
@@ -2034,12 +2113,31 @@ def cancel_passenger_ride(
             except Exception:
                 pass
 
+            try:
+                from ..services.db import record_ride_audit
+                record_ride_audit(
+                    db,
+                    clean_ride_id,
+                    action="cancelled_by_passenger",
+                    actor_id=uid,
+                    actor_role="admin" if is_admin else "passenger",
+                    details={"driver_id": driver_id or None},
+                )
+            except Exception:
+                pass
+
             return {"ok": True, "rideId": clean_ride_id, "status": "cancelled_by_passenger"}
 
         # Fallback check in pendingRideRequests
         pending_ref = db.collection("pendingRideRequests").document(clean_ride_id)
         pending_snap = pending_ref.get()
         if pending_snap.exists:
+            p_data = pending_snap.to_dict() or {}
+            p_user = str(p_data.get("passengerId") or p_data.get("passenger_id") or "").strip()
+            is_admin = bool(user.get("admin") or user.get("role") == "admin")
+            if p_user and uid != p_user and not is_admin:
+                raise ApiError("You can only cancel your own pending request.", 403)
+
             pending_ref.update({
                 "status": "cancelled",
                 "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
@@ -2051,6 +2149,8 @@ def cancel_passenger_ride(
                 pass
             return {"ok": True, "requestId": clean_ride_id, "status": "cancelled"}
 
+    except ApiError:
+        raise
     except Exception as exc:
         print(f"Cancel passenger ride exception handled: {exc}")
 
@@ -2197,6 +2297,8 @@ def accept_driver_ride(
                     "maxSeats": SHARE_MAX_SEATS,
                     "anchorRideId": clean_ride_id,
                     "childRideIds": [clean_ride_id],
+                    "passenger_ids": [str(ride.get("passenger_id") or ride.get("passengerId") or "")],
+                    "passengerIds": [str(ride.get("passenger_id") or ride.get("passengerId") or "")],
                     "stopOrder": stop_order,
                     "createdAt": fb_firestore.SERVER_TIMESTAMP,
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
@@ -2250,18 +2352,29 @@ def accept_driver_ride(
                 })
 
         accept_transaction(transaction)
-        db.collection("driverPresence").document(uid).set({
+        busy_update = {
             "driverAvailability": "busy",
             "desiredAvailability": "online",
             "isConnected": True,
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        }, merge=True)
-        db.collection("driverMapPresence").document(uid).set({
-            "driverAvailability": "busy",
-            "desiredAvailability": "online",
-            "isConnected": True,
-            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        }, merge=True)
+        }
+        db.collection("users").document(uid).set(busy_update, merge=True)
+        db.collection("driverPresence").document(uid).set(busy_update, merge=True)
+        db.collection("driverMapPresence").document(uid).set(busy_update, merge=True)
+
+        try:
+            from ..services.db import record_ride_audit
+            record_ride_audit(
+                db,
+                clean_ride_id,
+                action="accepted",
+                actor_id=uid,
+                actor_role="driver",
+                details={"driver_name": accepted_ride.get("driver_name"), "vehicle_type": driver_type},
+            )
+        except Exception:
+            pass
+
         return {"ok": True, "rideId": clean_ride_id, "ride": _safe_ride_dict(accepted_ride)}
     except ApiError:
         raise
@@ -2302,11 +2415,31 @@ def reject_driver_ride(
         if uid not in (ride.get("eligible_driver_ids") or []):
             raise ApiError("This ride request is no longer available for you.", 403)
 
-        ride_ref.update({
-            "status": "declined",
-            "rejected_driver_ids": fb_firestore.ArrayUnion([uid]),
+        eligible = list(ride.get("eligible_driver_ids") or [])
+        rejected = list(dict.fromkeys([*(ride.get("rejected_driver_ids") or []), uid]))
+        remaining = [d for d in eligible if d not in rejected]
+
+        updates = {
+            "rejected_driver_ids": rejected,
             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        })
+        }
+        if not remaining and not ride.get("pendingRequestId"):
+            updates["status"] = "declined"
+
+        ride_ref.update(updates)
+
+        try:
+            from ..services.db import record_ride_audit
+            record_ride_audit(
+                db,
+                clean_ride_id,
+                action="declined",
+                actor_id=uid,
+                actor_role="driver",
+                details={"remaining_eligible_count": len(remaining)},
+            )
+        except Exception:
+            pass
 
         # Rollback pendingRideRequest to "pending" so the next candidate driver can claim it
         pending_req_id = ride.get("pendingRequestId")
@@ -2543,11 +2676,13 @@ def trigger_ride_sos(
             raise ApiError("Ride not found.", 404)
         ride = snapshot.to_dict() or {}
 
-        if uid == ride.get("passenger_id"):
+        p_uid = ride.get("passenger_id") or ride.get("passengerId")
+        d_uid = ride.get("driver_id") or ride.get("driverId")
+        if uid == p_uid:
             role = "passenger"
             reporter_name = ride.get("passenger_name") or "Passenger"
             reporter_phone = ride.get("passenger_phone") or ""
-        elif uid == ride.get("driver_id"):
+        elif uid == d_uid:
             role = "driver"
             reporter_name = ride.get("driver_name") or "Driver"
             reporter_phone = ride.get("driver_phone") or ""
@@ -2579,6 +2714,18 @@ def trigger_ride_sos(
             {"sos_active": True, "sos_last_alert_id": alert_ref.id, "updatedAt": fb_firestore.SERVER_TIMESTAMP},
             merge=True,
         )
+        try:
+            from ..services.db import record_ride_audit
+            record_ride_audit(
+                db,
+                clean_ride_id,
+                action="sos_triggered",
+                actor_id=uid,
+                actor_role=role,
+                details={"alertId": alert_ref.id},
+            )
+        except Exception:
+            pass
         return {"ok": True, "alertId": alert_ref.id}
     except ApiError:
         raise
@@ -2978,39 +3125,6 @@ def _match_pending_requests_for_driver(
             pending_ref = db.collection("pendingRideRequests").document(req_id)
             claimed = False
 
-            @fb_firestore.transactional
-            def claim_tx(tx):
-                snap = pending_ref.get(transaction=tx)
-                if not snap.exists:
-                    return False
-                curr = snap.to_dict() or {}
-                if curr.get("status") != "pending" or curr.get("lockedByDriverId"):
-                    return False
-                if driver_id in (curr.get("rejected_driver_ids") or []):
-                    return False
-                
-                update_fields = {
-                    "status": "dispatching",
-                    "rideId": ride_ref.id,
-                    "lockedByDriverId": driver_id,
-                    "dispatchLockedAt": fb_firestore.SERVER_TIMESTAMP,
-                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                }
-                if curr.get("mode") == "schedule":
-                    update_fields["mode"] = "auto"
-                    update_fields["sourceMode"] = "schedule"
-                    
-                tx.update(pending_ref, update_fields)
-                return True
-
-            try:
-                claimed = claim_tx(db.transaction())
-            except Exception as e:
-                claimed = False
-
-            if not claimed:
-                continue  # Another worker claimed it; gracefully evaluate next candidate
-
             service = RIDE_SERVICES.get(driver_type, RIDE_SERVICES["bike"])
             fare_amount = float(data.get("fare") or 0)
             if req_is_share:
@@ -3065,8 +3179,40 @@ def _match_pending_requests_for_driver(
                 "search_status": "searching_nearby_drivers",
                 "createdAt": fb_firestore.SERVER_TIMESTAMP,
             }
-            ride_ref.set(ride_data)
-            pending_ref.update({"rideId": ride_ref.id})
+
+            @fb_firestore.transactional
+            def claim_tx(tx):
+                snap = pending_ref.get(transaction=tx)
+                if not snap.exists:
+                    return False
+                curr = snap.to_dict() or {}
+                if curr.get("status") != "pending" or curr.get("lockedByDriverId"):
+                    return False
+                if driver_id in (curr.get("rejected_driver_ids") or []):
+                    return False
+                
+                update_fields = {
+                    "status": "dispatching",
+                    "rideId": ride_ref.id,
+                    "lockedByDriverId": driver_id,
+                    "dispatchLockedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                }
+                if curr.get("mode") == "schedule":
+                    update_fields["mode"] = "auto"
+                    update_fields["sourceMode"] = "schedule"
+                    
+                tx.update(pending_ref, update_fields)
+                tx.set(ride_ref, ride_data)
+                return True
+
+            try:
+                claimed = claim_tx(db.transaction())
+            except Exception as e:
+                claimed = False
+
+            if not claimed:
+                continue  # Another worker claimed it; gracefully evaluate next candidate
 
             _log_demand_event(db, "pending_matched_auto", {
                 "requestId": req_id,
@@ -3492,7 +3638,8 @@ def submit_ride_feedback(
         ride = snapshot.to_dict() or {}
 
         # Authorisation: caller must be the passenger
-        if str(ride.get("passenger_id") or "") != uid:
+        passenger_uid = str(ride.get("passenger_id") or ride.get("passengerId") or "")
+        if passenger_uid != uid:
             raise ApiError("You are not authorised to submit feedback for this ride.", 403)
 
         # State guard: ride must be completed
@@ -3511,11 +3658,24 @@ def submit_ride_feedback(
             "experience": experience,
             "reasons": reasons,
             "passengerId": uid,
-            "driverId": str(ride.get("driver_id") or ""),
+            "driverId": str(ride.get("driver_id") or ride.get("driverId") or ""),
             "rideId": clean_ride_id,
         }
 
         ride_ref.update({"feedback": feedback_payload})
+
+        try:
+            from ..services.db import record_ride_audit
+            record_ride_audit(
+                db,
+                clean_ride_id,
+                action="feedback_submitted",
+                actor_id=uid,
+                actor_role="passenger",
+                details={"experience": experience, "reasons": reasons},
+            )
+        except Exception:
+            pass
 
         return {"ok": True, "rideId": clean_ride_id}
 

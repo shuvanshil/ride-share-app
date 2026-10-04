@@ -1,0 +1,376 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
+import pytest
+
+from api.core.errors import ApiError
+from api.services.db import (
+    driver_has_other_active_rides,
+    driver_has_open_share_trips,
+    update_driver_presence_synchronized,
+    sync_share_trip_passenger_ids,
+    record_ride_audit,
+    record_financial_ledger_entry,
+)
+from api.routers import rides, share
+
+
+class MockDocSnapshot:
+    def __init__(self, doc_id: str, data: dict, exists: bool = True):
+        self.id = doc_id
+        self._data = dict(data) if data is not None else {}
+        self.exists = exists
+
+    def to_dict(self):
+        return dict(self._data)
+
+
+class MockDocReference:
+    def __init__(self, collection_name: str, doc_id: str, store: dict):
+        self.collection_name = collection_name
+        self.id = doc_id
+        self._store = store
+
+    def get(self, transaction=None):
+        data = self._store.get((self.collection_name, self.id))
+        return MockDocSnapshot(self.id, data, exists=(data is not None))
+
+    def set(self, data, merge=False):
+        key = (self.collection_name, self.id)
+        if merge and key in self._store:
+            self._store[key].update(data)
+        else:
+            self._store[key] = dict(data)
+
+    def update(self, data):
+        key = (self.collection_name, self.id)
+        if key not in self._store:
+            self._store[key] = {}
+        self._store[key].update(data)
+
+    def delete(self):
+        self._store.pop((self.collection_name, self.id), None)
+
+
+class MockQuery:
+    def __init__(self, collection_name: str, store: dict, filters: list = None):
+        self.collection_name = collection_name
+        self.store = store
+        self.filters = filters or []
+
+    def where(self, field, op, val):
+        new_filters = list(self.filters)
+        new_filters.append((field, op, val))
+        return MockQuery(self.collection_name, self.store, new_filters)
+
+    def limit(self, count):
+        return self
+
+    def get(self, transaction=None):
+        return self.stream()
+
+    def stream(self, transaction=None):
+        matches = []
+        for (col, doc_id), data in self.store.items():
+            if col != self.collection_name:
+                continue
+            matched = True
+            for field, op, val in self.filters:
+                doc_val = data.get(field)
+                if op == "==" and doc_val != val:
+                    matched = False
+                    break
+                elif op == "in" and doc_val not in val:
+                    matched = False
+                    break
+            if matched:
+                matches.append(MockDocSnapshot(doc_id, data, exists=True))
+        return matches
+
+
+class MockCollection:
+    def __init__(self, collection_name: str, store: dict):
+        self.collection_name = collection_name
+        self.store = store
+
+    def document(self, doc_id: str = None):
+        if not doc_id:
+            import uuid
+            doc_id = f"auto_{uuid.uuid4().hex[:12]}"
+        return MockDocReference(self.collection_name, doc_id, self.store)
+
+    def where(self, field, op, val):
+        return MockQuery(self.collection_name, self.store, [(field, op, val)])
+
+    def stream(self):
+        return MockQuery(self.collection_name, self.store).stream()
+
+    def get(self, transaction=None):
+        return self.stream()
+
+
+class MockTransaction:
+    def __init__(self, store: dict):
+        self.store = store
+
+    def update(self, doc_ref, data):
+        doc_ref.update(data)
+
+    def set(self, doc_ref, data, merge=False):
+        doc_ref.set(data, merge=merge)
+
+    def delete(self, doc_ref):
+        doc_ref.delete()
+
+
+class MockFirestoreClient:
+    def __init__(self):
+        self.store = {}
+
+    def collection(self, name: str):
+        return MockCollection(name, self.store)
+
+    def transaction(self):
+        return MockTransaction(self.store)
+
+
+def test_driver_has_other_active_rides_logic() -> None:
+    db = MockFirestoreClient()
+    # No active rides
+    assert driver_has_other_active_rides(db, "drv_100") is False
+
+    # Add a completed ride
+    db.collection("rides").document("ride_1").set({
+        "driver_id": "drv_100",
+        "status": "completed",
+    })
+    assert driver_has_other_active_rides(db, "drv_100") is False
+
+    # Add an active ride
+    db.collection("rides").document("ride_2").set({
+        "driver_id": "drv_100",
+        "status": "en_route",
+    })
+    assert driver_has_other_active_rides(db, "drv_100") is True
+
+    # Exclude ride_2
+    assert driver_has_other_active_rides(db, "drv_100", exclude_ride_id="ride_2") is False
+
+
+def test_driver_has_open_share_trips_logic() -> None:
+    db = MockFirestoreClient()
+    assert driver_has_open_share_trips(db, "drv_100") is False
+
+    db.collection("shareTrips").document("trip_1").set({
+        "driverId": "drv_100",
+        "status": "completed",
+    })
+    assert driver_has_open_share_trips(db, "drv_100") is False
+
+    db.collection("shareTrips").document("trip_2").set({
+        "driverId": "drv_100",
+        "status": "active",
+    })
+    assert driver_has_open_share_trips(db, "drv_100") is True
+
+    # Exclude trip_2
+    assert driver_has_open_share_trips(db, "drv_100", exclude_trip_id="trip_2") is False
+
+
+def test_update_driver_presence_synchronized() -> None:
+    db = MockFirestoreClient()
+    update_driver_presence_synchronized(db, "drv_test", "busy")
+
+    u_data = db.collection("users").document("drv_test").get().to_dict()
+    dp_data = db.collection("driverPresence").document("drv_test").get().to_dict()
+    dmp_data = db.collection("driverMapPresence").document("drv_test").get().to_dict()
+
+    assert u_data["driverAvailability"] == "busy"
+    assert dp_data["driverAvailability"] == "busy"
+    assert dmp_data["driverAvailability"] == "busy"
+
+
+def test_sync_share_trip_passenger_ids() -> None:
+    db = MockFirestoreClient()
+    db.collection("rides").document("child_1").set({"passenger_id": "p1"})
+    db.collection("rides").document("child_2").set({"passengerId": "p2"})
+
+    db.collection("shareTrips").document("trip_main").set({
+        "childRideIds": ["child_1", "child_2"],
+        "status": "active",
+    })
+
+    sync_share_trip_passenger_ids(db, "trip_main")
+    trip_data = db.collection("shareTrips").document("trip_main").get().to_dict()
+    assert set(trip_data["passenger_ids"]) == {"p1", "p2"}
+    assert set(trip_data["passengerIds"]) == {"p1", "p2"}
+
+
+def test_record_ride_audit_and_ledger() -> None:
+    db = MockFirestoreClient()
+    record_ride_audit(
+        db,
+        "ride_999",
+        action="status_change",
+        actor_id="admin_1",
+        actor_role="admin",
+        details={"from": "accepted", "to": "completed"},
+    )
+    audits = [snap.to_dict() for snap in db.collection("ride_audits").stream()]
+    assert len(audits) == 1
+    assert audits[0]["rideId"] == "ride_999"
+    assert audits[0]["action"] == "status_change"
+    assert audits[0]["actorId"] == "admin_1"
+    assert audits[0]["actorRole"] == "admin"
+
+    record_financial_ledger_entry(
+        db,
+        entry_id="ledger_999",
+        amount_paise=15000,
+        entry_type="fare_split",
+        ride_id="ride_999",
+        details={"driver_cut": 120.0},
+    )
+    ledgers = [snap.to_dict() for snap in db.collection("financialLedger").stream()]
+    assert len(ledgers) == 1
+    assert ledgers[0]["entryId"] == "ledger_999"
+    assert ledgers[0]["entryType"] == "fare_split"
+    assert ledgers[0]["amountPaise"] == 15000
+    assert ledgers[0]["amountInr"] == 150.0
+
+
+@patch("firebase_admin.firestore.transactional", lambda fn: fn)
+@patch("api.routers.rides.get_admin_app")
+@patch("firebase_admin.firestore.client")
+def test_cancel_ride_unauthorized_user_forbidden(mock_client, mock_app) -> None:
+    db = MockFirestoreClient()
+    mock_client.return_value = db
+    mock_app.return_value = MagicMock()
+
+    db.collection("rides").document("ride_secure").set({
+        "status": "accepted",
+        "passenger_id": "legit_passenger",
+        "driver_id": "drv_1",
+        "createdAt": datetime.now(timezone.utc),
+    })
+
+    # Attacker tries to cancel
+    attacker = {"uid": "attacker_user", "role": "passenger"}
+    with pytest.raises(ApiError) as exc_info:
+        rides.cancel_passenger_ride(ride_id="ride_secure", user=attacker)
+
+    assert exc_info.value.status_code == 403
+    assert "not authorized" in exc_info.value.message.lower() or "only cancel your own" in exc_info.value.message.lower()
+
+
+@patch("firebase_admin.firestore.transactional", lambda fn: fn)
+@patch("api.routers.rides.get_admin_app")
+@patch("firebase_admin.firestore.client")
+def test_cancel_ride_driver_not_released_if_having_other_rides(mock_client, mock_app) -> None:
+    db = MockFirestoreClient()
+    mock_client.return_value = db
+    mock_app.return_value = MagicMock()
+
+    # Driver has another active ride
+    db.collection("rides").document("ride_active_other").set({
+        "status": "started",
+        "driver_id": "drv_busy",
+        "passenger_id": "other_pass",
+    })
+    db.collection("rides").document("ride_to_cancel").set({
+        "status": "accepted",
+        "passenger_id": "pass_cancel",
+        "driver_id": "drv_busy",
+        "createdAt": datetime.now(timezone.utc),
+    })
+    db.collection("users").document("drv_busy").set({
+        "role": "driver",
+        "verificationStatus": "approved",
+        "driverAvailability": "busy",
+        "desiredAvailability": "online",
+    })
+    db.collection("driverPresence").document("drv_busy").set({
+        "driverAvailability": "busy",
+        "desiredAvailability": "online",
+    })
+
+    res = rides.cancel_passenger_ride(ride_id="ride_to_cancel", user={"uid": "pass_cancel", "role": "passenger"})
+    assert res["ok"] is True
+
+    # Driver presence should REMAIN busy because ride_active_other is still started!
+    dp = db.collection("driverPresence").document("drv_busy").get().to_dict()
+    assert dp["driverAvailability"] == "busy"
+
+
+@patch("firebase_admin.firestore.transactional", lambda fn: fn)
+@patch("api.routers.rides.get_admin_app")
+@patch("firebase_admin.firestore.client")
+def test_reject_driver_ride_keeps_pending_for_other_candidates(mock_client, mock_app) -> None:
+    db = MockFirestoreClient()
+    mock_client.return_value = db
+    mock_app.return_value = MagicMock()
+
+    for drv_id in ["drv_1", "drv_2", "drv_3"]:
+        db.collection("users").document(drv_id).set({
+            "role": "driver",
+            "verificationStatus": "approved",
+            "name": f"Driver {drv_id}",
+        })
+
+    db.collection("rides").document("ride_multi").set({
+        "status": "pending",
+        "passenger_id": "pass_1",
+        "eligible_driver_ids": ["drv_1", "drv_2", "drv_3"],
+        "rejected_driver_ids": [],
+        "createdAt": datetime.now(timezone.utc),
+    })
+
+    # Driver 1 rejects
+    res1 = rides.reject_driver_ride(ride_id="ride_multi", user={"uid": "drv_1", "role": "driver"})
+    assert res1["ok"] is True
+
+    # Ride MUST still be pending because drv_2 and drv_3 are still eligible!
+    ride_snap = db.collection("rides").document("ride_multi").get().to_dict()
+    assert ride_snap["status"] == "pending"
+    assert "drv_1" in ride_snap["rejected_driver_ids"]
+
+    # Driver 2 rejects
+    res2 = rides.reject_driver_ride(ride_id="ride_multi", user={"uid": "drv_2", "role": "driver"})
+    assert res2["ok"] is True
+    ride_snap = db.collection("rides").document("ride_multi").get().to_dict()
+    assert ride_snap["status"] == "pending"
+    assert "drv_2" in ride_snap["rejected_driver_ids"]
+
+    # Driver 3 rejects (last eligible driver)
+    res3 = rides.reject_driver_ride(ride_id="ride_multi", user={"uid": "drv_3", "role": "driver"})
+    assert res3["ok"] is True
+    ride_snap = db.collection("rides").document("ride_multi").get().to_dict()
+    assert "drv_3" in ride_snap["rejected_driver_ids"]
+    assert ride_snap.get("status") == "declined"
+
+
+@patch("api.routers.share.get_admin_app")
+@patch("firebase_admin.firestore.client")
+def test_share_trip_strips_pii_fields(mock_client, mock_app) -> None:
+    db = MockFirestoreClient()
+    mock_client.return_value = db
+    mock_app.return_value = MagicMock()
+
+    db.collection("shareTrips").document("trip_pii").set({
+        "status": "open",
+        "route_name": "Route A to B",
+        "passenger_phone": "+919876543210",
+        "passenger_name": "Secret Person",
+        "passenger_email": "secret@example.com",
+        "coPassengers": [{"name": "Private"}],
+    })
+
+    res = share.get_share_trip("trip_pii", user={"uid": "any_authenticated_user"})
+    assert res["ok"] is True
+    trip = res["trip"]
+    assert "passenger_phone" not in trip
+    assert "passenger_name" not in trip
+    assert "passenger_email" not in trip
+    assert "coPassengers" not in trip
+    assert trip["route_name"] == "Route A to B"

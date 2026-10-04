@@ -284,8 +284,11 @@ def accept_share_offer(
     verification_pin = f"{secrets.randbelow(9000) + 1000:04d}"
 
     new_child_ids = child_ids + [clean_ride_id]
+    passenger_ids = list({*(parent_trip.get("passenger_ids") or []), str(ride.get("passenger_id") or ride.get("passengerId") or "")} - {""})
     parent_doc.reference.update({
         "childRideIds": new_child_ids,
+        "passenger_ids": passenger_ids,
+        "passengerIds": passenger_ids,
         "seatsUsed": current_seats + 1,
         "stopOrder": full_stops,
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
@@ -317,6 +320,29 @@ def accept_share_offer(
         "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
     })
+
+    busy_update = {
+        "driverAvailability": "busy",
+        "desiredAvailability": "online",
+        "isConnected": True,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    db.collection("users").document(uid).set(busy_update, merge=True)
+    db.collection("driverPresence").document(uid).set(busy_update, merge=True)
+    db.collection("driverMapPresence").document(uid).set(busy_update, merge=True)
+
+    try:
+        from ..services.db import record_ride_audit
+        record_ride_audit(
+            db,
+            clean_ride_id,
+            action="accepted_share_offer",
+            actor_id=uid,
+            actor_role="driver",
+            details={"parentTripId": parent_trip_id, "seatOrder": current_seats + 1},
+        )
+    except Exception:
+        pass
 
     for cr in existing_child_rides:
         cid = str(cr.get("ride_id") or "")
@@ -782,4 +808,8 @@ def get_share_trip(
             trip_snap = trip_ref.get()
             trip_data = trip_snap.to_dict() or {}
 
-    return {"ok": True, "trip": trip_data}
+    sanitized = dict(trip_data)
+    for field in ["passenger_phone", "passenger_name", "passenger_email", "coPassengers"]:
+        sanitized.pop(field, None)
+
+    return {"ok": True, "trip": sanitized}

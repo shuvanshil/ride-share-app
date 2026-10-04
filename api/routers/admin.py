@@ -349,7 +349,7 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     rides_delta_percent = round(((today_total - yesterday_rides_count) / yesterday_rides_count * 100), 1) if yesterday_rides_count > 0 else (12.4 if today_total > 0 else 0.0)
 
     total_share_rides = _safe_count(rides_coll.where("rideType", "==", "share"))
-    completed_share_trips = [_doc_dict(d) for d in _stream(db.collection("shareTrips").where("status", "==", "completed"))]
+    completed_share_trips = [_doc_dict(d) for d in _stream(db.collection("shareTrips").where("status", "==", "completed").limit(100))]
     total_completed_share_trips = len(completed_share_trips)
     if total_completed_share_trips > 0:
         total_riders = sum(len(t.get("childRideIds") or []) + int(t.get("remoteSeq") or 0) for t in completed_share_trips)
@@ -989,17 +989,21 @@ def update_ride(
         driver_id = str(before.get("driver_id") or "").strip()
         if driver_id:
             try:
-                drv_doc = db.collection("users").document(driver_id).get()
-                drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
-                avail_status = "offline"
-                if (
-                    str(drv_profile.get("desiredAvailability") or "").strip().lower() != "offline"
-                    and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
-                ):
-                    avail_status = "searching"
-                db.collection("users").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
-                db.collection("driverPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
-                db.collection("driverMapPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+                from ..services.db import driver_has_open_share_trips, driver_has_other_active_rides
+                has_active = driver_has_other_active_rides(db, driver_id, exclude_ride_id=ride_id)
+                has_share = driver_has_open_share_trips(db, driver_id)
+                if not has_active and not has_share:
+                    drv_doc = db.collection("users").document(driver_id).get()
+                    drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
+                    avail_status = "offline"
+                    if (
+                        str(drv_profile.get("desiredAvailability") or "").strip().lower() != "offline"
+                        and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
+                    ):
+                        avail_status = "searching"
+                    db.collection("users").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+                    db.collection("driverPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+                    db.collection("driverMapPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
             except Exception:
                 pass
     elif body.action == "update_fare":
@@ -1025,6 +1029,18 @@ def update_ride(
 
     ref.set(updates, merge=True)
     write_audit_log(admin_user, f"ride.{body.action}", "ride", ride_id, before, updates, body.notes or "")
+    try:
+        from ..services.db import record_ride_audit
+        record_ride_audit(
+            db,
+            ride_id,
+            action=f"admin_{body.action}",
+            actor_id=admin_user.get("uid") or "admin",
+            actor_role="admin",
+            details={"action": body.action, "notes": body.notes or ""},
+        )
+    except Exception:
+        pass
     return {"ok": True, "ride": _doc_dict(ref.get())}
 
 

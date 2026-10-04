@@ -56,6 +56,8 @@ service cloud.firestore {
         && (resource == null
           || ('driverId' in resource.data && resource.data.driverId == request.auth.uid)
           || ('driver_id' in resource.data && resource.data.driver_id == request.auth.uid)
+          || ('passenger_ids' in resource.data && request.auth.uid in resource.data.passenger_ids)
+          || ('passengerIds' in resource.data && request.auth.uid in resource.data.passengerIds)
           || isAdmin());
       allow create, update, delete: if false;
     }
@@ -260,6 +262,20 @@ service cloud.firestore {
     // Administrative Roles & Permissions:
     // Admin read only; writes managed by FastAPI Admin SDK.
     match /adminRoles/{uid} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Ride Operations Audit Trail:
+    // Admin read only; writes managed by FastAPI Admin SDK.
+    match /ride_audits/{auditId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Financial Ledger:
+    // Admin read only; writes managed by FastAPI Admin SDK.
+    match /financialLedger/{ledgerId} {
       allow read: if isAdmin();
       allow create, update, delete: if false;
     }
