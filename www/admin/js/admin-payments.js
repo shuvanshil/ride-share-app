@@ -424,7 +424,11 @@ async function handleResetAllPayments(btn) {
     });
 }
 
+let paymentsInitialized = false;
 export function initAdminPayments() {
+    if (paymentsInitialized) return;
+    paymentsInitialized = true;
+
     const statusFilter = document.getElementById('admin-payment-status-filter');
     const searchInput = document.getElementById('admin-payment-search');
 
@@ -461,28 +465,11 @@ export function initAdminPayments() {
 
 let cachedPassengerWallets = [];
 let cachedDriverSettlements = [];
+let walletCreditInitialized = false;
 
 export function initAdminWalletCredit() {
-    // 1. Top Tabs (Service Fee vs Wallet Credit)
-    const tabServiceFee = document.getElementById('admin-tab-btn-service-fee');
-    const tabWalletCredit = document.getElementById('admin-tab-btn-wallet-credit');
-    const paneServiceFee = document.getElementById('admin-pane-service-fee');
-    const paneWalletCredit = document.getElementById('admin-pane-wallet-credit');
-
-    tabServiceFee?.addEventListener('click', () => {
-        tabServiceFee.classList.add('active');
-        tabWalletCredit?.classList.remove('active');
-        paneServiceFee?.classList.remove('d-none');
-        paneWalletCredit?.classList.add('d-none');
-    });
-
-    tabWalletCredit?.addEventListener('click', () => {
-        tabWalletCredit.classList.add('active');
-        tabServiceFee?.classList.remove('active');
-        paneWalletCredit?.classList.remove('d-none');
-        paneServiceFee?.classList.add('d-none');
-        loadAdminPassengerWallets();
-    });
+    if (walletCreditInitialized) return;
+    walletCreditInitialized = true;
 
     // 2. Sub Tabs (Passenger vs Driver)
     const subtabPassenger = document.getElementById('admin-subtab-passenger');

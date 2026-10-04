@@ -310,13 +310,57 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     month_start = today_start - timedelta(days=30)
 
     drivers_coll = db.collection("users").where("role", "==", "driver")
-    total_drivers = _safe_count(drivers_coll)
-    pending_drivers = _safe_count(drivers_coll.where("verificationStatus", "==", "pending_review"))
-    suspended_drivers = _safe_count(drivers_coll.where("verificationStatus", "==", "suspended"))
-    blocked_drivers = _safe_count(drivers_coll.where("verificationStatus", "==", "blocked"))
-    active_online_drivers = _safe_count(drivers_coll.where("driverAvailability", "in", ["online", "searching"]))
-    busy_drivers = _safe_count(drivers_coll.where("driverAvailability", "==", "busy"))
-    offline_drivers = max(0, total_drivers - active_online_drivers - busy_drivers)
+    driver_docs = [_doc_dict(d) for d in _stream(drivers_coll)]
+    total_drivers = len(driver_docs)
+
+    stale_threshold = now - timedelta(minutes=15)
+    pending_drivers = 0
+    suspended_drivers = 0
+    blocked_drivers = 0
+    active_online_drivers = 0
+    busy_drivers = 0
+    offline_drivers = 0
+
+    for d in driver_docs:
+        v_status = str(d.get("verificationStatus") or "pending_review").lower()
+        if v_status == "pending_review":
+            pending_drivers += 1
+        elif v_status == "suspended":
+            suspended_drivers += 1
+        elif v_status == "blocked":
+            blocked_drivers += 1
+
+        # Only approved drivers can be online or busy; unapproved drivers are offline
+        if v_status != "approved":
+            offline_drivers += 1
+            continue
+
+        raw_avail = str(d.get("driverAvailability") or "offline").lower()
+        last_seen = d.get("lastLocationAt") or d.get("lastSeenAt") or d.get("lastAppSeenAt")
+        if isinstance(last_seen, str):
+            try:
+                last_seen = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+            except Exception:
+                last_seen = None
+
+        is_fresh = False
+        if isinstance(last_seen, datetime):
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+            is_fresh = (last_seen >= stale_threshold)
+        elif raw_avail in ("online", "searching", "busy") and d.get("isConnected"):
+            updated_at = d.get("updatedAt")
+            if isinstance(updated_at, datetime):
+                if updated_at.tzinfo is None:
+                    updated_at = updated_at.replace(tzinfo=timezone.utc)
+                is_fresh = (updated_at >= stale_threshold)
+
+        if raw_avail == "busy" and is_fresh:
+            busy_drivers += 1
+        elif raw_avail in ("online", "searching") and is_fresh:
+            active_online_drivers += 1
+        else:
+            offline_drivers += 1
 
     passengers_coll = db.collection("users").where("role", "==", "passenger")
     total_passengers = _safe_count(passengers_coll)
@@ -372,123 +416,157 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     recent_rides_docs = [_doc_dict(d) for d in _stream(recent_rides_query)]
     recent_rides = _backfill_driver_names(recent_rides_docs)
 
-    # Collect real recent activity events
-    recent_activity: list[dict[str, Any]] = []
+    # Collect real recent activity events across 6 distinct categories
+    all_activities: list[dict[str, Any]] = []
 
-    # 1. Recently completed/status-changed rides
-    for r in recent_rides_docs[:8]:
-        r_id = str(r.get("id") or "")
-        short_id = f"#LP{r_id[-5:].upper()}" if len(r_id) >= 5 else f"#{r_id}"
-        st = str(r.get("status") or "").lower()
-        t = r.get("updatedAt") or r.get("createdAt")
+    # 1. New Driver Registrations
+    recent_drivers_query = users_coll.where("role", "==", "driver").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
+    for u in [_doc_dict(d) for d in _stream(recent_drivers_query)]:
+        name = u.get("name") or u.get("phone") or "Driver"
+        t = u.get("createdAt")
         t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-        if st == "completed":
-            fare = r.get("fare") or 0
-            recent_activity.append({
-                "text": f"Ride {short_id} completed (₹{fare})",
+        all_activities.append({
+            "text": f"New driver registered: {name}",
+            "color": "primary",
+            "type": "driver_registered",
+            "at": t_iso,
+        })
+
+    # 2. New Passenger Registrations
+    recent_passengers_query = users_coll.where("role", "==", "passenger").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
+    for u in [_doc_dict(d) for d in _stream(recent_passengers_query)]:
+        name = u.get("name") or u.get("phone") or "Passenger"
+        t = u.get("createdAt")
+        t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+        all_activities.append({
+            "text": f"New passenger registered: {name}",
+            "color": "primary",
+            "type": "passenger_registered",
+            "at": t_iso,
+        })
+
+    # 3. Ride Completed
+    try:
+        completed_rides_query = rides_coll.where("status", "==", "completed").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
+        for r in [_doc_dict(d) for d in _stream(completed_rides_query)]:
+            r_id = str(r.get("id") or "")
+            short_id = f"#LP{r_id[-5:].upper()}" if len(r_id) >= 5 else f"#{r_id}"
+            t = r.get("completedAt") or r.get("updatedAt") or r.get("createdAt")
+            t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+            fare = r.get("fare")
+            fare_txt = f" (₹{fare})" if fare else ""
+            all_activities.append({
+                "text": f"Ride {short_id} completed{fare_txt}",
                 "color": "success",
                 "type": "ride_completed",
                 "at": t_iso,
             })
-        elif st == "accepted" or st == "started":
-            pickup = r.get("pickup_name") or r.get("pickupName") or "pickup"
-            drop = r.get("drop_name") or r.get("dropName") or "drop"
-            recent_activity.append({
-                "text": f"Ride {short_id} started \u00b7 {pickup} \u2192 {drop}",
-                "color": "primary",
-                "type": "ride_started",
-                "at": t_iso,
-            })
-        elif st.startswith("cancelled"):
-            recent_activity.append({
-                "text": f"Ride {short_id} cancelled",
-                "color": "danger",
-                "type": "ride_cancelled",
-                "at": t_iso,
-            })
+    except Exception:
+        pass
 
-    # 2. Recent users (registrations & approvals)
-    recent_users_query = users_coll.order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(8)
-    for u in [_doc_dict(d) for d in _stream(recent_users_query)]:
-        role = u.get("role")
-        name = u.get("name") or u.get("phone") or "User"
-        t = u.get("createdAt")
-        t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-        if role == "driver":
-            if u.get("verificationStatus") == "approved":
-                recent_activity.append({
-                    "text": f"Driver {name} approved",
-                    "color": "primary",
-                    "type": "driver_approved",
-                    "at": t_iso,
-                })
-            else:
-                recent_activity.append({
-                    "text": f"New driver registered: {name}",
-                    "color": "primary",
-                    "type": "driver_registered",
-                    "at": t_iso,
-                })
-        elif role == "passenger":
-            recent_activity.append({
-                "text": f"New passenger registered: {name}",
-                "color": "primary",
-                "type": "passenger_registered",
-                "at": t_iso,
-            })
-
-    # 3. Recent driver payments
+    # 4. Ride Cancelled
     try:
-        recent_pmts_query = db.collection("driverPayments").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(5)
+        cancelled_rides_query = rides_coll.order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(30)
+        c_count = 0
+        for r in [_doc_dict(d) for d in _stream(cancelled_rides_query)]:
+            st = str(r.get("status") or r.get("final_status") or r.get("trip_status") or "").lower()
+            if st.startswith("cancel") or r.get("cancelled") or r.get("is_cancelled"):
+                r_id = str(r.get("id") or "")
+                short_id = f"#LP{r_id[-5:].upper()}" if len(r_id) >= 5 else f"#{r_id}"
+                t = r.get("cancelledAt") or r.get("finalStatusAt") or r.get("updatedAt") or r.get("createdAt")
+                t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+                all_activities.append({
+                    "text": f"Ride {short_id} cancelled",
+                    "color": "danger",
+                    "type": "ride_cancelled",
+                    "at": t_iso,
+                })
+                c_count += 1
+                if c_count >= 15:
+                    break
+    except Exception:
+        pass
+
+    # 5. Driver Weekly Payment Completed
+    try:
+        recent_pmts_query = (
+            db.collection("driverPayments")
+            .where("status", "==", "approved")
+            .order_by("submittedAt", direction=fb_firestore.Query.DESCENDING)
+            .limit(15)
+        )
         for p in [_doc_dict(d) for d in _stream(recent_pmts_query)]:
-            t = p.get("createdAt")
+            t = p.get("verifiedAt") or p.get("updatedAt") or p.get("submittedAt") or p.get("createdAt")
             t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+            drv_name = p.get("driverName") or p.get("name") or "Driver"
             amt = p.get("amount") or 0
-            st = p.get("status")
-            if st == "approved":
-                recent_activity.append({
-                    "text": f"Driver payment approved (₹{amt})",
-                    "color": "success",
-                    "type": "payment_approved",
-                    "at": t_iso,
-                })
-            elif st == "submitted":
-                recent_activity.append({
-                    "text": f"Driver payment submitted (₹{amt}) awaiting approval",
-                    "color": "warning",
-                    "type": "payment_submitted",
-                    "at": t_iso,
-                })
+            all_activities.append({
+                "text": f"{drv_name} completed weekly payment (₹{amt})",
+                "color": "success",
+                "type": "payment_completed",
+                "at": t_iso,
+            })
     except Exception:
-        pass
+        try:
+            for p in [_doc_dict(d) for d in _stream(db.collection("driverPayments").order_by("submittedAt", direction=fb_firestore.Query.DESCENDING).limit(20))]:
+                if p.get("status") == "approved":
+                    t = p.get("verifiedAt") or p.get("updatedAt") or p.get("submittedAt") or p.get("createdAt")
+                    t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
+                    drv_name = p.get("driverName") or p.get("name") or "Driver"
+                    amt = p.get("amount") or 0
+                    all_activities.append({
+                        "text": f"{drv_name} completed weekly payment (₹{amt})",
+                        "color": "success",
+                        "type": "payment_completed",
+                        "at": t_iso,
+                    })
+        except Exception:
+            pass
 
-    # 4. Recent coupons
+    # 6. SOS Alerts
     try:
-        recent_cpns_query = db.collection("coupons").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(5)
-        for c in [_doc_dict(d) for d in _stream(recent_cpns_query)]:
-            t = c.get("createdAt")
+        recent_sos_query = db.collection("sosAlerts").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
+        for s in [_doc_dict(d) for d in _stream(recent_sos_query)]:
+            t = s.get("createdAt") or s.get("triggeredAt")
             t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-            code = c.get("code") or "PROMO"
-            if c.get("active") is False:
-                recent_activity.append({
-                    "text": f"Coupon {code} deactivated",
-                    "color": "warning",
-                    "type": "coupon_deactivated",
-                    "at": t_iso,
-                })
-            else:
-                recent_activity.append({
-                    "text": f"Coupon {code} created",
-                    "color": "success",
-                    "type": "coupon_created",
-                    "at": t_iso,
-                })
+            ride_ref = s.get("rideId") or s.get("ride_id") or ""
+            user_lbl = s.get("userName") or s.get("passengerName") or s.get("phone") or "Passenger"
+            alert_label = f"Ride #{str(ride_ref)[-5:].upper()}" if ride_ref else user_lbl
+            all_activities.append({
+                "text": f"New SOS alert: {alert_label}",
+                "color": "danger",
+                "type": "sos_alert",
+                "at": t_iso,
+            })
     except Exception:
         pass
 
-    # Sort all recent real events by 'at' descending and take top 12
-    recent_activity.sort(key=lambda x: str(x.get("at") or ""), reverse=True)
-    recent_activity = recent_activity[:12]
+    # Sort all candidates by timestamp descending
+    all_activities.sort(key=lambda x: str(x.get("at") or ""), reverse=True)
+
+    # Diversity limiter: max 10 per activity type, feed limit up to 25
+    type_counts: dict[str, int] = {}
+    diverse_activities: list[dict[str, Any]] = []
+    overflow_activities: list[dict[str, Any]] = []
+
+    for act in all_activities:
+        act_type = act.get("type", "other")
+        count = type_counts.get(act_type, 0)
+        if count < 10:
+            diverse_activities.append(act)
+            type_counts[act_type] = count + 1
+            if len(diverse_activities) >= 25:
+                break
+        else:
+            overflow_activities.append(act)
+
+    if len(diverse_activities) < 25 and overflow_activities:
+        for act in overflow_activities:
+            diverse_activities.append(act)
+            if len(diverse_activities) >= 25:
+                break
+
+    recent_activity = diverse_activities[:25]
 
     # Hourly ride activity breakdown for today
     hourly_activity: dict[str, int] = {"6 AM": 0, "9 AM": 0, "12 PM": 0, "3 PM": 0, "6 PM": 0, "9 PM": 0}
@@ -546,6 +624,7 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             "openSafetyReports": open_reports,
         },
         "recentActivity": recent_activity,
+        "activities": recent_activity,
         "userGrowth": {
             "today": new_users_today,
             "thisWeek": new_users_week or new_users_today,
@@ -639,7 +718,7 @@ def _sanitize_driver(profile: dict[str, Any]) -> dict[str, Any]:
         "suspendedAt": profile.get("suspendedAt"),
         "blockedAt": profile.get("blockedAt"),
         "reappliedAt": profile.get("reappliedAt"),
-        "driverAvailability": profile.get("driverAvailability"),
+        "driverAvailability": profile.get("driverAvailability") if (profile.get("verificationStatus") == "approved") else "offline",
         "vehicleType": profile.get("vehicleType") or profile.get("vehicle_type"),
         "vehicleNumber": profile.get("vehicleNumber") or profile.get("vehicle_number"),
         "vehicleModel": profile.get("vehicleModel") or profile.get("vehicle_model"),

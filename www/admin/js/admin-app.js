@@ -5,7 +5,7 @@ import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.
 import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
 import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
-import { initAdminPayments, loadAdminPayments } from "./admin-payments.js";
+import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js";
 import { loadPermissions, initPermissionsModal } from "./admin-permissions.js";
 import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js";
 import { initAdminReports, loadAdminReports } from "./admin-reports.js";
@@ -52,14 +52,15 @@ async function withButtonSpinner(btn, actionFn) {
 }
 
 // ---------------------------------------------------------------------
-// Mobile Device Detection (Requirement 7)
+// Mobile Device Detection (Requirement 6 & 7)
 // ---------------------------------------------------------------------
 
 function checkMobileDevice() {
-    const isMobile = window.innerWidth < 992 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const modal = $("modal-mobile-warning");
     if (!modal) return;
-    if (isMobile) {
+    // Allow access if Desktop mode is enabled on mobile or desktop viewport (window.innerWidth >= 900)
+    const isDesktopMode = window.innerWidth >= 900;
+    if (!isDesktopMode) {
         modal.classList.remove("d-none");
         modal.style.display = "block";
     } else {
@@ -198,7 +199,7 @@ function isSectionAllowed(section) {
         return section !== "permissions";
     }
     if (currentAdminRole === "manager") {
-        const allowed = new Set(["dashboard", "drivers", "payments", "safety"]);
+        const allowed = new Set(["dashboard", "drivers", "payments", "wallet-payments", "safety"]);
         return allowed.has(section);
     }
     return false;
@@ -225,6 +226,7 @@ watchAdminAuth(async (user) => {
         loadSection("dashboard");
         refreshSafetyBadge();
         initAdminPayments();
+        initAdminWalletCredit();
         initAdminCoupons();
         initAdminReports();
         initPermissionsModal();
@@ -276,6 +278,7 @@ async function handleAdminLogin() {
             loadSection("dashboard");
             refreshSafetyBadge();
             initAdminPayments();
+            initAdminWalletCredit();
             initAdminCoupons();
             initAdminReports();
             initPermissionsModal();
@@ -333,9 +336,9 @@ function onFeedEvent(event) {
         item.className = "admin-feed-item";
         item.innerHTML = `<span class="admin-feed-dot admin-feed-dot-${eventColor(event.type)}"></span>
             <span>${escapeHtml(event.text)}</span>
-            <span class="admin-feed-time">${new Date(event.at).toLocaleTimeString()}</span>`;
+            <span class="admin-feed-time">${new Date(event.at || Date.now()).toLocaleTimeString()}</span>`;
         list.prepend(item);
-        while (list.children.length > 60) list.lastChild.remove();
+        while (list.children.length > 25) list.lastChild.remove();
     }
 
     // Mirror to dashboard Recent Activity feed
@@ -345,7 +348,7 @@ function onFeedEvent(event) {
         at: event.at || Date.now(),
         timeStr: "just now"
     });
-    if (recentActivityItems.length > 20) recentActivityItems.pop();
+    if (recentActivityItems.length > 25) recentActivityItems.pop();
     renderRecentActivityWidget();
 
     if ($("admin-feed-panel")?.classList.contains("is-open")) return;
@@ -358,9 +361,11 @@ function onFeedEvent(event) {
 }
 
 function eventColor(type) {
+    if (!type) return "primary";
     if (type.startsWith("driver_offline") || type.includes("suspended") || type.includes("blocked")) return "warn";
-    if (type.includes("cancelled")) return "danger";
-    return "ok";
+    if (type.includes("cancelled") || type.includes("sos")) return "danger";
+    if (type.includes("completed")) return "ok";
+    return "primary";
 }
 
 $("admin-feed-toggle")?.addEventListener("click", () => {
@@ -439,6 +444,10 @@ function loadSection(name) {
     if (name === "dashboard") loadDashboard();
     if (name === "drivers") loadDrivers(true);
     if (name === "payments") loadAdminPayments();
+    if (name === "wallet-payments") {
+        initAdminWalletCredit();
+        loadAdminPassengerWallets();
+    }
     if (name === "coupons") loadAdminCoupons();
     if (name === "safety") loadSafety();
     if (name === "ride-history") loadHistory(true);
@@ -597,7 +606,7 @@ function renderDriverAvailabilityDonut(online = 0, busy = 0, offline = 0) {
     const canvas = $("driver-availability-donut");
     if (!canvas || !window.Chart) return;
 
-    const total = online + busy + offline || (online ? online : 1);
+    const total = online + busy + offline;
     const availablePct = total ? Math.round((online / total) * 100) : 0;
     const busyPct = total ? Math.round((busy / total) * 100) : 0;
     const offlinePct = total ? Math.max(0, 100 - availablePct - busyPct) : 0;
@@ -622,17 +631,28 @@ function renderDriverAvailabilityDonut(online = 0, busy = 0, offline = 0) {
     }
 
     const ctx = canvas.getContext("2d");
-    driverDonutChartInstance = new window.Chart(ctx, {
-        type: "doughnut",
-        data: {
+    const chartData = (total === 0)
+        ? {
+            labels: ["No drivers"],
+            datasets: [{
+                data: [1],
+                backgroundColor: ["#e2e8f0"],
+                borderWidth: 0
+            }]
+        }
+        : {
             labels: ["Available", "On ride", "Offline"],
             datasets: [{
-                data: [online || 1, busy, offline],
+                data: [online, busy, offline],
                 backgroundColor: ["#2fb344", "#206bc4", "#f59f00"],
                 borderWidth: 0,
                 hoverOffset: 4
             }]
-        },
+        };
+
+    driverDonutChartInstance = new window.Chart(ctx, {
+        type: "doughnut",
+        data: chartData,
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -658,7 +678,7 @@ function renderRecentActivityWidget() {
         return;
     }
 
-    list.innerHTML = recentActivityItems.slice(0, 6).map((item) => `
+    list.innerHTML = recentActivityItems.slice(0, 7).map((item) => `
         <div class="recent-act-item">
             <div class="d-flex align-items-center gap-2 overflow-hidden">
                 <span class="status-dot status-dot-animated bg-${item.color || 'primary'} flex-shrink-0"></span>
@@ -1054,9 +1074,22 @@ async function loadDashboard() {
             renderRideActivityChart(data.rideActivity?.hourly || {}, "30d");
         });
 
-        // 5. Recent Activity Feed - use real data from server API
-        recentActivityItems = Array.isArray(data.recentActivity) ? [...data.recentActivity] : [];
+        // 5. Recent Activity Feed - use real data from server API (up to 25 items)
+        const incomingActivities = Array.isArray(data.recentActivity) ? data.recentActivity : (Array.isArray(data.activities) ? data.activities : []);
+        recentActivityItems = incomingActivities.slice(0, 25);
         renderRecentActivityWidget();
+
+        // Populate Activity feed offcanvas panel
+        const feedList = $("admin-feed-list");
+        if (feedList && recentActivityItems.length > 0) {
+            feedList.innerHTML = recentActivityItems.map(act => `
+                <div class="admin-feed-item">
+                    <span class="admin-feed-dot admin-feed-dot-${eventColor(act.type || '')}"></span>
+                    <span>${escapeHtml(act.text)}</span>
+                    <span class="admin-feed-time">${formatTimeAgo(act.at)}</span>
+                </div>
+            `).join("");
+        }
 
         $("btn-recent-act-view-all")?.addEventListener("click", () => {
             $("admin-feed-toggle")?.click();

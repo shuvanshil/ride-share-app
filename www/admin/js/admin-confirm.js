@@ -1,7 +1,29 @@
 // Reusable Tabler Confirmation Modal Dialog
 
-export function showTablerConfirm(message, { title = "Are you sure?", variant = "primary", confirmText = "Confirm", cancelText = "Cancel" } = {}) {
+export function showTablerConfirm(messageOrOptions, options = {}) {
     return new Promise((resolve) => {
+        let message = "";
+        let mergedOptions = {};
+
+        if (typeof messageOrOptions === "object" && messageOrOptions !== null) {
+            mergedOptions = { ...messageOrOptions, ...options };
+            message = mergedOptions.message || mergedOptions.text || "";
+        } else {
+            message = String(messageOrOptions || "");
+            mergedOptions = { ...options };
+        }
+
+        const title = mergedOptions.title || "Are you sure?";
+        const confirmText = mergedOptions.confirmText || "Confirm";
+        const cancelText = mergedOptions.cancelText || "Cancel";
+        
+        let variant = mergedOptions.variant || "primary";
+        if (mergedOptions.confirmBtnClass?.includes("danger") || mergedOptions.btnClass?.includes("danger")) {
+            variant = "danger";
+        } else if (mergedOptions.confirmBtnClass?.includes("warning") || mergedOptions.btnClass?.includes("warning")) {
+            variant = "warning";
+        }
+
         const modal = document.getElementById("admin-confirm-modal");
         const statusEl = document.getElementById("admin-confirm-status");
         const iconEl = document.getElementById("admin-confirm-icon");
@@ -16,10 +38,16 @@ export function showTablerConfirm(message, { title = "Are you sure?", variant = 
             return;
         }
 
-        titleEl.textContent = title;
-        textEl.textContent = message;
-        proceedBtn.textContent = confirmText;
-        cancelBtn.textContent = cancelText;
+        if (titleEl) titleEl.textContent = title;
+        if (textEl) {
+            if (/<[a-z][\s\S]*>/i.test(message)) {
+                textEl.innerHTML = message;
+            } else {
+                textEl.textContent = message;
+            }
+        }
+        if (proceedBtn) proceedBtn.textContent = confirmText;
+        if (cancelBtn) cancelBtn.textContent = cancelText;
 
         const colorMap = {
             danger: { status: "bg-danger", icon: "ti-alert-triangle text-danger", btn: "btn-danger" },
@@ -29,9 +57,9 @@ export function showTablerConfirm(message, { title = "Are you sure?", variant = 
         };
         const style = colorMap[variant] || colorMap.primary;
 
-        statusEl.className = `modal-status ${style.status}`;
-        iconEl.innerHTML = `<i class="ti ${style.icon}" style="font-size: 3rem;"></i>`;
-        proceedBtn.className = `btn ${style.btn} w-100`;
+        if (statusEl) statusEl.className = `modal-status ${style.status}`;
+        if (iconEl) iconEl.innerHTML = `<i class="ti ${style.icon}" style="font-size: 3rem;"></i>`;
+        if (proceedBtn) proceedBtn.className = `btn ${style.btn} w-100`;
 
         function cleanup() {
             modal.style.display = "none";
@@ -53,7 +81,7 @@ export function showTablerConfirm(message, { title = "Are you sure?", variant = 
 
         proceedBtn.addEventListener("click", onProceed);
         cancelBtn.addEventListener("click", onCancel);
-        closeBtn?.removeEventListener("click", onCancel);
+        closeBtn?.addEventListener("click", onCancel);
 
         modal.style.display = "block";
         modal.classList.remove("d-none");

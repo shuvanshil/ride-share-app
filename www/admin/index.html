@@ -97,7 +97,7 @@
                 </span>
                 <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
                     <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm rounded-pill d-flex align-items-center px-3" type="button">
-                        <i class="ti ti-activity me-1 text-primary"></i> Live Feed 
+                        <i class="ti ti-activity me-1 text-primary"></i> Activity Feed 
                         <span id="admin-feed-badge" class="badge bg-red text-white ms-2 d-none">0</span>
                     </button>
                     <!-- User Profile Icon with Floating Dropdown -->
@@ -164,9 +164,15 @@
                             <li class="nav-header text-uppercase text-secondary fw-bold px-3 pt-3 pb-1" style="font-size: 0.68rem; letter-spacing: 0.05em;">Transactions</li>
                             <li class="nav-item" id="nav-item-payments">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="payments" type="button">
-                                    <i class="ti ti-credit-card nav-link-icon me-2"></i>
-                                    <span class="nav-link-title">Payments</span>
+                                    <i class="ti ti-receipt nav-link-icon me-2"></i>
+                                    <span class="nav-link-title">Fee Payments</span>
                                     <span id="admin-payments-nav-badge" class="badge bg-red text-white rounded-pill ms-auto d-none">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item" id="nav-item-wallet-payments">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="wallet-payments" type="button">
+                                    <i class="ti ti-wallet nav-link-icon me-2 text-success"></i>
+                                    <span class="nav-link-title">Wallet Payments</span>
                                 </button>
                             </li>
                             <li class="nav-item" id="nav-item-ride-history">
@@ -399,6 +405,8 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
                         <!-- Share Rides KPI Row -->
                         <div class="row row-cards mb-3">
                             <div class="col-sm-6 col-lg-6">
@@ -926,29 +934,9 @@
                         </div>
                     </section>
 
-                    <!-- Payments -->
+                    <!-- Fee Payments -->
                     <section id="section-payments" class="admin-section d-none">
-                        <!-- Top Tabs: Service Fee Payment vs Wallet Credit -->
-                        <div class="card mb-3 border-0 shadow-xs">
-                            <div class="card-body p-2">
-                                <ul class="nav nav-pills" id="admin-payments-top-tabs" role="tablist">
-                                    <li class="nav-item">
-                                        <button class="nav-link active fw-bold" id="admin-tab-btn-service-fee" type="button">
-                                            <i class="ti ti-receipt me-1"></i> Service Fee Payment
-                                        </button>
-                                    </li>
-                                    <li class="nav-item">
-                                        <button class="nav-link fw-bold" id="admin-tab-btn-wallet-credit" type="button">
-                                            <i class="ti ti-wallet me-1"></i> Wallet Credit
-                                        </button>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        <!-- 1) Service Fee Payment Sub-pane -->
-                        <div id="admin-pane-service-fee">
-                            <div class="page-header d-print-none mb-3">
+                        <div class="page-header d-print-none mb-3">
                                 <div class="row align-items-center gap-2">
                                     <div class="col">
                                         <div class="page-pretitle">Finance</div>
@@ -1063,10 +1051,11 @@
                                     <div class="text-secondary small">Loading payment submissions...</div>
                                 </div>
                             </div>
-                        </div>
+                    </section>
 
-                        <!-- 2) Wallet Credit Sub-pane -->
-                        <div id="admin-pane-wallet-credit" class="d-none">
+                    <!-- Wallet Payments -->
+                    <section id="section-wallet-payments" class="admin-section d-none">
+                        <div id="admin-pane-wallet-credit">
                             <div class="page-header d-print-none mb-3">
                                 <div class="row align-items-center gap-2">
                                     <div class="col">
@@ -1601,7 +1590,7 @@
     <aside id="admin-feed-panel" class="admin-feed-panel offcanvas offcanvas-end border-start shadow-lg">
         <div class="offcanvas-header border-bottom p-3">
             <h5 class="offcanvas-title fw-bold d-flex align-items-center me-auto">
-                <i class="ti ti-activity me-2 text-primary"></i>Live Activity
+                <i class="ti ti-activity me-2 text-primary"></i>Activity Feed
             </h5>
             <button id="admin-feed-close" class="btn-close text-reset" type="button" aria-label="Close"></button>
         </div>
@@ -1656,20 +1645,49 @@
                                 <input type="number" step="0.01" min="1" id="input-coupon-value" class="form-control" placeholder="e.g. 50 or 20" required>
                             </div>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label required fw-bold">Eligible Passenger Category</label>
-                            <select id="select-coupon-category" class="form-select" required>
-                                <option value="all_passengers" selected>All Passengers</option>
-                                <option value="at_least_1_ride">Passengers with at least 1 completed ride</option>
-                                <option value="at_least_10_rides">Passengers with at least 10 completed rides</option>
-                                <option value="at_least_20_rides">Passengers with 20+ completed rides</option>
-                                <option value="at_least_50_rides">Passengers with 50+ completed rides</option>
-                            </select>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label fw-bold">Passengers with how many rides</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="ti ti-steering-wheel"></i></span>
+                                    <input type="number" min="0" step="1" id="input-coupon-min-rides" class="form-control" placeholder="0 (Any rides)" value="0">
+                                </div>
+                                <small class="form-text text-muted">Minimum completed rides required (0 = all).</small>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label fw-bold">Passengers with gender</label>
+                                <select id="select-coupon-gender" class="form-select">
+                                    <option value="all" selected>All</option>
+                                    <option value="male">Male</option>
+                                    <option value="female">Female</option>
+                                    <option value="others">Others</option>
+                                </select>
+                                <small class="form-text text-muted">Select gender eligible for this coupon.</small>
+                            </div>
                         </div>
+
+                        <!-- Hidden fallback for category compatibility -->
+                        <input type="hidden" id="select-coupon-category" value="all_passengers">
+
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Restricted Passenger IDs (Optional)</label>
-                            <input type="text" id="input-coupon-users" class="form-control" placeholder="Comma-separated user UIDs (leave blank for all)">
-                            <small class="form-text text-muted">If provided, only passengers in this list AND matching the category can redeem (Logical AND).</small>
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <label class="form-label fw-bold mb-0">Restricted Passengers (Optional)</label>
+                                <span class="badge bg-secondary-lt" id="restricted-passengers-count-badge">0 selected (All passengers)</span>
+                            </div>
+                            <div class="input-group mb-2">
+                                <span class="input-group-text"><i class="ti ti-users"></i></span>
+                                <select id="select-coupon-passenger-picker" class="form-select">
+                                    <option value="">-- Choose passenger to add --</option>
+                                </select>
+                                <button class="btn btn-outline-primary" type="button" id="btn-add-restricted-passenger">
+                                    <i class="ti ti-plus me-1"></i>Add
+                                </button>
+                            </div>
+                            <!-- Interactive Added Passengers Chips Container -->
+                            <div id="restricted-passengers-chips-container" class="border rounded p-2 d-flex flex-wrap gap-2 bg-light-subtle" style="min-height: 44px; max-height: 130px; overflow-y: auto;">
+                                <span class="text-secondary small fst-italic p-1" id="restricted-passengers-empty-hint">No passengers restricted. Coupon is available to all qualifying passengers.</span>
+                            </div>
+                            <input type="hidden" id="input-coupon-users" value="">
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-bold">Description / Promotional Note</label>

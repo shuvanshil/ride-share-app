@@ -187,19 +187,16 @@ def is_passenger_eligible_for_coupon(
     passenger_id: str,
     completed_rides_count: int,
     previous_redemptions_count: int = 0,
+    passenger_gender: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Evaluates whether a passenger qualifies for a specific coupon based on:
     1. Status is 'active' (not inactive or deleted)
     2. Per-passenger usage limit (previous_redemptions_count < usageLimitPerPassenger)
     3. Restricted passenger list (if configured, user must be in list)
-    4. Category rule (completed rides count)
-
-    WELCOME Special Rule:
-    - May be used up to 3 times total by the same passenger.
-    - Only valid during the passenger's first 3 completed rides (completed_rides_count < 3).
-    - From the 4th ride onward (completed_rides_count >= 3), WELCOME is permanently unavailable.
-    - Unused opportunities from the first 3 rides do not carry forward.
+    4. Gender restriction (All, Male, Female, Others)
+    5. Minimum completed rides requirement (field minRidesRequired)
+    6. Category rule (completed rides count)
     """
     clean_uid = str(passenger_id).strip()
 
@@ -224,6 +221,23 @@ def is_passenger_eligible_for_coupon(
         cleaned_allowed = [str(u).strip() for u in restricted_users if str(u).strip()]
         if cleaned_allowed and clean_uid not in cleaned_allowed:
             return False, "This coupon is not available for your account."
+
+    # Gender restriction
+    eligible_gender = str(coupon.get("eligibleGender") or "all").strip().lower()
+    if eligible_gender and eligible_gender != "all":
+        pass_gender = str(passenger_gender or "").strip().lower()
+        if pass_gender in ("other", "others"):
+            pass_gender = "others"
+        if eligible_gender in ("other", "others"):
+            eligible_gender = "others"
+        if not pass_gender or pass_gender != eligible_gender:
+            return False, f"This coupon is exclusively for {eligible_gender.capitalize()} passengers."
+
+    # Dynamic minimum rides requirement
+    min_rides = int(coupon.get("minRidesRequired") or coupon.get("min_rides") or 0)
+    if min_rides > 0:
+        if completed_rides_count < min_rides:
+            return False, f"This coupon requires at least {min_rides} completed ride(s)."
 
     if is_welcome or category == "first_ride":
         # WELCOME: Allowed up to 3 times, ONLY during first 3 completed rides (rides 1, 2, 3 -> completed_rides_count in [0, 1, 2])
@@ -307,6 +321,10 @@ def get_eligible_coupons_for_ride(
     # Authoritative completed ride count
     completed_count = get_completed_rides_count(db, clean_uid)
 
+    # Authoritative passenger profile for demographic eligibility
+    passenger_snap = db.collection("users").document(clean_uid).get()
+    passenger_gender = (passenger_snap.to_dict() or {}).get("gender") if passenger_snap.exists else None
+
     # Fetch all previous redemptions for this passenger
     redemptions_snap = (
         db.collection("couponRedemptions")
@@ -349,7 +367,7 @@ def get_eligible_coupons_for_ride(
             redemption_counts_by_code.get(c_code_norm, 0)
         )
         is_eligible, _ = is_passenger_eligible_for_coupon(
-            c_data, clean_uid, completed_count, prev_redemptions
+            c_data, clean_uid, completed_count, prev_redemptions, passenger_gender
         )
 
         if is_eligible:
@@ -499,6 +517,10 @@ def apply_coupon_to_ride_tx(
             )
             prev_redemption_count = max(prev_redemption_count, len(user_redemptions_by_code))
 
+        # 6. Read passenger profile for demographic / gender eligibility
+        user_snap = db.collection("users").document(clean_passenger_id).get(transaction=tx)
+        passenger_gender = (user_snap.to_dict() or {}).get("gender") if user_snap.exists else None
+
         # -----------------------------------------------------------------
         # PHASE 2: VALIDATIONS & INTEGER PAISE CALCULATIONS
         # -----------------------------------------------------------------
@@ -527,7 +549,7 @@ def apply_coupon_to_ride_tx(
 
         # E. Verify coupon eligibility at final commit time
         is_eligible, err_msg = is_passenger_eligible_for_coupon(
-            coupon, clean_passenger_id, completed_rides_count, prev_redemption_count
+            coupon, clean_passenger_id, completed_rides_count, prev_redemption_count, passenger_gender
         )
         if not is_eligible:
             raise ApiError(err_msg, 400)

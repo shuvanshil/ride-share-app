@@ -36,7 +36,9 @@ class CreateCouponRequest(BaseModel):
     code: str = Field(min_length=2, max_length=30)
     discountType: str = Field(pattern="^(fixed|percentage)$")
     discountValue: float = Field(gt=0)
-    eligibilityCategory: str = Field(default="all_passengers")
+    eligibilityCategory: Optional[str] = Field(default="all_passengers")
+    minRidesRequired: Optional[int] = Field(default=0, ge=0)
+    eligibleGender: Optional[str] = Field(default="all")
     restrictedPassengerIds: Optional[List[str]] = Field(default_factory=list)
     description: Optional[str] = Field(default="", max_length=300)
     status: Optional[str] = Field(default="active", pattern="^(active|inactive)$")
@@ -46,7 +48,25 @@ class UpdateCouponRequest(BaseModel):
     description: Optional[str] = Field(default=None, max_length=300)
     status: Optional[str] = Field(default=None, pattern="^(active|inactive)$")
     eligibilityCategory: Optional[str] = None
+    minRidesRequired: Optional[int] = Field(default=None, ge=0)
+    eligibleGender: Optional[str] = None
     restrictedPassengerIds: Optional[List[str]] = None
+
+
+def _find_coupon_doc(db: Any, coupon_id: str):
+    """Locates coupon document by ID, or falls back to normalized code."""
+    clean_id = str(coupon_id).strip()
+    doc_ref = db.collection("coupons").document(clean_id)
+    snap = doc_ref.get()
+    if snap.exists:
+        return doc_ref, snap
+    normalized = normalize_coupon_code(clean_id)
+    if normalized:
+        candidates = db.collection("coupons").where("codeNormalized", "==", normalized).limit(1).get()
+        if candidates:
+            c_snap = candidates[0]
+            return db.collection("coupons").document(c_snap.id), c_snap
+    return None, None
 
 
 @router.get("")
@@ -75,7 +95,7 @@ async def list_admin_coupons(
     for doc in coupons_snap:
         data = doc.to_dict() or {}
         c_id = doc.id
-        if data.get("isDeleted"):
+        if data.get("isDeleted") or data.get("status") == "deleted":
             continue
 
         created_at = data.get("createdAt")
@@ -100,6 +120,8 @@ async def list_admin_coupons(
             "discountAmountPaise": int(data.get("discountAmountPaise") or 0),
             "status": data.get("status", "active"),
             "eligibilityCategory": data.get("eligibilityCategory", "all_passengers"),
+            "minRidesRequired": int(data.get("minRidesRequired") or data.get("min_rides") or 0),
+            "eligibleGender": str(data.get("eligibleGender") or "all").lower(),
             "restrictedPassengerIds": data.get("restrictedPassengerIds") or [],
             "description": data.get("description", ""),
             "isDeletable": data.get("isDeletable", data.get("source") != "default"),
@@ -149,6 +171,12 @@ async def create_admin_coupon(
     doc_ref = db.collection("coupons").document(coupon_id)
 
     disc_amount_paise = inr_to_paise(payload.discountValue) if payload.discountType == "fixed" else 0
+    gender = (payload.eligibleGender or "all").strip().lower()
+    if gender in ("other", "others"):
+        gender = "others"
+    elif gender not in ("all", "male", "female"):
+        gender = "all"
+    min_rides = max(0, int(payload.minRidesRequired or 0))
 
     coupon_doc = {
         "couponId": coupon_id,
@@ -159,7 +187,9 @@ async def create_admin_coupon(
         "discountValue": payload.discountValue,
         "discountAmountPaise": disc_amount_paise,
         "status": payload.status or "active",
-        "eligibilityCategory": payload.eligibilityCategory,
+        "eligibilityCategory": payload.eligibilityCategory or "all_passengers",
+        "minRidesRequired": min_rides,
+        "eligibleGender": gender,
         "restrictedPassengerIds": [str(u).strip() for u in (payload.restrictedPassengerIds or []) if str(u).strip()],
         "description": payload.description or "",
         "usageLimitPerPassenger": 1,
@@ -182,6 +212,8 @@ async def create_admin_coupon(
             "discountType": payload.discountType,
             "discountValue": payload.discountValue,
             "category": payload.eligibilityCategory,
+            "minRidesRequired": min_rides,
+            "eligibleGender": gender,
         },
         notes=f"Created promotional coupon {normalized_code}",
     )
@@ -202,11 +234,11 @@ async def update_admin_coupon(
     db: Any = Depends(get_firestore),
 ):
     """Updates an existing coupon's metadata or restriction settings."""
-    doc_ref = db.collection("coupons").document(coupon_id)
-    snap = doc_ref.get()
-    if not snap.exists:
+    doc_ref, snap = _find_coupon_doc(db, coupon_id)
+    if not snap or not snap.exists:
         raise ApiError("Coupon not found.", 404)
     data = snap.to_dict() or {}
+    coupon_id = snap.id
 
     updates: Dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
     if payload.description is not None:
@@ -217,6 +249,14 @@ async def update_admin_coupon(
         if payload.eligibilityCategory not in VALID_ADMIN_CATEGORIES:
             raise ApiError(f"Invalid eligibility category: {payload.eligibilityCategory}", 400)
         updates["eligibilityCategory"] = payload.eligibilityCategory
+    if payload.minRidesRequired is not None:
+        updates["minRidesRequired"] = max(0, int(payload.minRidesRequired))
+    if payload.eligibleGender is not None:
+        g = str(payload.eligibleGender).strip().lower()
+        if g in ("other", "others"):
+            updates["eligibleGender"] = "others"
+        elif g in ("all", "male", "female"):
+            updates["eligibleGender"] = g
     if payload.restrictedPassengerIds is not None:
         updates["restrictedPassengerIds"] = [str(u).strip() for u in payload.restrictedPassengerIds if str(u).strip()]
 
@@ -242,11 +282,11 @@ async def activate_coupon(
     db: Any = Depends(get_firestore),
 ):
     """Activates a coupon immediately."""
-    doc_ref = db.collection("coupons").document(coupon_id)
-    snap = doc_ref.get()
-    if not snap.exists:
+    doc_ref, snap = _find_coupon_doc(db, coupon_id)
+    if not snap or not snap.exists:
         raise ApiError("Coupon not found.", 404)
     data = snap.to_dict() or {}
+    coupon_id = snap.id
 
     doc_ref.update({"status": "active", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
 
@@ -270,11 +310,11 @@ async def deactivate_coupon(
     db: Any = Depends(get_firestore),
 ):
     """Deactivates a coupon immediately so it cannot be newly redeemed."""
-    doc_ref = db.collection("coupons").document(coupon_id)
-    snap = doc_ref.get()
-    if not snap.exists:
+    doc_ref, snap = _find_coupon_doc(db, coupon_id)
+    if not snap or not snap.exists:
         raise ApiError("Coupon not found.", 404)
     data = snap.to_dict() or {}
+    coupon_id = snap.id
 
     doc_ref.update({"status": "inactive", "updatedAt": fb_firestore.SERVER_TIMESTAMP})
 
@@ -302,11 +342,11 @@ async def delete_or_archive_coupon(
     Rejects deletion of default platform coupons.
     Soft-deletes/archives coupons to preserve audit integrity of historical redemptions.
     """
-    doc_ref = db.collection("coupons").document(coupon_id)
-    snap = doc_ref.get()
-    if not snap.exists:
+    doc_ref, snap = _find_coupon_doc(db, coupon_id)
+    if not snap or not snap.exists:
         raise ApiError("Coupon not found.", 404)
     data = snap.to_dict() or {}
+    coupon_id = snap.id
 
     if data.get("source") == "default" or not data.get("isDeletable", True):
         raise ApiError("Default platform coupons (such as WELCOME, SUPER10) cannot be deleted. You can deactivate them instead.", 400)
@@ -342,6 +382,10 @@ async def get_coupon_redemptions(
     db: Any = Depends(get_firestore),
 ):
     """Returns complete audit history of all redemptions for a coupon."""
+    doc_ref, snap = _find_coupon_doc(db, coupon_id)
+    if snap and snap.exists:
+        coupon_id = snap.id
+
     redemptions_snap = (
         db.collection("couponRedemptions")
         .where("couponId", "==", coupon_id)

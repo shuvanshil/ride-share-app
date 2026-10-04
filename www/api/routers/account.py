@@ -149,7 +149,7 @@ def _build_profile(uid: str, phone: str, profile: dict[str, Any]) -> dict[str, A
                 "privacyPolicyAcceptedAt": accepted_at,
                 "privacyPolicyVersion": DRIVER_PRIVACY_POLICY_VERSION,
                 "verificationStatus": "pending_review",
-                "driverAvailability": "searching",
+                "driverAvailability": "offline",
                 "lifetime_earnings": 0,
                 "total_completed_trips": 0,
             }

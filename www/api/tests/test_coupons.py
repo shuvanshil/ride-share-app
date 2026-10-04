@@ -634,6 +634,81 @@ class TestCouponSystem(unittest.IsolatedAsyncioTestCase):
             await delete_or_archive_coupon("coupon_default_welcome", admin=self.admin, db=self.db)
         self.assertEqual(ctx.exception.status_code, 400)
 
+    async def test_dynamic_coupon_eligibility_and_creation(self):
+        """Tests minRidesRequired and eligibleGender in coupon eligibility and admin endpoints."""
+        coupon = {
+            "couponId": "cpn_special",
+            "code": "GIRLPOWER",
+            "status": "active",
+            "usageLimitPerPassenger": 1,
+            "minRidesRequired": 5,
+            "eligibleGender": "female",
+            "restrictedPassengerIds": ["p_1", "p_2"],
+        }
+
+        # 1. Wrong gender
+        ok, msg = is_passenger_eligible_for_coupon(coupon, "p_1", completed_rides_count=10, passenger_gender="male")
+        self.assertFalse(ok)
+        self.assertIn("Female", msg)
+
+        # 2. Right gender, not enough rides
+        ok, msg = is_passenger_eligible_for_coupon(coupon, "p_1", completed_rides_count=3, passenger_gender="female")
+        self.assertFalse(ok)
+        self.assertIn("at least 5 completed ride", msg)
+
+        # 3. Right gender, enough rides, but not in restricted list
+        ok, msg = is_passenger_eligible_for_coupon(coupon, "p_3", completed_rides_count=10, passenger_gender="female")
+        self.assertFalse(ok)
+        self.assertIn("not available for your account", msg)
+
+        # 4. Meets all criteria
+        ok, msg = is_passenger_eligible_for_coupon(coupon, "p_1", completed_rides_count=5, passenger_gender="female")
+        self.assertTrue(ok)
+        self.assertEqual(msg, "Eligible")
+
+        # 5. Create via admin API with dynamic fields
+        create_req = CreateCouponRequest(
+            code="DYNAMIC10",
+            discountType="percentage",
+            discountValue=10.0,
+            minRidesRequired=3,
+            eligibleGender="female",
+            restrictedPassengerIds=["p_1", "p_2"],
+        )
+        with patch("api.routers.admin_coupons.write_audit_log"):
+            res = await create_admin_coupon(create_req, admin=self.admin, db=self.db)
+            self.assertTrue(res["ok"])
+            cpn_id = res["couponId"]
+
+        # Check document in store
+        doc = self.db.collection("coupons").document(cpn_id).get().to_dict()
+        self.assertEqual(doc["minRidesRequired"], 3)
+        self.assertEqual(doc["eligibleGender"], "female")
+        self.assertEqual(doc["restrictedPassengerIds"], ["p_1", "p_2"])
+
+        # 6. Fallback deletion by normalized code
+        with patch("api.routers.admin_coupons.write_audit_log"):
+            del_res = await delete_or_archive_coupon("DYNAMIC10", admin=self.admin, db=self.db)
+            self.assertTrue(del_res["ok"])
+            doc_after = self.db.collection("coupons").document(cpn_id).get().to_dict()
+            self.assertTrue(doc_after["isDeleted"])
+
+        # 7. Edge case: missing / empty gender on profile when coupon has gender restriction
+        ok_no_gender, msg_no_gender = is_passenger_eligible_for_coupon(coupon, "p_1", completed_rides_count=10, passenger_gender="")
+        self.assertFalse(ok_no_gender)
+        self.assertIn("Female", msg_no_gender)
+
+        # 8. Edge case: "others" / "other" gender normalization
+        coupon_others = {
+            "couponId": "cpn_others",
+            "code": "INCLUSIVE",
+            "status": "active",
+            "eligibleGender": "others",
+        }
+        ok_other, msg_other = is_passenger_eligible_for_coupon(coupon_others, "p_1", completed_rides_count=0, passenger_gender="other")
+        self.assertTrue(ok_other)
+        self.assertEqual(msg_other, "Eligible")
+
 
 if __name__ == "__main__":
     unittest.main()
