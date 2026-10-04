@@ -438,6 +438,7 @@ function cacheProfile(profile) {
 }
 
 function clearCachedProfile() {
+    activeConsoleUid = null;
     try {
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
     } catch {
@@ -681,7 +682,7 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(10000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -735,6 +736,9 @@ async function setDriverAvailability(status, locationData = null) {
     }
 }
 
+let presenceUpdateAbortController = null;
+let presenceUpdateTimeoutId = null;
+
 async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "searching", telemetry = {}) {
     try {
         const user = auth.currentUser;
@@ -746,18 +750,42 @@ async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "se
             currentUser.driverLocation = { lat, lng };
         }
 
+        // Abort previous in-flight location update if a newer fix is being sent
+        if (presenceUpdateAbortController) {
+            try { presenceUpdateAbortController.abort(); } catch {}
+            presenceUpdateAbortController = null;
+        }
+        if (presenceUpdateTimeoutId) {
+            clearTimeout(presenceUpdateTimeoutId);
+            presenceUpdateTimeoutId = null;
+        }
+
+        const controller = new AbortController();
+        presenceUpdateAbortController = controller;
+        presenceUpdateTimeoutId = setTimeout(() => {
+            try { controller.abort(); } catch {}
+        }, 8000);
+
         const idToken = await user.getIdToken(false);
         const response = await fetch("/api/rides/driver-location", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
             body: JSON.stringify({ lat, lng, rideId: currentlyAssignedRideId || null, ...telemetry }),
-            signal: AbortSignal.timeout(15000)
+            signal: controller.signal
         });
+        if (presenceUpdateAbortController === controller) {
+            presenceUpdateAbortController = null;
+            if (presenceUpdateTimeoutId) {
+                clearTimeout(presenceUpdateTimeoutId);
+                presenceUpdateTimeoutId = null;
+            }
+        }
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) {
             console.warn("Driver presence update error:", data.error);
         }
     } catch (error) {
+        if (error?.name === "AbortError") return;
         console.warn("Driver presence update failed:", error);
     }
 }
@@ -778,14 +806,15 @@ function startDriverPresenceTracking() {
 
     // Fast initial position broadcast so the driver is visible on map immediately
     const cachedPos = readCachedDriverLocation();
-    if (cachedPos && isDriverDutyOnline()) {
+    const now = Date.now();
+    if (cachedPos && isDriverDutyOnline() && (now - (lastPresenceWriteAt || 0) > 4000)) {
         lastPresenceWrittenPosition = cachedPos;
-        lastPresenceWriteAt = Date.now();
+        lastPresenceWriteAt = now;
         updateDriverPresenceLocation(cachedPos.lat, cachedPos.lng, "searching");
     }
 
     getQuickPosition(3000).then((pos) => {
-        if (pos && isDriverDutyOnline()) {
+        if (pos && isDriverDutyOnline() && (Date.now() - (lastPresenceWriteAt || 0) > 3000)) {
             rememberDriverLocation(pos);
             lastPresenceWrittenPosition = pos;
             lastPresenceWriteAt = Date.now();
@@ -1765,13 +1794,30 @@ async function cancelRideByDriver(rideId) {
 
         currentlyAssignedRideId = null;
         releaseWakeLock();
-        await setDriverAvailability("searching");
+        await setDriverAvailability("searching").catch((err) => {
+            console.warn("Availability sync after cancel failed:", err);
+        });
     } catch (error) {
         console.error("Driver cancel execution failure:", error);
     }
 }
 
 function startDriverConsole(profile) {
+    if (activeConsoleUid === profile.uid) {
+        currentUser = { ...(currentUser || {}), ...profile };
+        driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
+        showDriverHome(currentUser);
+        updateDutySwitchUi();
+        if (isDriverDutyOnline()) {
+            if (driverPresenceWatchId === null) {
+                startDriverPresenceTracking();
+            }
+        } else {
+            stopPresenceTracking();
+        }
+        return;
+    }
+
     activeConsoleUid = profile.uid;
     currentUser = { ...(currentUser || {}), ...profile };
     driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
@@ -1780,15 +1826,9 @@ function startDriverConsole(profile) {
 
     if (isDriverDutyOnline()) {
         const initialLoc = readCachedDriverLocation();
-        setDriverAvailability(currentUser.driverAvailability === "busy" ? "busy" : "searching", initialLoc);
-        startDriverPresenceTracking();
-        setTimeout(() => {
-            if (currentUser?.uid) {
-                registerDriverPushToken(db, currentUser.uid).catch((error) => {
-                    console.warn("Driver push token registration failed:", error);
-                });
-            }
-        }, 0);
+        setDriverAvailability(currentUser.driverAvailability === "busy" ? "busy" : "searching", initialLoc).catch((error) => {
+            console.warn("Initial driver availability sync failed:", error);
+        });
     } else {
         stopPresenceTracking();
     }
@@ -1861,7 +1901,7 @@ addOptionalClickListener('logout-btn-review', async () => {
     window.LiphtUpLoading?.showPageLoader?.("Logging out...");
     try {
         clearCachedProfile();
-        await setDriverAvailability("offline");
+        await setDriverAvailability("offline").catch(() => {});
         await signOut(auth);
         window.location.href = "/login.html";
     } catch (error) {
@@ -1954,7 +1994,7 @@ addOptionalClickListener('close-driver-payment-icon-btn', () => {
 addOptionalClickListener('logout-btn', async () => {
     try {
         clearCachedProfile();
-        await setDriverAvailability("offline");
+        await setDriverAvailability("offline").catch(() => {});
         await signOut(auth);
         window.location.href = "/login.html";
     } catch (error) {
@@ -1971,12 +2011,17 @@ if ("serviceWorker" in navigator) {
     });
 }
 
-async function checkDriverAccountHoldStatus(user) {
+let lastAccountHoldCheckAt = 0;
+async function checkDriverAccountHoldStatus(user, force = false) {
     try {
         if (!user) return;
+        const now = Date.now();
+        if (!force && now - lastAccountHoldCheckAt < 5 * 60 * 1000) return;
+        lastAccountHoldCheckAt = now;
         const token = await user.getIdToken();
         const response = await fetch('/api/account/driver-payments/status', {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: AbortSignal.timeout(10000)
         });
         if (!response.ok) return;
         const data = await response.json();

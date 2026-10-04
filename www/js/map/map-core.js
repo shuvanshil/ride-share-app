@@ -770,7 +770,6 @@ function addGoogleMapStyles() {
             height: 48px;
             pointer-events: auto;
             will-change: transform;
-            animation: vehicle-marker-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .rotating-vehicle-marker::before {
@@ -795,11 +794,6 @@ function addGoogleMapStyles() {
             transform-origin: 50% 50%;
             filter: drop-shadow(0 3px 6px rgba(15, 23, 42, 0.35));
             user-select: none;
-        }
-
-        @keyframes vehicle-marker-pop {
-            from { opacity: 0; transform: scale(0.55); }
-            to { opacity: 1; transform: scale(1); }
         }
 
         @keyframes vehicle-marker-pulse {
@@ -829,6 +823,7 @@ class RotatingVehicleMarker {
         this.element.style.zIndex = String(zIndex);
         this.element.style.pointerEvents = "none";
         this.element.style.willChange = "transform";
+        this.element.style.visibility = "hidden";
         this.element.title = title;
         this.image = document.createElement("img");
         this.image.alt = "";
@@ -842,8 +837,10 @@ class RotatingVehicleMarker {
         };
         this.overlay.draw = () => this.draw();
         this.overlay.onRemove = () => {
+            this.element.style.visibility = "hidden";
             this.element.remove();
         };
+        this.currentMap = map;
         this.overlay.setMap(map);
     }
 
@@ -856,6 +853,7 @@ class RotatingVehicleMarker {
         if (!point) return;
 
         this.element.style.transform = `translate(${point.x - 24}px, ${point.y - 24}px)`;
+        this.element.style.visibility = "visible";
     }
 
     getPosition() {
@@ -869,6 +867,11 @@ class RotatingVehicleMarker {
     }
 
     setMap(map) {
+        if (this.currentMap === map) return;
+        this.currentMap = map;
+        if (!map) {
+            this.element.style.visibility = "hidden";
+        }
         this.overlay.setMap(map);
     }
 
@@ -1347,7 +1350,11 @@ function syncGlobalDriverMarkerVisibility() {
                 bikeCount++;
             }
         }
-        existing.marker?.setMap?.(shouldShow ? window.mapInstance : null);
+        const targetMap = shouldShow ? window.mapInstance : null;
+        if (existing.currentMap !== targetMap) {
+            existing.currentMap = targetMap;
+            existing.marker?.setMap?.(targetMap);
+        }
     });
 
     if (vehicleLegendElement) {
@@ -1421,15 +1428,15 @@ function adjustForMarkerOverlap(position, heading, driverId = "") {
 
     // 1. Dispersion / De-conflict against other co-located idle vehicle markers on the map
     if (driverId && globalDriverMarkers.size > 1) {
-        const CO_LOCATED_RADIUS_METERS = 35;
-        const DISPERSION_RADIUS_METERS = 26;
+        const CO_LOCATED_RADIUS_METERS = 28;
+        const DISPERSION_RADIUS_METERS = 14;
         const nearbyIds = [];
 
         globalDriverMarkers.forEach((otherData, otherId) => {
-            const raw = otherData.rawPosition || otherData.marker?.getPosition?.();
-            if (!raw) return;
-            const pt = typeof raw.lat === "function" ? { lat: raw.lat(), lng: raw.lng() } : raw;
-            if (calculateDistanceMeters(position, pt) <= CO_LOCATED_RADIUS_METERS) {
+            if (otherId === driverId) return;
+            const raw = otherData.rawPosition;
+            if (!raw || !Number.isFinite(raw.lat) || !Number.isFinite(raw.lng)) return;
+            if (calculateDistanceMeters(position, raw) <= CO_LOCATED_RADIUS_METERS) {
                 nearbyIds.push(otherId);
             }
         });
@@ -1902,13 +1909,14 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     const distanceMeters = calculateDistanceMeters(startPosition, targetPosition);
     existing.lastMoveDistanceMeters = distanceMeters;
 
-    if (distanceMeters < DRIVER_MARKER_NOISE_FLOOR_METERS) {
-        existing.lastFixAt = now0;
-        existing.speedMetersPerSecond = 0;
+    if (distanceMeters < 1.5) {
+        existing.marker.setPosition(targetPosition);
         if (targetHeading != null) {
             existing.heading = smoothHeading(existing.heading, targetHeading, 0.25);
             existing.marker.setHeading?.(existing.heading);
         }
+        existing.lastFixAt = now0;
+        existing.speedMetersPerSecond = 0;
         return;
     }
 
@@ -2029,7 +2037,6 @@ function upsertGlobalDriverMarker(driverId, driver) {
     }
 
     existing.rawPosition = rawPosition;
-    setGlobalDriverMarkerVisibility(driverId, existing);
     animateGlobalDriverMarker(existing, position, heading);
     existing.marker.setTitle(`${driver.name || "Online Driver"} - ${vehicleType}`);
     if (existing.vehicleType !== vehicleType) {
@@ -2314,6 +2321,7 @@ function startGlobalDriverPresenceListener() {
             }
         });
 
+        syncGlobalDriverMarkerVisibility();
         updateVehicleMarkerLegend();
     }, (error) => {
         console.warn("Global live driver listener failed:", error);

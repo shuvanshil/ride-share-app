@@ -438,10 +438,10 @@ function bindServicesControls() {
 
 
 bindServicesControls();
-findRideBtn.disabled = true;
+if (findRideBtn) findRideBtn.disabled = true;
 
 function initEstimatedPriceInfoPopover() {
-    const infoBtn = document.getElementById('estimated-price-info-btn');
+    const infoBtn = document.getElementById('estimated-price-info-btn') || document.getElementById('availability-info-btn');
     const popover = document.getElementById('estimated-price-popover');
     const closeBtn = document.getElementById('estimated-price-popover-close');
     const backdrop = document.getElementById('estimated-price-popover-backdrop');
