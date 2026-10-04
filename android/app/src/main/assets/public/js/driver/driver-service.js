@@ -666,7 +666,7 @@ function renderIncomingRideCard(rideId, ride = {}) {
     card.dataset.isAddon = isPriorityAddon ? "true" : "false";
     card.dataset.fare = String(fareAmount);
 
-    if (isShare) {
+    if (isShare && isPriorityAddon) {
         const detourText = detourMin > 0 ? ` • ${t('driver.for_existing_riders', { min: detourMin }, `+${detourMin} min for existing riders`)}` : '';
         const countdownSecs = Math.max(1, Math.ceil(remainingMs / 1000));
         const pickupAddr = escapeHtml(getRideDisplayAddress(ride, "pickup"));
@@ -698,10 +698,113 @@ function renderIncomingRideCard(rideId, ride = {}) {
                 </div>
                 <div class="share-req-right-actions">
                     <span class="share-req-fare-pill d-none d-md-inline-flex">₹${fareAmount}</span>
-                    <button class="share-req-decline-btn driver-service-ignore-btn ignore-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-is-addon="${isPriorityAddon ? 'true' : 'false'}">${t('driver.decline', 'Decline')}</button>
-                    <button class="share-req-accept-btn driver-service-accept-btn accept-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-is-addon="${isPriorityAddon ? 'true' : 'false'}" data-fare="${fareAmount}">${t('driver.accept', 'Accept')} <span id="srv-accept-secs-${rideId}">${countdownSecs}s</span></button>
+                    <button class="share-req-decline-btn driver-service-ignore-btn ignore-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-is-addon="true">${t('driver.decline', 'Decline')}</button>
+                    <button class="share-req-accept-btn driver-service-accept-btn accept-job-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-is-addon="true" data-fare="${fareAmount}">${t('driver.accept', 'Accept')} <span id="srv-accept-secs-${rideId}">${countdownSecs}s</span></button>
                 </div>
             </div>
+        `;
+        return card;
+    }
+
+    if (isShare) {
+        card.className = "ride-request-card card shadow-sm mb-3 driver-service-request-card driver-first-share-request-card";
+        card.dataset.rideId = rideId;
+        card.dataset.rideType = "share";
+        card.dataset.isAddon = "false";
+        card.dataset.fare = String(fareAmount);
+
+        const pickupAddr = escapeHtml(getRideDisplayAddress(ride, "pickup"));
+        const dropAddr = escapeHtml(getRideDisplayAddress(ride, "drop"));
+
+        card.innerHTML = `
+            <div class="df-share-top-row">
+                <div class="df-share-passenger-profile">
+                    <div class="df-share-avatar-box">
+                        <img src="assets/vehicle-markers/share-auto-card.png" alt="Share Auto" class="df-share-avatar-img">
+                    </div>
+                    <div class="df-share-name-group">
+                        <h5 class="df-share-passenger-name">${passengerName}</h5>
+                        <div class="df-share-passenger-pill">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                            </svg>
+                            <span>${t('driver.share_ride_badge', { count: passCount }, `Share Ride · ${passCount} passengers`)}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="df-share-right-col">
+                    <span class="df-share-price-badge">₹${fareAmount}</span>
+                    <div class="df-share-timer-pill ${remainingMs <= 60000 ? 'is-urgent' : ''}" id="srv-timer-${rideId}">
+                        <span class="df-share-timer-icon">⏳</span>
+                        <span>${t('driver.expires_in', 'Expires in')}</span>
+                        <strong id="srv-timer-val-${rideId}">${formatCountdownTimer(remainingMs)}</strong>
+                    </div>
+                    ${callablePhone ? `
+                        <a class="df-share-call-btn" href="tel:${callablePhone}" aria-label="${t('driver.call_btn', 'Call')} ${passengerName}">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="#E11D48" aria-hidden="true"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-2.2 2.2a15.053 15.053 0 0 1-6.59-6.59l2.2-2.21a.96.96 0 0 0 .25-1.01A11.36 11.36 0 0 1 8.57 3.9c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.52c0-.55-.45-1-.99-1z"/></svg>
+                            <span>${t('driver.call_btn', 'Call')}</span>
+                        </a>
+                    ` : ''}
+                </div>
+            </div>
+
+            <div class="df-share-explainer-banner">
+                <div class="df-share-explainer-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#2563EB" aria-hidden="true">
+                        <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                    </svg>
+                </div>
+                <div class="df-share-explainer-text">
+                    <div class="df-share-explainer-title">${t('driver.share_ride_req_title', 'This is a Share Ride Request')}</div>
+                    <div class="df-share-explainer-sub">${t('driver.share_ride_req_sub', "You'll be sharing this ride with other passenger(s).")}</div>
+                </div>
+                <button type="button" class="df-share-info-btn js-share-info-modal-btn" aria-label="Information">i</button>
+            </div>
+
+            <div class="df-share-route-container">
+                <div class="df-share-route-point">
+                    <span class="df-share-dot df-dot-green"></span>
+                    <div class="df-share-point-text">
+                        <strong class="df-share-point-label">${t('driver.from_label', 'From: ')}</strong>
+                        <span class="df-share-point-address">${pickupAddr}</span>
+                    </div>
+                </div>
+                <div class="df-share-route-connector"></div>
+                <div class="df-share-route-point">
+                    <span class="df-share-dot df-dot-red"></span>
+                    <div class="df-share-point-text">
+                        <strong class="df-share-point-label">${t('driver.to_label', 'To: ')}</strong>
+                        <span class="df-share-point-address">${dropAddr}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="df-share-previews-row">
+                ${renderLocationPreviewLink(t('driver.preview_pickup', 'Preview pickup'), ride.pickup_lat, ride.pickup_lng)}
+                ${renderLocationPreviewLink(t('driver.preview_destination', 'Preview destination'), ride.drop_lat, ride.drop_lng)}
+            </div>
+
+            <div class="df-share-metrics-footer">
+                <div class="df-share-metric-col">
+                    <span class="df-share-metric-lbl">${t('history.total_distance', 'Distance')}</span>
+                    <strong class="df-share-metric-val">${formatRideDistance(ride.distance_km)}</strong>
+                </div>
+                <div class="df-share-metric-col text-end">
+                    <span class="df-share-metric-lbl">${t('driver.estimated_time', 'Estimated time')}</span>
+                    <strong class="df-share-metric-val">${formatRideDuration(ride.duration_minutes)}</strong>
+                </div>
+            </div>
+
+            <button class="df-share-accept-btn accept-job-btn driver-service-accept-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}" data-ride-type="share" data-fare="${fareAmount}">
+                <div class="df-share-accept-main">
+                    <span class="df-share-check-icon">✓</span>
+                    <span>${t('driver.share_ride_accept_btn', 'Accept Share Ride Request')}</span>
+                </div>
+                <div class="df-share-accept-sub">${t('driver.share_ride_accept_sub', 'Pick up other rider(s) en route')}</div>
+            </button>
+            <button class="df-share-ignore-btn ignore-job-btn driver-service-ignore-btn" type="button" data-id="${rideId}" data-ride-id="${rideId}">
+                <span>✕</span> ${t('driver.ignore_btn', 'Ignore')}
+            </button>
         `;
         return card;
     }
@@ -3680,6 +3783,13 @@ openConsoleButton?.addEventListener('click', () => {
 completeButton?.addEventListener('click', completeRideJob);
 cancelButton?.addEventListener('click', cancelRideByDriver);
 ridesContainer?.addEventListener('click', (event) => {
+    const infoBtn = event.target.closest('.js-share-info-modal-btn');
+    if (infoBtn) {
+        const fare = infoBtn.closest('.ride-request-card')?.dataset?.fare || '10';
+        showAlert(t('driver.share_ride_info_modal_desc', { fare }, `Shared Ride: You can pick up up to 3 additional passengers through app requests or along the way. Each passenger pays a fixed ₹${fare}. Pickup requests are not guaranteed.`));
+        return;
+    }
+
     const ignoreButton = event.target.closest('.driver-service-ignore-btn');
     if (ignoreButton) {
         ignoreRideRequest(ignoreButton.dataset.rideId, ignoreButton.dataset.isAddon === "true");

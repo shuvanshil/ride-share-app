@@ -2426,3 +2426,400 @@ body {
     text-decoration: underline;
 }
 
+/* ==========================================================================
+   First-Time Share Ride Request Card (Mockup: media_1791096126484)
+   ========================================================================== */
+.driver-first-share-request-card {
+    background: #FFFFFF !important;
+    border: 1.5px solid #BFDBFE !important;
+    border-radius: 18px !important;
+    padding: 16px 18px !important;
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08) !important;
+    margin-bottom: 16px !important;
+    display: block !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+}
+
+.df-share-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.df-share-passenger-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.df-share-avatar-box {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    border-radius: 14px;
+    background: #FDF4E7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid #FED7AA;
+}
+
+.df-share-avatar-img {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+}
+
+.df-share-name-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.df-share-passenger-name {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0F172A;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.df-share-passenger-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #EFF6FF;
+    color: #1D4ED8;
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    border: 1px solid #DBEAFE;
+    width: fit-content;
+}
+
+.df-share-right-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.df-share-price-badge {
+    background: #2563EB;
+    color: #FFFFFF;
+    font-size: 1.25rem;
+    font-weight: 800;
+    padding: 4px 14px;
+    border-radius: 10px;
+    min-width: 60px;
+    text-align: center;
+    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.25);
+    line-height: 1.25;
+}
+
+.df-share-timer-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #FEF3C7;
+    color: #92400E;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    border: 1px solid #FDE68A;
+}
+
+.df-share-timer-pill.is-urgent {
+    background: #FEE2E2;
+    color: #991B1B;
+    border-color: #FECACA;
+    animation: df-pulse 1s infinite alternate;
+}
+
+@keyframes df-pulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.03); }
+}
+
+.df-share-call-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    color: #1E293B;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.df-share-call-btn:hover {
+    background: #F8FAFC;
+    color: #0F172A;
+}
+
+/* Explainer Banner */
+.df-share-explainer-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #EFF6FF;
+    border: 1px solid #DBEAFE;
+    border-radius: 14px;
+    padding: 10px 14px;
+    margin: 14px 0 12px 0;
+}
+
+.df-share-explainer-icon {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: #DBEAFE;
+    color: #2563EB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.df-share-explainer-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.df-share-explainer-title {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #1E40AF;
+    line-height: 1.3;
+}
+
+.df-share-explainer-sub {
+    font-size: 0.78rem;
+    color: #475569;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+.df-share-info-btn {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #BFDBFE;
+    color: #1E40AF;
+    border: none;
+    font-size: 0.82rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    line-height: 1;
+}
+
+/* Route display */
+.df-share-route-container {
+    background: #F8FAFC;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    border: 1px solid #F1F5F9;
+}
+
+.df-share-route-point {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.df-share-dot {
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+    border-radius: 50%;
+    margin-top: 4px;
+}
+
+.df-dot-green {
+    background: #22C55E;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.df-dot-red {
+    background: #EF4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.df-share-point-text {
+    font-size: 0.84rem;
+    line-height: 1.35;
+    color: #334155;
+}
+
+.df-share-point-label {
+    font-weight: 700;
+    color: #0F172A;
+    margin-right: 3px;
+}
+
+.df-share-point-address {
+    font-weight: 500;
+    color: #475569;
+}
+
+.df-share-route-connector {
+    width: 2px;
+    height: 14px;
+    margin: 2px 0 2px 5px;
+    border-left: 2px dotted #94A3B8;
+}
+
+/* Previews row */
+.df-share-previews-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.df-share-previews-row a,
+.df-share-previews-row .driver-location-preview-btn {
+    background: #F0FDF4;
+    border: 1px solid #86EFAC;
+    color: #166534;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 8px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    transition: all 0.15s ease;
+}
+
+.df-share-previews-row a:hover,
+.df-share-previews-row .driver-location-preview-btn:hover {
+    background: #DCFCE7;
+    color: #14532D;
+}
+
+/* Metrics footer */
+.df-share-metrics-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px dashed #E2E8F0;
+    padding-top: 10px;
+    margin-bottom: 14px;
+}
+
+.df-share-metric-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.df-share-metric-lbl {
+    font-size: 0.74rem;
+    color: #64748B;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.df-share-metric-val {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+/* Accept button */
+.df-share-accept-btn {
+    width: 100%;
+    background: #2563EB;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 16px;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+    transition: all 0.15s ease;
+    font-family: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.df-share-accept-btn:hover {
+    background: #1D4ED8;
+}
+
+.df-share-accept-btn:active {
+    background: #1E40AF;
+    transform: scale(0.99);
+}
+
+.df-share-accept-main {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: -0.2px;
+}
+
+.df-share-check-icon {
+    font-size: 1.1rem;
+}
+
+.df-share-accept-sub {
+    font-size: 0.75rem;
+    font-weight: 500;
+    opacity: 0.92;
+    margin-top: 2px;
+}
+
+/* Ignore button */
+.df-share-ignore-btn {
+    width: 100%;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    color: #475569;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border-radius: 12px;
+    padding: 10px 16px;
+    margin-top: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+
+.df-share-ignore-btn:hover {
+    background: #F8FAFC;
+    color: #1E293B;
+}
+
+.df-share-ignore-btn:active {
+    background: #F1F5F9;
+    transform: scale(0.99);
+}
+

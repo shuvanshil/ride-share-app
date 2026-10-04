@@ -153,7 +153,7 @@ async function getStoredUserRole() {
         // 1. Check open client windows
         const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         for (const client of clients) {
-            if (client.url && (client.url.includes('/driver.html') || client.url.includes('/driver-service.html') || client.url.includes('/driver-dashboard.html'))) {
+            if (client.url && (client.url.includes('/driver') || client.url.includes('/driver.html') || client.url.includes('/driver-service') || client.url.includes('/driver-dashboard') || client.url.includes('/driver-payments'))) {
                 return 'driver';
             }
         }
@@ -220,8 +220,10 @@ async function showRideNotification(payload = {}) {
         || data.type === "NEW_PASSENGER_AVAILABLE"
         || data.type === "ride_dispatch"
         || data.type === "pending_driver_available"
+        || data.type === "share_ride"
+        || data.type === "share_addon"
         || (targetUrl && targetUrl.includes("/driver"))
-        || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger")));
+        || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger") || title.toLowerCase().includes("share ride")));
 
     if (isRideRequestPush) {
         const role = await getStoredUserRole();

@@ -1,6 +1,15 @@
 import { registerForPush, sendTokenToBackend } from '../platform/notifications.js';
 
 let lastOpenNotificationAt = 0;
+const notifiedRideIds = new Set();
+
+export function clearNotifiedRide(rideId) {
+    if (rideId) notifiedRideIds.delete(rideId);
+}
+
+export function clearAllNotifiedRides() {
+    notifiedRideIds.clear();
+}
 
 export async function registerDriverPushToken(_db, uid) {
     if (!uid) return { ok: false, reason: "unsupported" };
@@ -15,8 +24,16 @@ export async function registerDriverPushToken(_db, uid) {
 }
 
 export function startRideRequestRing(ride = {}) {
+    const rideId = ride.rideId || ride.id || "";
+    if (rideId && notifiedRideIds.has(rideId)) {
+        return;
+    }
+    if (rideId) {
+        notifiedRideIds.add(rideId);
+    }
+
     const now = Date.now();
-    if (now - lastOpenNotificationAt < 5000) return;
+    if (now - lastOpenNotificationAt < 3000) return;
     lastOpenNotificationAt = now;
 
     if (navigator.vibrate) {

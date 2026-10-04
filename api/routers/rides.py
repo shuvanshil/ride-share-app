@@ -2650,6 +2650,8 @@ def submit_safety_report(
 
 def _collect_tokens(user_data: dict[str, Any]) -> list[str]:
     tokens: set[str] = set()
+    if user_data.get("fcmToken") and isinstance(user_data["fcmToken"], str) and user_data["fcmToken"].strip():
+        tokens.add(user_data["fcmToken"].strip())
     for token in user_data.get("pushTokens") or []:
         if isinstance(token, str) and token.strip():
             tokens.add(token.strip())
@@ -2738,17 +2740,20 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
     """Send push notification to driver if tokens exist."""
     try:
         presence_doc = db.collection("driverPresence").document(driver_id).get()
-        if not presence_doc.exists:
-            return
-        presence_data = presence_doc.to_dict() or {}
-        if not _is_notification_eligible(presence_data):
-            return
+        presence_data = presence_doc.to_dict() or {} if presence_doc.exists else {}
         tokens = _collect_tokens(presence_data)
+        if not tokens:
+            user_doc = db.collection("users").document(driver_id).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict() or {}
+                tokens = _collect_tokens(user_data)
         if not tokens:
             return
 
         app = get_admin_app()
         link_url = data_payload.get("url") or f"{APP_BASE_URL}/driver?rideId={data_payload.get('rideId', '')}&from=push"
+        ride_id = data_payload.get("rideId") or ""
+        tag = data_payload.get("tag") or (f"liphtup-ride-{ride_id}" if ride_id else f"liphtup-driver-{driver_id}")
         message = fb_messaging.MulticastMessage(
             tokens=tokens,
             notification=fb_messaging.Notification(
@@ -2766,6 +2771,7 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
                     priority="max",
                     default_vibrate_timings=True,
                     visibility="public",
+                    tag=tag,
                 ),
             ),
             apns=fb_messaging.ApnsConfig(
@@ -2781,7 +2787,7 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
                     body=body,
                     icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
                     badge=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
-                    tag=f"liphtup-driver-{driver_id}",
+                    tag=tag,
                     renotify=True,
                     require_interaction=True,
                 ),
