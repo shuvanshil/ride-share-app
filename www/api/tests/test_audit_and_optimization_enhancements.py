@@ -124,6 +124,28 @@ class MockTransaction:
         doc_ref.delete()
 
 
+class MockBatch:
+    def __init__(self, store: dict):
+        self.store = store
+        self.ops = []
+
+    def set(self, doc_ref, data, merge=False):
+        self.ops.append((doc_ref, data, merge))
+
+    def update(self, doc_ref, data):
+        self.ops.append((doc_ref, data, True))
+
+    def delete(self, doc_ref):
+        self.ops.append((doc_ref, None, None))
+
+    def commit(self):
+        for doc_ref, data, merge in self.ops:
+            if data is None:
+                doc_ref.delete()
+            else:
+                doc_ref.set(data, merge=merge)
+
+
 class MockFirestoreClient:
     def __init__(self):
         self.store = {}
@@ -133,6 +155,9 @@ class MockFirestoreClient:
 
     def transaction(self):
         return MockTransaction(self.store)
+
+    def batch(self):
+        return MockBatch(self.store)
 
 
 def test_driver_has_other_active_rides_logic() -> None:
@@ -374,3 +399,118 @@ def test_share_trip_strips_pii_fields(mock_client, mock_app) -> None:
     assert "passenger_email" not in trip
     assert "coPassengers" not in trip
     assert trip["route_name"] == "Route A to B"
+
+
+def test_update_driver_presence_synchronized_batch_write() -> None:
+    db = MockFirestoreClient()
+    db.collection("users").document("drv_sync_1").set({
+        "role": "driver",
+        "verificationStatus": "approved",
+        "name": "Sync Driver",
+        "vehicle_type": "auto",
+        "desiredAvailability": "online",
+    })
+
+    update_driver_presence_synchronized(
+        db,
+        "drv_sync_1",
+        availability="busy",
+        desired_availability="online",
+        profile_data={"role": "driver", "verificationStatus": "approved", "name": "Sync Driver"},
+    )
+
+    u_snap = db.collection("users").document("drv_sync_1").get().to_dict()
+    p_snap = db.collection("driverPresence").document("drv_sync_1").get().to_dict()
+    m_snap = db.collection("driverMapPresence").document("drv_sync_1").get().to_dict()
+
+    assert u_snap["driverAvailability"] == "busy"
+    assert p_snap["driverAvailability"] == "busy"
+    assert m_snap["driverAvailability"] == "busy"
+
+
+def test_sync_share_trip_passenger_ids_preserves_existing_ids() -> None:
+    db = MockFirestoreClient()
+    db.collection("shareTrips").document("trip_sync_1").set({
+        "status": "active",
+        "childRideIds": ["ride_child_1", "ride_child_nonexistent"],
+        "passenger_ids": ["existing_passenger_99"],
+        "passengerIds": ["existing_passenger_99"],
+    })
+    db.collection("rides").document("ride_child_1").set({
+        "passenger_id": "passenger_new_1",
+    })
+
+    synced = sync_share_trip_passenger_ids(db, "trip_sync_1")
+    assert "existing_passenger_99" in synced
+    assert "passenger_new_1" in synced
+
+    trip_data = db.collection("shareTrips").document("trip_sync_1").get().to_dict()
+    assert "existing_passenger_99" in trip_data["passenger_ids"]
+    assert "passenger_new_1" in trip_data["passenger_ids"]
+
+
+@patch("api.routers.admin._db")
+@patch("api.routers.admin.require_admin", lambda: {"uid": "admin_1", "role": "admin"})
+def test_admin_update_ride_cancel_cascades_to_share_trips(mock_admin_db) -> None:
+    from api.routers import admin
+
+    db = MockFirestoreClient()
+    mock_admin_db.return_value = db
+
+    db.collection("shareTrips").document("parent_share_1").set({
+        "tripId": "parent_share_1",
+        "driverId": "drv_share_admin",
+        "status": "active",
+        "seatsUsed": 2,
+        "childRideIds": ["ride_sub_1", "ride_sub_2"],
+        "stopOrder": [
+            {"rideId": "ride_sub_1", "kind": "drop"},
+            {"rideId": "ride_sub_2", "kind": "drop"},
+        ],
+    })
+    db.collection("rides").document("ride_sub_1").set({
+        "status": "accepted",
+        "driver_id": "drv_share_admin",
+        "parentTripId": "parent_share_1",
+    })
+
+    res = admin.update_ride("ride_sub_1", admin.RideActionBody(action="cancel"), admin_user={"uid": "admin_1", "role": "admin"})
+    assert res["ok"] is True
+
+    # Share trip childRideIds must be updated and seatsUsed decremented
+    parent_snap = db.collection("shareTrips").document("parent_share_1").get().to_dict()
+    assert parent_snap["childRideIds"] == ["ride_sub_2"]
+    assert parent_snap["seatsUsed"] == 1
+    assert len(parent_snap["stopOrder"]) == 1
+    assert parent_snap["stopOrder"][0]["rideId"] == "ride_sub_2"
+
+
+@patch("api.routers.rides.get_admin_app")
+@patch("firebase_admin.firestore.client")
+def test_match_pending_requests_skips_driver_with_active_rides(mock_client, mock_app) -> None:
+    db = MockFirestoreClient()
+    mock_client.return_value = db
+    mock_app.return_value = MagicMock()
+
+    # Driver currently has an active normal ride
+    db.collection("rides").document("ride_ongoing_1").set({
+        "status": "started",
+        "driver_id": "drv_busy_worker",
+    })
+
+    db.collection("pendingRideRequests").document("pending_req_1").set({
+        "status": "pending",
+        "mode": "auto",
+        "pickup": {"lat": 23.83, "lng": 91.28, "name": "Start"},
+        "drop": {"lat": 23.85, "lng": 91.30, "name": "End"},
+        "createdAt": datetime.now(timezone.utc),
+        "rejected_driver_ids": [],
+    })
+
+    matched = rides._match_pending_requests_for_driver(
+        db,
+        "drv_busy_worker",
+        driver_profile={"role": "driver", "vehicle_type": "auto"},
+        driver_location={"lat": 23.83, "lng": 91.28},
+    )
+    assert matched is None

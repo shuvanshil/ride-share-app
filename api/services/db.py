@@ -213,8 +213,10 @@ def update_driver_presence_synchronized(
     desired_availability: Optional[str] = None,
     is_connected: bool = True,
     profile_data: Optional[Dict[str, Any]] = None,
+    location: Optional[Dict[str, float]] = None,
+    batch_or_tx: Optional[Any] = None,
 ) -> None:
-    """Synchronize driver availability across users, driverPresence, and driverMapPresence."""
+    """Synchronize driver availability atomically across users, driverPresence, and driverMapPresence."""
     if not driver_id or db is None:
         return
     clean_driver_id = str(driver_id).strip()
@@ -234,18 +236,33 @@ def update_driver_presence_synchronized(
         else str(profile.get("desiredAvailability") or ("online" if is_connected else "offline")).strip().lower()
     )
 
-    now = datetime.now(timezone.utc)
     from ..routers.rides import _build_driver_availability_updates
 
-    user_update, presence_update, map_presence_update = _build_driver_availability_updates(status, profile)
+    user_update, presence_update, map_presence_update = _build_driver_availability_updates(status, profile, location=location)
     user_update["desiredAvailability"] = desired
     presence_update["desiredAvailability"] = desired
     map_presence_update["desiredAvailability"] = desired
 
+    u_ref = db.collection(COLLECTION_USERS).document(clean_driver_id)
+    p_ref = db.collection(COLLECTION_DRIVER_PRESENCE).document(clean_driver_id)
+    m_ref = db.collection(COLLECTION_DRIVER_MAP_PRESENCE).document(clean_driver_id)
+
     try:
-        db.collection(COLLECTION_USERS).document(clean_driver_id).set(user_update, merge=True)
-        db.collection(COLLECTION_DRIVER_PRESENCE).document(clean_driver_id).set(presence_update, merge=True)
-        db.collection(COLLECTION_DRIVER_MAP_PRESENCE).document(clean_driver_id).set(map_presence_update, merge=True)
+        if batch_or_tx is not None:
+            batch_or_tx.set(u_ref, user_update, merge=True)
+            batch_or_tx.set(p_ref, presence_update, merge=True)
+            batch_or_tx.set(m_ref, map_presence_update, merge=True)
+        else:
+            try:
+                batch = db.batch()
+                batch.set(u_ref, user_update, merge=True)
+                batch.set(p_ref, presence_update, merge=True)
+                batch.set(m_ref, map_presence_update, merge=True)
+                batch.commit()
+            except Exception:
+                u_ref.set(user_update, merge=True)
+                p_ref.set(presence_update, merge=True)
+                m_ref.set(map_presence_update, merge=True)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to synchronize driver presence: %s", exc)
 
@@ -258,32 +275,38 @@ def sync_share_trip_passenger_ids(
 ) -> List[str]:
     """Inspects child rides to extract all passenger IDs and updates passenger_ids/passengerIds on shareTrips.
 
-    This enables secure, direct Firestore realtime reads for passengers as defined in firestore.rules.
+    Preserves existing passenger IDs so that transient read errors on individual child rides
+    never cause valid passenger IDs to be dropped.
     """
     if not trip_id or db is None:
         return []
 
     trip_ref = db.collection(COLLECTION_SHARE_TRIPS).document(trip_id)
-    if child_ride_ids is None:
-        t_snap = trip_ref.get(transaction=tx) if tx is not None else trip_ref.get()
-        if t_snap.exists:
-            t_data = t_snap.to_dict() or {}
-            child_ride_ids = list(t_data.get("childRideIds") or [])
-        else:
-            child_ride_ids = []
+    t_snap = trip_ref.get(transaction=tx) if tx is not None else trip_ref.get()
+    t_data = t_snap.to_dict() or {} if t_snap.exists else {}
 
+    if child_ride_ids is None:
+        child_ride_ids = list(t_data.get("childRideIds") or [])
+
+    # Preserve any existing passenger IDs so transient read errors never wipe them out
     p_ids: Set[str] = set()
+    for existing_pid in (t_data.get("passenger_ids") or []) + (t_data.get("passengerIds") or []):
+        if existing_pid:
+            p_ids.add(str(existing_pid).strip())
+
     for cid in child_ride_ids:
-        c_ref = db.collection(COLLECTION_RIDES).document(cid)
-        c_snap = c_ref.get(transaction=tx) if tx is not None else c_ref.get()
-        if c_snap.exists:
-            c_data = c_snap.to_dict() or {}
-            pid = c_data.get("passenger_id") or c_data.get("passengerId")
-            if pid:
-                p_ids.add(str(pid).strip())
+        try:
+            c_ref = db.collection(COLLECTION_RIDES).document(cid)
+            c_snap = c_ref.get(transaction=tx) if tx is not None else c_ref.get()
+            if c_snap.exists:
+                c_data = c_snap.to_dict() or {}
+                pid = c_data.get("passenger_id") or c_data.get("passengerId")
+                if pid:
+                    p_ids.add(str(pid).strip())
+        except Exception:
+            pass
 
     passenger_list = sorted(list(p_ids))
-    trip_ref = db.collection(COLLECTION_SHARE_TRIPS).document(trip_id)
     update_data = {
         "passenger_ids": passenger_list,
         "passengerIds": passenger_list,

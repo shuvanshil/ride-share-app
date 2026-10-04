@@ -586,36 +586,47 @@ def _open_share_trip_driver_ids(db, driver_id: Optional[str] = None) -> set[str]
     try:
         if driver_id:
             stream = db.collection("shareTrips").where("driverId", "==", driver_id).stream()
+            for trip_snap in stream:
+                trip = trip_snap.to_dict() or {}
+                if trip.get("status") not in {"to_pickup", "active"}:
+                    continue
+                trip_driver = str(trip.get("driverId") or "").strip()
+                if not trip_driver:
+                    continue
+                if int(trip.get("remoteOnBoard") or 0) > 0:
+                    busy.add(trip_driver)
+                    continue
+                child_ids = trip.get("childRideIds") or []
+                if not child_ids:
+                    continue
+                live = False
+                for child_id in child_ids:
+                    child_snap = db.collection("rides").document(str(child_id)).get()
+                    if child_snap.exists and (child_snap.to_dict() or {}).get("status") in _SHARE_LIVE_CHILD_STATUSES:
+                        live = True
+                        break
+                if live:
+                    busy.add(trip_driver)
+                else:
+                    try:
+                        trip_snap.reference.update({
+                            "status": "completed",
+                            "seatsUsed": 0,
+                            "endedAt": fb_firestore.SERVER_TIMESTAMP,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        })
+                    except Exception:
+                        pass
         else:
+            # Global driver scan: do not execute O(N*M) sequential round trips across all child rides on the hot path
             stream = db.collection("shareTrips").where("status", "in", ["to_pickup", "active"]).stream()
-        for trip_snap in stream:
-            trip = trip_snap.to_dict() or {}
-            if trip.get("status") not in {"to_pickup", "active"}:
-                continue
-            trip_driver = str(trip.get("driverId") or "").strip()
-            if not trip_driver:
-                continue
-            if int(trip.get("remoteOnBoard") or 0) > 0:
-                busy.add(trip_driver)
-                continue
-            live = False
-            for child_id in trip.get("childRideIds") or []:
-                child_snap = db.collection("rides").document(str(child_id)).get()
-                if child_snap.exists and (child_snap.to_dict() or {}).get("status") in _SHARE_LIVE_CHILD_STATUSES:
-                    live = True
-                    break
-            if live:
-                busy.add(trip_driver)
-            else:
-                try:
-                    trip_snap.reference.update({
-                        "status": "completed",
-                        "seatsUsed": 0,
-                        "endedAt": fb_firestore.SERVER_TIMESTAMP,
-                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                    })
-                except Exception:
-                    pass
+            for trip_snap in stream:
+                trip = trip_snap.to_dict() or {}
+                trip_driver = str(trip.get("driverId") or "").strip()
+                if not trip_driver:
+                    continue
+                if int(trip.get("remoteOnBoard") or 0) > 0 or bool(trip.get("childRideIds")):
+                    busy.add(trip_driver)
     except Exception:
         pass
     return busy
@@ -653,12 +664,13 @@ def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: s
     return candidates
 
 
-def _availability_for_location_update(profile: dict[str, Any], ride_id: str) -> tuple[str, str]:
+def _availability_for_location_update(profile: dict[str, Any], ride_id: str, db: Any = None, uid: str = "") -> tuple[str, str]:
     """Derive availability and persisted desiredAvailability for a location update.
 
     Rules:
     - If the driver is intentionally offline (desiredAvailability == 'offline'), preserve offline.
     - If there's an active ride_id, availability is 'busy'.
+    - If db and uid are given, verify driver has no active ride or open share trip before returning 'searching'.
     - Otherwise availability is 'searching'.
     Returns (availability, desiredAvailability)
     """
@@ -669,6 +681,13 @@ def _availability_for_location_update(profile: dict[str, Any], ride_id: str) -> 
         # When a ride is active the driver is busy but their desiredAvailability
         # remains whatever they had persisted (default to 'online').
         return "busy", ("online" if desired != "offline" else "offline")
+    if db is not None and uid:
+        try:
+            from ..services.db import driver_has_open_share_trips, driver_has_other_active_rides
+            if driver_has_other_active_rides(db, uid) or driver_has_open_share_trips(db, uid):
+                return "busy", ("online" if desired != "offline" else "offline")
+        except Exception:
+            pass
     # Not offline and no active ride => searching
     return "searching", ("online" if desired != "offline" else "offline")
 
@@ -936,35 +955,6 @@ async def create_passenger_ride(
             priority_driver_ids = []
 
         ride_ref = db.collection("rides").document()
-        transaction = db.transaction()
-
-        @fb_firestore.transactional
-        def create_transaction(tx):
-            # Only block if there is a ride already accepted or ongoing with an assigned driver
-            ongoing_query = (
-                db.collection("rides")
-                .where("passenger_id", "==", uid)
-                .where("status", "in", ["accepted", "arrived", "started", "en_route"])
-                .limit(1)
-            )
-            if list(ongoing_query.stream(transaction=tx)):
-                raise ApiError("You already have an ongoing trip with a driver.", 409)
-
-            # Auto-cancel any unaccepted searching/pending ride documents for this passenger
-            unaccepted_query = (
-                db.collection("rides")
-                .where("passenger_id", "==", uid)
-                .where("status", "in", ["pending", "searching", "dispatching"])
-            )
-            old_docs = list(unaccepted_query.stream(transaction=tx))
-            for old_doc in old_docs:
-                tx.update(old_doc.reference, {
-                    "status": "cancelled_by_passenger",
-                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
-                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                })
-
-            tx.set(ride_ref, ride_data)
 
         ride_data = {
             "passenger_id": uid,
@@ -1029,6 +1019,48 @@ async def create_passenger_ride(
             "search_status": "searching_nearby_drivers",
             "createdAt": fb_firestore.SERVER_TIMESTAMP,
         }
+
+        transaction = db.transaction()
+
+        @fb_firestore.transactional
+        def create_transaction(tx):
+            # Only block if there is a ride already accepted or ongoing with an assigned driver
+            ongoing_query = (
+                db.collection("rides")
+                .where("passenger_id", "==", uid)
+                .where("status", "in", ["accepted", "arrived", "started", "en_route"])
+                .limit(1)
+            )
+            if list(ongoing_query.stream(transaction=tx)):
+                raise ApiError("You already have an ongoing trip with a driver.", 409)
+
+            # Auto-cancel any unaccepted searching/pending ride documents for this passenger
+            unaccepted_query = (
+                db.collection("rides")
+                .where("passenger_id", "==", uid)
+                .where("status", "in", ["pending", "searching", "dispatching"])
+            )
+            old_docs = list(unaccepted_query.stream(transaction=tx))
+            for old_doc in old_docs:
+                old_data = old_doc.to_dict() or {}
+                tx.update(old_doc.reference, {
+                    "status": "cancelled_by_passenger",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+                old_p_id = old_data.get("pendingRequestId")
+                if old_p_id:
+                    try:
+                        tx.update(db.collection("pendingRideRequests").document(str(old_p_id)), {
+                            "status": "cancelled",
+                            "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        })
+                    except Exception:
+                        pass
+
+            tx.set(ride_ref, ride_data)
+
         create_transaction(transaction)
         if is_share:
             for d_id in driver_ids:
@@ -1612,15 +1644,20 @@ def transition_driver_ride(
 
         if action in {"complete", "cancel", "skip"}:
             open_share_trips = _open_share_trip_driver_ids(db, uid)
-            if not open_share_trips:
+            from ..services.db import driver_has_other_active_rides, update_driver_presence_synchronized
+            has_other_rides = driver_has_other_active_rides(db, uid, exclude_ride_id=clean_ride_id)
+            if not open_share_trips and not has_other_rides:
                 try:
                     availability_status = "offline"
                     if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
                         availability_status = "searching"
-                    user_update, presence_update, map_presence_update = _build_driver_availability_updates(availability_status, profile)
-                    db.collection("users").document(uid).set(user_update, merge=True)
-                    db.collection("driverPresence").document(uid).set(presence_update, merge=True)
-                    db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
+                    update_driver_presence_synchronized(
+                        db,
+                        uid,
+                        availability=availability_status,
+                        desired_availability=profile.get("desiredAvailability"),
+                        profile_data={**profile, "uid": uid},
+                    )
                     if availability_status == "searching":
                         _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
                 except Exception:
@@ -1746,17 +1783,21 @@ def update_driver_availability(
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update driver availability.")
         open_share_trips = _open_share_trip_driver_ids(db, uid)
+        from ..services.db import driver_has_other_active_rides, update_driver_presence_synchronized
+        has_other_rides = driver_has_other_active_rides(db, uid)
         if open_share_trips and status == "offline":
             raise ApiError("Cannot go offline while a shared trip is active.", 400)
-        user_update, presence_update, map_presence_update = _build_driver_availability_updates(
-            status,
-            {**profile, "uid": uid},
-            {"lat": lat, "lng": lng} if lat is not None else None,
-        )
+        if has_other_rides and status == "offline":
+            raise ApiError("Cannot go offline while an active ride is in progress.", 400)
         _accumulate_online_seconds(db, uid, profile.get("lastSeenAt"), status != "offline")
-        db.collection("users").document(uid).set(user_update, merge=True)
-        db.collection("driverPresence").document(uid).set(presence_update, merge=True)
-        db.collection("driverMapPresence").document(uid).set(map_presence_update, merge=True)
+        update_driver_presence_synchronized(
+            db,
+            uid,
+            availability=status,
+            desired_availability="online" if status != "offline" else "offline",
+            profile_data={**profile, "uid": uid},
+            location={"lat": lat, "lng": lng} if lat is not None else None,
+        )
         if status == "searching":
             activate_due_scheduled_requests(db)
             _match_pending_requests_for_driver(
@@ -1796,7 +1837,7 @@ def update_driver_location(
         # Derive availability using the driver's persisted desiredAvailability
         # so intentionally-offline drivers remain offline and active rides
         # correctly mark the driver as busy.
-        availability, persisted_desired = _availability_for_location_update(profile, ride_id)
+        availability, persisted_desired = _availability_for_location_update(profile, ride_id, db=db, uid=uid)
         _accumulate_online_seconds(db, uid, profile.get("lastLocationAt") or profile.get("lastSeenAt"), availability != "offline")
         if ride_id:
             # Validate ride ownership and status when a ride_id is supplied.
@@ -1828,15 +1869,18 @@ def update_driver_location(
             "lastLocationAt": now,
             "updatedAt": now,
         }
-        profile_ref.set({
+
+        # Atomically batch telemetry writes to minimize network roundtrips and ensure lockstep consistency
+        batch = db.batch()
+        batch.set(profile_ref, {
             "driverLocation": location,
             **telemetry,
             "notificationEligibleUntil": now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS),
             "lastSeenAt": now,
             "lastLocationAt": now,
         }, merge=True)
-        db.collection("driverPresence").document(uid).set(presence_update, merge=True)
-        db.collection("driverMapPresence").document(uid).set({
+        batch.set(db.collection("driverPresence").document(uid), presence_update, merge=True)
+        batch.set(db.collection("driverMapPresence").document(uid), {
             "uid": uid,
             "name": str(profile.get("name") or "Driver")[:80],
             "driverAvailability": availability,
@@ -1850,6 +1894,7 @@ def update_driver_location(
             "lastLocationAt": now,
             "updatedAt": now,
         }, merge=True)
+
         if ride_id:
             ride_updates: dict[str, Any] = {
                 "driverLocation": location,
@@ -1884,10 +1929,8 @@ def update_driver_location(
                     ride_updates["max_progress_ratio"] = round(max_progress_ratio, 4)
                     ride_updates["progress_ratio"] = round(max_progress_ratio, 4)
 
-            db.collection("rides").document(ride_id).set(ride_updates, merge=True)
+            batch.set(db.collection("rides").document(ride_id), ride_updates, merge=True)
             if ride and ride.get("share_enabled"):
-                # Mirror only coordinates/status into the public, sanitized
-                # live-tracking snapshot -- see set_trip_share() below.
                 share_view_payload: dict[str, Any] = {
                     "driverLocation": location,
                     "status": ride.get("status"),
@@ -1895,9 +1938,14 @@ def update_driver_location(
                 }
                 if ride.get("sharedInfo"):
                     share_view_payload["sharedInfo"] = ride.get("sharedInfo")
-                db.collection("tripShareView").document(ride_id).set(
-                    share_view_payload, merge=True
-                )
+                batch.set(db.collection("tripShareView").document(ride_id), share_view_payload, merge=True)
+
+        try:
+            batch.commit()
+        except Exception:
+            # Fallback to individual sets if batch write encounters non-transient error
+            profile_ref.set({"driverLocation": location, **telemetry, "lastSeenAt": now, "lastLocationAt": now}, merge=True)
+            db.collection("driverPresence").document(uid).set(presence_update, merge=True)
 
         if availability == "searching" and not ride_id:
             _match_pending_requests_for_driver(db, uid, profile, location)
@@ -2084,10 +2132,14 @@ def cancel_passenger_ride(
                             and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
                         ):
                             avail_status = "searching"
-                        u_upd, p_upd, m_upd = _build_driver_availability_updates(avail_status, drv_profile)
-                        db.collection("users").document(driver_id).set(u_upd, merge=True)
-                        db.collection("driverPresence").document(driver_id).set(p_upd, merge=True)
-                        db.collection("driverMapPresence").document(driver_id).set(m_upd, merge=True)
+                        from ..services.db import update_driver_presence_synchronized
+                        update_driver_presence_synchronized(
+                            db,
+                            driver_id,
+                            availability=avail_status,
+                            desired_availability=drv_profile.get("desiredAvailability"),
+                            profile_data={**drv_profile, "uid": driver_id},
+                        )
                         if avail_status == "searching":
                             _match_pending_requests_for_driver(
                                 db, driver_id, drv_profile, drv_profile.get("driverLocation") or drv_profile.get("location")
@@ -2352,15 +2404,14 @@ def accept_driver_ride(
                 })
 
         accept_transaction(transaction)
-        busy_update = {
-            "driverAvailability": "busy",
-            "desiredAvailability": "online",
-            "isConnected": True,
-            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        db.collection("users").document(uid).set(busy_update, merge=True)
-        db.collection("driverPresence").document(uid).set(busy_update, merge=True)
-        db.collection("driverMapPresence").document(uid).set(busy_update, merge=True)
+        from ..services.db import update_driver_presence_synchronized
+        update_driver_presence_synchronized(
+            db,
+            uid,
+            availability="busy",
+            desired_availability="online",
+            profile_data={**profile, "uid": uid},
+        )
 
         try:
             from ..services.db import record_ride_audit
@@ -2405,28 +2456,37 @@ def reject_driver_ride(
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can decline rides.")
         ride_ref = db.collection("rides").document(clean_ride_id)
-        snapshot = ride_ref.get()
-        if not snapshot.exists:
-            raise ApiError("Ride request no longer exists.", 404)
-        ride = snapshot.to_dict() or {}
-        if ride.get("status") != "pending" or ride.get("driver_id"):
-            # Already accepted/cancelled/expired elsewhere -- nothing to decline.
-            return {"ok": True, "rideId": clean_ride_id, "status": ride.get("status") or "unavailable"}
-        if uid not in (ride.get("eligible_driver_ids") or []):
-            raise ApiError("This ride request is no longer available for you.", 403)
+        @fb_firestore.transactional
+        def reject_tx(tx):
+            snap = ride_ref.get(transaction=tx)
+            if not snap.exists:
+                raise ApiError("Ride request no longer exists.", 404)
+            curr = snap.to_dict() or {}
+            if curr.get("status") != "pending" or curr.get("driver_id"):
+                return {"already_handled": True, "status": curr.get("status") or "unavailable", "ride": curr}
+            if uid not in (curr.get("eligible_driver_ids") or []):
+                raise ApiError("This ride request is no longer available for you.", 403)
 
-        eligible = list(ride.get("eligible_driver_ids") or [])
-        rejected = list(dict.fromkeys([*(ride.get("rejected_driver_ids") or []), uid]))
-        remaining = [d for d in eligible if d not in rejected]
+            eligible = list(curr.get("eligible_driver_ids") or [])
+            rejected = list(dict.fromkeys([*(curr.get("rejected_driver_ids") or []), uid]))
+            remaining = [d for d in eligible if d not in rejected]
 
-        updates = {
-            "rejected_driver_ids": rejected,
-            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-        }
-        if not remaining and not ride.get("pendingRequestId"):
-            updates["status"] = "declined"
+            updates = {
+                "rejected_driver_ids": rejected,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            }
+            if not remaining and not curr.get("pendingRequestId"):
+                updates["status"] = "declined"
 
-        ride_ref.update(updates)
+            tx.update(ride_ref, updates)
+            return {"already_handled": False, "remaining": remaining, "ride": curr}
+
+        tx_res = reject_tx(db.transaction())
+        if tx_res.get("already_handled"):
+            return {"ok": True, "rideId": clean_ride_id, "status": tx_res.get("status")}
+
+        remaining = tx_res.get("remaining") or []
+        ride = tx_res.get("ride") or {}
 
         try:
             from ..services.db import record_ride_audit
@@ -2959,7 +3019,8 @@ def _match_pending_requests_for_driver(
     driver_lng = float(driver_location["lng"])
     driver_type = _driver_type(driver_profile)
 
-    if driver_id in _open_share_trip_driver_ids(db, driver_id):
+    from ..services.db import driver_has_open_share_trips, driver_has_other_active_rides
+    if driver_has_other_active_rides(db, driver_id) or driver_has_open_share_trips(db, driver_id):
         return None
 
     now = datetime.now(timezone.utc)
@@ -2979,6 +3040,15 @@ def _match_pending_requests_for_driver(
             if locked_at:
                 locked_dt = _to_utc_datetime(locked_at)
                 if locked_dt and (now - locked_dt) > timedelta(seconds=45):
+                    orphan_ride_id = sdata.get("rideId")
+                    if orphan_ride_id:
+                        try:
+                            db.collection("rides").document(str(orphan_ride_id)).update({
+                                "status": "timeout",
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            })
+                        except Exception:
+                            pass
                     sdoc.reference.update({
                         "status": "pending",
                         "lockedByDriverId": None,

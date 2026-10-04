@@ -986,12 +986,47 @@ def update_ride(
         updates["status"] = "cancelled_by_passenger"
         updates["cancellationReason"] = "Cancelled by administrator"
         updates["cancelledAt"] = fb_firestore.SERVER_TIMESTAMP
+
+        parent_trip_id = before.get("parentTripId")
+        if parent_trip_id:
+            try:
+                parent_ref = db.collection("shareTrips").document(parent_trip_id)
+                p_snap = parent_ref.get()
+                if p_snap.exists:
+                    p_data = p_snap.to_dict() or {}
+                    child_ids = p_data.get("childRideIds") or []
+                    active_children = [cid for cid in child_ids if cid != ride_id]
+                    stop_order = [s for s in (p_data.get("stopOrder") or []) if s.get("rideId") != ride_id]
+                    if not active_children and int(p_data.get("remoteOnBoard") or 0) == 0:
+                        parent_ref.update({
+                            "status": "cancelled",
+                            "seatsUsed": 0,
+                            "stopOrder": stop_order,
+                            "endedAt": fb_firestore.SERVER_TIMESTAMP,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        })
+                    else:
+                        new_anchor = active_children[0] if active_children else p_data.get("anchorRideId")
+                        parent_ref.update({
+                            "anchorRideId": new_anchor,
+                            "childRideIds": active_children,
+                            "seatsUsed": max(0, len(active_children) + int(p_data.get("remoteOnBoard") or 0)),
+                            "stopOrder": stop_order,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        })
+            except Exception:
+                pass
+
         driver_id = str(before.get("driver_id") or "").strip()
         if driver_id:
             try:
-                from ..services.db import driver_has_open_share_trips, driver_has_other_active_rides
+                from ..services.db import (
+                    driver_has_open_share_trips,
+                    driver_has_other_active_rides,
+                    update_driver_presence_synchronized,
+                )
                 has_active = driver_has_other_active_rides(db, driver_id, exclude_ride_id=ride_id)
-                has_share = driver_has_open_share_trips(db, driver_id)
+                has_share = driver_has_open_share_trips(db, driver_id, exclude_trip_id=parent_trip_id)
                 if not has_active and not has_share:
                     drv_doc = db.collection("users").document(driver_id).get()
                     drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
@@ -1001,9 +1036,13 @@ def update_ride(
                         and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
                     ):
                         avail_status = "searching"
-                    db.collection("users").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
-                    db.collection("driverPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
-                    db.collection("driverMapPresence").document(driver_id).set({"driverAvailability": avail_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+                    update_driver_presence_synchronized(
+                        db,
+                        driver_id,
+                        availability=avail_status,
+                        desired_availability=drv_profile.get("desiredAvailability"),
+                        profile_data={**drv_profile, "uid": driver_id},
+                    )
             except Exception:
                 pass
     elif body.action == "update_fare":
