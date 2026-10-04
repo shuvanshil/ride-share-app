@@ -23,6 +23,33 @@ import {
 import { driverStatusManager } from './driver-status-manager.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
+const DRIVER_LOCATION_CACHE_KEY = "liphtup_last_driver_location";
+const DEFAULT_DRIVER_LOCATION = Object.freeze({ lat: 24.3124, lng: 92.0135 });
+
+function readCachedDriverLocation() {
+    try {
+        const cached = JSON.parse(localStorage.getItem(DRIVER_LOCATION_CACHE_KEY) || "null");
+        if (cached && Number.isFinite(Number(cached.lat)) && Number.isFinite(Number(cached.lng))) {
+            return { lat: Number(cached.lat), lng: Number(cached.lng) };
+        }
+    } catch {}
+    if (currentUser?.driverLocation && Number.isFinite(Number(currentUser.driverLocation.lat)) && Number.isFinite(Number(currentUser.driverLocation.lng))) {
+        return { lat: Number(currentUser.driverLocation.lat), lng: Number(currentUser.driverLocation.lng) };
+    }
+    return DEFAULT_DRIVER_LOCATION;
+}
+
+function rememberDriverLocation(position) {
+    if (!position || !Number.isFinite(Number(position.lat)) || !Number.isFinite(Number(position.lng))) return;
+    try {
+        localStorage.setItem(DRIVER_LOCATION_CACHE_KEY, JSON.stringify({
+            lat: Number(position.lat),
+            lng: Number(position.lng),
+            savedAt: Date.now()
+        }));
+    } catch {}
+}
+
 const DRIVER_ACTIVE_STATUSES = ["accepted", "arrived", "started", "en_route"];
 const DRIVER_HEADING_MIN_DISTANCE_METERS = 5;
 const DRIVER_NOTIFICATION_ELIGIBLE_MS = 12 * 60 * 60 * 1000;
@@ -601,12 +628,13 @@ function stopPresenceTracking() {
         navigator.geolocation.clearWatch(driverPresenceWatchId);
         driverPresenceWatchId = null;
     }
+    releaseWakeLock();
 }
 
 function updateDutySwitchUi() {
     const switchInput = document.getElementById('driver-duty-switch');
     const pill = document.getElementById('driver-duty-pill');
-    const pillText = document.getElementById('driver-duty-pill-text');
+    const pillText = document.getElementById('driver-duty-pill-text') || document.getElementById('driver-duty-status-text');
     const label = document.getElementById('driver-duty-state');
     const helper = document.getElementById('driver-duty-helper');
     const badge = document.getElementById('incoming-requests-badge');
@@ -669,6 +697,10 @@ async function setDriverAvailability(status, locationData = null) {
     const previousStatus = currentUser.driverAvailability;
     const previousDesired = currentUser.desiredAvailability;
 
+    if (!locationData && status !== "offline") {
+        locationData = readCachedDriverLocation();
+    }
+
     // 1. Instant local & UI update (0ms latency)
     currentUser.driverAvailability = status;
     currentUser.desiredAvailability = status === "offline" ? "offline" : "online";
@@ -709,6 +741,11 @@ async function updateDriverPresenceLocation(lat, lng, fallbackAvailability = "se
         if (!user || !currentUser || currentUser.role !== "driver") return;
         if (!isDriverDutyOnline() && fallbackAvailability !== "busy") return;
 
+        rememberDriverLocation({ lat, lng });
+        if (currentUser) {
+            currentUser.driverLocation = { lat, lng };
+        }
+
         const idToken = await user.getIdToken(false);
         const response = await fetch("/api/rides/driver-location", {
             method: "POST",
@@ -737,10 +774,19 @@ function startDriverPresenceTracking() {
     }
 
     stopPresenceTracking();
+    acquireWakeLock();
 
     // Fast initial position broadcast so the driver is visible on map immediately
+    const cachedPos = readCachedDriverLocation();
+    if (cachedPos && isDriverDutyOnline()) {
+        lastPresenceWrittenPosition = cachedPos;
+        lastPresenceWriteAt = Date.now();
+        updateDriverPresenceLocation(cachedPos.lat, cachedPos.lng, "searching");
+    }
+
     getQuickPosition(3000).then((pos) => {
         if (pos && isDriverDutyOnline()) {
+            rememberDriverLocation(pos);
             lastPresenceWrittenPosition = pos;
             lastPresenceWriteAt = Date.now();
             updateDriverPresenceLocation(pos.lat, pos.lng, "searching");
@@ -770,6 +816,7 @@ function startDriverPresenceTracking() {
 
                 const { lat, lng } = smoothed;
                 const coords = { lat, lng };
+                rememberDriverLocation(coords);
                 const telemetryResult = buildDriverTelemetry(
                     coords,
                     position.coords,
@@ -1077,10 +1124,17 @@ async function restoreDriverActiveRide() {
 }
 
 function initDriverJobsStream() {
+    if (activeDriverJobsListener) {
+        activeDriverJobsListener();
+        activeDriverJobsListener = null;
+    }
+
     const ridesContainer = document.getElementById('available-rides-list');
     const noRidesMsg = document.getElementById('no-rides-msg');
     const requestsBadge = document.getElementById('incoming-requests-badge');
     const requestsCount = document.getElementById('incoming-requests-count');
+
+    if (!ridesContainer || !currentUser?.uid) return;
 
     const q = query(
         collection(db, "rides"),
@@ -1718,37 +1772,27 @@ async function cancelRideByDriver(rideId) {
 }
 
 function startDriverConsole(profile) {
-    if (activeConsoleUid === profile.uid) {
-        currentUser = { ...currentUser, ...profile };
-        driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
-        showDriverHome(currentUser);
-        updateDutySwitchUi();
-        if (isDriverDutyOnline()) {
-            if (driverPresenceWatchId === null) {
-                startDriverPresenceTracking();
-            }
-        } else {
-            stopPresenceTracking();
-        }
-        return;
-    }
-
     activeConsoleUid = profile.uid;
-    currentUser = profile;
-    driverDutyOnline = getDriverDutyStatus(profile) === "online";
-    showDriverHome(profile);
+    currentUser = { ...(currentUser || {}), ...profile };
+    driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
+    showDriverHome(currentUser);
     updateDutySwitchUi();
+
     if (isDriverDutyOnline()) {
-        setDriverAvailability(profile.driverAvailability === "busy" ? "busy" : "searching");
+        const initialLoc = readCachedDriverLocation();
+        setDriverAvailability(currentUser.driverAvailability === "busy" ? "busy" : "searching", initialLoc);
         startDriverPresenceTracking();
         setTimeout(() => {
-            registerDriverPushToken(db, profile.uid).catch((error) => {
-                console.warn("Driver push token registration failed:", error);
-            });
+            if (currentUser?.uid) {
+                registerDriverPushToken(db, currentUser.uid).catch((error) => {
+                    console.warn("Driver push token registration failed:", error);
+                });
+            }
         }, 0);
     } else {
         stopPresenceTracking();
     }
+
     initDriverJobsStream();
     restoreDriverActiveRide();
 }
@@ -1767,10 +1811,9 @@ function routeDriverProfile(profile) {
     cacheProfile(profile);
 
     const status = profile.verificationStatus || "pending_review";
-    const isAck = Boolean(profile.approvalAcknowledged);
 
     // Evaluate account status modal
-    driverStatusManager.evaluateStatus(profile, {
+    const isModalActive = driverStatusManager.evaluateStatus(profile, {
         onAcknowledged: (updatedProfile) => {
             currentUser = updatedProfile;
             cacheProfile(updatedProfile);
@@ -1782,19 +1825,18 @@ function routeDriverProfile(profile) {
             stopPresenceTracking();
             stopRideRequestRing();
             driverDutyOnline = false;
+            updateDutySwitchUi();
         }
     });
 
-    if (status === "approved" && isAck) {
+    if (status === "approved" && !isModalActive) {
         startDriverConsole(profile);
-    } else {
-        // Stop active background presence tracking and ride rings if not in active approved duty
+    } else if (status !== "approved") {
+        // Stop active background presence tracking and ride rings if not approved
         stopPresenceTracking();
         stopRideRequestRing();
         driverDutyOnline = false;
-        if (status === "approved" && !isAck) {
-            showDriverHome(profile);
-        }
+        updateDutySwitchUi();
     }
 }
 
@@ -1856,6 +1898,13 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
         try {
             quickCoords = await getQuickPosition(2500);
         } catch {}
+        if (!quickCoords) {
+            quickCoords = readCachedDriverLocation();
+        }
+        if (quickCoords) {
+            rememberDriverLocation(quickCoords);
+        }
+        initDriverJobsStream();
     } else {
         stopRideRequestRing();
         stopPresenceTracking();

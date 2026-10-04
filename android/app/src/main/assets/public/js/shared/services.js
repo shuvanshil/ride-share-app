@@ -238,8 +238,12 @@ function setServiceSelectionLocked(detail = {}) {
             : t('services.calculated_road_distance', "Fares use the calculated road distance.");
     }
 
+    const lockedVehicleType = (detail.rideType === "share" || detail.serviceName === "Shared Ride" || detail.vehicleType === "share")
+        ? "share"
+        : (detail.vehicleType || "");
+
     document.querySelectorAll('[data-service-type]').forEach((card) => {
-        const selected = serviceSelectionLocked && card.dataset.serviceType === detail.vehicleType;
+        const selected = serviceSelectionLocked && card.dataset.serviceType === lockedVehicleType;
         card.disabled = serviceSelectionLocked;
         if (serviceSelectionLocked) {
             card.classList.toggle('is-selected', selected);
@@ -247,9 +251,14 @@ function setServiceSelectionLocked(detail = {}) {
         }
     });
 
+    const shareExplainer = document.getElementById('share-info-explainer');
+    if (shareExplainer) {
+        shareExplainer.classList.toggle('d-none', lockedVehicleType !== 'share');
+    }
+
     if (!serviceSelectionLocked) return;
 
-    selectedServiceType = detail.vehicleType;
+    selectedServiceType = lockedVehicleType;
     const service = getRideService(selectedServiceType);
     if (!service) return;
 

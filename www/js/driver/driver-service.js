@@ -1290,7 +1290,7 @@ function renderLifecycleState(status, rideData = currentRide) {
     currentRideStatus = status;
     currentRide = { ...(currentRide || {}), ...(rideData || {}), status };
 
-    if (isShareChildRide(currentRide)) {
+    if (isShareChildRide(currentRide) && isShareRideOnBoard(currentRide)) {
         hideLifecyclePanel();
         renderShareSection();
         return;
@@ -1636,10 +1636,15 @@ function formatShareClock(value) {
     return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function isShareRideOnBoard(ride) {
+    return ["started", "en_route"].includes(ride?.status) || Boolean(ride?.pinVerifiedAt);
+}
+
 function getShareRiderEntries() {
     const trip = isShareTripOpen(shareTripData) ? shareTripData : null;
     const used = new Set();
     const entries = Array.from(shareChildRides.values())
+        .filter(isShareRideOnBoard)
         .sort((a, b) => (Number(a.seatOrder) || 9) - (Number(b.seatOrder) || 9))
         .map((ride) => {
             let seat = Math.min(3, Math.max(1, Number(ride.seatOrder) || 1));
@@ -1655,10 +1660,6 @@ function getShareRiderEntries() {
         entries.push({ type: "remote", index: i, seat });
     }
     return entries.sort((a, b) => a.seat - b.seat);
-}
-
-function isShareRideOnBoard(ride) {
-    return ["started", "en_route"].includes(ride?.status);
 }
 
 function buildShareRiderCard(entry, position) {
@@ -1700,7 +1701,7 @@ function renderShareSection() {
     const trip = isShareTripOpen(shareTripData) ? shareTripData : null;
     const entries = getShareRiderEntries();
     const remoteOnBoard = trip ? Math.max(0, Number(trip.remoteOnBoard) || 0) : 0;
-    const visible = shareChildRides.size > 0 || remoteOnBoard > 0;
+    const visible = entries.length > 0 || remoteOnBoard > 0;
 
     shareUiVisible = visible;
     if (!visible) {
@@ -1711,7 +1712,9 @@ function renderShareSection() {
     }
 
     section.classList.remove('d-none');
-    hideLifecyclePanel();
+    if (!currentRide || isShareRideOnBoard(currentRide)) {
+        hideLifecyclePanel();
+    }
 
     const seatsUsed = Math.min(3, entries.length);
     const seatsAvail = Math.max(0, 3 - seatsUsed);
@@ -2021,7 +2024,8 @@ function closeShareSheet() {
 function patchShareChildStatus(rideId, status) {
     const existing = shareChildRides.get(rideId);
     if (!existing) return;
-    shareChildRides.set(rideId, { ...existing, status });
+    const pinVerifiedAt = (status === "en_route" || status === "started") ? (existing.pinVerifiedAt || Date.now()) : existing.pinVerifiedAt;
+    shareChildRides.set(rideId, { ...existing, status, pinVerifiedAt });
     renderShareSection();
     renderShareSheet(true);
 }
@@ -2178,7 +2182,7 @@ function handleShareSheetPaste(event) {
 }
 
 function showLifecyclePanel(status, rideData = currentRide) {
-    if (isShareChildRide(rideData)) {
+    if (isShareChildRide(rideData) && isShareRideOnBoard(rideData)) {
         hideLifecyclePanel();
         renderLifecycleState(status, rideData);
         return;
@@ -2680,11 +2684,15 @@ function highlightShareRiderCard(rideId) {
 function renderShareStopMarkers(remainingStops) {
     if (!map || !window.google?.maps || !Array.isArray(remainingStops)) return;
 
-    const currentKeys = new Set();
-    const isNewStopAdded = remainingStops.length > lastKnownShareStops.length;
-    lastKnownShareStops = remainingStops;
+    const onboardCount = Array.from(shareChildRides.values()).filter(isShareRideOnBoard).length + (Number(shareTripData?.remoteOnBoard) || 0);
+    const isFirstSharePickup = (onboardCount === 0) && remainingStops.length > 0 && remainingStops[0].kind === "pickup" && (shareChildRides.size <= 1);
+    const stopsToRender = isFirstSharePickup ? [remainingStops[0]] : remainingStops;
 
-    remainingStops.forEach((stop, index) => {
+    const currentKeys = new Set();
+    const isNewStopAdded = stopsToRender.length > lastKnownShareStops.length;
+    lastKnownShareStops = stopsToRender;
+
+    stopsToRender.forEach((stop, index) => {
         const seq = index + 1;
         const isNext = index === 0;
         const stopLat = Number(stop.lat);
@@ -2775,14 +2783,20 @@ function renderShareStopMarkers(remainingStops) {
 async function refreshShareRoute(position, remainingStops, force = false) {
     if (!map || !window.google?.maps || !Array.isArray(remainingStops) || remainingStops.length === 0 || !position) return;
 
-    if (remainingStops.length === 1) {
+    const onboardCount = Array.from(shareChildRides.values()).filter(isShareRideOnBoard).length + (Number(shareTripData?.remoteOnBoard) || 0);
+    const isFirstSharePickup = (onboardCount === 0) && remainingStops.length > 0 && remainingStops[0].kind === "pickup" && (shareChildRides.size <= 1);
+
+    if (remainingStops.length === 1 || isFirstSharePickup) {
         const single = remainingStops[0];
         currentTarget = {
             kind: single.kind,
             position: { lat: Number(single.lat), lng: Number(single.lng) },
-            place: single.name || "Passenger"
+            place: single.name || (single.kind === "pickup" ? "Passenger pickup" : "Passenger drop")
         };
         currentTargetKey = `${single.kind}:${single.lat}:${single.lng}`;
+        routeLabel.innerText = single.kind === "pickup" ? "Next: Pickup" : "Next: Drop";
+        routePlace.innerText = single.name || (single.kind === "pickup" ? "Passenger pickup" : "Passenger drop");
+        statusText.innerText = single.kind === "pickup" ? `Next: Pickup — ${single.name || 'Passenger'}` : `Next: Drop — ${single.name || 'Passenger'}`;
         refreshRoute(position, force);
         return;
     }
@@ -3333,6 +3347,15 @@ function renderActiveRideState(rideId, ride) {
                     routePlace.innerText = nextStop.name || (nextStop.kind === "pickup" ? "Passenger pickup" : "Passenger drop");
                     statusText.innerText = nextStop.kind === "pickup" ? `Next: Pickup — ${nextStop.name || 'Passenger'}` : `Next: Drop — ${nextStop.name || 'Passenger'}`;
                     routePanel.classList.remove('d-none');
+                    if (nextStop.kind === "pickup" && nextStop.rideId && shareChildRides.has(nextStop.rideId)) {
+                        const targetChildRide = shareChildRides.get(nextStop.rideId);
+                        if (targetChildRide && !isShareRideOnBoard(targetChildRide)) {
+                            currentRideId = nextStop.rideId;
+                            currentRide = targetChildRide;
+                            currentRideStatus = targetChildRide.status || "accepted";
+                            showLifecyclePanel(currentRideStatus, targetChildRide);
+                        }
+                    }
                     renderShareStopMarkers(remainingStops);
                     if (lastPosition) {
                         refreshShareRoute(lastPosition, remainingStops);
@@ -3406,8 +3429,12 @@ async function verifyAndStartTrip(rideId) {
     isVerifyingPin = true;
     try {
         const result = await transitionRideThroughBackend(rideId, "verify_pin", typedPin);
-        const updatedRide = result.ride || { ...currentRide, status: "en_route" };
+        const updatedRide = result.ride || { ...currentRide, status: "en_route", pinVerifiedAt: Date.now() };
+        if (shareChildRides.has(rideId)) {
+            patchShareChildStatus(rideId, "en_route");
+        }
         renderActiveRideState(rideId, updatedRide);
+        renderShareSection();
         checkAndRecoverLocationInconsistencyInBackground(updatedRide, lastPosition);
     } catch (error) {
         console.error("PIN verification failed:", error);

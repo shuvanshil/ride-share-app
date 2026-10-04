@@ -257,12 +257,15 @@ function setPassengerDestinationLocked(locked, destinationName = "", pickupName 
 }
 
 function setPassengerServiceLocked(locked, ride = {}) {
+    const isShare = ride.rideType === "share" || ride.service_name === "Shared Ride" || ride.serviceType === "share" || ride.vehicle_type === "share" || ride.vehicleType === "share";
+    const vehicleType = isShare ? "share" : (ride.vehicle_type || ride.vehicleType || ride.id || "");
     window.dispatchEvent(new CustomEvent('passenger-service-lock-changed', {
         detail: {
             locked,
-            vehicleType: ride.vehicle_type || ride.id || "",
-            serviceName: ride.service_name || ride.name || "",
-            fare: Number(ride.fare),
+            vehicleType,
+            rideType: isShare ? "share" : (ride.rideType || "normal"),
+            serviceName: ride.service_name || ride.name || (isShare ? "Shared Ride" : ""),
+            fare: Number(ride.fare ?? ride.fare_original ?? ride.fareLocked),
             distanceKm: Number(ride.distance_km)
         }
     }));
