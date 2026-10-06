@@ -543,6 +543,31 @@ def decline_share_offer(
     try:
         from ..dispatch.pools import DispatchPoolManager
         p_id = str(ride.get("passenger_id") or ride.get("passengerId") or "")
+        open_trips = _open_share_trip_driver_ids(db, uid)
+        seats_free = 0
+        if open_trips:
+            p_trip = db.collection("shareTrips").document(open_trips[0]).get()
+            t_data = p_trip.to_dict() or {} if p_trip.exists else {}
+            seats_used = int(t_data.get("seatsUsed") or 1)
+            seats_free = max(0, SHARE_MAX_SEATS - seats_used)
+        profile = db.collection("users").document(uid).get().to_dict() or {}
+        DispatchPoolManager.sync_driver_dap(
+            db=db,
+            driver_id=uid,
+            loc=profile.get("driverLocation") or profile.get("location"),
+            availability="searching",
+            vehicle_type="auto",
+            seats_free=seats_free,
+        )
+        if p_id:
+            wpp_ref = db.collection("dispatchWPP").document(p_id)
+            wpp_snap = wpp_ref.get()
+            if wpp_snap.exists:
+                wpp_data = wpp_snap.to_dict() or {}
+                banned = list(wpp_data.get("banned") or [])
+                if uid not in banned:
+                    banned.append(uid)
+                wpp_ref.update({"state": "WAITING", "banned": banned, "current_offer_driver_id": None})
         DispatchPoolManager.update_assignment_state(
             db,
             passenger_id=p_id or clean_ride_id,
@@ -551,6 +576,8 @@ def decline_share_offer(
             event_type="assignment_declined",
             details={"ride_id": clean_ride_id},
         )
+        from .rides import _dispatch_with_fallback
+        _dispatch_with_fallback(db)
     except Exception:
         pass
 

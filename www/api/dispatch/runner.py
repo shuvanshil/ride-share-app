@@ -508,6 +508,12 @@ def run_dispatch(db: Any = None, force: bool = False) -> dict[str, Any]:
     finally:
         if db and not force:
             _release_lease(db, runner_id)
+        if db and total_assignments_made > 0:
+            try:
+                from .sweeper import sweep_outbox_notifications
+                sweep_outbox_notifications(db, time.time())
+            except Exception:
+                pass
 
     duration_ms = round((time.time() - start_ts) * 1000.0, 2)
     return {

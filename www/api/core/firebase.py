@@ -13,6 +13,12 @@ from firebase_admin import credentials
 from firebase_admin import firestore as fb_firestore
 from firebase_admin import messaging as fb_messaging
 
+# Ensure compatibility with both camelCase and UPPERCASE naming in firebase_admin.messaging
+if not hasattr(fb_messaging, "ApnsConfig") and hasattr(fb_messaging, "APNSConfig"):
+    setattr(fb_messaging, "ApnsConfig", getattr(fb_messaging, "APNSConfig"))
+if not hasattr(fb_messaging, "ApnsPayload") and hasattr(fb_messaging, "APNSPayload"):
+    setattr(fb_messaging, "ApnsPayload", getattr(fb_messaging, "APNSPayload"))
+
 from .config import get_env
 from .errors import ApiError
 

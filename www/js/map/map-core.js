@@ -3426,12 +3426,45 @@ async function reverseGeocodeLocation(lat, lng) {
         const response = await fetch(`/api/google-reverse-geocode?${params.toString()}`, {
             headers: { Accept: "application/json" }
         });
-        const data = await response.json().catch(() => ({}));
-        return response.ok ? data.result || null : null;
+        if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            if (data?.result) return data.result;
+        }
     } catch (error) {
         console.warn("Google reverse geocode for map selection failed:", error);
-        return null;
     }
+
+    if (window.google?.maps?.Geocoder) {
+        try {
+            const geocoder = new window.google.maps.Geocoder();
+            const result = await new Promise((resolve) => {
+                geocoder.geocode({ location: { lat: Number(lat), lng: Number(lng) } }, (results, status) => {
+                    if (status === "OK" && results && results[0]) {
+                        resolve(results[0]);
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+            if (result) {
+                const formatted = result.formatted_address || "";
+                return {
+                    name: formatted.split(",")[0] || "Pinned location",
+                    displayAddress: formatted,
+                    fullAddress: formatted,
+                    placeId: result.place_id || "",
+                    lat: Number(lat),
+                    lng: Number(lng),
+                    source: "google-client-fallback",
+                    provider: "google"
+                };
+            }
+        } catch (clientErr) {
+            console.warn("Client-side Geocoder fallback failed:", clientErr);
+        }
+    }
+
+    return null;
 }
 
 async function completeDestinationMapPick(lat, lng) {

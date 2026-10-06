@@ -13,6 +13,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Query, Request
 
 from ..core.errors import ApiError
+from ..core.failures import report_backend_failure
 from ..core.google_client import (
     fetch_json,
     get_google_config,
@@ -471,6 +472,14 @@ async def google_reverse_geocode(request: Request, lat: Optional[str] = Query(No
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
+        report_backend_failure(
+            service="google",
+            operation="google_reverse_geocode",
+            error=error,
+            severity="MEDIUM",
+            endpoint="/api/google-reverse-geocode",
+            recommended_action="Check Google Geocoding API response and server key.",
+        )
         raise ApiError("Google reverse geocode failed", 500)
 
 

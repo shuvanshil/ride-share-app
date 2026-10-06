@@ -14,9 +14,11 @@ _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 
 def get_google_config() -> dict[str, str]:
+    server_key = get_env("GOOGLE_MAPS_SERVER_KEY") or get_env("GOOGLE_MAPS_API_KEY") or get_env("GOOGLE_MAPS_BROWSER_KEY")
+    browser_key = get_env("GOOGLE_MAPS_BROWSER_KEY") or get_env("GOOGLE_MAPS_API_KEY") or get_env("GOOGLE_MAPS_SERVER_KEY")
     return {
-        "browserKey": get_env("GOOGLE_MAPS_BROWSER_KEY"),
-        "serverKey": get_env("GOOGLE_MAPS_SERVER_KEY"),
+        "browserKey": browser_key,
+        "serverKey": server_key,
     }
 
 

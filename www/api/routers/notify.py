@@ -13,6 +13,13 @@ from fastapi import APIRouter, Header
 from firebase_admin import auth as fb_auth
 from firebase_admin import firestore as fb_firestore
 from firebase_admin import messaging as fb_messaging
+
+# Ensure compatibility with both camelCase and UPPERCASE naming in firebase_admin.messaging
+if not hasattr(fb_messaging, "ApnsConfig") and hasattr(fb_messaging, "APNSConfig"):
+    setattr(fb_messaging, "ApnsConfig", getattr(fb_messaging, "APNSConfig"))
+if not hasattr(fb_messaging, "ApnsPayload") and hasattr(fb_messaging, "APNSPayload"):
+    setattr(fb_messaging, "ApnsPayload", getattr(fb_messaging, "APNSPayload"))
+
 from pydantic import BaseModel
 
 from ..core.config import get_env
@@ -38,6 +45,8 @@ def _clean_id(value: Any) -> str:
 def _timestamp_ms(value: Any) -> int:
     if not value:
         return 0
+    if isinstance(value, (int, float)):
+        return int(value * 1000) if value < 10000000000 else int(value)
     if hasattr(value, "timestamp"):
         try:
             return int(value.timestamp() * 1000)
@@ -45,6 +54,12 @@ def _timestamp_ms(value: Any) -> int:
             pass
     if isinstance(value, datetime):
         return int(value.timestamp() * 1000)
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return int(dt.timestamp() * 1000)
+        except Exception:
+            pass
     return 0
 
 
@@ -124,6 +139,11 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
 
         pickup = ride.get("pickup_display_address") or ride.get("pickup_name") or "Pickup location"
         drop = ride.get("drop_display_address") or ride.get("drop_name") or ride.get("drop_full_address") or "Destination"
+        fare_val = ride.get("fare") or ride.get("estimated_fare") or ride.get("estimatedFare") or 0
+        try:
+            fare = float(fare_val)
+        except (ValueError, TypeError):
+            fare = 0.0
         title_text = "New Ride Request on LiphtUP"
         body_text = f"Pickup: {pickup}\nDrop: {drop}" + (f"\nFare: Rs {fare:g}" if fare > 0 else "")
 
@@ -181,6 +201,7 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
         return {"ok": True, "sent": response.success_count, "failed": response.failure_count}
     except ApiError:
         raise
+    except Exception as error:  # noqa: BLE001
         report_backend_failure(
             service="notify",
             operation="notify_ride_request",

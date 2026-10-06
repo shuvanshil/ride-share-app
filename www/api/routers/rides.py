@@ -1399,6 +1399,17 @@ def cancel_pending_request(
     except Exception:
         pass
 
+    try:
+        now_ts = datetime.now(timezone.utc).timestamp()
+        db.collection("dispatchNotifyMe").document(clean_req_id).update({"status": "cancelled", "updated_at": now_ts})
+    except Exception:
+        pass
+    try:
+        now_ts = datetime.now(timezone.utc).timestamp()
+        db.collection("dispatchScheduled").document(clean_req_id).update({"status": "cancelled", "updated_at": now_ts})
+    except Exception:
+        pass
+
     return {"ok": True, "requestId": clean_req_id, "status": "cancelled"}
 
 
@@ -1651,6 +1662,24 @@ def transition_driver_ride(
                         {
                             "url": f"{APP_BASE_URL}/services?rideId={clean_ride_id}",
                             "type": "driver_arrived",
+                            "rideId": clean_ride_id,
+                        }
+                    )
+                except Exception:
+                    pass
+        if action == "cancel":
+            p_id = str(result.get("passenger_id") or result.get("passengerId") or "")
+            d_name = str(profile.get("name") or "Your driver")
+            if p_id:
+                try:
+                    _send_passenger_push_and_inapp(
+                        db,
+                        p_id,
+                        "Ride Cancelled by Driver",
+                        f"{d_name} was unable to complete the pickup and cancelled the ride.",
+                        {
+                            "url": f"{APP_BASE_URL}/services",
+                            "type": "driver_cancelled",
                             "rideId": clean_ride_id,
                         }
                     )
@@ -2267,14 +2296,16 @@ def cancel_passenger_ride(
                 except Exception:
                     pass
 
-            # Release driver presence back to searching if driver was assigned and has no other active rides
-            if driver_id:
+            # Release driver presence back to searching if driver was assigned or offered and has no other active rides
+            offered_driver_id = str(ride.get("current_offer_driver_id") or "").strip()
+            target_driver_id = driver_id or offered_driver_id
+            if target_driver_id:
                 try:
-                    open_share_trips = _open_share_trip_driver_ids(db, driver_id)
+                    open_share_trips = _open_share_trip_driver_ids(db, target_driver_id)
                     from ..services.db import driver_has_other_active_rides
-                    has_other_rides = driver_has_other_active_rides(db, driver_id, exclude_ride_id=clean_ride_id)
+                    has_other_rides = driver_has_other_active_rides(db, target_driver_id, exclude_ride_id=clean_ride_id)
                     if not open_share_trips and not has_other_rides:
-                        drv_doc = db.collection("users").document(driver_id).get()
+                        drv_doc = db.collection("users").document(target_driver_id).get()
                         drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
                         avail_status = "offline"
                         if (
@@ -2285,16 +2316,16 @@ def cancel_passenger_ride(
                         from ..services.db import update_driver_presence_synchronized
                         update_driver_presence_synchronized(
                             db,
-                            driver_id,
+                            target_driver_id,
                             availability=avail_status,
                             desired_availability=drv_profile.get("desiredAvailability"),
-                            profile_data={**drv_profile, "uid": driver_id},
+                            profile_data={**drv_profile, "uid": target_driver_id},
                         )
                         if avail_status == "searching":
                             try:
                                 DispatchPoolManager.sync_driver_dap(
                                     db=db,
-                                    driver_id=driver_id,
+                                    driver_id=target_driver_id,
                                     loc=drv_profile.get("driverLocation") or drv_profile.get("location"),
                                     availability=avail_status,
                                     vehicle_type=_driver_type(drv_profile),
@@ -2302,8 +2333,17 @@ def cancel_passenger_ride(
                             except Exception:
                                 pass
                             _dispatch_with_fallback(
-                                db, driver_id, drv_profile, drv_profile.get("driverLocation") or drv_profile.get("location")
+                                db, target_driver_id, drv_profile, drv_profile.get("driverLocation") or drv_profile.get("location")
                             )
+                    if offered_driver_id and not driver_id:
+                        DispatchPoolManager.update_assignment_state(
+                            db,
+                            passenger_id=passenger_id or clean_ride_id,
+                            driver_id=offered_driver_id,
+                            new_state="cancelled",
+                            event_type="passenger_cancelled_offer",
+                            details={"ride_id": clean_ride_id},
+                        )
                 except Exception as exc:
                     report_backend_failure(
                         service="rides",
@@ -2645,6 +2685,26 @@ def accept_driver_ride(
             )
         except Exception:
             pass
+
+        if p_id:
+            try:
+                driver_name = str(accepted_ride.get("driver_name") or "Your driver")
+                veh_info = str(accepted_ride.get("vehicle_model") or accepted_ride.get("vehicle_type") or "vehicle")
+                _send_passenger_push_and_inapp(
+                    db,
+                    passenger_id=p_id,
+                    title="Driver on the way!",
+                    body=f"{driver_name} ({veh_info}) accepted your ride and is heading to pickup.",
+                    data_payload={
+                        "type": "ride_accepted",
+                        "rideId": clean_ride_id,
+                        "driverId": uid,
+                        "driverName": driver_name,
+                        "url": f"{APP_BASE_URL}/services?rideId={clean_ride_id}&from=push",
+                    },
+                )
+            except Exception:
+                pass
 
         return {"ok": True, "rideId": clean_ride_id, "ride": _safe_ride_dict(accepted_ride)}
     except ApiError:
@@ -3163,6 +3223,10 @@ def _send_passenger_push_and_inapp(db, passenger_id: str, title: str, body: str,
         link_url = data_payload.get("url") or f"{APP_BASE_URL}/services"
         message = fb_messaging.MulticastMessage(
             tokens=tokens,
+            notification=fb_messaging.Notification(
+                title=title,
+                body=body,
+            ),
             data={**{k: str(v) for k, v in data_payload.items()}, "title": title, "body": body},
             android=fb_messaging.AndroidConfig(
                 priority="high",
@@ -3711,6 +3775,17 @@ def reschedule_pending_request_15min(
         "lastNotifiedAt": None,
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
     })
+    try:
+        db.collection("dispatchScheduled").document(clean_id).update({
+            "activatesAt": new_activates_dt,
+            "expiresAt": new_expires_dt,
+            "scheduleTimedOut": False,
+            "released_to_wpp": False,
+            "status": "pending",
+            "updated_at": now.timestamp(),
+        })
+    except Exception:
+        pass
 
     _log_demand_event(db, "pending_rescheduled_15min", {"requestId": clean_id, "passengerId": uid})
     return {
@@ -3734,7 +3809,7 @@ def activate_scheduled_due_endpoint(
 @router.get("/cron/activate-scheduled")
 @router.get("/scheduled/activate-due-cron")
 def cron_activate_scheduled(request: Request) -> dict[str, Any]:
-    """Cron endpoint called periodically (e.g. Vercel Cron) to promote scheduled rides."""
+    """Cron endpoint called periodically (e.g. Vercel Cron) to promote scheduled rides and run sweeper."""
     cron_secret = os.getenv("CRON_SECRET", "").strip()
     auth_header = request.headers.get("authorization") or request.headers.get("Authorization") or ""
     x_cron_header = request.headers.get("x-cron-secret") or request.headers.get("X-Cron-Secret") or ""
@@ -3760,6 +3835,12 @@ def cron_activate_scheduled(request: Request) -> dict[str, Any]:
                     _dispatch_with_fallback(db, driver_uid, d_profile, d_loc)
         except Exception as exc:
             print(f"Cron matching sweep skipped: {exc}")
+
+    try:
+        from ..dispatch.sweeper import run_dispatch_sweeper
+        run_dispatch_sweeper(db)
+    except Exception as exc:
+        print(f"Cron sweeper pass skipped: {exc}")
 
     return {"ok": True, "activatedCount": count}
 
