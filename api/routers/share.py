@@ -83,6 +83,7 @@ def _sync_driver_availability_after_trip(db: Any, uid: str) -> None:
             driver_has_other_active_rides,
             update_driver_presence_synchronized,
         )
+        from ..dispatch.pools import DispatchPoolManager
         if driver_has_open_share_trips(db, uid) or driver_has_other_active_rides(db, uid):
             return
 
@@ -100,9 +101,18 @@ def _sync_driver_availability_after_trip(db: Any, uid: str) -> None:
             desired_availability=profile.get("desiredAvailability"),
             profile_data={**profile, "uid": uid},
         )
+        DispatchPoolManager.end_share_trip(db=db, driver_id=uid)
         if availability_status == "searching":
-            from .rides import _match_pending_requests_for_driver
-            _match_pending_requests_for_driver(
+            DispatchPoolManager.sync_driver_dap(
+                db=db,
+                driver_id=uid,
+                loc=profile.get("driverLocation") or profile.get("location"),
+                availability=availability_status,
+                vehicle_type="auto",
+                seats_free=SHARE_MAX_SEATS,
+            )
+            from .rides import _dispatch_with_fallback
+            _dispatch_with_fallback(
                 db, uid, profile, profile.get("driverLocation") or profile.get("location")
             )
     except Exception:
@@ -360,6 +370,33 @@ def accept_share_offer(
         profile_data={**profile, "uid": uid},
     )
     try:
+        from ..dispatch.pools import DispatchPoolManager
+        seats_left = max(0, SHARE_MAX_SEATS - (current_seats + 1))
+        new_avail = "searching" if seats_left > 0 else "busy"
+        DispatchPoolManager.sync_driver_dap(
+            db=db,
+            driver_id=uid,
+            loc=profile.get("driverLocation") or profile.get("location"),
+            availability=new_avail,
+            vehicle_type="auto",
+            seats_free=seats_left,
+            route=cand_stops,
+        )
+        p_id = str(ride.get("passenger_id") or ride.get("passengerId") or "")
+        if p_id:
+            DispatchPoolManager.remove_passenger_wpp(db, p_id, reason="accepted")
+        DispatchPoolManager.remove_passenger_wpp(db, clean_ride_id, reason="accepted")
+        DispatchPoolManager.update_assignment_state(
+            db,
+            passenger_id=p_id or clean_ride_id,
+            driver_id=uid,
+            new_state="accepted",
+            event_type="share_assignment_accepted",
+            details={"ride_id": clean_ride_id, "parentTripId": parent_trip_id},
+        )
+    except Exception:
+        pass
+    try:
         sync_share_trip_passenger_ids(db, parent_trip_id)
     except Exception:
         pass
@@ -503,6 +540,20 @@ def decline_share_offer(
             except Exception:
                 pass
 
+    try:
+        from ..dispatch.pools import DispatchPoolManager
+        p_id = str(ride.get("passenger_id") or ride.get("passengerId") or "")
+        DispatchPoolManager.update_assignment_state(
+            db,
+            passenger_id=p_id or clean_ride_id,
+            driver_id=uid,
+            new_state="declined",
+            event_type="assignment_declined",
+            details={"ride_id": clean_ride_id},
+        )
+    except Exception:
+        pass
+
     return {"ok": True, "declined": True}
 
 
@@ -570,6 +621,22 @@ def add_remote_passenger(
                 "sharedInfo": s_info,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             })
+
+    try:
+        from ..dispatch.pools import DispatchPoolManager
+        seats_free = max(0, SHARE_MAX_SEATS - new_seats_used)
+        new_avail = "searching" if seats_free > 0 else "busy"
+        DispatchPoolManager.sync_driver_dap(
+            db=db,
+            driver_id=uid,
+            loc=trip.get("currentLocation") or {},
+            availability=new_avail,
+            vehicle_type="auto",
+            seats_free=seats_free,
+            route=trip.get("stopOrder") or [],
+        )
+    except Exception:
+        pass
 
     return {
         "ok": True,
@@ -640,6 +707,23 @@ def drop_remote_passenger(
 
     finalize_trip_if_done(clean_trip_id, db)
     _sync_driver_availability_after_trip(db, uid)
+
+    try:
+        from ..dispatch.pools import DispatchPoolManager
+        from ..services.db import driver_has_open_share_trips
+        if driver_has_open_share_trips(db, uid):
+            seats_free = max(0, SHARE_MAX_SEATS - new_seats_used)
+            DispatchPoolManager.sync_driver_dap(
+                db=db,
+                driver_id=uid,
+                loc=trip.get("currentLocation") or {},
+                availability="searching",
+                vehicle_type="auto",
+                seats_free=seats_free,
+                route=trip.get("stopOrder") or [],
+            )
+    except Exception:
+        pass
 
     return {
         "ok": True,

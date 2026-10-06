@@ -280,6 +280,35 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Dispatch System Collections: Internal backend access only
+    match /dispatchWPP/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchDAP/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchControl/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchAssignments/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchRuns/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchEvents/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchScheduled/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchNotifyMe/{docId} {
+      allow read, write: if false;
+    }
+    match /dispatchNotifications/{docId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

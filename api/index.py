@@ -35,6 +35,7 @@ from .routers import (
     rides,
     share,
     wallet,
+    dispatch,
 )
 from .routers import driver_payments
 
@@ -139,6 +140,8 @@ app.include_router(admin_wallet.router, prefix="/api")
 app.include_router(admin_wallet.router)
 app.include_router(admin.router, prefix="/api")
 app.include_router(admin.router)
+app.include_router(dispatch.router, prefix="/api")
+app.include_router(dispatch.router)
 
 # Continuous background thread for scheduled ride activation & matching sweep
 import threading
@@ -150,8 +153,10 @@ def _bg_scheduled_ride_sweeper():
             from .core.firebase import get_admin_app
             import firebase_admin.firestore as fb_firestore
             from .routers.rides import activate_due_scheduled_requests
+            from .dispatch.sweeper import run_dispatch_sweeper
             db = fb_firestore.client(get_admin_app())
             activate_due_scheduled_requests(db)
+            run_dispatch_sweeper(db)
         except Exception as exc:
             try:
                 from .core.failures import report_backend_failure
@@ -164,7 +169,11 @@ def _bg_scheduled_ride_sweeper():
                 )
             except Exception:
                 pass
-        time.sleep(10)
+        try:
+            from .dispatch.config import SWEEPER_INTERVAL_SEC
+            time.sleep(SWEEPER_INTERVAL_SEC)
+        except Exception:
+            time.sleep(10)
 
 import os
 

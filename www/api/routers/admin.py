@@ -1489,3 +1489,13 @@ def bulk_failure_action(
     )
     return {"ok": True, "count": updated_count, "action": body.action}
 
+
+@router.get("/dispatch-stats")
+def get_admin_dispatch_stats(
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Admin-only endpoint returning pool sizes, oldest entries, outstanding offers, invariant violations, and daily reconciliation."""
+    db = _db()
+    from ..dispatch.invariants import check_dispatch_invariants
+    return check_dispatch_invariants(db)
+

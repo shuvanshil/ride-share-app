@@ -49,8 +49,49 @@ from ..core.telegram import (
     is_sensitive_time_window,
 )
 from .notify import _collect_tokens, _is_notification_eligible
+from ..dispatch.pools import DispatchPoolManager
+from ..dispatch.runner import (
+    get_consecutive_errors,
+    nudge_dispatch,
+    run_dispatch,
+    set_custom_fallback_handler,
+)
 
 router = APIRouter(prefix="/rides", tags=["rides"])
+
+def _dispatch_with_fallback(
+    db: Any,
+    driver_id: str = "",
+    driver_profile: Optional[dict[str, Any]] = None,
+    driver_location: Optional[dict[str, float]] = None,
+) -> None:
+    """Trigger pool dispatch, and invoke legacy fallback if repeated errors occur."""
+    try:
+        run_dispatch(db)
+    except Exception as exc:
+        print(f"[DISPATCH_RUNNER_EXC] Error during pool dispatch execution: {exc}")
+    if get_consecutive_errors() >= 3 and driver_id and driver_profile and driver_location:
+        print(
+            f"[DISPATCH_FALLBACK] Error threshold reached ({get_consecutive_errors()}/3). "
+            f"Invoking fallback legacy match for driver {driver_id}."
+        )
+        _match_pending_requests_for_driver(db, driver_id, driver_profile, driver_location)
+
+def _global_legacy_fallback(db: Any) -> None:
+    print("[DISPATCH_FALLBACK] Executing global legacy fallback sweep across searching drivers.")
+    try:
+        searching = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
+        for doc in searching:
+            d_data = doc.to_dict() or {}
+            d_uid = doc.id
+            d_prof = db.collection("users").document(d_uid).get().to_dict() or {}
+            d_l = d_data.get("driverLocation") or d_prof.get("driverLocation") or d_prof.get("location")
+            if d_uid and d_l:
+                _match_pending_requests_for_driver(db, d_uid, d_prof, d_l)
+    except Exception as e:
+        print(f"[DISPATCH_FALLBACK] Legacy fallback sweep error: {e}")
+
+set_custom_fallback_handler(_global_legacy_fallback)
 
 ACTIVE_PASSENGER_STATUSES = {"pending", "accepted", "arrived", "started", "en_route"}
 DISPATCH_BATCH_SIZE = 10
@@ -1094,6 +1135,23 @@ async def create_passenger_ride(
         except Exception:
             pass
 
+        try:
+            DispatchPoolManager.sync_passenger_wpp(
+                db=db,
+                passenger_id=uid,
+                pickup={"lat": pickup_lat, "lng": pickup_lng, "name": body.pickupName},
+                drop={"lat": drop_lat, "lng": drop_lng, "name": body.dropName, "address": body.dropFullAddress},
+                fare=fare,
+                vehicle_type=ride_data.get("vehicle_type", "auto"),
+                wants_share=is_share,
+                seats=1,
+                ride_id=ride_ref.id,
+                metadata={"distance_km": distance_km, "duration_minutes": duration_minutes},
+            )
+            _dispatch_with_fallback(db)
+        except Exception as p_err:
+            print(f"Pool sync on create ride error: {p_err}")
+
         return {
             "ok": True,
             "rideId": ride_ref.id,
@@ -1260,6 +1318,31 @@ async def create_pending_request(
     except Exception as exc:
         print(f"Immediate scheduled activation error: {exc}")
 
+    try:
+        if mode == "auto":
+            DispatchPoolManager.sync_passenger_wpp(
+                db=db,
+                passenger_id=uid,
+                pickup={"lat": pickup_lat, "lng": pickup_lng, "name": body.pickupName},
+                drop={"lat": drop_lat, "lng": drop_lng, "name": body.dropName, "address": body.dropFullAddress},
+                fare=pending_fare,
+                vehicle_type=pending_vehicle_type,
+                wants_share=pending_is_share,
+                seats=1,
+                mode="auto",
+                pending_request_id=req_ref.id,
+                metadata={"distance_km": pending_distance_km},
+            )
+            _dispatch_with_fallback(db)
+        elif mode == "schedule":
+            db.collection("dispatchScheduled").document(req_ref.id).set(pending_doc_data, merge=True)
+            nudge_dispatch(db)
+        elif mode in ("notify_only", "notify"):
+            db.collection("dispatchNotifyMe").document(req_ref.id).set(pending_doc_data, merge=True)
+            nudge_dispatch(db)
+    except Exception as exc:
+        print(f"Pool sync on create pending request error: {exc}")
+
     _log_demand_event(db, "pending_created", {
         "requestId": req_ref.id,
         "passengerId": uid,
@@ -1309,6 +1392,12 @@ def cancel_pending_request(
                 pass
     except Exception as exc:
         print(f"Cancel pending request exception handled: {exc}")
+
+    try:
+        DispatchPoolManager.remove_passenger_wpp(db, clean_req_id, reason="cancelled_by_user")
+        DispatchPoolManager.remove_passenger_wpp(db, uid, reason="cancelled_by_user")
+    except Exception:
+        pass
 
     return {"ok": True, "requestId": clean_req_id, "status": "cancelled"}
 
@@ -1659,7 +1748,40 @@ def transition_driver_ride(
                         profile_data={**profile, "uid": uid},
                     )
                     if availability_status == "searching":
-                        _match_pending_requests_for_driver(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+                        try:
+                            DispatchPoolManager.sync_driver_dap(
+                                db=db,
+                                driver_id=uid,
+                                loc=profile.get("driverLocation") or profile.get("location"),
+                                availability=availability_status,
+                                vehicle_type=_driver_type(profile),
+                            )
+                        except Exception:
+                            pass
+                        _dispatch_with_fallback(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+                except Exception:
+                    pass
+            elif open_share_trips:
+                try:
+                    for trip_id in open_share_trips:
+                        t_snap = db.collection("shareTrips").document(trip_id).get()
+                        if t_snap.exists:
+                            t_val = t_snap.to_dict() or {}
+                            s_used = int(t_val.get("seatsUsed") or 0)
+                            m_seats = int(t_val.get("maxSeats") or SHARE_MAX_SEATS)
+                            s_free = max(0, m_seats - s_used)
+                            DispatchPoolManager.sync_driver_dap(
+                                db=db,
+                                driver_id=uid,
+                                loc=profile.get("driverLocation") or profile.get("location"),
+                                availability="searching" if s_free > 0 else "busy",
+                                vehicle_type=_driver_type(profile),
+                                seats_free=s_free,
+                                route=t_val.get("stopOrder") or [],
+                            )
+                            if s_free > 0:
+                                _dispatch_with_fallback(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+                            break
                 except Exception:
                     pass
         return {"ok": True, "rideId": clean_ride_id, "status": result.get("status"), "ride": _safe_ride_dict(result)}
@@ -1798,9 +1920,20 @@ def update_driver_availability(
             profile_data={**profile, "uid": uid},
             location={"lat": lat, "lng": lng} if lat is not None else None,
         )
+        try:
+            DispatchPoolManager.sync_driver_dap(
+                db=db,
+                driver_id=uid,
+                loc={"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location"),
+                availability=status,
+                vehicle_type=_driver_type(profile),
+                is_approved=True,
+            )
+        except Exception:
+            pass
         if status == "searching":
             activate_due_scheduled_requests(db)
-            _match_pending_requests_for_driver(
+            _dispatch_with_fallback(
                 db, uid, profile, {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
             )
         return {"ok": True, "status": status}
@@ -1948,7 +2081,18 @@ def update_driver_location(
             db.collection("driverPresence").document(uid).set(presence_update, merge=True)
 
         if availability == "searching" and not ride_id:
-            _match_pending_requests_for_driver(db, uid, profile, location)
+            try:
+                DispatchPoolManager.sync_driver_dap(
+                    db=db,
+                    driver_id=uid,
+                    loc=location,
+                    availability=availability,
+                    vehicle_type=_driver_type(profile),
+                    is_approved=True,
+                )
+            except Exception:
+                pass
+            _dispatch_with_fallback(db, uid, profile, location)
         return {"ok": True, "rideId": ride_id or None, "status": availability}
     except ApiError:
         raise
@@ -2088,6 +2232,12 @@ def cancel_passenger_ride(
 
             ride_ref.update(updates)
 
+            try:
+                DispatchPoolManager.remove_passenger_wpp(db, uid, reason="cancelled_by_passenger")
+                DispatchPoolManager.remove_passenger_wpp(db, clean_ride_id, reason="cancelled_by_passenger")
+            except Exception:
+                pass
+
             parent_trip_id = ride.get("parentTripId")
             if parent_trip_id:
                 try:
@@ -2141,7 +2291,17 @@ def cancel_passenger_ride(
                             profile_data={**drv_profile, "uid": driver_id},
                         )
                         if avail_status == "searching":
-                            _match_pending_requests_for_driver(
+                            try:
+                                DispatchPoolManager.sync_driver_dap(
+                                    db=db,
+                                    driver_id=driver_id,
+                                    loc=drv_profile.get("driverLocation") or drv_profile.get("location"),
+                                    availability=avail_status,
+                                    vehicle_type=_driver_type(drv_profile),
+                                )
+                            except Exception:
+                                pass
+                            _dispatch_with_fallback(
                                 db, driver_id, drv_profile, drv_profile.get("driverLocation") or drv_profile.get("location")
                             )
                 except Exception as exc:
@@ -2414,6 +2574,66 @@ def accept_driver_ride(
         )
 
         try:
+            p_id = str(accepted_ride.get("passenger_id") or accepted_ride.get("passengerId") or "")
+            if p_id:
+                DispatchPoolManager.remove_passenger_wpp(db, p_id, reason="accepted")
+            DispatchPoolManager.remove_passenger_wpp(db, clean_ride_id, reason="accepted")
+            DispatchPoolManager.update_assignment_state(
+                db,
+                p_id or clean_ride_id,
+                uid,
+                new_state="accepted",
+                event_type="assignment_accepted",
+                details={"ride_id": clean_ride_id},
+            )
+            if is_share and parent_trip_id:
+                try:
+                    p_doc = db.collection("shareTrips").document(parent_trip_id).get()
+                    t_data = p_doc.to_dict() or {} if p_doc.exists else {}
+                    seats_used = int(t_data.get("seatsUsed") or 1)
+                    max_seats = int(t_data.get("maxSeats") or SHARE_MAX_SEATS)
+                    free_seats = max(0, max_seats - seats_used)
+                    if free_seats > 0:
+                        DispatchPoolManager.sync_driver_dap(
+                            db=db,
+                            driver_id=uid,
+                            loc=profile.get("driverLocation") or profile.get("location"),
+                            availability="searching",
+                            vehicle_type=driver_type,
+                            seats_free=free_seats,
+                            route=t_data.get("stopOrder") or [],
+                        )
+                    else:
+                        DispatchPoolManager.sync_driver_dap(
+                            db=db,
+                            driver_id=uid,
+                            loc=profile.get("driverLocation") or profile.get("location"),
+                            availability="busy",
+                            vehicle_type=driver_type,
+                            seats_free=0,
+                        )
+                except Exception:
+                    DispatchPoolManager.sync_driver_dap(
+                        db=db,
+                        driver_id=uid,
+                        loc=profile.get("driverLocation") or profile.get("location"),
+                        availability="busy",
+                        vehicle_type=driver_type,
+                        seats_free=0,
+                    )
+            else:
+                DispatchPoolManager.sync_driver_dap(
+                    db=db,
+                    driver_id=uid,
+                    loc=profile.get("driverLocation") or profile.get("location"),
+                    availability="busy",
+                    vehicle_type=driver_type,
+                    seats_free=0,
+                )
+        except Exception:
+            pass
+
+        try:
             from ..services.db import record_ride_audit
             record_ride_audit(
                 db,
@@ -2475,8 +2695,16 @@ def reject_driver_ride(
                 "rejected_driver_ids": rejected,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             }
-            if not remaining and not curr.get("pendingRequestId"):
+            is_pool_managed = bool(
+                curr.get("current_offer_driver_id")
+                or curr.get("search_status") == "matched_offer_sent"
+                or curr.get("pendingRequestId")
+            )
+            if not remaining and not is_pool_managed:
                 updates["status"] = "declined"
+            elif is_pool_managed:
+                updates["current_offer_driver_id"] = None
+                updates["search_status"] = "searching_nearby_drivers"
 
             tx.update(ride_ref, updates)
             return {"already_handled": False, "remaining": remaining, "ride": curr}
@@ -2531,11 +2759,40 @@ def reject_driver_ride(
                     d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
                     d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
                     if driver_uid and d_loc:
-                        matched_id = _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
-                        if matched_id:
-                            break
+                        _dispatch_with_fallback(db, driver_uid, d_profile, d_loc)
+                        break
             except Exception as e:
                 print(f"Pending rollback cascading dispatch error: {e}")
+
+        try:
+            DispatchPoolManager.sync_driver_dap(
+                db=db,
+                driver_id=uid,
+                loc=profile.get("driverLocation") or profile.get("location"),
+                availability="searching",
+                vehicle_type=_driver_type(profile),
+            )
+            p_id = str(ride.get("passenger_id") or ride.get("passengerId") or "")
+            if p_id:
+                wpp_ref = db.collection("dispatchWPP").document(p_id)
+                wpp_snap = wpp_ref.get()
+                if wpp_snap.exists:
+                    wpp_data = wpp_snap.to_dict() or {}
+                    banned = list(wpp_data.get("banned") or [])
+                    if uid not in banned:
+                        banned.append(uid)
+                    wpp_ref.update({"state": "WAITING", "banned": banned, "current_offer_driver_id": None})
+            DispatchPoolManager.update_assignment_state(
+                db,
+                p_id or clean_ride_id,
+                uid,
+                new_state="declined",
+                event_type="assignment_declined",
+                details={"ride_id": clean_ride_id},
+            )
+            _dispatch_with_fallback(db)
+        except Exception:
+            pass
 
         _bump_daily_stats(db, uid, {"declined_count": 1})
         return {"ok": True, "rideId": clean_ride_id, "status": "declined"}
@@ -3371,6 +3628,23 @@ def activate_due_scheduled_requests(db) -> int:
 
         if now >= act_time:
             evaluated_count += 1
+            try:
+                p_pickup = data.get("pickup") or {}
+                p_drop = data.get("drop") or {}
+                DispatchPoolManager.sync_passenger_wpp(
+                    db=db,
+                    passenger_id=str(data.get("passengerId") or ""),
+                    pickup=p_pickup,
+                    drop=p_drop,
+                    fare=float(data.get("fare") or 0.0),
+                    vehicle_type=str(data.get("vehicleType") or "auto"),
+                    wants_share=str(data.get("rideType") or "") == "share",
+                    seats=1,
+                    mode="auto",
+                    pending_request_id=doc.id,
+                )
+            except Exception:
+                pass
             # Check if 10 minutes pass after scheduled time with no driver match
             if now >= (act_time + timedelta(minutes=10)) and not data.get("scheduleTimedOut"):
                 doc.reference.update({
@@ -3393,7 +3667,7 @@ def activate_due_scheduled_requests(db) -> int:
             d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
             d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
             if driver_uid and d_loc:
-                _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+                _dispatch_with_fallback(db, driver_uid, d_profile, d_loc)
     except Exception as exc:
         print(f"Scheduled activation driver sweep error: {exc}")
 
@@ -3483,7 +3757,7 @@ def cron_activate_scheduled(request: Request) -> dict[str, Any]:
                 d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
                 d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation")
                 if driver_uid and d_loc:
-                    _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+                    _dispatch_with_fallback(db, driver_uid, d_profile, d_loc)
         except Exception as exc:
             print(f"Cron matching sweep skipped: {exc}")
 
