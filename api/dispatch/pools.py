@@ -320,6 +320,43 @@ class DispatchPoolManager:
                         metadata=d.get("metadata") or {},
                     )
                 )
+            if not drivers:
+                try:
+                    presence_stream = db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).limit(20).stream()
+                    for doc in presence_stream:
+                        dp = doc.to_dict() or {}
+                        dp_loc = dp.get("driverLocation") or {}
+                        lat = _to_float(dp_loc.get("lat"))
+                        lng = _to_float(dp_loc.get("lng"))
+                        if lat != 0.0 or lng != 0.0:
+                            v_type = str(dp.get("vehicle_type") or dp.get("vehicleType") or "auto").strip().lower()
+                            d_entry = DispatchPoolManager.sync_driver_dap(
+                                db=db,
+                                driver_id=doc.id,
+                                loc=(lat, lng),
+                                availability="searching",
+                                vehicle_type=v_type,
+                                is_approved=True,
+                            )
+                            drivers.append(
+                                DriverEntry(
+                                    id=doc.id,
+                                    loc=(lat, lng),
+                                    cell=str(d_entry.get("cell") or ""),
+                                    state="IDLE",
+                                    pool="IDLE",
+                                    idle_since=_now_ts(),
+                                    seats_free=1,
+                                    route=[],
+                                    last_seen=_now_ts(),
+                                    version=1,
+                                    vehicle_type=v_type,
+                                    is_approved=True,
+                                    metadata={},
+                                )
+                            )
+                except Exception:
+                    pass
         except Exception:
             pass
 

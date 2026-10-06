@@ -2122,6 +2122,36 @@ def update_driver_location(
             except Exception:
                 pass
             _dispatch_with_fallback(db, uid, profile, location)
+        elif ride_id:
+            try:
+                open_share_trips = _open_share_trip_driver_ids(db, uid)
+                if open_share_trips:
+                    for trip_id in open_share_trips:
+                        t_snap = db.collection("shareTrips").document(trip_id).get()
+                        if t_snap.exists:
+                            t_val = t_snap.to_dict() or {}
+                            s_used = int(t_val.get("seatsUsed") or 0)
+                            m_seats = int(t_val.get("maxSeats") or SHARE_MAX_SEATS)
+                            s_free = max(0, m_seats - s_used)
+                            if s_free > 0:
+                                DispatchPoolManager.sync_driver_dap(
+                                    db=db,
+                                    driver_id=uid,
+                                    loc=location,
+                                    availability="searching",
+                                    vehicle_type=_driver_type(profile),
+                                    seats_free=s_free,
+                                    route=t_val.get("stopOrder") or [],
+                                )
+                                _dispatch_with_fallback(db, uid, profile, location)
+                            break
+            except Exception:
+                pass
+        elif availability == "offline":
+            try:
+                DispatchPoolManager.remove_driver_dap(db, uid, reason="offline")
+            except Exception:
+                pass
         return {"ok": True, "rideId": ride_id or None, "status": availability}
     except ApiError:
         raise
@@ -3800,9 +3830,14 @@ def reschedule_pending_request_15min(
 def activate_scheduled_due_endpoint(
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Background trigger to activate scheduled requests due within 10 minutes."""
+    """Background trigger to activate scheduled requests due within 10 minutes and run sweeper."""
     db = fb_firestore.client(get_admin_app())
     count = activate_due_scheduled_requests(db)
+    try:
+        from ..dispatch.sweeper import run_dispatch_sweeper
+        run_dispatch_sweeper(db)
+    except Exception as exc:
+        print(f"Scheduled activate-due sweeper pass skipped: {exc}")
     return {"ok": True, "activatedCount": count}
 
 

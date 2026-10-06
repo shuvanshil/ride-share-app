@@ -125,13 +125,20 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
         driver_docs = [db.collection("driverPresence").document(d).get() for d in allowed_driver_ids]
 
         tokens: list[str] = []
-        for driver_doc in driver_docs:
-            if not driver_doc.exists:
-                continue
-            driver = driver_doc.to_dict() or {}
+        for d_id, driver_doc in zip(allowed_driver_ids, driver_docs):
+            driver = driver_doc.to_dict() or {} if (driver_doc and driver_doc.exists) else {}
+            if not driver:
+                u_doc = db.collection("users").document(d_id).get()
+                if u_doc.exists:
+                    driver = u_doc.to_dict() or {}
             if not _is_notification_eligible(driver):
                 continue
-            tokens.extend(_collect_tokens(driver))
+            d_tokens = _collect_tokens(driver)
+            if not d_tokens and driver_doc and driver_doc.exists:
+                u_doc = db.collection("users").document(d_id).get()
+                if u_doc.exists:
+                    d_tokens = _collect_tokens(u_doc.to_dict() or {})
+            tokens.extend(d_tokens)
 
         unique_tokens = list(dict.fromkeys(tokens))[:500]
         if not unique_tokens:

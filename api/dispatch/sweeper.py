@@ -20,8 +20,11 @@ from .config import (
     MAX_WAIT_PASSENGER_SEC,
     OFFER_TIMEOUT_SEC,
 )
+from ..core.config import get_env
 from .pools import DispatchPoolManager
 from .runner import nudge_dispatch, run_dispatch
+
+APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https://liphtup.in").rstrip("/")
 
 
 def sweep_stale_drivers(db: Any, now: float) -> int:
@@ -92,6 +95,52 @@ def sweep_expired_offers(db: Any, now: float) -> int:
                                     "current_offer_passenger_id": None,
                                     "offer_expires_at": None,
                                     "updated_at": now,
+                                })
+                    except Exception:
+                        pass
+
+                # Clean up linked ride and pending request if present
+                ride_id = data.get("ride_id")
+                if ride_id:
+                    try:
+                        r_ref = db.collection("rides").document(str(ride_id))
+                        r_snap = r_ref.get()
+                        if r_snap.exists:
+                            r_data = r_snap.to_dict() or {}
+                            if r_data.get("status") == "pending" and (
+                                not offered_driver or r_data.get("current_offer_driver_id") == offered_driver
+                            ):
+                                rej = list(r_data.get("rejected_driver_ids") or [])
+                                if offered_driver and offered_driver not in rej:
+                                    rej.append(offered_driver)
+                                r_ref.update({
+                                    "current_offer_driver_id": None,
+                                    "search_status": "searching_nearby_drivers",
+                                    "rejected_driver_ids": rej,
+                                    "updatedAt": datetime.now(timezone.utc),
+                                })
+                    except Exception:
+                        pass
+
+                pending_req_id = data.get("pending_request_id")
+                if pending_req_id:
+                    try:
+                        p_req_ref = db.collection("pendingRideRequests").document(str(pending_req_id))
+                        p_req_snap = p_req_ref.get()
+                        if p_req_snap.exists:
+                            p_req_data = p_req_snap.to_dict() or {}
+                            if p_req_data.get("status") == "dispatching" and (
+                                not offered_driver or p_req_data.get("lockedByDriverId") == offered_driver
+                            ):
+                                p_rej = list(p_req_data.get("rejected_driver_ids") or [])
+                                if offered_driver and offered_driver not in p_rej:
+                                    p_rej.append(offered_driver)
+                                p_req_ref.update({
+                                    "status": "pending",
+                                    "lockedByDriverId": None,
+                                    "dispatchLockedAt": None,
+                                    "rejected_driver_ids": p_rej,
+                                    "updatedAt": datetime.now(timezone.utc),
                                 })
                     except Exception:
                         pass
@@ -175,6 +224,21 @@ def sweep_max_wait_passengers(db: Any, now: float) -> int:
                     actor_id=doc.id,
                     details={"wait_seconds": now - req_time},
                 )
+                if doc.id:
+                    DispatchPoolManager.enqueue_notification(
+                        db,
+                        recipient_id=doc.id,
+                        recipient_role="passenger",
+                        notif_type="ride_timeout",
+                        title="Ride Search Timed Out",
+                        body="No drivers became available in time for your ride request.",
+                        data={
+                            "requestId": str(pending_id or ""),
+                            "rideId": str(ride_id or ""),
+                            "type": "ride_timeout",
+                            "url": f"{APP_BASE_URL}/services",
+                        },
+                    )
                 timed_out += 1
     except Exception as exc:
         print(f"Sweep max wait passengers error: {exc}", file=sys.stderr)
@@ -343,7 +407,11 @@ def sweep_scheduled_rides(db: Any, now: float) -> int:
                         notif_type="scheduled_timeout",
                         title="Scheduled Ride Update",
                         body="We are actively searching, but no driver has accepted your scheduled ride yet. We will keep trying.",
-                        data={"requestId": doc.id, "type": "scheduled_timeout"},
+                        data={
+                            "requestId": doc.id,
+                            "type": "scheduled_timeout",
+                            "url": f"{APP_BASE_URL}/services?restorePending={doc.id}",
+                        },
                     )
                 handled += 1
 
@@ -416,6 +484,26 @@ def sweep_notify_me(db: Any, now: float) -> int:
                             matched_driver_id = d_doc.id
                             break
 
+                # Fallback to driverPresence if DAP hasn't indexed the driver yet
+                if not matched_driver_id:
+                    try:
+                        p_stream = db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).limit(20).stream()
+                        for dp_doc in p_stream:
+                            dp_val = dp_doc.to_dict() or {}
+                            dp_loc = dp_val.get("driverLocation") or {}
+                            dp_lat = dp_loc.get("lat")
+                            dp_lng = dp_loc.get("lng")
+                            if dp_lat is not None and dp_lng is not None:
+                                dp_veh = str(dp_val.get("vehicle_type") or dp_val.get("vehicleType") or "auto").strip().lower()
+                                if req_veh != "any" and req_veh != dp_veh and req_veh != "share":
+                                    continue
+                                dist = haversine_km(float(dp_lat), float(dp_lng), float(p_lat), float(p_lng))
+                                if dist <= search_radius_km:
+                                    matched_driver_id = dp_doc.id
+                                    break
+                    except Exception:
+                        pass
+
                 if matched_driver_id:
                     doc.reference.update({
                         "lastNotifiedAt": now,
@@ -441,6 +529,7 @@ def sweep_notify_me(db: Any, now: float) -> int:
                                 "requestId": doc.id,
                                 "type": "pending_driver_available",
                                 "driverId": matched_driver_id,
+                                "url": f"{APP_BASE_URL}/services?restorePending={doc.id}",
                             },
                         )
                     handled += 1
