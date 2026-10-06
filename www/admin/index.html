@@ -632,18 +632,204 @@
                     <section id="section-live-rides" class="admin-section d-none">
                         <div class="page-header d-print-none mb-3">
                             <div class="row align-items-center">
-                                <div class="col">
-                                    <div class="page-pretitle">Real-Time</div>
-                                    <h2 class="page-title h2 fw-bold d-flex align-items-center gap-2">
+                                <div class="col-auto">
+                                    <div class="page-pretitle text-uppercase text-secondary fw-bold" style="font-size: 0.75rem; letter-spacing: 0.05em;">REAL-TIME</div>
+                                    <h2 class="page-title h2 fw-bold d-flex align-items-center gap-2 mb-0">
                                         <span>Live Rides</span>
-                                        <span class="badge bg-green-lt text-green small d-inline-flex align-items-center gap-1" title="Auto-refreshes every 8s">
+                                        <span class="badge bg-green-lt text-green small d-inline-flex align-items-center gap-1">
                                             <span class="status-dot status-dot-animated bg-green"></span> Live
                                         </span>
                                     </h2>
                                 </div>
+                                <div class="col d-flex align-items-center justify-content-end gap-2 flex-wrap">
+                                    <!-- Search input -->
+                                    <div class="input-icon" style="max-width: 360px; width: 100%;">
+                                        <span class="input-icon-addon">
+                                            <i class="ti ti-search text-secondary"></i>
+                                        </span>
+                                        <input type="text" id="live-rides-search" class="form-control" placeholder="Search by ride ID, driver, passenger, phone..." style="border-radius: 6px; font-size: 0.875rem;">
+                                    </div>
+
+                                    <!-- Refresh with Last updated -->
+                                    <div class="d-flex flex-column align-items-end">
+                                        <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-2 py-1 px-3" id="live-rides-refresh-btn" style="border-radius: 6px;">
+                                            <i class="ti ti-refresh text-success fs-3" id="live-rides-refresh-icon"></i>
+                                            <span class="fw-medium">Refresh</span>
+                                        </button>
+                                        <div class="text-secondary small mt-1" id="live-rides-last-updated" style="font-size: 0.72rem;">Last updated: --:--:--</div>
+                                    </div>
+
+                                    <!-- Filters button -->
+                                    <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-2 py-1 px-3" id="live-rides-filters-btn" style="border-radius: 6px;">
+                                        <i class="ti ti-adjustments-horizontal"></i>
+                                        <span>Filters</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div id="live-rides-list" class="row row-cards"></div>
+
+                        <!-- Top Tab Pills Navigation -->
+                        <div class="d-flex align-items-center gap-2 mb-3 live-rides-tabs-container overflow-auto pb-1" id="live-rides-tabs">
+                            <button type="button" class="btn btn-pill live-tab-pill active" data-live-tab="all">
+                                <i class="ti ti-layout-grid me-1"></i> All Rides <span class="badge bg-blue-lt ms-1" id="tab-count-all">0</span>
+                            </button>
+                            <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="single">
+                                <i class="ti ti-user me-1"></i> Single Rides <span class="badge bg-secondary-lt ms-1" id="tab-count-single">0</span>
+                            </button>
+                            <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="share">
+                                <i class="ti ti-users me-1"></i> Share Rides <span class="badge bg-secondary-lt ms-1" id="tab-count-share">0</span>
+                            </button>
+                            <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="child">
+                                <i class="ti ti-git-branch me-1"></i> Child Rides <span class="badge bg-secondary-lt ms-1" id="tab-count-child">0</span>
+                            </button>
+                            <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="waiting-pools">
+                                <i class="ti ti-clock me-1"></i> Waiting Pools <span class="badge bg-secondary-lt ms-1" id="tab-count-waiting">0</span>
+                            </button>
+                        </div>
+
+                        <!-- View 1: Hierarchical Rides Table (for All, Single, Share, Child) -->
+                        <div id="live-rides-table-view" class="card border-0 shadow-xs mb-3">
+                            <div class="table-responsive">
+                                <table class="table table-vcenter card-table table-hover live-rides-hierarchy-table m-0">
+                                    <thead>
+                                        <tr class="text-secondary small fw-semibold">
+                                            <th style="min-width: 260px;">Ride Details</th>
+                                            <th style="min-width: 120px;">Type</th>
+                                            <th style="min-width: 210px;">Driver</th>
+                                            <th style="min-width: 120px;">Passengers</th>
+                                            <th style="min-width: 210px;">Route</th>
+                                            <th style="min-width: 130px;">Status</th>
+                                            <th style="min-width: 130px;">Started At</th>
+                                            <th class="text-end" style="min-width: 130px;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="live-rides-hierarchy-tbody">
+                                        <tr>
+                                            <td colspan="8" class="text-center py-5 text-secondary">
+                                                <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
+                                                Loading live rides...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- View 2: Waiting Pools (shown when Waiting Pools tab is active) -->
+                        <div id="waiting-pools-view" class="d-none">
+                            <div class="row g-3">
+                                <!-- Left: Passenger Pool -->
+                                <div class="col-12 col-xl-6">
+                                    <div class="card border-0 shadow-xs h-100">
+                                        <div class="card-header border-bottom py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="avatar avatar-sm bg-blue-lt text-blue rounded-circle">
+                                                    <i class="ti ti-users fs-2"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <h3 class="card-title fw-bold m-0" style="font-size: 1.05rem;">Passenger Pool</h3>
+                                                        <span class="badge bg-blue-lt text-blue" id="wpp-header-badge">0 waiting</span>
+                                                    </div>
+                                                    <div class="text-secondary small" style="font-size: 0.78rem;">Passengers waiting to be matched with drivers</div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <select id="wpp-type-filter" class="form-select form-select-sm w-auto" style="border-radius: 6px;">
+                                                    <option value="all" selected>All Types</option>
+                                                    <option value="Share">Share</option>
+                                                    <option value="Auto">Auto</option>
+                                                    <option value="Bike">Bike</option>
+                                                </select>
+                                                <select id="wpp-sort-filter" class="form-select form-select-sm w-auto" style="border-radius: 6px;">
+                                                    <option value="oldest" selected>Waiting (oldest)</option>
+                                                    <option value="newest">Waiting (newest)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-vcenter card-table table-hover m-0">
+                                                <thead>
+                                                    <tr class="text-secondary small fw-semibold">
+                                                        <th style="width: 30px;">#</th>
+                                                        <th>Passenger</th>
+                                                        <th>Type</th>
+                                                        <th>Pickup Location</th>
+                                                        <th>Waiting Since</th>
+                                                        <th>Wait Time</th>
+                                                        <th class="text-end">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="wpp-table-tbody">
+                                                    <tr>
+                                                        <td colspan="7" class="text-center py-4 text-secondary small">Loading passenger pool...</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Right: Driver Pool -->
+                                <div class="col-12 col-xl-6">
+                                    <div class="card border-0 shadow-xs h-100 d-flex flex-column justify-content-between">
+                                        <div>
+                                            <div class="card-header border-bottom py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="avatar avatar-sm bg-green-lt text-green rounded-circle">
+                                                        <i class="ti ti-steering-wheel fs-2"></i>
+                                                    </div>
+                                                    <div>
+                                                        <div class="d-flex align-items-center gap-2">
+                                                            <h3 class="card-title fw-bold m-0" style="font-size: 1.05rem;">Driver Pool</h3>
+                                                            <span class="badge bg-green-lt text-green" id="dap-header-badge">0 available</span>
+                                                        </div>
+                                                        <div class="text-secondary small" style="font-size: 0.78rem;">Online drivers waiting for ride requests</div>
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <select id="dap-type-filter" class="form-select form-select-sm w-auto" style="border-radius: 6px;">
+                                                        <option value="all" selected>All Vehicle Types</option>
+                                                        <option value="Auto">Auto</option>
+                                                        <option value="Bike">Bike</option>
+                                                    </select>
+                                                    <select id="dap-sort-filter" class="form-select form-select-sm w-auto" style="border-radius: 6px;">
+                                                        <option value="nearest" selected>Nearest First</option>
+                                                        <option value="longest_idle">Longest Idle</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="table-responsive">
+                                                <table class="table table-vcenter card-table table-hover m-0">
+                                                    <thead>
+                                                        <tr class="text-secondary small fw-semibold">
+                                                            <th style="width: 30px;">#</th>
+                                                            <th>Driver</th>
+                                                            <th>Vehicle Type</th>
+                                                            <th>Current Location</th>
+                                                            <th>Idle Time</th>
+                                                            <th class="text-end">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="dap-table-tbody">
+                                                        <tr>
+                                                            <td colspan="6" class="text-center py-4 text-secondary small">Loading driver pool...</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <!-- Info Callout Banner -->
+                                        <div class="alert alert-info d-flex align-items-center gap-2 m-3 mb-2 p-2 border-0" style="background-color: #eff6ff; border-radius: 6px;">
+                                            <i class="ti ti-info-circle text-primary fs-3 flex-shrink-0"></i>
+                                            <div class="small text-secondary" style="font-size: 0.78rem; line-height: 1.4;">
+                                                Drivers in this pool are online and available, but not yet assigned to any ride. They will be matched based on the dispatch algorithm.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </section>
 
                     <!-- Safety -->
@@ -1900,6 +2086,42 @@
                 <div class="modal-footer border-0 pt-2 pb-4 px-4 d-flex justify-content-end gap-2">
                     <button type="button" id="btn-super-admin-ignore" class="btn btn-outline-secondary rounded-pill px-3">Ignore</button>
                     <button type="button" id="btn-super-admin-logout" class="btn btn-danger rounded-pill px-3">I understand and logout</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: View on Map Modal -->
+    <div id="modal-live-ride-map" class="modal modal-blur fade" tabindex="-1" role="dialog" aria-modal="true" style="display: none; background: rgba(15, 23, 42, 0.6); z-index: 1060;">
+        <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+            <div class="modal-content shadow-lg border-0 rounded-3 overflow-hidden">
+                <div class="modal-header py-2 px-3 border-bottom d-flex align-items-center justify-content-between bg-white">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="avatar avatar-sm bg-primary-lt text-primary rounded-circle">
+                            <i class="ti ti-map-2 fs-3"></i>
+                        </span>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h4 class="modal-title fw-bold m-0" id="live-map-modal-title">Live Ride Tracking</h4>
+                                <span class="badge bg-green-lt text-green small" id="live-map-modal-status">On Trip</span>
+                            </div>
+                            <div class="text-secondary small" id="live-map-modal-subtitle">Tracking vehicle along route</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" id="live-map-modal-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0 position-relative">
+                    <div id="live-modal-map" style="height: 480px; width: 100%; background: #f1f5f9;"></div>
+                    <div id="live-map-modal-readout" class="p-2 px-3 bg-white border-top d-flex align-items-center justify-content-between flex-wrap gap-2 text-secondary small">
+                        <div id="live-map-route-text" class="d-flex align-items-center gap-2">
+                            <span><span class="badge bg-green p-1 rounded-circle me-1"></span><strong id="live-map-pickup-name">Pickup</strong></span>
+                            <span>&rarr;</span>
+                            <span><span class="badge bg-red p-1 rounded-circle me-1"></span><strong id="live-map-drop-name">Drop</strong></span>
+                        </div>
+                        <div id="live-map-telemetry-text" class="text-primary fw-medium">
+                            Speed: -- &bull; Progress: --
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

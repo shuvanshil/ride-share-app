@@ -2,7 +2,7 @@ import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, refreshA
 import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js";
 import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
-import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking } from "./admin-live.js";
+import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal } from "./admin-live.js";
 import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
 import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js";
@@ -435,8 +435,9 @@ function loadSection(name) {
     }
 
     if (name === "live-rides") {
+        initLiveRidesEvents();
         loadLiveRides();
-        liveRidesTimer = setInterval(loadLiveRides, 8000);
+        liveRidesTimer = setInterval(loadLiveRides, 60000);
         return;
     }
     if (loadedSections.has(name)) return;
@@ -1504,88 +1505,646 @@ async function openDriverDrawer(uid) {
 }
 
 // ---------------------------------------------------------------------
-// Live rides + live tracking
+// Live rides + waiting pools + live tracking
 // ---------------------------------------------------------------------
 
-async function loadLiveRides() {
-    const list = $("live-rides-list");
-    try {
-        const data = await adminGet("/rides/live");
-        if (data.rides.length === 0) {
-            list.innerHTML = `<div class="col-12 text-center text-secondary py-5"><i class="ti ti-car text-muted mb-2" style="font-size: 2.5rem; display: block;"></i>No active rides right now.</div>`;
-            return;
+let liveEventsInitialized = false;
+let currentLiveTab = "all";
+let liveSearchQuery = "";
+let liveRidesHierarchy = [];
+let liveCounts = { all: 0, single: 0, share: 0, child: 0 };
+let waitingPoolsData = { passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } };
+const expandedParentIds = new Set();
+
+function initLiveRidesEvents() {
+    if (liveEventsInitialized) return;
+    liveEventsInitialized = true;
+
+    // Tabs navigation
+    document.querySelectorAll(".live-tab-pill").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".live-tab-pill").forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentLiveTab = btn.dataset.liveTab || "all";
+            renderLiveSectionViews();
+        });
+    });
+
+    // Search input
+    $("live-rides-search")?.addEventListener("input", (e) => {
+        liveSearchQuery = (e.target.value || "").trim().toLowerCase();
+        renderLiveSectionViews();
+    });
+
+    // Refresh button
+    $("live-rides-refresh-btn")?.addEventListener("click", async () => {
+        const icon = $("live-rides-refresh-icon");
+        if (icon) icon.classList.add("ti-spin");
+        try {
+            await loadLiveRides();
+            toast("Live rides refreshed.");
+        } finally {
+            if (icon) icon.classList.remove("ti-spin");
         }
-        list.innerHTML = data.rides
-            .map(
-                (r) => `<div class="col-md-6 col-lg-4">
-                    <div class="card border-0 shadow-xs">
-                        <div class="card-body">
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                ${statusChip(r.status)}
-                                <strong class="text-success">Rs ${r.fare || 0}</strong>
+    });
+
+    // Filter button - focuses search or toggles view
+    $("live-rides-filters-btn")?.addEventListener("click", () => {
+        $("live-rides-search")?.focus();
+    });
+
+    // Waiting pools filters
+    $("wpp-type-filter")?.addEventListener("change", renderWaitingPoolsView);
+    $("wpp-sort-filter")?.addEventListener("change", renderWaitingPoolsView);
+    $("dap-type-filter")?.addEventListener("change", renderWaitingPoolsView);
+    $("dap-sort-filter")?.addEventListener("change", renderWaitingPoolsView);
+}
+
+function formatCurrentTime() {
+    const d = new Date();
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+}
+
+async function loadLiveRides() {
+    const tbody = $("live-rides-hierarchy-tbody");
+    try {
+        const [liveRes, poolsRes] = await Promise.all([
+            adminGet("/rides/live"),
+            adminGet("/waiting-pools").catch(() => ({ ok: true, passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } })),
+        ]);
+
+        liveRidesHierarchy = liveRes.hierarchy || [];
+        liveCounts = liveRes.counts || { all: 0, single: 0, share: 0, child: 0 };
+        waitingPoolsData = poolsRes || { passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } };
+
+        // By default on first load, expand first parent if any share rides
+        if (expandedParentIds.size === 0 && liveRidesHierarchy.length > 0) {
+            const firstShare = liveRidesHierarchy.find((h) => h.rideType === "share");
+            if (firstShare) expandedParentIds.add(firstShare.id);
+        }
+
+        // Update last updated timestamp
+        const timeStr = formatCurrentTime();
+        if ($("live-rides-last-updated")) {
+            $("live-rides-last-updated").textContent = `Last updated: ${timeStr}`;
+        }
+
+        // Update tab pill counts
+        if ($("tab-count-all")) $("tab-count-all").textContent = liveCounts.all ?? liveRidesHierarchy.length;
+        if ($("tab-count-single")) $("tab-count-single").textContent = liveCounts.single ?? 0;
+        if ($("tab-count-share")) $("tab-count-share").textContent = liveCounts.share ?? 0;
+        if ($("tab-count-child")) $("tab-count-child").textContent = liveCounts.child ?? 0;
+        if ($("tab-count-waiting")) $("tab-count-waiting").textContent = waitingPoolsData.counts?.total ?? (waitingPoolsData.passengers.length + waitingPoolsData.drivers.length);
+
+        renderLiveSectionViews();
+    } catch (error) {
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${escapeHtml(error.message)}</td></tr>`;
+        }
+    }
+}
+
+function renderLiveSectionViews() {
+    const isPools = currentLiveTab === "waiting-pools";
+    $("live-rides-table-view")?.classList.toggle("d-none", isPools);
+    $("waiting-pools-view")?.classList.toggle("d-none", !isPools);
+
+    if (isPools) {
+        renderWaitingPoolsView();
+    } else {
+        renderHierarchyTableView();
+    }
+}
+
+function getAvatarColor(name = "") {
+    const palette = [
+        "bg-orange-lt text-orange",
+        "bg-purple-lt text-purple",
+        "bg-blue-lt text-blue",
+        "bg-teal-lt text-teal",
+        "bg-pink-lt text-pink",
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = (hash << 5) - hash + name.charCodeAt(i);
+        hash |= 0;
+    }
+    return palette[Math.abs(hash) % palette.length];
+}
+
+function renderHierarchyTableView() {
+    const tbody = $("live-rides-hierarchy-tbody");
+    if (!tbody) return;
+
+    let items = [...liveRidesHierarchy];
+
+    // Tab filter
+    if (currentLiveTab === "single") {
+        items = items.filter((h) => h.rideType !== "share");
+    } else if (currentLiveTab === "share") {
+        items = items.filter((h) => h.rideType === "share");
+    } else if (currentLiveTab === "child") {
+        items = items.filter((h) => h.childRides && h.childRides.length > 0);
+    }
+
+    // Search query filter
+    if (liveSearchQuery) {
+        items = items.filter((h) => {
+            const hay = [
+                h.id, h.displayId, h.description,
+                h.driver?.name, h.driver?.phone, h.driver?.plate,
+                h.route?.pickup, h.route?.drop,
+                ...(h.childRides || []).map((c) => `${c.id} ${c.displayId} ${c.passenger?.name} ${c.passenger?.phone} ${c.route?.pickup} ${c.route?.drop}`),
+            ].join(" ").toLowerCase();
+            return hay.includes(liveSearchQuery);
+        });
+    }
+
+    if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-secondary">
+            <i class="ti ti-car-off text-muted mb-2" style="font-size: 2.2rem; display: block;"></i>
+            No active rides match this view right now.
+        </td></tr>`;
+        return;
+    }
+
+    let rowsHtml = "";
+
+    items.forEach((parent) => {
+        const isExpanded = expandedParentIds.has(parent.id) || currentLiveTab === "child";
+        const hasChildren = parent.childRides && parent.childRides.length > 0;
+        const vType = (parent.vehicleType || "auto").toLowerCase();
+        const isShare = parent.rideType === "share";
+
+        // Vehicle / Ride icon
+        let iconHtml = "";
+        if (isShare) {
+            iconHtml = `<span class="avatar avatar-sm bg-blue-lt text-blue rounded-circle flex-shrink-0"><i class="ti ti-users"></i></span>`;
+        } else if (vType === "bike") {
+            iconHtml = `<span class="avatar avatar-sm bg-azure-lt text-azure rounded-circle flex-shrink-0"><i class="ti ti-motorbike"></i></span>`;
+        } else {
+            iconHtml = `<span class="avatar avatar-sm bg-green-lt text-green rounded-circle flex-shrink-0"><i class="ti ti-car"></i></span>`;
+        }
+
+        // Type badge
+        let typeBadge = "";
+        if (isShare) {
+            typeBadge = `<span class="badge-type-pill badge-type-share"><i class="ti ti-users"></i> Share Ride</span>`;
+        } else if (vType === "bike") {
+            typeBadge = `<span class="badge-type-pill badge-type-bike"><i class="ti ti-motorbike"></i> Bike</span>`;
+        } else {
+            typeBadge = `<span class="badge-type-pill badge-type-auto"><i class="ti ti-car"></i> Auto</span>`;
+        }
+
+        // Status badge
+        const isFinding = parent.status === "Finding Riders";
+        const statusBadge = isFinding
+            ? `<span class="badge-status-pill badge-status-finding"><i class="ti ti-clock"></i> Finding Riders</span>`
+            : `<span class="badge-status-pill badge-status-ontrip"><i class="ti ti-circle-check"></i> ${escapeHtml(parent.status || "On Trip")}</span>`;
+
+        // Driver initials circle with deterministic color
+        const drvInitials = parent.driver?.initials || "DR";
+        const drvName = escapeHtml(parent.driver?.name || "Unassigned");
+        const drvColor = getAvatarColor(parent.driver?.name || "Driver");
+        const drvPhone = escapeHtml(parent.driver?.phone || "");
+        const drvPlate = escapeHtml(parent.driver?.plate || "");
+
+        const isAuto = vType === "auto" && !isShare;
+        const barClass = isAuto ? "passenger-progress-bar progress-bar-auto" : "passenger-progress-bar";
+
+        // Parent Row
+        rowsHtml += `
+            <tr class="parent-ride-row ${isExpanded ? 'is-expanded' : ''}" data-row-id="${escapeHtml(parent.id)}">
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="chevron-expand-btn ${isExpanded ? 'is-expanded' : ''}" data-expand-id="${escapeHtml(parent.id)}" title="${isExpanded ? 'Collapse' : 'Expand'} nested rides">
+                            <i class="ti ti-chevron-${isExpanded ? 'down' : 'right'} fs-3"></i>
+                        </button>
+                        ${iconHtml}
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-bold text-dark fs-4">${escapeHtml(parent.displayId)}</span>
+                                ${isShare ? `<span class="badge-parent-pill">&bull; Parent</span><span class="badge bg-secondary-lt text-secondary px-1"><i class="ti ti-users" style="font-size: 0.75rem;"></i></span>` : ''}
                             </div>
-                            <div class="mb-2">
-                                <strong>${escapeHtml(r.pickup_name || "Pickup")}</strong> &rarr; <strong>${escapeHtml(r.drop_name || "Drop")}</strong>
-                            </div>
-                            <div class="small text-secondary mb-3">
-                                Driver: <strong>${escapeHtml(r.driver_name || "Unassigned")}</strong>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-outline-primary btn-sm flex-fill" data-track="${r.id}" type="button">
-                                    <i class="ti ti-map-pin me-1"></i>Track Live
+                            <div class="text-secondary small mt-0">${escapeHtml(parent.description || "")}</div>
+                        </div>
+                    </div>
+                </td>
+                <td>${typeBadge}</td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="avatar-initials-circle ${drvColor}">${drvInitials}</div>
+                        <div>
+                            <div class="fw-bold text-dark">${drvName}</div>
+                            ${drvPhone ? `<div class="text-secondary small">${drvPhone}</div>` : ''}
+                            ${drvPlate ? `<div class="text-secondary small fw-medium">${drvPlate}</div>` : ''}
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div class="fw-semibold text-dark">${escapeHtml(parent.passengers?.label || "1 / 1")}</div>
+                    <div class="passenger-progress-track">
+                        <div class="${barClass}" style="width: ${parent.passengers?.pct || 100}%;"></div>
+                    </div>
+                </td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <span class="route-dot-green"></span>
+                        <span class="text-truncate text-dark fw-medium" style="max-width: 170px;">${escapeHtml(parent.route?.pickup || "Pickup")}</span>
+                    </div>
+                    <div class="d-flex align-items-center mt-1">
+                        <span class="route-dot-red"></span>
+                        <span class="text-truncate text-secondary" style="max-width: 170px;">${escapeHtml(parent.route?.drop || "Drop")}</span>
+                    </div>
+                </td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="fw-semibold text-dark">${escapeHtml(parent.startedAt || "--")}</div>
+                    <div class="text-secondary small">${escapeHtml(parent.elapsedText || "")}</div>
+                </td>
+                <td class="text-end">
+                    <div class="d-inline-flex align-items-center gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1" data-view-ride="${escapeHtml(parent.id)}">View</button>
+                        <div class="dropdown">
+                            <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle p-0 d-inline-flex align-items-center justify-content-center dropdown-toggle-clean" data-bs-toggle="dropdown" aria-expanded="false" style="width: 28px; height: 28px;">
+                                <i class="ti ti-chevron-down"></i>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-end shadow-sm">
+                                <button type="button" class="dropdown-item text-danger d-flex align-items-center gap-2" data-action-cancel="${escapeHtml(parent.id)}" data-is-parent="true" data-display-id="${escapeHtml(parent.displayId)}">
+                                    <i class="ti ti-x"></i> Cancel
                                 </button>
-                                <button class="btn btn-outline-danger btn-sm flex-fill" data-cancel="${r.id}" type="button">
-                                    <i class="ti ti-x me-1"></i>Cancel
+                                <button type="button" class="dropdown-item text-primary d-flex align-items-center gap-2" data-action-map="${escapeHtml(parent.id)}" data-is-parent="true">
+                                    <i class="ti ti-map-2"></i> View on Map
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>`
-            )
-            .join("");
-        list.querySelectorAll("[data-cancel]").forEach((btn) => {
-            btn.addEventListener("click", async () => {
-                const confirmed = await showTablerConfirm("Are you sure you want to cancel this live ride?", {
-                    title: "Cancel Live Ride",
-                    variant: "danger",
-                    confirmText: "Cancel Ride"
-                });
-                if (!confirmed) return;
-                await withButtonSpinner(btn, async () => {
-                    try {
-                        await adminPatch(`/rides/${btn.dataset.cancel}`, { action: "cancel" });
-                        toast("Ride cancelled.");
-                        loadLiveRides();
-                    } catch (error) {
-                        toast(error.message, "error");
-                    }
-                });
-            });
-        });
-        list.querySelectorAll("[data-track]").forEach((btn) => {
-            btn.addEventListener("click", () => openLiveTrackingDrawer(btn.dataset.track));
-        });
-    } catch (error) {
-        list.innerHTML = `<div class="col-12 text-center text-danger py-4">${error.message}</div>`;
-    }
-}
+                </td>
+            </tr>
+        `;
 
-function openLiveTrackingDrawer(rideId) {
-    const html = `
-        <div id="live-track-readout" class="admin-track-readout text-primary mb-2">
-            <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>Connecting live map...
-        </div>
-        <div id="live-track-map" class="admin-track-map mb-2"></div>
-        <p class="admin-drawer-hint">Route line is a straight approximation between pickup, driver's last GPS ping, and drop.</p>
-    `;
-    showReadOnlyDrawer("Live Ride Tracking", html);
-    trackRideOnMap($("live-track-map"), $("live-track-readout"), rideId).catch(() => {
-        $("live-track-readout").textContent = "Could not load the live map.";
+        // Nested Child Rows
+        if (isExpanded && hasChildren) {
+            parent.childRides.forEach((child, idx) => {
+                const paxName = escapeHtml(child.passenger?.name || "Passenger");
+                const paxPhone = escapeHtml(child.passenger?.phone || "");
+                const avatarBg = idx % 2 === 0 ? "bg-azure-lt text-azure" : "bg-pink-lt text-pink";
+
+                rowsHtml += `
+                    <tr class="child-ride-row" data-parent-id="${escapeHtml(parent.id)}" data-child-id="${escapeHtml(child.id)}">
+                        <td>
+                            <div class="tree-branch-container">
+                                <span class="avatar avatar-sm ${avatarBg} rounded-circle flex-shrink-0">
+                                    <i class="ti ti-user"></i>
+                                </span>
+                                <div class="ms-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold text-dark">${escapeHtml(child.displayId)}</span>
+                                        <span class="badge-child-pill">Child</span>
+                                    </div>
+                                    <div class="text-secondary small">Passenger: ${paxName}</div>
+                                    ${paxPhone ? `<div class="text-secondary small">${paxPhone}</div>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td>${typeBadge}</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-initials-circle ${drvColor}">${drvInitials}</div>
+                                <div>
+                                    <div class="fw-bold text-dark">${drvName}</div>
+                                    ${drvPlate ? `<div class="text-secondary small fw-medium">${drvPlate}</div>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="text-muted">&mdash;</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <span class="route-dot-green"></span>
+                                <span class="text-truncate text-dark fw-medium" style="max-width: 170px;">${escapeHtml(child.route?.pickup || "Pickup")}</span>
+                            </div>
+                            <div class="d-flex align-items-center mt-1">
+                                <span class="route-dot-red"></span>
+                                <span class="text-truncate text-secondary" style="max-width: 170px;">${escapeHtml(child.route?.drop || "Drop")}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge-status-pill badge-status-ontrip">
+                                <i class="ti ti-circle-check"></i> ${escapeHtml(child.status || "On Trip")}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="fw-semibold text-dark">${escapeHtml(child.startedAt || "--")}</div>
+                            <div class="text-secondary small">${escapeHtml(child.elapsedText || "")}</div>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1" data-view-ride="${escapeHtml(child.id)}">View</button>
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle p-0 d-inline-flex align-items-center justify-content-center dropdown-toggle-clean" data-bs-toggle="dropdown" aria-expanded="false" style="width: 28px; height: 28px;">
+                                        <i class="ti ti-chevron-down"></i>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end shadow-sm">
+                                        <button type="button" class="dropdown-item text-danger d-flex align-items-center gap-2" data-action-cancel="${escapeHtml(child.id)}" data-is-parent="false" data-display-id="${escapeHtml(child.displayId)}" data-pax-name="${paxName}">
+                                            <i class="ti ti-x"></i> Cancel
+                                        </button>
+                                        <button type="button" class="dropdown-item text-primary d-flex align-items-center gap-2" data-action-map="${escapeHtml(child.id)}" data-is-parent="false">
+                                            <i class="ti ti-map-2"></i> View on Map
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+    });
+
+    tbody.innerHTML = rowsHtml;
+
+    // Attach event listeners for expand/collapse chevron
+    tbody.querySelectorAll("[data-expand-id]").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.expandId;
+            if (expandedParentIds.has(id)) {
+                expandedParentIds.delete(id);
+            } else {
+                expandedParentIds.add(id);
+            }
+            renderHierarchyTableView();
+        });
+    });
+
+    // View button
+    tbody.querySelectorAll("[data-view-ride]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const rideId = btn.dataset.viewRide;
+            const foundParent = liveRidesHierarchy.find((h) => h.id === rideId);
+            if (foundParent) return openRideDrawer(foundParent);
+            for (const p of liveRidesHierarchy) {
+                const c = (p.childRides || []).find((cr) => cr.id === rideId);
+                if (c) return openRideDrawer(c);
+            }
+            openRideDrawer({ id: rideId });
+        });
+    });
+
+    // Cancel action
+    tbody.querySelectorAll("[data-action-cancel]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const rideId = btn.dataset.actionCancel;
+            const isParent = btn.dataset.isParent === "true";
+            const displayId = btn.dataset.displayId || `#${rideId}`;
+            const paxName = btn.dataset.paxName || "";
+
+            const confirmMsg = isParent
+                ? `Are you sure you want to cancel the entire parent ride ${displayId}? All passengers in this trip will be cancelled.`
+                : `Are you sure you want to cancel child ride ${displayId}${paxName ? ` for passenger ${paxName}` : ''}?`;
+
+            const confirmed = await showTablerConfirm(confirmMsg, {
+                title: isParent ? "Cancel Entire Ride" : "Cancel Passenger Ride",
+                variant: "danger",
+                confirmText: "Cancel Ride",
+            });
+            if (!confirmed) return;
+
+            try {
+                await adminPatch(`/rides/${rideId}`, {
+                    action: "cancel",
+                    cancel_all_children: isParent,
+                });
+                toast(`${displayId} has been cancelled.`);
+                await loadLiveRides();
+            } catch (err) {
+                toast(err.message, "error");
+            }
+        });
+    });
+
+    // View on Map action
+    tbody.querySelectorAll("[data-action-map]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const rideId = btn.dataset.actionMap;
+            let targetRide = liveRidesHierarchy.find((h) => h.id === rideId);
+            if (!targetRide) {
+                for (const p of liveRidesHierarchy) {
+                    const c = (p.childRides || []).find((cr) => cr.id === rideId);
+                    if (c) {
+                        targetRide = c;
+                        break;
+                    }
+                }
+            }
+            openLiveRideMapModal(rideId, targetRide || {});
+        });
     });
 }
 
-$("admin-drawer-close")?.addEventListener("click", () => stopTracking());
-$("admin-drawer-backdrop")?.addEventListener("click", () => stopTracking());
+function renderWaitingPoolsView() {
+    // 1. Passenger Pool
+    const wppTbody = $("wpp-table-tbody");
+    const wppType = $("wpp-type-filter")?.value || "all";
+    const wppSort = $("wpp-sort-filter")?.value || "oldest";
+
+    let passengers = [...(waitingPoolsData.passengers || [])];
+
+    if (wppType !== "all") {
+        passengers = passengers.filter((p) => (p.type || "").toLowerCase() === wppType.toLowerCase());
+    }
+
+    // Search query filter for passengers
+    if (liveSearchQuery) {
+        passengers = passengers.filter((p) => {
+            const hay = [
+                p.id, p.passenger_id, p.ride_id,
+                p.name, p.phone, p.type,
+                p.pickupLocation,
+            ].join(" ").toLowerCase();
+            return hay.includes(liveSearchQuery);
+        });
+    }
+
+    if (wppSort === "newest") {
+        passengers.sort((a, b) => (a.waitTimeMinutes || 0) - (b.waitTimeMinutes || 0));
+    } else {
+        passengers.sort((a, b) => (b.waitTimeMinutes || 0) - (a.waitTimeMinutes || 0));
+    }
+
+    if ($("wpp-header-badge")) {
+        $("wpp-header-badge").textContent = `${passengers.length} waiting`;
+    }
+
+    if (wppTbody) {
+        if (passengers.length === 0) {
+            wppTbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary small">No waiting passengers match this filter.</td></tr>`;
+        } else {
+            wppTbody.innerHTML = passengers.map((p, idx) => {
+                const initials = p.initials || "PA";
+                const typeClass = p.type === "Share" ? "badge-type-share" : (p.type === "Bike" ? "badge-type-bike" : "badge-type-auto");
+                const typeIcon = p.type === "Share" ? "ti-users" : (p.type === "Bike" ? "ti-motorbike" : "ti-car");
+                const urgencyClass = `badge-urgency-${p.urgencyBadge || 'low'}`;
+                const avatarColor = getAvatarColor(p.name || `PA_${idx}`);
+
+                return `
+                    <tr>
+                        <td class="text-secondary small fw-medium">${idx + 1}</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-initials-circle ${avatarColor}">${initials}</div>
+                                <div>
+                                    <div class="fw-bold text-dark">${escapeHtml(p.name)}</div>
+                                    <div class="text-secondary small">${escapeHtml(p.phone || "")}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge-type-pill ${typeClass}">
+                                <i class="ti ${typeIcon}"></i> ${escapeHtml(p.type)}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-1">
+                                <i class="ti ti-map-pin text-success fs-3 flex-shrink-0"></i>
+                                <span class="text-truncate text-dark fw-medium" style="max-width: 170px;">${escapeHtml(p.pickupLocation || "Pickup")}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="text-dark small">${escapeHtml(p.waitingSince || "--")}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${urgencyClass}">${escapeHtml(p.waitTimeText || "0 min")}</span>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1" data-view-pax="${escapeHtml(p.passenger_id || p.id)}">View</button>
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle p-0 d-inline-flex align-items-center justify-content-center" data-bs-toggle="dropdown" aria-expanded="false" style="width: 28px; height: 28px;">
+                                        <i class="ti ti-dots"></i>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end shadow-sm">
+                                        <button type="button" class="dropdown-item" data-view-pax="${escapeHtml(p.passenger_id || p.id)}">
+                                            <i class="ti ti-user me-2"></i> Passenger Profile
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+
+            wppTbody.querySelectorAll("[data-view-pax]").forEach((btn) => {
+                btn.addEventListener("click", () => openPassengerDrawer(btn.dataset.viewPax));
+            });
+        }
+    }
+
+    // 2. Driver Pool
+    const dapTbody = $("dap-table-tbody");
+    const dapType = $("dap-type-filter")?.value || "all";
+    const dapSort = $("dap-sort-filter")?.value || "nearest";
+
+    let drivers = [...(waitingPoolsData.drivers || [])];
+
+    if (dapType !== "all") {
+        drivers = drivers.filter((d) => (d.vehicleType || "").toLowerCase() === dapType.toLowerCase());
+    }
+
+    // Search query filter for drivers
+    if (liveSearchQuery) {
+        drivers = drivers.filter((d) => {
+            const hay = [
+                d.id, d.driver_id,
+                d.name, d.phone, d.plate, d.vehicleType,
+                d.currentLocation,
+            ].join(" ").toLowerCase();
+            return hay.includes(liveSearchQuery);
+        });
+    }
+
+    if (dapSort === "longest_idle") {
+        drivers.sort((a, b) => (b.idleTimeMinutes || 0) - (a.idleTimeMinutes || 0));
+    } else {
+        const refLat = 23.8315;
+        const refLng = 91.2868;
+        const getDistSq = (d) => {
+            if (d.lat != null && d.lng != null) {
+                return (d.lat - refLat) ** 2 + (d.lng - refLng) ** 2;
+            }
+            return 9999;
+        };
+        drivers.sort((a, b) => getDistSq(a) - getDistSq(b));
+    }
+
+    if ($("dap-header-badge")) {
+        $("dap-header-badge").textContent = `${drivers.length} available`;
+    }
+
+    if (dapTbody) {
+        if (drivers.length === 0) {
+            dapTbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-secondary small">No available drivers match this filter.</td></tr>`;
+        } else {
+            dapTbody.innerHTML = drivers.map((d, idx) => {
+                const initials = d.initials || "DR";
+                const typeClass = d.vehicleType === "Bike" ? "badge-type-bike" : "badge-type-auto";
+                const typeIcon = d.vehicleType === "Bike" ? "ti-motorbike" : "ti-car";
+                const idleClass = `badge-urgency-${d.idleBadge || 'low'}`;
+                const avatarColor = getAvatarColor(d.name || `DR_${idx}`);
+
+                return `
+                    <tr>
+                        <td class="text-secondary small fw-medium">${idx + 1}</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-initials-circle ${avatarColor}">${initials}</div>
+                                <div>
+                                    <div class="fw-bold text-dark">${escapeHtml(d.name)}</div>
+                                    <div class="text-secondary small">${escapeHtml(d.phone || "")}</div>
+                                    ${d.plate ? `<div class="text-secondary small fw-medium">${escapeHtml(d.plate)}</div>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge-type-pill ${typeClass}">
+                                <i class="ti ${typeIcon}"></i> ${escapeHtml(d.vehicleType)}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-1">
+                                <i class="ti ti-map-pin text-success fs-3 flex-shrink-0"></i>
+                                <span class="text-truncate text-dark fw-medium" style="max-width: 170px;">${escapeHtml(d.currentLocation || "Agartala")}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge ${idleClass}">${escapeHtml(d.idleTimeText || "0 min")}</span>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-inline-flex align-items-center gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1" data-view-drv="${escapeHtml(d.driver_id || d.id)}">View</button>
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle p-0 d-inline-flex align-items-center justify-content-center" data-bs-toggle="dropdown" aria-expanded="false" style="width: 28px; height: 28px;">
+                                        <i class="ti ti-dots"></i>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end shadow-sm">
+                                        <button type="button" class="dropdown-item" data-view-drv="${escapeHtml(d.driver_id || d.id)}">
+                                            <i class="ti ti-user me-2"></i> Driver Profile
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+
+            dapTbody.querySelectorAll("[data-view-drv]").forEach((btn) => {
+                btn.addEventListener("click", () => openDriverDrawer(btn.dataset.viewDrv));
+            });
+        }
+    }
+}
 
 // ---------------------------------------------------------------------
 // Ride history

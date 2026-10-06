@@ -476,3 +476,259 @@ html, body {
     }
 }
 
+/* ---------- Live Rides & Waiting Pools Redesign ---------- */
+.live-rides-tabs-container {
+    scrollbar-width: none;
+}
+.live-rides-tabs-container::-webkit-scrollbar {
+    display: none;
+}
+
+.live-tab-pill {
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 0.84rem;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.live-tab-pill:hover {
+    background: #f8fafc;
+    color: #1e293b;
+    border-color: #cbd5e1;
+}
+.live-tab-pill.active {
+    background: #eff6ff !important;
+    border-color: #bfdbfe !important;
+    color: #2563eb !important;
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 #2563eb;
+}
+.live-tab-pill.active .badge {
+    background-color: #2563eb !important;
+    color: #ffffff !important;
+}
+
+.live-rides-hierarchy-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.live-rides-hierarchy-table th {
+    background-color: #f8fafc !important;
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 0.82rem;
+    padding: 10px 14px;
+}
+.live-rides-hierarchy-table td {
+    padding: 12px 14px;
+    vertical-align: middle;
+}
+
+.parent-ride-row {
+    background-color: #ffffff;
+    transition: background-color 0.15s ease;
+}
+.parent-ride-row:hover {
+    background-color: #f8fafc;
+}
+.parent-ride-row.is-expanded {
+    border-bottom: none;
+}
+
+.child-ride-row {
+    background-color: #fafbfc;
+    transition: background-color 0.15s ease;
+}
+.child-ride-row:hover {
+    background-color: #f1f5f9;
+}
+.child-ride-row td {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.tree-branch-container {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    padding-left: 28px;
+}
+.tree-branch-container::before {
+    content: "";
+    position: absolute;
+    left: 12px;
+    top: -24px;
+    bottom: 50%;
+    width: 2px;
+    border-left: 1.5px dashed #cbd5e1;
+}
+.child-ride-row:not(:last-child) .tree-branch-container::before {
+    bottom: -24px;
+}
+.child-ride-row:last-child .tree-branch-container::before {
+    bottom: 50%;
+}
+.tree-branch-container::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    width: 14px;
+    height: 1.5px;
+    border-bottom: 1.5px dashed #cbd5e1;
+}
+
+.passenger-progress-track {
+    width: 52px;
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+.passenger-progress-bar {
+    height: 100%;
+    background: #2563eb;
+    border-radius: 2px;
+}
+.passenger-progress-bar.progress-bar-auto {
+    background: #16a34a;
+}
+
+.avatar-initials-circle {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+}
+
+.badge-type-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-size: 0.76rem;
+    font-weight: 500;
+}
+.badge-type-share {
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #dbeafe;
+}
+.badge-type-auto {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #dcfce7;
+}
+.badge-type-bike {
+    background: #f0f9ff;
+    color: #0284c7;
+    border: 1px solid #e0f2fe;
+}
+
+.badge-parent-pill {
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-size: 0.72rem;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    font-weight: 600;
+}
+.badge-child-pill {
+    background: #ede9fe;
+    color: #6d28d9;
+    font-size: 0.72rem;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    font-weight: 600;
+}
+
+.badge-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-size: 0.76rem;
+    font-weight: 500;
+}
+.badge-status-ontrip {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1px solid #dcfce7;
+}
+.badge-status-finding {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+.badge-urgency-high,
+.badge-urgency-danger {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+.badge-urgency-mid,
+.badge-urgency-warning {
+    background: #fef3c7;
+    color: #d97706;
+    border: 1px solid #fde68a;
+}
+.badge-urgency-low,
+.badge-urgency-success {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #dcfce7;
+}
+
+.chevron-expand-btn {
+    border: none;
+    background: transparent;
+    padding: 2px;
+    cursor: pointer;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.chevron-expand-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.route-dot-green {
+    width: 6px;
+    height: 6px;
+    min-width: 6px;
+    border-radius: 50%;
+    background-color: #16a34a;
+    display: inline-block;
+    margin-right: 6px;
+}
+.route-dot-red {
+    width: 6px;
+    height: 6px;
+    min-width: 6px;
+    border-radius: 50%;
+    background-color: #dc2626;
+    display: inline-block;
+    margin-right: 6px;
+}
+
+

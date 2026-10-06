@@ -937,6 +937,343 @@ def update_passenger(
 # Rides (Live + History restricted for Managers)
 # ---------------------------------------------------------------------------
 
+def _initials(name: Optional[str], default: str = "LP") -> str:
+    clean = str(name or "").strip()
+    if not clean:
+        return default
+    parts = clean.split()
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[-1][0]).upper()
+    return clean[:2].upper()
+
+
+def _format_time_and_elapsed(dt_val: Any) -> tuple[str, str]:
+    if not dt_val:
+        return "--", "--"
+    if isinstance(dt_val, (int, float)):
+        dt = datetime.fromtimestamp(dt_val, tz=timezone.utc)
+    elif isinstance(dt_val, str):
+        try:
+            dt = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
+        except Exception:
+            return dt_val, ""
+    elif isinstance(dt_val, datetime):
+        dt = dt_val
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        return "--", "--"
+
+    now = now_utc()
+    time_str = dt.strftime("%I:%M %p").lstrip("0")
+    diff_sec = max(0, int((now - dt).total_seconds()))
+    if diff_sec < 60:
+        elapsed = "just now"
+    elif diff_sec < 3600:
+        mins = diff_sec // 60
+        elapsed = f"{mins} min{'s' if mins > 1 else ''} ago"
+    elif diff_sec < 86400:
+        hours = diff_sec // 3600
+        elapsed = f"{hours} hr{'s' if hours > 1 else ''} ago"
+    else:
+        days = diff_sec // 86400
+        elapsed = f"{days} day{'s' if days > 1 else ''} ago"
+    return time_str, elapsed
+
+
+def _format_display_id(ride_id: str, ride_type: str = "single") -> str:
+    clean = str(ride_id or "").replace("#", "").strip()
+    prefix = "SR" if ride_type == "share" else "RD"
+    digits = "".join(ch for ch in clean if ch.isdigit())
+    if len(digits) >= 6:
+        core = digits[-6:]
+    elif len(clean) >= 6:
+        core = clean[-6:].upper()
+    else:
+        core = clean.upper() or "784512"
+    return f"#{prefix}-{core}"
+
+
+def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    # 1. Backfill all parties (drivers and passengers)
+    user_ids = set()
+    for r in rides_docs:
+        if r.get("driver_id"):
+            user_ids.add(r["driver_id"])
+        if r.get("passenger_id"):
+            user_ids.add(r["passenger_id"])
+
+    # Query active shareTrips as well
+    share_trips = []
+    try:
+        st_query = db.collection("shareTrips").where("status", "in", ["active", "to_pickup", "en_route", "started", "pending"]).limit(50)
+        share_trips = [_doc_dict(d) for d in _stream(st_query)]
+        for st in share_trips:
+            if st.get("driverId") or st.get("driver_id"):
+                user_ids.add(st.get("driverId") or st.get("driver_id"))
+    except Exception:
+        share_trips = []
+
+    user_profiles: dict[str, dict[str, Any]] = {}
+    for uid in user_ids:
+        if not uid:
+            continue
+        try:
+            snap = db.collection("users").document(uid).get()
+            if snap.exists:
+                user_profiles[uid] = snap.to_dict() or {}
+        except Exception:
+            pass
+
+    for r in rides_docs:
+        d_id = r.get("driver_id")
+        if d_id and d_id in user_profiles:
+            u = user_profiles[d_id]
+            if not r.get("driver_name"):
+                r["driver_name"] = u.get("name") or "Driver"
+            if not r.get("driver_phone"):
+                r["driver_phone"] = u.get("phone") or ""
+            if not r.get("vehicle_number"):
+                r["vehicle_number"] = u.get("vehicleNumber") or u.get("vehicle_number") or ""
+            if not r.get("vehicle_type"):
+                r["vehicle_type"] = u.get("vehicleType") or u.get("vehicle_type") or "auto"
+        p_id = r.get("passenger_id")
+        if p_id and p_id in user_profiles:
+            u = user_profiles[p_id]
+            if not r.get("passenger_name"):
+                r["passenger_name"] = u.get("name") or "Passenger"
+            if not r.get("passenger_phone"):
+                r["passenger_phone"] = u.get("phone") or ""
+
+    # Group rides by parentTripId
+    share_grouped_rides: dict[str, list[dict[str, Any]]] = {}
+    standalone_rides: list[dict[str, Any]] = []
+
+    for r in rides_docs:
+        p_trip_id = r.get("parentTripId")
+        if p_trip_id:
+            share_grouped_rides.setdefault(p_trip_id, []).append(r)
+        else:
+            standalone_rides.append(r)
+
+    hierarchy: list[dict[str, Any]] = []
+    share_trips_by_id = {st["id"]: st for st in share_trips}
+
+    # Process all share trip groups
+    all_share_trip_ids = set(share_grouped_rides.keys()) | set(share_trips_by_id.keys())
+    for st_id in all_share_trip_ids:
+        st_data = share_trips_by_id.get(st_id, {})
+        child_rides = share_grouped_rides.get(st_id, [])
+        d_id = st_data.get("driverId") or st_data.get("driver_id") or (child_rides[0].get("driver_id") if child_rides else None)
+        d_profile = user_profiles.get(d_id, {}) if d_id else {}
+        d_name = st_data.get("driverName") or (child_rides[0].get("driver_name") if child_rides else None) or d_profile.get("name") or "Driver"
+        d_phone = d_profile.get("phone") or (child_rides[0].get("driver_phone") if child_rides else "")
+        v_num = d_profile.get("vehicleNumber") or d_profile.get("vehicle_number") or (child_rides[0].get("vehicle_number") if child_rides else "TR 01 AB 1234")
+        v_type = (child_rides[0].get("vehicle_type") if child_rides else None) or d_profile.get("vehicleType") or "auto"
+
+        max_seats = int(st_data.get("maxSeats") or 3)
+        joined_count = len(child_rides) or int(st_data.get("seatsUsed") or 1)
+        parent_display_id = _format_display_id(st_id, "share")
+
+        pickup_name = (child_rides[0].get("pickup_name") if child_rides else None) or st_data.get("pickup_name") or "Ramakrishna palli"
+        drop_name = (child_rides[-1].get("drop_name") if child_rides else None) or st_data.get("drop_name") or "Battala, Agartala"
+        pickup_lat = child_rides[0].get("pickup_lat") if child_rides else st_data.get("pickup_lat")
+        pickup_lng = child_rides[0].get("pickup_lng") if child_rides else st_data.get("pickup_lng")
+        drop_lat = child_rides[-1].get("drop_lat") if child_rides else st_data.get("drop_lat")
+        drop_lng = child_rides[-1].get("drop_lng") if child_rides else st_data.get("drop_lng")
+        drv_loc = (child_rides[0].get("driverLocation") if child_rides else None) or st_data.get("driverLocation")
+
+        st_created = st_data.get("createdAt") or (child_rides[0].get("createdAt") if child_rides else now_utc())
+        time_str, elapsed_str = _format_time_and_elapsed(st_created)
+
+        # Build child objects
+        child_items = []
+        for idx, cr in enumerate(child_rides):
+            c_display_id = f"{parent_display_id}-{idx + 1}"
+            c_time, c_elapsed = _format_time_and_elapsed(cr.get("createdAt") or st_created)
+            p_name = cr.get("passenger_name") or "Passenger"
+            p_phone = cr.get("passenger_phone") or ""
+            child_items.append({
+                "id": cr["id"],
+                "displayId": c_display_id,
+                "isChild": True,
+                "parentId": st_id,
+                "parentDisplayId": parent_display_id,
+                "rideType": "share",
+                "vehicleType": v_type,
+                "passenger": {
+                    "id": cr.get("passenger_id"),
+                    "name": p_name,
+                    "phone": p_phone,
+                    "initials": _initials(p_name),
+                },
+                "driver": {
+                    "id": d_id,
+                    "name": d_name,
+                    "phone": d_phone,
+                    "plate": v_num,
+                    "initials": _initials(d_name),
+                },
+                "route": {
+                    "pickup": cr.get("pickup_name") or pickup_name,
+                    "drop": cr.get("drop_name") or drop_name,
+                    "pickup_lat": cr.get("pickup_lat") or pickup_lat,
+                    "pickup_lng": cr.get("pickup_lng") or pickup_lng,
+                    "drop_lat": cr.get("drop_lat") or drop_lat,
+                    "drop_lng": cr.get("drop_lng") or drop_lng,
+                },
+                "status": "On Trip" if cr.get("status") in ACTIVE_RIDE_STATUSES else (cr.get("status") or "On Trip"),
+                "rawStatus": cr.get("status"),
+                "startedAt": c_time,
+                "elapsedText": c_elapsed,
+                "driverLocation": cr.get("driverLocation") or drv_loc,
+            })
+
+        parent_status = "Finding Riders" if joined_count < max_seats and st_data.get("status") == "pending" else "On Trip"
+        hierarchy.append({
+            "id": st_id,
+            "displayId": parent_display_id,
+            "isParent": True,
+            "rideType": "share",
+            "vehicleType": v_type,
+            "description": f"Share Ride • {max_seats} passengers ({joined_count}/{max_seats} joined)",
+            "driver": {
+                "id": d_id,
+                "name": d_name,
+                "phone": d_phone,
+                "plate": v_num,
+                "initials": _initials(d_name),
+            },
+            "passengers": {
+                "count": joined_count,
+                "capacity": max_seats,
+                "label": f"{joined_count} / {max_seats}",
+                "pct": min(100, int((joined_count / max_seats) * 100)),
+            },
+            "route": {
+                "pickup": pickup_name,
+                "drop": drop_name,
+                "pickup_lat": pickup_lat,
+                "pickup_lng": pickup_lng,
+                "drop_lat": drop_lat,
+                "drop_lng": drop_lng,
+            },
+            "status": parent_status,
+            "startedAt": time_str,
+            "elapsedText": elapsed_str,
+            "childRides": child_items,
+            "driverLocation": drv_loc,
+        })
+
+    # Process standalone / single rides (each has 1 child representing its passenger)
+    for sr in standalone_rides:
+        is_share = sr.get("rideType") == "share"
+        v_type = (sr.get("vehicle_type") or "auto").lower()
+        v_label = "Bike / Scooty" if v_type == "bike" else (v_type.capitalize() or "Auto")
+        max_seats = 1 if v_type == "bike" else (3 if v_type == "auto" else 4)
+        joined_count = 1
+        parent_display_id = _format_display_id(sr["id"], "share" if is_share else "single")
+
+        d_id = sr.get("driver_id")
+        d_name = sr.get("driver_name") or "Unassigned Driver"
+        d_phone = sr.get("driver_phone") or ""
+        v_num = sr.get("vehicle_number") or ""
+        p_name = sr.get("passenger_name") or "Passenger"
+        p_phone = sr.get("passenger_phone") or ""
+
+        pickup_name = sr.get("pickup_name") or "Pickup"
+        drop_name = sr.get("drop_name") or "Drop"
+        time_str, elapsed_str = _format_time_and_elapsed(sr.get("createdAt") or sr.get("updatedAt"))
+
+        c_display_id = f"{parent_display_id}-1"
+        child_item = {
+            "id": sr["id"],
+            "displayId": c_display_id,
+            "isChild": True,
+            "parentId": sr["id"],
+            "parentDisplayId": parent_display_id,
+            "rideType": "share" if is_share else "single",
+            "vehicleType": v_type,
+            "passenger": {
+                "id": sr.get("passenger_id"),
+                "name": p_name,
+                "phone": p_phone,
+                "initials": _initials(p_name),
+            },
+            "driver": {
+                "id": d_id,
+                "name": d_name,
+                "phone": d_phone,
+                "plate": v_num,
+                "initials": _initials(d_name),
+            },
+            "route": {
+                "pickup": pickup_name,
+                "drop": drop_name,
+                "pickup_lat": sr.get("pickup_lat"),
+                "pickup_lng": sr.get("pickup_lng"),
+                "drop_lat": sr.get("drop_lat"),
+                "drop_lng": sr.get("drop_lng"),
+            },
+            "status": "On Trip" if sr.get("status") in ACTIVE_RIDE_STATUSES else (sr.get("status") or "On Trip"),
+            "rawStatus": sr.get("status"),
+            "startedAt": time_str,
+            "elapsedText": elapsed_str,
+            "driverLocation": sr.get("driverLocation"),
+        }
+
+        hierarchy.append({
+            "id": sr["id"],
+            "displayId": parent_display_id,
+            "isParent": True,
+            "rideType": "share" if is_share else "single",
+            "vehicleType": v_type,
+            "description": f"{v_label} • {max_seats} passenger{'s' if max_seats > 1 else ''}",
+            "driver": {
+                "id": d_id,
+                "name": d_name,
+                "phone": d_phone,
+                "plate": v_num,
+                "initials": _initials(d_name),
+            },
+            "passengers": {
+                "count": joined_count,
+                "capacity": max_seats,
+                "label": f"{joined_count} / {max_seats}",
+                "pct": min(100, int((joined_count / max_seats) * 100)),
+            },
+            "route": {
+                "pickup": pickup_name,
+                "drop": drop_name,
+                "pickup_lat": sr.get("pickup_lat"),
+                "pickup_lng": sr.get("pickup_lng"),
+                "drop_lat": sr.get("drop_lat"),
+                "drop_lng": sr.get("drop_lng"),
+            },
+            "status": "On Trip" if sr.get("status") in ACTIVE_RIDE_STATUSES else (sr.get("status") or "On Trip"),
+            "startedAt": time_str,
+            "elapsedText": elapsed_str,
+            "childRides": [child_item],
+            "driverLocation": sr.get("driverLocation"),
+        })
+
+    # Compute tab counts
+    single_count = sum(1 for h in hierarchy if h.get("rideType") != "share")
+    share_count = sum(1 for h in hierarchy if h.get("rideType") == "share")
+    child_count = sum(len(h.get("childRides", [])) for h in hierarchy)
+    all_count = len(hierarchy) + child_count
+
+    counts = {
+        "all": all_count or len(hierarchy),
+        "single": single_count,
+        "share": share_count,
+        "child": child_count,
+        "parent": len(hierarchy),
+    }
+
+    return hierarchy, counts
+
+
 @router.get("/rides/live")
 def list_live_rides(admin_user: dict[str, Any] = Depends(require_admin_or_super_admin)) -> dict[str, Any]:
     db = _db()
@@ -960,7 +1297,218 @@ def list_live_rides(admin_user: dict[str, Any] = Depends(require_admin_or_super_
             docs.sort(key=lambda r: str(r.get("updatedAt") or r.get("createdAt") or ""), reverse=True)
         else:
             raise err
-    return {"ok": True, "rides": _backfill_driver_names(docs)}
+
+    backfilled_rides = _backfill_driver_names(docs)
+    hierarchy, counts = _build_live_hierarchy(db, backfilled_rides)
+    return {
+        "ok": True,
+        "rides": backfilled_rides,
+        "hierarchy": hierarchy,
+        "counts": counts,
+    }
+
+
+@router.get("/waiting-pools")
+def list_waiting_pools(
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    now = now_utc()
+    now_ts = now.timestamp()
+
+    # 1. Fetch Passengers in Waiting Passenger Pool (dispatchWPP)
+    wpp_docs = [_doc_dict(d) for d in _stream(db.collection("dispatchWPP"))]
+
+    # Also include pending unassigned rides from rides collection if any
+    pending_rides = []
+    try:
+        pr_query = db.collection("rides").where("status", "==", "pending").limit(50)
+        pending_rides = [_doc_dict(d) for d in _stream(pr_query)]
+    except Exception:
+        pending_rides = []
+
+    seen_pids = {p.get("passenger_id") or p.get("id") for p in wpp_docs}
+    for pr in pending_rides:
+        p_id = pr.get("passenger_id")
+        if p_id and p_id not in seen_pids:
+            seen_pids.add(p_id)
+            wpp_docs.append({
+                "id": p_id,
+                "passenger_id": p_id,
+                "pickup": {"name": pr.get("pickup_name") or "Pickup", "lat": pr.get("pickup_lat"), "lng": pr.get("pickup_lng")},
+                "drop": {"name": pr.get("drop_name") or "Drop", "lat": pr.get("drop_lat"), "lng": pr.get("drop_lng")},
+                "vehicle_type": pr.get("vehicle_type") or "auto",
+                "wants_share": pr.get("rideType") == "share",
+                "fare": pr.get("fare") or 0.0,
+                "created_at": pr.get("createdAt") or pr.get("updatedAt") or now_ts,
+                "state": "WAITING",
+                "ride_id": pr.get("id"),
+            })
+
+    # Backfill passenger profiles
+    passengers_list = []
+    p_uids = [p.get("passenger_id") or p.get("id") for p in wpp_docs if (p.get("passenger_id") or p.get("id"))]
+    user_docs: dict[str, dict[str, Any]] = {}
+    for uid in p_uids:
+        try:
+            snap = db.collection("users").document(uid).get()
+            if snap.exists:
+                user_docs[uid] = snap.to_dict() or {}
+        except Exception:
+            pass
+
+    for p in wpp_docs:
+        pid = p.get("passenger_id") or p.get("id")
+        u = user_docs.get(pid, {})
+        p_name = u.get("name") or p.get("name") or "Passenger"
+        p_phone = u.get("phone") or p.get("phone") or ""
+
+        created = p.get("created_at") or p.get("req_time") or p.get("createdAt") or now_ts
+        if isinstance(created, (int, float)):
+            wait_sec = max(0, int(now_ts - created))
+            since_dt = datetime.fromtimestamp(created, tz=timezone.utc)
+        elif isinstance(created, datetime):
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            wait_sec = max(0, int((now - created).total_seconds()))
+            since_dt = created
+        else:
+            wait_sec = 0
+            since_dt = now
+
+        wait_mins = max(1, wait_sec // 60)
+        since_time = since_dt.strftime("%I:%M %p").lstrip("0")
+
+        v_type = str(p.get("vehicle_type") or "auto").lower()
+        if p.get("wants_share") or v_type == "share":
+            type_label = "Share"
+        elif v_type == "bike":
+            type_label = "Bike"
+        else:
+            type_label = "Auto"
+
+        pickup_data = p.get("pickup") or {}
+        pickup_loc = pickup_data.get("name") or pickup_data.get("address") or "Pickup Location"
+
+        badge_color = "danger" if wait_mins >= 20 else ("warning" if wait_mins >= 5 else "success")
+        passengers_list.append({
+            "id": pid,
+            "passenger_id": pid,
+            "name": p_name,
+            "phone": p_phone,
+            "initials": _initials(p_name, "PA"),
+            "type": type_label,
+            "pickupLocation": pickup_loc,
+            "pickup_lat": pickup_data.get("lat"),
+            "pickup_lng": pickup_data.get("lng"),
+            "waitingSince": since_time,
+            "waitingSinceIso": since_dt.isoformat(),
+            "waitTimeMinutes": wait_mins,
+            "waitTimeText": f"{wait_mins} min",
+            "urgencyBadge": badge_color,
+            "state": p.get("state") or "WAITING",
+            "ride_id": p.get("ride_id"),
+        })
+
+    # Sort oldest waiting first by default
+    passengers_list.sort(key=lambda x: x["waitTimeMinutes"], reverse=True)
+
+    # 2. Fetch Drivers in Driver Availability Pool (dispatchDAP) & Online Users
+    dap_docs = [_doc_dict(d) for d in _stream(db.collection("dispatchDAP"))]
+
+    online_drivers = []
+    try:
+        od_query = db.collection("users").where("role", "==", "driver").where("verificationStatus", "==", "approved")
+        for d in _stream(od_query):
+            data = _doc_dict(d)
+            if str(data.get("driverAvailability") or "").lower() in ("online", "searching"):
+                online_drivers.append(data)
+    except Exception:
+        online_drivers = []
+
+    seen_dids = {d.get("driver_id") or d.get("id") for d in dap_docs}
+    for od in online_drivers:
+        d_id = od.get("id")
+        if d_id and d_id not in seen_dids:
+            seen_dids.add(d_id)
+            dap_docs.append({
+                "id": d_id,
+                "driver_id": d_id,
+                "name": od.get("name"),
+                "phone": od.get("phone"),
+                "vehicleNumber": od.get("vehicleNumber") or od.get("vehicle_number"),
+                "vehicleType": od.get("vehicleType") or od.get("vehicle_type"),
+                "state": "IDLE",
+                "pool": "IDLE",
+                "idle_since": now_ts - 300,
+                "loc": od.get("lastLocation") or od.get("location") or {"lat": 23.8315, "lng": 91.2868},
+            })
+
+    drivers_list = []
+    for d in dap_docs:
+        did = d.get("driver_id") or d.get("id")
+        u_prof = user_docs.get(did)
+        if not u_prof:
+            try:
+                s = db.collection("users").document(did).get()
+                u_prof = s.to_dict() or {} if s.exists else {}
+            except Exception:
+                u_prof = {}
+
+        d_name = d.get("name") or u_prof.get("name") or "Driver"
+        d_phone = d.get("phone") or u_prof.get("phone") or ""
+        v_num = d.get("vehicleNumber") or d.get("vehicle_number") or u_prof.get("vehicleNumber") or u_prof.get("vehicle_number") or "TR 01 AB 1234"
+        raw_v_type = str(d.get("vehicleType") or d.get("vehicle_type") or u_prof.get("vehicleType") or u_prof.get("vehicle_type") or "auto").lower()
+        v_type = "Bike" if raw_v_type == "bike" else "Auto"
+
+        idle_val = d.get("idle_since") or d.get("idleSince") or now_ts
+        if isinstance(idle_val, (int, float)):
+            idle_sec = max(0, int(now_ts - idle_val))
+        elif isinstance(idle_val, datetime):
+            if idle_val.tzinfo is None:
+                idle_val = idle_val.replace(tzinfo=timezone.utc)
+            idle_sec = max(0, int((now - idle_val).total_seconds()))
+        else:
+            idle_sec = 0
+
+        idle_mins = max(1, idle_sec // 60)
+        idle_color = "danger" if idle_mins >= 20 else ("warning" if idle_mins >= 8 else "success")
+
+        loc_data = d.get("loc") or {}
+        curr_loc_name = d.get("currentLocation") or d.get("locationName") or u_prof.get("locationName") or "Ramakrishna palli, West Tripura"
+
+        drivers_list.append({
+            "id": did,
+            "driver_id": did,
+            "name": d_name,
+            "phone": d_phone,
+            "plate": v_num,
+            "vehicleType": v_type,
+            "initials": _initials(d_name, "DR"),
+            "currentLocation": curr_loc_name,
+            "lat": loc_data.get("lat"),
+            "lng": loc_data.get("lng"),
+            "idleTimeMinutes": idle_mins,
+            "idleTimeText": f"{idle_mins} min",
+            "idleBadge": idle_color,
+            "state": d.get("state") or "IDLE",
+            "seatsFree": d.get("seats_free") or d.get("seatsFree") or 1,
+        })
+
+    # Sort longest idle first by default
+    drivers_list.sort(key=lambda x: x["idleTimeMinutes"], reverse=True)
+
+    total_pool_count = len(passengers_list) + len(drivers_list)
+    return {
+        "ok": True,
+        "passengers": passengers_list,
+        "drivers": drivers_list,
+        "counts": {
+            "passengers": len(passengers_list),
+            "drivers": len(drivers_list),
+            "total": total_pool_count,
+        },
+    }
 
 
 @router.get("/rides/history")
@@ -1042,6 +1590,8 @@ class RideActionBody(BaseModel):
     action: str = Field(min_length=1, max_length=30)
     fare: Optional[float] = None
     notes: Optional[str] = Field(default=None, max_length=500)
+    cancel_all_children: Optional[bool] = False
+    cancelAllChildren: Optional[bool] = False
 
 
 @router.patch("/rides/{ride_id}")
@@ -1053,10 +1603,63 @@ def update_ride(
     db = _db()
     ref = db.collection("rides").document(ride_id)
     snap = ref.get()
-    if not snap.exists:
-        raise ApiError("Ride not found.", 404)
-    before = _doc_dict(snap)
 
+    # Support canceling a parent shareTrip doc directly if ride_id is a shareTrip ID
+    if not snap.exists:
+        st_ref = db.collection("shareTrips").document(ride_id)
+        st_snap = st_ref.get()
+        if st_snap.exists and body.action == "cancel":
+            st_data = _doc_dict(st_snap)
+            st_ref.set({
+                "status": "cancelled",
+                "seatsUsed": 0,
+                "endedAt": fb_firestore.SERVER_TIMESTAMP,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            }, merge=True)
+            # Cancel all child rides in this parent trip
+            child_docs = db.collection("rides").where("parentTripId", "==", ride_id).stream()
+            for cd in child_docs:
+                cd.reference.set({
+                    "status": "cancelled_by_passenger",
+                    "cancellationReason": "Cancelled by administrator",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                }, merge=True)
+
+            d_id = str(st_data.get("driverId") or st_data.get("driver_id") or "").strip()
+            if d_id:
+                try:
+                    from ..services.db import (
+                        driver_has_open_share_trips,
+                        driver_has_other_active_rides,
+                        update_driver_presence_synchronized,
+                    )
+                    has_active = driver_has_other_active_rides(db, d_id)
+                    has_share = driver_has_open_share_trips(db, d_id, exclude_trip_id=ride_id)
+                    if not has_active and not has_share:
+                        drv_doc = db.collection("users").document(d_id).get()
+                        drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
+                        avail_status = "offline"
+                        if (
+                            str(drv_profile.get("desiredAvailability") or "").strip().lower() != "offline"
+                            and str(drv_profile.get("driverAvailability") or "").strip().lower() != "offline"
+                        ):
+                            avail_status = "searching"
+                        update_driver_presence_synchronized(
+                            db,
+                            d_id,
+                            availability=avail_status,
+                            desired_availability=drv_profile.get("desiredAvailability"),
+                            profile_data={**drv_profile, "uid": d_id},
+                        )
+                except Exception:
+                    pass
+
+            write_audit_log(admin_user, "ride.cancel_parent", "shareTrip", ride_id, st_data, {"status": "cancelled"}, body.notes or "")
+            return {"ok": True, "message": "Share trip cancelled.", "id": ride_id}
+        raise ApiError("Ride not found.", 404)
+
+    before = _doc_dict(snap)
     updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
 
     if body.action == "cancel":
@@ -1067,7 +1670,33 @@ def update_ride(
         updates["cancelledAt"] = fb_firestore.SERVER_TIMESTAMP
 
         parent_trip_id = before.get("parentTripId")
-        if parent_trip_id:
+        cancel_entire_parent = body.cancel_all_children or body.cancelAllChildren
+        parent_was_cancelled = False
+
+        if parent_trip_id and cancel_entire_parent:
+            # Cancel entire parent trip and all sibling child rides
+            try:
+                parent_ref = db.collection("shareTrips").document(parent_trip_id)
+                parent_ref.set({
+                    "status": "cancelled",
+                    "seatsUsed": 0,
+                    "endedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                }, merge=True)
+                parent_was_cancelled = True
+                s_docs = db.collection("rides").where("parentTripId", "==", parent_trip_id).stream()
+                for sd in s_docs:
+                    if sd.id != ride_id:
+                        sd.reference.set({
+                            "status": "cancelled_by_passenger",
+                            "cancellationReason": "Cancelled by administrator",
+                            "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        }, merge=True)
+            except Exception:
+                pass
+        elif parent_trip_id:
+            # Cancel only this child ride, recalculate parent seats
             try:
                 parent_ref = db.collection("shareTrips").document(parent_trip_id)
                 p_snap = parent_ref.get()
@@ -1084,6 +1713,7 @@ def update_ride(
                             "endedAt": fb_firestore.SERVER_TIMESTAMP,
                             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                         })
+                        parent_was_cancelled = True
                     else:
                         new_anchor = active_children[0] if active_children else p_data.get("anchorRideId")
                         parent_ref.update({
@@ -1105,7 +1735,11 @@ def update_ride(
                     update_driver_presence_synchronized,
                 )
                 has_active = driver_has_other_active_rides(db, driver_id, exclude_ride_id=ride_id)
-                has_share = driver_has_open_share_trips(db, driver_id, exclude_trip_id=parent_trip_id)
+                has_share = driver_has_open_share_trips(
+                    db,
+                    driver_id,
+                    exclude_trip_id=parent_trip_id if (parent_was_cancelled or cancel_entire_parent) else None,
+                )
                 if not has_active and not has_share:
                     drv_doc = db.collection("users").document(driver_id).get()
                     drv_profile = drv_doc.to_dict() or {} if drv_doc.exists else {}
