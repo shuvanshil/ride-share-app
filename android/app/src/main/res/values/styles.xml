@@ -1,20 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!--
-        LiphtUp is a light-only app. Every theme below explicitly disables the framework title bar
-        and the AppCompat action bar (both the android: and AppCompat attribute variants), so no
-        native "LiphtUp" title bar can ever be drawn above the WebView.
-    -->
+    <!-- Base application theme. Title and action bar are disabled in both attribute namespaces. -->
     <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">@android:color/white</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>

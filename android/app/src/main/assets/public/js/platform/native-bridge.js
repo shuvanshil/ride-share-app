@@ -91,11 +91,14 @@
         // --- Status Bar Configuration --------------------------------------------
         if (StatusBarPlugin) {
             try {
+                if (typeof StatusBarPlugin.setBackgroundColor === 'function') {
+                    StatusBarPlugin.setBackgroundColor({ color: '#1A7A2E' }).catch(function () {});
+                }
                 if (typeof StatusBarPlugin.setStyle === 'function') {
-                    StatusBarPlugin.setStyle({ style: 'LIGHT' }).catch(function () {});
+                    StatusBarPlugin.setStyle({ style: 'DARK' }).catch(function () {});
                 }
                 if (typeof StatusBarPlugin.setOverlaysWebView === 'function') {
-                    StatusBarPlugin.setOverlaysWebView({ overlay: true }).catch(function () {});
+                    StatusBarPlugin.setOverlaysWebView({ overlay: false }).catch(function () {});
                 }
             } catch (sbErr) {
                 console.warn('[native-bridge] StatusBar init warning:', sbErr);

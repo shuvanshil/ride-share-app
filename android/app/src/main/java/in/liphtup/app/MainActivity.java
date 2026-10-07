@@ -1,16 +1,9 @@
 package in.liphtup.app;
 
 import android.content.Intent;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.view.View;
 import android.webkit.JavascriptInterface;
-import androidx.activity.EdgeToEdge;
-import androidx.activity.SystemBarStyle;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -19,28 +12,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        EdgeToEdge.enable(
-            this,
-            SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
-            SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-        );
         super.onCreate(savedInstanceState);
-
-        // This activity is the single owner of system-bar insets (Capacitor's SystemBars insets handling is
-        // disabled in capacitor.config.json). The content root is padded by the status bar, display cutout,
-        // navigation bar / gesture area and the keyboard, so the WebView never draws under system UI and the
-        // web layer's env(safe-area-inset-*) resolves to 0 here (no double offset).
-        final View content = findViewById(android.R.id.content);
-        content.setBackgroundColor(Color.WHITE);
-        ViewCompat.setOnApplyWindowInsetsListener(content, (view, windowInsets) -> {
-            Insets bars = windowInsets.getInsets(
-                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
-            );
-            Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
-            view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
-            return WindowInsetsCompat.CONSUMED;
-        });
-
         handleIncomingIntent(getIntent());
         
         // Defensive check: Does the app have the Firebase configuration resource?
