@@ -21,7 +21,7 @@ const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_r
 const DISPATCH_BATCH_SIZE = 10;
 const DISPATCH_TIMEOUT_MS = 15000;
 const MAX_SEARCH_DURATION_MS = 100000; // 100 seconds search timeout limit
-const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
+const DRIVER_LOCATION_VISIBLE_MS = 150 * 1000; // 2.5 minutes freshness window for live map presence
 const APP_SHARE_URL = "https://liphtup.in/";
 const APP_SHARE_TITLE = "LiphtUp";
 const APP_SHARE_TEXT = "Ride Together, Save Together. Invite friends and unlock exciting LiphtUp discounts.";
@@ -1802,9 +1802,9 @@ function calculateDispatchDistanceKm(lat1, lon1, lat2, lon2) {
 }
 
 function isDriverRecentlyConnected(driver) {
-    if (driver.desiredAvailability === "offline" || driver.driverAvailability === "offline") return false;
+    if (driver.desiredAvailability === "offline" || driver.driverAvailability === "offline" || driver.isConnected === false) return false;
     const lastLocationAt = getTimestampMs(driver.lastLocationAt || driver.lastSeenAt || driver.updatedAt);
-    if (!lastLocationAt) return Boolean(driver.isConnected);
+    if (!lastLocationAt) return false;
     return Date.now() - lastLocationAt <= DRIVER_LOCATION_VISIBLE_MS;
 }
 
@@ -2007,8 +2007,6 @@ async function expandRideDispatch(rideId) {
             clearDispatchExpansionTimer();
             return;
         }
-
-        if (data.driverIds?.length) notifyRideDrivers(rideId, data.driverIds).catch(() => {});
 
         const reqBtn = document.getElementById('request-ride-btn');
         if (reqBtn && currentPassengerRideId === rideId && currentPassengerRideData?.status === "pending") {
@@ -2299,7 +2297,6 @@ requestRideButton.addEventListener('click', async () => {
         };
         const backendRide = await createRideThroughBackend(requestPayload);
         currentPassengerRideId = backendRide.rideId;
-        notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
         showPassengerCancelButton(backendRide.rideId);
         listenToRideStatusUpdates(backendRide.rideId);
         scheduleDispatchExpansion(backendRide.rideId, backendRide.ride || { dispatch_timeout_ms: 12000 });
@@ -2379,6 +2376,8 @@ function listenToRideStatusUpdates(rideId) {
             } else {
                 scheduleDispatchExpansion(rideId, ride);
             }
+        } else if (ride.status === "timeout" || ride.status === "declined" || ride.status === "cancelled_no_driver") {
+            handleSearchTimeout(rideId);
         } else if (ride.status === "accepted") {
             clearDispatchExpansionTimer();
             stopSearchStateUi();
@@ -2836,7 +2835,7 @@ function listenToPendingRequestUpdates(requestId) {
         const data = docSnap.data();
         activePendingRequestData = data;
 
-        if (data.status === "matched_auto" || data.status === "dispatching" || data.status === "matched" || (data.rideId && data.status !== "pending")) {
+        if (data.status === "matched_auto" || data.status === "matched") {
             const rideId = data.rideId;
             if (rideId) {
                 const pendingCard = document.getElementById('pending-active-card');
@@ -2856,6 +2855,15 @@ function listenToPendingRequestUpdates(requestId) {
                 currentPassengerRideId = rideId;
                 listenToRideStatusUpdates(rideId);
             }
+        } else if (data.status === "dispatching") {
+            const rideId = data.rideId;
+            if (rideId && currentPassengerRideId !== rideId) {
+                currentPassengerRideId = rideId;
+                listenToRideStatusUpdates(rideId);
+            }
+        } else if (data.status === "pending") {
+            const pendingCard = document.getElementById('pending-active-card');
+            if (pendingCard) pendingCard.classList.remove('d-none');
         } else if (data.status === "cancelled" || data.status === "expired") {
             const pendingCard = document.getElementById('pending-active-card');
             if (pendingCard) pendingCard.classList.add('d-none');
@@ -3040,7 +3048,6 @@ async function rebookPendingRequestToLiveRide() {
         });
 
         currentPassengerRideId = backendRide.rideId;
-        notifyRideDrivers(backendRide.rideId, backendRide.notifiedDriverIds || []).catch(() => {});
         showPassengerCancelButton(backendRide.rideId);
         listenToRideStatusUpdates(backendRide.rideId);
 
@@ -3071,5 +3078,15 @@ window.addEventListener('languageChanged', () => {
         renderPassengerActiveRide(currentPassengerRideData);
     }
 });
+
+window.addEventListener('online', () => {
+    if (currentPassengerRideId) {
+        listenToRideStatusUpdates(currentPassengerRideId);
+    }
+    if (activePendingRequestId) {
+        listenToPendingRequestUpdates(activePendingRequestId);
+    }
+});
+
 
 

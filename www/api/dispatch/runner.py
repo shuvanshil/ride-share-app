@@ -23,6 +23,9 @@ from .config import (
 from .engine.plan import Assignment, DispatchPlan, DriverEntry, PassengerEntry
 from .engine.solve import solve_dispatch
 from .pools import DispatchPoolManager
+from ..core.config import get_env
+
+APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https://liphtup.in").rstrip("/")
 
 
 # Global in-memory counter for engine failure tracking
@@ -315,6 +318,28 @@ def _claim_assignment_atomic(
                 "etaMinutes": str(assignment.eta_minutes),
             },
         )
+
+        # Deliver push notification immediately to driver for instant response
+        try:
+            from ..routers.rides import _send_driver_push_notification
+            _send_driver_push_notification(
+                db,
+                assignment.driver_id,
+                "New Ride Match!",
+                f"Trip match found! Pickup ETA: {assignment.eta_minutes:.1f} min (₹{assignment.fare:.0f}).",
+                {
+                    "type": "ride_offer",
+                    "passengerId": assignment.passenger_id,
+                    "rideId": str(ride_id or ""),
+                    "pendingRequestId": str(pending_req_id or ""),
+                    "assignmentId": aid,
+                    "cost": str(assignment.cost),
+                    "etaMinutes": str(assignment.eta_minutes),
+                    "url": f"{APP_BASE_URL}/driver?rideId={str(ride_id or '')}&from=push",
+                },
+            )
+        except Exception:
+            pass
 
         DispatchPoolManager.log_event(
             db,

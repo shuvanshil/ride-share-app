@@ -77,6 +77,8 @@ def _is_notification_eligible(driver: dict[str, Any]) -> bool:
 
 def _collect_tokens(driver: dict[str, Any]) -> list[str]:
     tokens: set[str] = set()
+    if driver.get("fcmToken") and isinstance(driver["fcmToken"], str) and driver["fcmToken"].strip():
+        tokens.add(driver["fcmToken"].strip())
     for token in driver.get("pushTokens") or []:
         if isinstance(token, str) and token.strip():
             tokens.add(token.strip())
@@ -126,17 +128,17 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
 
         tokens: list[str] = []
         for d_id, driver_doc in zip(allowed_driver_ids, driver_docs):
-            driver = driver_doc.to_dict() or {} if (driver_doc and driver_doc.exists) else {}
+            driver = driver_doc.to_dict() or {} if (driver_doc and getattr(driver_doc, "exists", False)) else {}
             if not driver:
                 u_doc = db.collection("users").document(d_id).get()
-                if u_doc.exists:
+                if u_doc and getattr(u_doc, "exists", False):
                     driver = u_doc.to_dict() or {}
             if not _is_notification_eligible(driver):
                 continue
             d_tokens = _collect_tokens(driver)
-            if not d_tokens and driver_doc and driver_doc.exists:
+            if not d_tokens and driver_doc and getattr(driver_doc, "exists", False):
                 u_doc = db.collection("users").document(d_id).get()
-                if u_doc.exists:
+                if u_doc and getattr(u_doc, "exists", False):
                     d_tokens = _collect_tokens(u_doc.to_dict() or {})
             tokens.extend(d_tokens)
 

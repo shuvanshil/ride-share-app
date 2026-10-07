@@ -567,8 +567,11 @@ def _build_driver_availability_updates(
     if eff_loc and "lat" in eff_loc and "lng" in eff_loc:
         loc_dict = {"lat": float(eff_loc["lat"]), "lng": float(eff_loc["lng"])}
         user_update["driverLocation"] = loc_dict
+        user_update["lastLocationAt"] = fb_firestore.SERVER_TIMESTAMP
         presence_update["driverLocation"] = loc_dict
+        presence_update["lastLocationAt"] = fb_firestore.SERVER_TIMESTAMP
         map_presence_update["driverLocation"] = _coarse_location(loc_dict)
+        map_presence_update["lastLocationAt"] = fb_firestore.SERVER_TIMESTAMP
 
     return user_update, presence_update, map_presence_update
 
@@ -1103,14 +1106,12 @@ async def create_passenger_ride(
             tx.set(ride_ref, ride_data)
 
         create_transaction(transaction)
-        if is_share:
-            for d_id in driver_ids:
-                _send_driver_push_notification(
-                    db,
-                    d_id,
-                    "Share Ride Add-on" if is_priority else "Share Ride request",
-                    f"Shared Ride: {body.pickupName.strip()} -> {body.dropName.strip()} (₹{fare})",
-                    {
+        for d_id in driver_ids:
+            try:
+                if is_share:
+                    n_title = "Share Ride Add-on" if is_priority else "Share Ride request"
+                    n_body = f"Shared Ride: {body.pickupName.strip()} -> {body.dropName.strip()} (₹{fare})"
+                    n_payload = {
                         "type": "share_addon" if is_priority else "share_ride",
                         "rideId": ride_ref.id,
                         "rideType": "share",
@@ -1119,8 +1120,22 @@ async def create_passenger_ride(
                         "dropLocation": body.dropName.strip(),
                         "detourMinutes": str(round(priority_candidates[0]["detourMin"], 1)) if is_priority else "0",
                         "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push",
-                    },
-                )
+                    }
+                else:
+                    n_title = "New Ride Request"
+                    n_body = f"Ride: {body.pickupName.strip()} -> {body.dropName.strip()} (₹{fare})"
+                    n_payload = {
+                        "type": "NEW_PASSENGER_AVAILABLE",
+                        "rideId": ride_ref.id,
+                        "rideType": str(ride_data.get("rideType") or "normal"),
+                        "fare": str(fare),
+                        "pickupLocation": body.pickupName.strip(),
+                        "dropLocation": body.dropName.strip(),
+                        "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push",
+                    }
+                _send_driver_push_notification(db, d_id, n_title, n_body, n_payload)
+            except Exception:
+                pass
 
         try:
             from ..services.db import record_ride_audit
@@ -1376,12 +1391,46 @@ def cancel_pending_request(
         doc_ref = db.collection("pendingRideRequests").document(clean_req_id)
         doc_snap = doc_ref.get()
         if doc_snap.exists:
+            doc_data = doc_snap.to_dict() or {}
             doc_ref.update({
                 "status": "cancelled",
                 "cancelReason": (body.reason or "cancelled_by_user")[:100],
                 "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             })
+            linked_ride_id = doc_data.get("rideId")
+            linked_targets: set[str] = set()
+            if linked_ride_id:
+                try:
+                    r_ref = db.collection("rides").document(str(linked_ride_id))
+                    r_snap = r_ref.get()
+                    if r_snap.exists:
+                        r_data = r_snap.to_dict() or {}
+                        r_ref.update({
+                            "status": "cancelled_by_passenger",
+                            "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        })
+                        linked_targets = set(filter(None, [
+                            r_data.get("driver_id"),
+                            r_data.get("current_offer_driver_id"),
+                            *(r_data.get("eligible_driver_ids") or []),
+                        ]))
+                except Exception:
+                    pass
+            locked_driver = doc_data.get("lockedByDriverId")
+            all_cancel_targets = set(filter(None, [locked_driver, *linked_targets]))
+            for target_drv in all_cancel_targets:
+                try:
+                    _send_driver_push_notification(
+                        db,
+                        target_drv,
+                        "Ride Cancelled",
+                        "The passenger has cancelled this ride request.",
+                        {"type": "RIDE_CANCELLED", "requestId": clean_req_id, "rideId": str(linked_ride_id or "")},
+                    )
+                except Exception:
+                    pass
             try:
                 _log_demand_event(db, "pending_cancelled", {
                     "requestId": clean_req_id,
@@ -1685,12 +1734,65 @@ def transition_driver_ride(
                     )
                 except Exception:
                     pass
+        if action in {"verify_pin", "start"}:
+            p_id = str(result.get("passenger_id") or result.get("passengerId") or "")
+            d_name = str(profile.get("name") or "Your driver")
+            if p_id:
+                try:
+                    _send_passenger_push_and_inapp(
+                        db,
+                        p_id,
+                        "Trip Started!",
+                        f"Your trip with {d_name} has started. Have a safe journey!",
+                        {
+                            "url": f"{APP_BASE_URL}/services?rideId={clean_ride_id}",
+                            "type": "trip_started",
+                            "rideId": clean_ride_id,
+                        },
+                    )
+                except Exception:
+                    pass
+        if action == "skip":
+            p_id = str(result.get("passenger_id") or result.get("passengerId") or "")
+            if p_id:
+                try:
+                    _send_passenger_push_and_inapp(
+                        db,
+                        p_id,
+                        "Ride Cancelled",
+                        "Your ride request was cancelled due to no-show at pickup.",
+                        {
+                            "url": f"{APP_BASE_URL}/services",
+                            "type": "ride_no_show",
+                            "rideId": clean_ride_id,
+                        },
+                    )
+                except Exception:
+                    pass
         if action == "verify_pin" and result.get("is_sensitive"):
             try:
                 claim_and_send_sensitive_ride_alert(db, clean_ride_id)
             except Exception:
                 pass
         if action == "complete":
+            p_id = str(result.get("passenger_id") or result.get("passengerId") or "")
+            final_fare_val = float(result.get("fare") or 0)
+            if p_id:
+                try:
+                    _send_passenger_push_and_inapp(
+                        db,
+                        p_id,
+                        "Trip Completed!",
+                        f"You have arrived! Total fare: ₹{final_fare_val:g}. Safe travels!",
+                        {
+                            "url": f"{APP_BASE_URL}/services?rideId={clean_ride_id}",
+                            "type": "trip_completed",
+                            "rideId": clean_ride_id,
+                            "fare": str(final_fare_val),
+                        },
+                    )
+                except Exception:
+                    pass
             _bump_daily_stats(db, uid, {"completed_rides": 1, "earnings": float(result.get("fare") or 0)})
             try:
                 from ..services.db import record_financial_ledger_entry
@@ -2019,12 +2121,13 @@ def update_driver_location(
             "driverAccuracy": body.driverAccuracy,
         }.items() if value is not None}
         now = datetime.now(timezone.utc)
+        is_connected = availability != "offline"
         presence_update = {
             "driverLocation": location,
             **telemetry,
             "driverAvailability": availability,
             "desiredAvailability": persisted_desired,
-            "isConnected": True,
+            "isConnected": is_connected,
             "notificationEligibleUntil": now + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS),
             "lastSeenAt": now,
             "lastAppSeenAt": now,
@@ -2051,7 +2154,7 @@ def update_driver_location(
             "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
             "vehicle_type": _driver_type(profile),
             "driverLocation": _coarse_location(location),
-            "isConnected": True,
+            "isConnected": is_connected,
             "lastSeenAt": now,
             "lastLocationAt": now,
             "updatedAt": now,
@@ -2291,6 +2394,17 @@ def cancel_passenger_ride(
 
             ride_ref.update(updates)
 
+            pending_id = ride.get("pendingRequestId") or ride.get("pending_request_id")
+            if pending_id:
+                try:
+                    db.collection("pendingRideRequests").document(str(pending_id)).update({
+                        "status": "cancelled",
+                        "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                    })
+                except Exception:
+                    pass
+
             try:
                 DispatchPoolManager.remove_passenger_wpp(db, uid, reason="cancelled_by_passenger")
                 DispatchPoolManager.remove_passenger_wpp(db, clean_ride_id, reason="cancelled_by_passenger")
@@ -2385,6 +2499,22 @@ def cancel_passenger_ride(
                         resource_id=driver_id,
                         context={"rideId": clean_ride_id},
                     )
+
+            cancelled_targets = set(filter(None, [
+                target_driver_id,
+                *(ride.get("eligible_driver_ids") or []),
+            ]))
+            for t_driver_id in cancelled_targets:
+                try:
+                    _send_driver_push_notification(
+                        db,
+                        t_driver_id,
+                        "Ride Cancelled",
+                        "The passenger has cancelled this ride request.",
+                        {"type": "RIDE_CANCELLED", "rideId": clean_ride_id},
+                    )
+                except Exception:
+                    pass
 
             try:
                 if ride.get("pinVerifiedAt"):
@@ -2600,6 +2730,13 @@ def accept_driver_ride(
                     "sharedInfo": shared_info,
                 })
 
+            d_presence_ref = db.collection("driverPresence").document(uid)
+            d_snap = d_presence_ref.get(transaction=tx) if hasattr(d_presence_ref, "get") else None
+            if d_snap and getattr(d_snap, "exists", False):
+                d_data = d_snap.to_dict() or {}
+                if d_data.get("driverAvailability") == "busy":
+                    raise ApiError("You already have an active ride in progress.", 409)
+
             update_data = {
                 "status": "accepted",
                 "driver_id": uid,
@@ -2613,6 +2750,15 @@ def accept_driver_ride(
                 "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             }
+            latest_loc = profile.get("driverLocation") or profile.get("location")
+            if not latest_loc and d_snap and getattr(d_snap, "exists", False):
+                d_snap_dict = d_snap.to_dict() or {}
+                latest_loc = d_snap_dict.get("driverLocation") or d_snap_dict.get("location")
+            if latest_loc and isinstance(latest_loc, dict) and "lat" in latest_loc and "lng" in latest_loc:
+                loc_val = {"lat": float(latest_loc["lat"]), "lng": float(latest_loc["lng"])}
+                update_data["driverLocation"] = loc_val
+                update_data["driverLocationUpdatedAt"] = fb_firestore.SERVER_TIMESTAMP
+                accepted_ride["driverLocation"] = loc_val
             if is_share:
                 update_data.update({
                     "parentTripId": parent_trip_id,
@@ -2633,15 +2779,17 @@ def accept_driver_ride(
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                 })
 
+            from ..services.db import update_driver_presence_synchronized
+            update_driver_presence_synchronized(
+                db,
+                uid,
+                availability="busy",
+                desired_availability="online",
+                profile_data={**profile, "uid": uid},
+                batch_or_tx=tx,
+            )
+
         accept_transaction(transaction)
-        from ..services.db import update_driver_presence_synchronized
-        update_driver_presence_synchronized(
-            db,
-            uid,
-            availability="busy",
-            desired_availability="online",
-            profile_data={**profile, "uid": uid},
-        )
 
         try:
             p_id = str(accepted_ride.get("passenger_id") or accepted_ride.get("passengerId") or "")
@@ -2790,21 +2938,77 @@ def reject_driver_ride(
                 or curr.get("search_status") == "matched_offer_sent"
                 or curr.get("pendingRequestId")
             )
-            if not remaining and not is_pool_managed:
-                updates["status"] = "declined"
-            elif is_pool_managed:
-                updates["current_offer_driver_id"] = None
-                updates["search_status"] = "searching_nearby_drivers"
+            next_candidates: list[str] = []
+            if not remaining:
+                try:
+                    p_lat = float(curr.get("pickup_lat") or 0.0)
+                    p_lng = float(curr.get("pickup_lng") or 0.0)
+                    veh = str(curr.get("vehicle_type") or "auto")
+                    all_candidates = _available_drivers(db, p_lat, p_lng, veh)
+                    notified_set = set(curr.get("notified_driver_ids") or [])
+                    rejected_set = set(rejected)
+                    next_candidates = [
+                        c["uid"] for c in all_candidates
+                        if c["uid"] not in rejected_set and c["uid"] not in notified_set
+                    ][:DISPATCH_BATCH_SIZE]
+                    if not next_candidates and all_candidates:
+                        next_candidates = [
+                            c["uid"] for c in all_candidates if c["uid"] not in rejected_set
+                        ][:DISPATCH_BATCH_SIZE]
+                except Exception:
+                    next_candidates = []
+
+                if next_candidates:
+                    updates["eligible_driver_ids"] = next_candidates
+                    updates["notified_driver_ids"] = list(dict.fromkeys([*(curr.get("notified_driver_ids") or []), *next_candidates]))
+                    updates["current_offer_driver_id"] = next_candidates[0] if is_pool_managed else None
+                    updates["search_status"] = "searching_nearby_drivers"
+                    updates["status"] = "pending"
+                elif is_pool_managed:
+                    updates["current_offer_driver_id"] = None
+                    updates["search_status"] = "searching_nearby_drivers"
+                else:
+                    updates["status"] = "declined"
+                    updates["search_status"] = "no_available_drivers"
+            else:
+                updates["eligible_driver_ids"] = remaining
+                if is_pool_managed:
+                    updates["current_offer_driver_id"] = remaining[0]
+                    updates["search_status"] = "matched_offer_sent"
+                    if remaining[0] not in (curr.get("notified_driver_ids") or []):
+                        next_candidates = [remaining[0]]
+                        updates["notified_driver_ids"] = list(dict.fromkeys([*(curr.get("notified_driver_ids") or []), remaining[0]]))
+                else:
+                    updates["search_status"] = "searching_nearby_drivers"
 
             tx.update(ride_ref, updates)
-            return {"already_handled": False, "remaining": remaining, "ride": curr}
+            return {"already_handled": False, "remaining": remaining, "next_candidates": next_candidates, "ride": curr}
 
         tx_res = reject_tx(db.transaction())
         if tx_res.get("already_handled"):
             return {"ok": True, "rideId": clean_ride_id, "status": tx_res.get("status")}
 
         remaining = tx_res.get("remaining") or []
+        next_candidates = tx_res.get("next_candidates") or []
         ride = tx_res.get("ride") or {}
+
+        for n_id in next_candidates:
+            try:
+                _send_driver_push_notification(
+                    db,
+                    n_id,
+                    "New Ride Request",
+                    f"Ride: {ride.get('pickup_name')} -> {ride.get('drop_name')} (₹{ride.get('fare')})",
+                    {
+                        "type": "NEW_PASSENGER_AVAILABLE",
+                        "rideId": clean_ride_id,
+                        "rideType": str(ride.get("rideType") or "normal"),
+                        "fare": str(ride.get("fare") or 0),
+                        "url": f"{APP_BASE_URL}/driver?rideId={clean_ride_id}&from=push",
+                    },
+                )
+            except Exception:
+                pass
 
         try:
             from ..services.db import record_ride_audit
@@ -2849,8 +3053,9 @@ def reject_driver_ride(
                     d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
                     d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
                     if driver_uid and d_loc:
-                        _dispatch_with_fallback(db, driver_uid, d_profile, d_loc)
-                        break
+                        matched = _match_pending_requests_for_driver(db, driver_uid, d_profile, d_loc)
+                        if matched:
+                            break
             except Exception as e:
                 print(f"Pending rollback cascading dispatch error: {e}")
 

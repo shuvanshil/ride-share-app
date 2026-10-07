@@ -4,7 +4,9 @@ import { showAlert } from '../shared/dialog.js';
 import { getCurrentPosition } from '../platform/geolocation.js';
 import {
     collection,
-    onSnapshot
+    onSnapshot,
+    query,
+    where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const DEFAULT_PICKUP = { lat: 23.8315, lng: 91.2868 };
@@ -1953,7 +1955,7 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     existing.animationFrame = requestAnimationFrame(step);
 }
 
-const DRIVER_LOCATION_VISIBLE_MS = 15 * 60 * 1000;
+const DRIVER_LOCATION_VISIBLE_MS = 150 * 1000; // 2.5 minutes freshness window for live map presence
 
 function getTimestampMs(value) {
     if (!value) return 0;
@@ -1973,14 +1975,12 @@ function isLiveDriverVisible(driver) {
     const lng = Number(location.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
 
-    if (driver.desiredAvailability === "offline" || driver.driverAvailability === "offline") return false;
+    if (driver.desiredAvailability === "offline" || driver.driverAvailability === "offline" || driver.isConnected === false) return false;
 
     const lastLocationAt = getTimestampMs(driver.lastLocationAt || driver.lastSeenAt || driver.updatedAt);
-    const hasFreshLocation = lastLocationAt > 0
-        ? Date.now() - lastLocationAt <= DRIVER_LOCATION_VISIBLE_MS
-        : driver.isConnected !== false;
+    if (!lastLocationAt) return false;
 
-    return hasFreshLocation;
+    return (Date.now() - lastLocationAt) <= DRIVER_LOCATION_VISIBLE_MS;
 }
 
 function upsertGlobalDriverMarker(driverId, driver) {
@@ -2300,7 +2300,12 @@ function startGlobalDriverPresenceListener() {
         globalDriversUnsubscribe = null;
     }
 
-    globalDriversUnsubscribe = onSnapshot(collection(db, "driverMapPresence"), (snapshot) => {
+    const driversPresenceQuery = query(
+        collection(db, "driverMapPresence"),
+        where("driverAvailability", "==", "searching")
+    );
+
+    globalDriversUnsubscribe = onSnapshot(driversPresenceQuery, (snapshot) => {
         const currentDriverIds = new Set();
         snapshot.forEach((docSnap) => {
             const driverId = docSnap.id;

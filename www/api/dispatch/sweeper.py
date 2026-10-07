@@ -42,6 +42,24 @@ def sweep_stale_drivers(db: Any, now: float) -> int:
                     "state": "STALE",
                     "updated_at": now,
                 })
+                try:
+                    db.collection("driverMapPresence").document(doc.id).update({
+                        "driverAvailability": "offline",
+                        "isConnected": False,
+                        "updatedAt": now,
+                    })
+                    db.collection("driverPresence").document(doc.id).update({
+                        "driverAvailability": "offline",
+                        "isConnected": False,
+                        "updatedAt": now,
+                    })
+                    db.collection("users").document(doc.id).update({
+                        "driverAvailability": "offline",
+                        "isConnected": False,
+                        "updatedAt": now,
+                    })
+                except Exception:
+                    pass
                 DispatchPoolManager.log_event(
                     db,
                     event_type="driver_swept_stale",
@@ -113,7 +131,9 @@ def sweep_expired_offers(db: Any, now: float) -> int:
                                 rej = list(r_data.get("rejected_driver_ids") or [])
                                 if offered_driver and offered_driver not in rej:
                                     rej.append(offered_driver)
+                                rem_eligible = [d for d in (r_data.get("eligible_driver_ids") or []) if d not in rej]
                                 r_ref.update({
+                                    "eligible_driver_ids": rem_eligible,
                                     "current_offer_driver_id": None,
                                     "search_status": "searching_nearby_drivers",
                                     "rejected_driver_ids": rej,
@@ -181,6 +201,10 @@ def sweep_expired_offers(db: Any, now: float) -> int:
 
         if expired > 0:
             nudge_dispatch(db)
+            try:
+                run_dispatch(db)
+            except Exception:
+                pass
     except Exception as exc:
         print(f"Sweep expired offers error: {exc}", file=sys.stderr)
     return expired
