@@ -24,7 +24,11 @@
     },
     "StatusBar": {
       "overlaysWebView": true,
-      "style": "DARK"
+      "style": "LIGHT",
+      "backgroundColor": "#FFFFFF"
+    },
+    "SystemBars": {
+      "insetsHandling": "disable"
     },
     "PushNotifications": {
       "presentationOptions": ["badge", "sound", "alert"]

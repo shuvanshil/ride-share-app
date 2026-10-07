@@ -92,7 +92,7 @@
         if (StatusBarPlugin) {
             try {
                 if (typeof StatusBarPlugin.setStyle === 'function') {
-                    StatusBarPlugin.setStyle({ style: 'DARK' }).catch(function () {});
+                    StatusBarPlugin.setStyle({ style: 'LIGHT' }).catch(function () {});
                 }
                 if (typeof StatusBarPlugin.setOverlaysWebView === 'function') {
                     StatusBarPlugin.setOverlaysWebView({ overlay: true }).catch(function () {});
