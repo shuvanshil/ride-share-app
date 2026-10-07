@@ -1567,14 +1567,15 @@ function formatCurrentTime() {
 
 async function loadLiveRides() {
     const tbody = $("live-rides-hierarchy-tbody");
+    const legacyList = $("live-rides-list");
     try {
         const [liveRes, poolsRes] = await Promise.all([
             adminGet("/rides/live"),
             adminGet("/waiting-pools").catch(() => ({ ok: true, passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } })),
         ]);
 
-        liveRidesHierarchy = liveRes.hierarchy || [];
-        liveCounts = liveRes.counts || { all: 0, single: 0, share: 0, child: 0 };
+        liveRidesHierarchy = liveRes?.hierarchy || [];
+        liveCounts = liveRes?.counts || { all: 0, single: 0, share: 0, child: 0 };
         waitingPoolsData = poolsRes || { passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } };
 
         // By default on first load, expand first parent if any share rides
@@ -1594,12 +1595,15 @@ async function loadLiveRides() {
         if ($("tab-count-single")) $("tab-count-single").textContent = liveCounts.single ?? 0;
         if ($("tab-count-share")) $("tab-count-share").textContent = liveCounts.share ?? 0;
         if ($("tab-count-child")) $("tab-count-child").textContent = liveCounts.child ?? 0;
-        if ($("tab-count-waiting")) $("tab-count-waiting").textContent = waitingPoolsData.counts?.total ?? (waitingPoolsData.passengers.length + waitingPoolsData.drivers.length);
+        if ($("tab-count-waiting")) $("tab-count-waiting").textContent = waitingPoolsData.counts?.total ?? ((waitingPoolsData.passengers?.length || 0) + (waitingPoolsData.drivers?.length || 0));
 
         renderLiveSectionViews();
     } catch (error) {
         if (tbody) {
             tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${escapeHtml(error.message)}</td></tr>`;
+        }
+        if (legacyList) {
+            legacyList.innerHTML = `<div class="col-12 text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
         }
     }
 }
