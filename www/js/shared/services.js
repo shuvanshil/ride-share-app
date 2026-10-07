@@ -37,7 +37,9 @@ try {
     console.warn("Could not read temporary service selection:", e);
 }
 
-if (tempServiceSelection && ['auto', 'bike', 'share'].includes(tempServiceSelection)) {
+// SHARE RIDE TEMPORARILY DISABLED — RE-ENABLE WHEN FEATURE IS READY
+// if (tempServiceSelection && ['auto', 'bike', 'share'].includes(tempServiceSelection)) {
+if (tempServiceSelection && ['auto', 'bike'].includes(tempServiceSelection)) {
     selectedServiceType = tempServiceSelection;
 }
 
@@ -114,7 +116,9 @@ function showSelectedServiceBanner(serviceType) {
     bannerDismissTimer = setTimeout(dismissBanner, 15000);
 }
 
-if (tempServiceSelection && SERVICE_BANNER_CONFIG[tempServiceSelection]) {
+// SHARE RIDE TEMPORARILY DISABLED — RE-ENABLE WHEN FEATURE IS READY
+// if (tempServiceSelection && SERVICE_BANNER_CONFIG[tempServiceSelection]) {
+if (tempServiceSelection && ['auto', 'bike'].includes(tempServiceSelection) && SERVICE_BANNER_CONFIG[tempServiceSelection]) {
     showSelectedServiceBanner(tempServiceSelection);
 }
 
@@ -154,6 +158,8 @@ loadShareConfig();
 
 function selectRideService(serviceType) {
     if (serviceSelectionLocked) return;
+    // SHARE RIDE TEMPORARILY DISABLED — RE-ENABLE WHEN FEATURE IS READY
+    if (serviceType === 'share') return;
     const service = getRideService(serviceType);
     if (!service) return;
 

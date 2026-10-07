@@ -652,7 +652,7 @@
 .services-shortcut-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 10px;
 }
 
 .service-shortcut-card {
@@ -660,12 +660,12 @@
     overflow: hidden;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    border-radius: 18px;
-    padding: 14px 12px;
+    border-radius: 16px;
+    padding: 10px 8px;
     border: 1px solid transparent;
     width: 100%;
-    min-height: 90px;
+    min-height: 80px;
+    gap: 6px;
     text-align: left;
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
@@ -684,9 +684,13 @@
     transform: scale(0.98);
 }
 
+/* SHARE RIDE TEMPORARILY DISABLED — Auto occupies full first row; Bike & Parcel share second row. When re-enabling Share Ride, remove grid-column: 1 / -1 to restore the 2x2 grid. */
 .service-shortcut-card.card-auto {
+    grid-column: 1 / -1;
     background: #EEFBF3;
     border-color: #D8F5E1;
+    padding: 12px 14px;
+    gap: 12px;
 }
 
 .service-shortcut-card.card-bike {
@@ -705,62 +709,95 @@
 }
 
 .service-shortcut-img-wrap {
-    width: 58px;
-    height: 58px;
+    width: 36px;
+    height: 36px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+.service-shortcut-card.card-auto .service-shortcut-img-wrap {
+    width: 48px;
+    height: 48px;
+}
+
 .service-shortcut-img-wrap img {
-    max-width: 56px;
-    max-height: 56px;
+    max-width: 100%;
+    max-height: 100%;
     width: auto;
     height: auto;
     object-fit: contain;
 }
 
 .service-shortcut-copy {
-    flex: 1;
+    flex: 1 1 0%;
     min-width: 0;
-    padding: 0 8px;
+    padding: 0;
 }
 
 .service-shortcut-title {
     display: block;
-    font-size: 14px;
-    font-weight: 800;
+    font-size: 13px;
+    font-weight: 700;
     color: #0F172A;
-    line-height: 1.2;
-    margin-bottom: 3px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.25;
+    margin-bottom: 2px;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.service-shortcut-card.card-auto .service-shortcut-title {
+    font-size: 15px;
+    font-weight: 800;
 }
 
 .service-shortcut-sub {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    font-size: 11.5px;
+    display: block;
+    font-size: 11px;
     color: #475569;
-    line-height: 1.25;
+    line-height: 1.28;
     margin: 0;
     font-weight: 500;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.service-shortcut-card.card-auto .service-shortcut-sub {
+    font-size: 12px;
+    line-height: 1.3;
 }
 
 .service-shortcut-action {
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .shortcut-arrow-circle {
-    width: 28px;
-    height: 28px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     display: grid;
     place-items: center;
+    flex-shrink: 0;
+}
+
+.shortcut-arrow-circle svg {
+    width: 11px;
+    height: 11px;
+}
+
+.service-shortcut-card.card-auto .shortcut-arrow-circle {
+    width: 26px;
+    height: 26px;
+}
+
+.service-shortcut-card.card-auto .shortcut-arrow-circle svg {
+    width: 13px;
+    height: 13px;
 }
 
 .shortcut-arrow-circle.arrow-green {
@@ -1117,26 +1154,82 @@
     }
 
     .service-shortcut-card {
-        padding: 10px 8px;
-        min-height: 80px;
+        padding: 9px 7px;
+        min-height: 78px;
+        gap: 5px;
+    }
+
+    .service-shortcut-card.card-auto {
+        padding: 11px 12px;
+        gap: 10px;
     }
 
     .service-shortcut-img-wrap {
+        width: 34px;
+        height: 34px;
+    }
+
+    .service-shortcut-card.card-auto .service-shortcut-img-wrap {
         width: 44px;
         height: 44px;
     }
 
     .service-shortcut-title {
         font-size: 12.5px;
+        line-height: 1.2;
+    }
+
+    .service-shortcut-card.card-auto .service-shortcut-title {
+        font-size: 14px;
+    }
+
+    .service-shortcut-sub {
+        font-size: 10.5px;
+        line-height: 1.25;
+    }
+
+    .service-shortcut-card.card-auto .service-shortcut-sub {
+        font-size: 11px;
+    }
+
+    .shortcut-arrow-circle {
+        width: 19px;
+        height: 19px;
+    }
+
+    .shortcut-arrow-circle svg {
+        width: 10.5px;
+        height: 10.5px;
+    }
+}
+
+@media (max-width: 330px) {
+    .services-shortcut-grid {
+        gap: 6px;
+    }
+
+    .service-shortcut-card {
+        padding: 8px 6px;
+        gap: 4px;
+    }
+
+    .service-shortcut-img-wrap {
+        width: 30px;
+        height: 30px;
+    }
+
+    .service-shortcut-title {
+        font-size: 11.5px;
     }
 
     .service-shortcut-sub {
         font-size: 10px;
+        line-height: 1.2;
     }
 
     .shortcut-arrow-circle {
-        width: 24px;
-        height: 24px;
+        width: 18px;
+        height: 18px;
     }
 }
 
@@ -6815,6 +6908,10 @@ body.profile-editor-open {
     margin-bottom: 12px;
     position: relative;
     overflow: hidden;
+}
+
+.ride-service-list .ride-service-card:last-child {
+    margin-bottom: 0;
 }
 
 .ride-service-card.is-selected {
