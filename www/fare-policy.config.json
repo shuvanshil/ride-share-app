@@ -32,16 +32,16 @@
             "baseFare": 15,
             "perKmRate": 7,
             "nightPerKmRate": 13,
-            "minFare": 15
+            "minFare": 15 
         },
         "auto": {
             "name": "Auto",
             "shortName": "Auto",
             "capacity": 3,
-            "baseFare": 25,
-            "perKmRate": 12.5,
+            "baseFare": 15,
+            "perKmRate": 12,
             "nightPerKmRate": 20,
-            "minFare": 25
+            "minFare": 15
         }
     },
     "nightFare": {
