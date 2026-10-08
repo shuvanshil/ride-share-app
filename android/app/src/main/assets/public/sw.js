@@ -217,13 +217,14 @@ async function showRideNotification(payload = {}) {
     const tag = data.tag || (data.rideId ? `liphtup-ride-${data.rideId}` : (data.requestId ? `liphtup-req-${data.requestId}` : "liphtup-general"));
 
     const isRideRequestPush = data.type === "ride_request"
+        || data.type === "ride_offer"
         || data.type === "NEW_PASSENGER_AVAILABLE"
         || data.type === "ride_dispatch"
         || data.type === "pending_driver_available"
         || data.type === "share_ride"
         || data.type === "share_addon"
         || (targetUrl && targetUrl.includes("/driver"))
-        || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger") || title.toLowerCase().includes("share ride")));
+        || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger") || title.toLowerCase().includes("share ride") || title.toLowerCase().includes("ride match")));
 
     if (isRideRequestPush) {
         const role = await getStoredUserRole();
@@ -231,6 +232,23 @@ async function showRideNotification(payload = {}) {
             console.log("Service Worker: Suppressing driver ride request push for passenger/guest account. Active role is:", role);
             return;
         }
+    }
+
+    if (data.type === "RIDE_CANCELLED") {
+        const rId = data.rideId || data.ride_id;
+        if (rId) {
+            try {
+                const notifications = await self.registration.getNotifications({ tag: `liphtup-ride-${rId}` });
+                notifications.forEach((n) => n.close());
+            } catch (e) {}
+        }
+        try {
+            const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+            clientList.forEach((client) => {
+                client.postMessage({ type: "RIDE_CANCELLED", rideId: rId, ...data });
+            });
+        } catch (e) {}
+        return;
     }
 
     return self.registration.showNotification(title, {

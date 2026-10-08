@@ -21,6 +21,7 @@ import {
     stopRideRequestRing
 } from '../shared/messaging.js';
 import { driverStatusManager } from './driver-status-manager.js';
+import { renderDriverFareQr } from '../shared/upi-qr-helper.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const DRIVER_LOCATION_CACHE_KEY = "liphtup_last_driver_location";
@@ -1714,6 +1715,8 @@ async function completeRideJob() {
             : Math.max(0, totalFarePaise - (walletPaidPaise + couponDiscountPaise));
 
         const totalFare = totalFarePaise / 100.0;
+        const walletPaidAmount = walletPaidPaise / 100.0;
+        const couponDiscountAmount = couponDiscountPaise / 100.0;
         const subsidyPaidAmount = (walletPaidPaise + couponDiscountPaise) / 100.0;
         const remainingFare = remainingFarePaise / 100.0;
 
@@ -1730,30 +1733,18 @@ async function completeRideJob() {
         const summaryCollectEl = document.getElementById('driver-summary-collect');
         if (summaryCollectEl) summaryCollectEl.innerText = `₹${Math.round(remainingFare)}`;
 
-        const driverUPI = currentUser.upiId;
-        const upiQrImage = document.getElementById('upi-qr-image');
-        const qrBox = upiQrImage?.closest('.driver-fare-qr-box') || upiQrImage?.parentElement;
+        const driverUPI = (currentUser?.upiId || currentUser?.upi_id || getCachedProfile()?.upiId || "").trim();
+        const driverName = currentUser?.name || getCachedProfile()?.name || "Driver";
 
-        if (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0)) {
-            if (upiQrImage) {
-                upiQrImage.src = "";
-                if (qrBox) qrBox.classList.add('d-none');
-            }
-        } else if (driverUPI && remainingFare > 0) {
-            const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${remainingFare}&cu=INR`);
-            if (upiQrImage) {
-                upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
-                if (qrBox) qrBox.classList.remove('d-none');
-            }
-        } else {
-            if (upiQrImage) {
-                upiQrImage.src = "";
-                if (qrBox) qrBox.classList.add('d-none');
-            }
-            if (remainingFare > 0) {
-                await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
-            }
-        }
+        await renderDriverFareQr({
+            containerSelector: '.driver-fare-qr-box',
+            imgElementId: 'upi-qr-image',
+            driverUpi: driverUPI,
+            driverName: driverName,
+            remainingFare: remainingFare,
+            walletPaidAmount: walletPaidAmount,
+            couponDiscountAmount: couponDiscountAmount
+        });
 
         document.getElementById('driver-payment-view').classList.remove('d-none');
         renderFareAdjustmentNote('driver-fare-note', result.ride);
@@ -1911,56 +1902,70 @@ addOptionalClickListener('logout-btn-review', async () => {
     }
 });
 addOptionalClickListener('driver-duty-switch', async (event) => {
-    const checked = event.target.checked;
+    const switchInput = event.target;
+    if (switchInput.dataset.busy === "true") {
+        event.preventDefault();
+        return;
+    }
+
+    const checked = switchInput.checked;
     const targetStatus = checked ? (currentlyAssignedRideId ? "busy" : "searching") : "offline";
     const prevStatus = currentUser?.driverAvailability || "offline";
     const prevDesired = currentUser?.desiredAvailability || "offline";
+    const prevDutyOnline = isDriverDutyOnline();
 
-    // 1. Instant Optimistic UI Update (0ms latency)
-    driverDutyOnline = checked;
-    if (currentUser) {
-        currentUser.driverAvailability = targetStatus;
-        currentUser.desiredAvailability = checked ? "online" : "offline";
-        cacheProfile(currentUser);
-    }
-    updateDutySwitchUi();
+    // Mark switch as busy & display inline loading spinner
+    switchInput.dataset.busy = "true";
+    switchInput.disabled = true;
 
-    let quickCoords = null;
-    if (checked) {
-        startDriverPresenceTracking();
-        setTimeout(() => {
-            registerDriverPushToken(db, currentUser?.uid).catch((error) => {
-                console.warn("Driver push token registration failed:", error);
-            });
-        }, 0);
-
-        // Fetch fast position (max 2.5s) to sync availability & map presence immediately
-        try {
-            quickCoords = await getQuickPosition(2500);
-        } catch {}
-        if (!quickCoords) {
-            quickCoords = readCachedDriverLocation();
-        }
-        if (quickCoords) {
-            rememberDriverLocation(quickCoords);
-        }
-        initDriverJobsStream();
-    } else {
-        stopRideRequestRing();
-        stopPresenceTracking();
+    const dutyStateLabel = document.getElementById('driver-duty-state');
+    if (dutyStateLabel) {
+        dutyStateLabel.innerHTML = `<span class="duty-toggle-spinner me-1"></span><span>${t('common.updating', 'Updating...')}</span>`;
     }
 
-    // 2. Fast background sync
+    // Fast location: read cache immediately (0ms delay) so backend call triggers without waiting
+    let quickCoords = readCachedDriverLocation();
+    const locationData = quickCoords ? { lat: quickCoords.lat, lng: quickCoords.lng } : null;
+
     try {
-        const locationData = quickCoords ? { lat: quickCoords.lat, lng: quickCoords.lng } : null;
+        // Backend availability update
         await updateDriverAvailabilityThroughBackend(targetStatus, locationData);
-        if (quickCoords && checked) {
-            updateDriverPresenceLocation(quickCoords.lat, quickCoords.lng, targetStatus);
+
+        // Success! Synchronously commit in-memory and UI state together
+        driverDutyOnline = checked;
+        if (currentUser) {
+            currentUser.driverAvailability = targetStatus;
+            currentUser.desiredAvailability = checked ? "online" : "offline";
+            cacheProfile(currentUser);
         }
+
+        if (checked) {
+            startDriverPresenceTracking();
+            setTimeout(() => {
+                registerDriverPushToken(db, currentUser?.uid).catch((error) => {
+                    console.warn("Driver push token registration failed:", error);
+                });
+            }, 0);
+
+            // Refine location in background without blocking UI toggle
+            getQuickPosition(1500).then((refinedCoords) => {
+                if (refinedCoords) {
+                    rememberDriverLocation(refinedCoords);
+                    updateDriverPresenceLocation(refinedCoords.lat, refinedCoords.lng, targetStatus);
+                }
+            }).catch(() => {});
+
+            initDriverJobsStream();
+        } else {
+            stopRideRequestRing();
+            stopPresenceTracking();
+        }
+
+        updateDutySwitchUi();
     } catch (error) {
         console.error("Failed to update driver duty status on server:", error);
         // Rollback switch and state
-        driverDutyOnline = prevDesired === "online";
+        driverDutyOnline = prevDutyOnline;
         if (currentUser) {
             currentUser.driverAvailability = prevStatus;
             currentUser.desiredAvailability = prevDesired;
@@ -1968,6 +1973,9 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
         }
         updateDutySwitchUi();
         await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
+    } finally {
+        switchInput.dataset.busy = "false";
+        switchInput.disabled = false;
     }
 });
 

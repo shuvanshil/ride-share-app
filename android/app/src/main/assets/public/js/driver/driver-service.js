@@ -21,6 +21,7 @@ import {
     where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { renderDriverFareQr } from '../shared/upi-qr-helper.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const ACTIVE_RIDE_STATUSES = ["accepted", "arrived", "started", "en_route"];
@@ -160,7 +161,9 @@ function attachRideCardCountdown(rideId, ride) {
     clearRideRequestTimer(rideId);
     const initialRemaining = getRideRemainingMs(ride);
     if (initialRemaining <= 0) {
-        removeExpiredRideCard(rideId);
+        const cardEl = ridesContainer?.querySelector(`.ride-request-card[data-ride-id="${rideId}"], .driver-service-request-card[data-ride-id="${rideId}"]`);
+        const isAddon = cardEl?.dataset?.isAddon === "true" || ride.dispatch_mode === "priority_share";
+        ignoreRideRequest(rideId, isAddon);
         return;
     }
 
@@ -170,8 +173,9 @@ function attachRideCardCountdown(rideId, ride) {
         const timerPill = document.getElementById(`srv-timer-${rideId}`);
 
         if (remaining <= 0) {
-            clearRideRequestTimer(rideId);
-            removeExpiredRideCard(rideId);
+            const cardEl = ridesContainer?.querySelector(`.ride-request-card[data-ride-id="${rideId}"], .driver-service-request-card[data-ride-id="${rideId}"]`);
+            const isAddon = cardEl?.dataset?.isAddon === "true" || ride.dispatch_mode === "priority_share";
+            ignoreRideRequest(rideId, isAddon);
             return;
         }
 
@@ -1122,10 +1126,17 @@ async function acceptIncomingRide(rideId, button) {
         const acceptedRideData = data.ride || {};
         driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
 
-        await setServiceDriverAvailability("busy");
+        currentUser.driverAvailability = "busy";
+        currentUser.desiredAvailability = "online";
+        cacheProfile(currentUser);
+        updateDriverAvailabilityUI("busy");
+        currentRideId = rideId;
         renderActiveRideState(rideId, { ...acceptedRideData, status: "accepted" });
         updateIncomingRequestsVisibility();
         statusText.innerText = t('driver.ride_accepted_route_loading', "Ride accepted - route is loading");
+        if (lastPosition) {
+            writeDriverLocation(lastPosition, { immediate: true, rideId }).catch(() => {});
+        }
     } catch (error) {
         console.error("Driver service ride acceptance failed:", error);
         clearRideRequestTimer(rideId);
@@ -3094,21 +3105,32 @@ async function updateDriverLocationThroughBackend(position, telemetry, rideId = 
     return data;
 }
 
-async function writeDriverLocation(position) {
+async function writeDriverLocation(position, options = {}) {
     if (!currentUser?.uid) return;
+
+    const hasActiveRide = Boolean(currentRideId || options.rideId);
+    const minMovingInterval = hasActiveRide ? 3000 : 5000;
+    const stationaryHeartbeatInterval = hasActiveRide ? 15000 : 30000;
 
     const elapsed = Date.now() - lastWriteAt;
     const moved = distanceMeters(lastWritePosition, position);
-    if (elapsed < LOCATION_WRITE_MIN_INTERVAL_MS && moved < LOCATION_WRITE_DISTANCE_METERS) return;
+
+    if (!options.immediate) {
+        if (moved < LOCATION_WRITE_DISTANCE_METERS) {
+            if (elapsed < stationaryHeartbeatInterval) return;
+        } else {
+            if (elapsed < minMovingInterval) return;
+        }
+    }
 
     lastWriteAt = Date.now();
     lastWritePosition = position;
-    const locationData = { lat: position.lat, lng: position.lng };
     const telemetryData = {};
     if (Number.isFinite(Number(position.driverHeading))) telemetryData.driverHeading = Number(position.driverHeading);
     if (Number.isFinite(Number(position.driverSpeed))) telemetryData.driverSpeed = Number(position.driverSpeed);
     if (Number.isFinite(Number(position.driverAccuracy))) telemetryData.driverAccuracy = Number(position.driverAccuracy);
-    await updateDriverLocationThroughBackend(position, telemetryData, currentRideId);
+    const targetRideId = options.rideId || currentRideId;
+    await updateDriverLocationThroughBackend(position, telemetryData, targetRideId);
 }
 
 let isLocationSettled = false;
@@ -3543,43 +3565,30 @@ async function completeRideJob(targetRideId) {
         const summaryCollectEl = document.getElementById('driver-service-summary-collect');
         const paymentTitle = document.getElementById('driver-service-payment-title');
         const paymentSubtitle = document.getElementById('driver-service-payment-subtitle');
-        const qrBox = upiQrImage?.closest('.driver-fare-qr-box') || upiQrImage?.parentElement;
-
-        if (summaryTotalEl) summaryTotalEl.innerText = `₹${Math.round(totalFare)}`;
-        if (summaryPaidEl) summaryPaidEl.innerText = `₹${Math.round(subsidyPaidAmount)}`;
-        if (summaryCollectEl) summaryCollectEl.innerText = `₹${Math.round(remainingFare)}`;
-
-        if (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0)) {
-            // Fully paid via wallet or platform coupon!
-            if (finalFareEl) finalFareEl.innerText = "₹0";
-            if (paymentTitle) paymentTitle.innerText = t('wallet.payment_success', 'Ride Fully Covered');
-            if (paymentSubtitle) paymentSubtitle.innerText = couponDiscountAmount > 0 
-                ? `Fare of ₹${Math.round(totalFare)} covered by platform promotion.` 
-                : t('wallet.paid_via_wallet_no_cash', { amount: Math.round(walletPaidAmount) });
-            if (upiQrImage) {
-                upiQrImage.src = "";
-                if (qrBox) qrBox.classList.add('d-none');
-            }
-        } else {
-            // Cash / UPI collection required for remaining fare
-            if (finalFareEl) finalFareEl.innerText = `₹${Math.round(remainingFare)}`;
-            const driverUPI = currentUser.upiId;
-            if (driverUPI && remainingFare > 0) {
-                const upiString = encodeURIComponent(`upi://pay?pa=${driverUPI}&pn=TripuraDriver&am=${remainingFare}&cu=INR`);
-                if (upiQrImage) {
-                    upiQrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${upiString}`;
-                    if (qrBox) qrBox.classList.remove('d-none');
-                }
-            } else {
-                if (upiQrImage) {
-                    upiQrImage.src = "";
-                    if (qrBox) qrBox.classList.add('d-none');
-                }
-                if (remainingFare > 0) {
-                    await showAlert(t('driver.missing_upi_cash', "Your driver UPI ID is missing from your profile. Please collect cash for this ride."));
-                }
-            }
+        if (finalFareEl) finalFareEl.innerText = `₹${Math.round(remainingFare)}`;
+        if (paymentTitle) {
+            paymentTitle.innerText = (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0))
+                ? t('wallet.payment_success', 'Ride Fully Covered')
+                : t('driver.collect_fare_title', 'Collect Your Fare');
         }
+        if (paymentSubtitle) {
+            paymentSubtitle.innerText = (remainingFare === 0 && (walletPaidAmount > 0 || couponDiscountAmount > 0))
+                ? (couponDiscountAmount > 0 ? `Fare of ₹${Math.round(totalFare)} covered by platform promotion.` : t('wallet.paid_via_wallet_no_cash', { amount: Math.round(walletPaidAmount) }))
+                : t('driver.upi_qr_notice', 'Show this screen to the passenger to collect the fare easily.');
+        }
+
+        const driverUPI = (currentUser?.upiId || currentUser?.upi_id || getCachedProfile()?.upiId || "").trim();
+        const driverName = currentUser?.name || getCachedProfile()?.name || "Driver";
+
+        await renderDriverFareQr({
+            containerSelector: '.driver-fare-qr-box',
+            imgElementId: 'driver-service-upi-qr-image',
+            driverUpi: driverUPI,
+            driverName: driverName,
+            remainingFare: remainingFare,
+            walletPaidAmount: walletPaidAmount,
+            couponDiscountAmount: couponDiscountAmount
+        });
 
         if (completedIsShare) closeShareSheet();
         paymentModal.classList.remove('d-none');
@@ -4159,3 +4168,37 @@ window.addEventListener('languageChanged', () => {
     const status = currentUser?.driverAvailability || "offline";
     updateDriverAvailabilityUI(status);
 });
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        const data = event.data || {};
+        if (data.type === 'RIDE_CANCELLED' || data.eventType === 'RIDE_CANCELLED') {
+            const rideId = data.rideId || data.ride_id;
+            if (rideId) {
+                removeExpiredRideCard(rideId);
+            }
+        }
+    });
+}
+
+window.addEventListener('ride-cancelled', (event) => {
+    const rideId = event.detail?.rideId || event.detail?.ride_id;
+    if (rideId) {
+        removeExpiredRideCard(rideId);
+    }
+});
+
+window.addEventListener('online', () => {
+    if (lastPosition) {
+        writeDriverLocation(lastPosition, { immediate: true }).catch(() => {});
+    }
+    if ((currentUser?.driverAvailability || "offline") === "searching") {
+        setServiceDriverAvailability("searching").catch(() => {});
+    }
+    if (currentRideId) {
+        startActiveRideListener();
+    } else {
+        startIncomingRideListener();
+    }
+});
+

@@ -652,7 +652,7 @@
 .services-shortcut-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 12px;
 }
 
 .service-shortcut-card {
@@ -660,23 +660,24 @@
     overflow: hidden;
     display: flex;
     align-items: center;
-    border-radius: 16px;
-    padding: 10px 8px;
-    border: 1px solid transparent;
+    border-radius: 18px;
+    padding: 12px 12px;
+    border: 1.5px solid transparent;
     width: 100%;
-    min-height: 80px;
-    gap: 6px;
+    min-height: 76px;
+    gap: 10px;
     text-align: left;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
     transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
+    box-sizing: border-box;
 }
 
 .service-shortcut-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
     filter: brightness(1.01);
 }
 
@@ -684,18 +685,21 @@
     transform: scale(0.98);
 }
 
-/* SHARE RIDE TEMPORARILY DISABLED — Auto occupies full first row; Bike & Parcel share second row. When re-enabling Share Ride, remove grid-column: 1 / -1 to restore the 2x2 grid. */
+/* SHARE RIDE TEMPORARILY DISABLED — Auto occupies full first row; Bike & Parcel share second row. */
 .service-shortcut-card.card-auto {
     grid-column: 1 / -1;
     background: #EEFBF3;
     border-color: #D8F5E1;
-    padding: 12px 14px;
-    gap: 12px;
+    padding: 14px 18px;
+    gap: 14px;
+    min-height: 86px;
 }
 
 .service-shortcut-card.card-bike {
-    background: #EEF6FF;
-    border-color: #D8EAFC;
+    background: #EFF6FF;
+    border-color: #DBEAFE;
+    padding: 12px 14px;
+    gap: 10px;
 }
 
 .service-shortcut-card.card-share {
@@ -704,13 +708,15 @@
 }
 
 .service-shortcut-card.card-parcel {
-    background: #F7F1FD;
-    border-color: #EBDCF9;
+    background: #FAF5FF;
+    border-color: #EDE9FE;
+    padding: 12px 14px;
+    gap: 10px;
 }
 
 .service-shortcut-img-wrap {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -718,8 +724,8 @@
 }
 
 .service-shortcut-card.card-auto .service-shortcut-img-wrap {
-    width: 48px;
-    height: 48px;
+    width: 64px;
+    height: 52px;
 }
 
 .service-shortcut-img-wrap img {
@@ -734,30 +740,34 @@
     flex: 1 1 0%;
     min-width: 0;
     padding: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
 .service-shortcut-title {
     display: block;
-    font-size: 13px;
+    font-size: 14.5px;
     font-weight: 700;
     color: #0F172A;
     line-height: 1.25;
-    margin-bottom: 2px;
+    margin: 0;
     white-space: normal;
     word-wrap: break-word;
     overflow-wrap: break-word;
 }
 
 .service-shortcut-card.card-auto .service-shortcut-title {
-    font-size: 15px;
+    font-size: 16.5px;
     font-weight: 800;
+    margin-bottom: 3px;
 }
 
 .service-shortcut-sub {
     display: block;
-    font-size: 11px;
-    color: #475569;
-    line-height: 1.28;
+    font-size: 12px;
+    color: #64748B;
+    line-height: 1.3;
     margin: 0;
     font-weight: 500;
     word-wrap: break-word;
@@ -765,8 +775,8 @@
 }
 
 .service-shortcut-card.card-auto .service-shortcut-sub {
-    font-size: 12px;
-    line-height: 1.3;
+    font-size: 12.5px;
+    line-height: 1.35;
 }
 
 .service-shortcut-action {
@@ -777,8 +787,8 @@
 }
 
 .shortcut-arrow-circle {
-    width: 20px;
-    height: 20px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     display: grid;
     place-items: center;
@@ -786,18 +796,18 @@
 }
 
 .shortcut-arrow-circle svg {
-    width: 11px;
-    height: 11px;
+    width: 13px;
+    height: 13px;
 }
 
 .service-shortcut-card.card-auto .shortcut-arrow-circle {
-    width: 26px;
-    height: 26px;
+    width: 32px;
+    height: 32px;
 }
 
 .service-shortcut-card.card-auto .shortcut-arrow-circle svg {
-    width: 13px;
-    height: 13px;
+    width: 14px;
+    height: 14px;
 }
 
 .shortcut-arrow-circle.arrow-green {
@@ -806,8 +816,8 @@
 }
 
 .shortcut-arrow-circle.arrow-blue {
-    background: #E0F2FE;
-    color: #0284C7;
+    background: #DBEAFE;
+    color: #2563EB;
 }
 
 .shortcut-arrow-circle.arrow-orange {
@@ -816,8 +826,8 @@
 }
 
 .shortcut-arrow-circle.arrow-purple {
-    background: #F3E8FF;
-    color: #9333EA;
+    background: #EDE9FE;
+    color: #7C3AED;
 }
 
 .share-shortcut-offer-badge {
@@ -1150,18 +1160,79 @@
 
 @media (max-width: 380px) {
     .services-shortcut-grid {
+        gap: 10px;
+    }
+
+    .service-shortcut-card {
+        padding: 10px 10px;
+        min-height: 72px;
+        gap: 8px;
+    }
+
+    .service-shortcut-card.card-auto {
+        padding: 12px 14px;
+        gap: 12px;
+        min-height: 80px;
+    }
+
+    .service-shortcut-img-wrap {
+        width: 38px;
+        height: 38px;
+    }
+
+    .service-shortcut-card.card-auto .service-shortcut-img-wrap {
+        width: 54px;
+        height: 44px;
+    }
+
+    .service-shortcut-title {
+        font-size: 13.5px;
+        line-height: 1.25;
+    }
+
+    .service-shortcut-card.card-auto .service-shortcut-title {
+        font-size: 15px;
+    }
+
+    .service-shortcut-sub {
+        font-size: 11.5px;
+        line-height: 1.25;
+    }
+
+    .service-shortcut-card.card-auto .service-shortcut-sub {
+        font-size: 12px;
+    }
+
+    .shortcut-arrow-circle {
+        width: 26px;
+        height: 26px;
+    }
+
+    .shortcut-arrow-circle svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .service-shortcut-card.card-auto .shortcut-arrow-circle {
+        width: 28px;
+        height: 28px;
+    }
+
+    .service-shortcut-card.card-auto .shortcut-arrow-circle svg {
+        width: 13px;
+        height: 13px;
+    }
+}
+
+@media (max-width: 330px) {
+    .services-shortcut-grid {
         gap: 8px;
     }
 
     .service-shortcut-card {
-        padding: 9px 7px;
-        min-height: 78px;
-        gap: 5px;
-    }
-
-    .service-shortcut-card.card-auto {
-        padding: 11px 12px;
-        gap: 10px;
+        padding: 8px 8px;
+        min-height: 68px;
+        gap: 6px;
     }
 
     .service-shortcut-img-wrap {
@@ -1169,67 +1240,13 @@
         height: 34px;
     }
 
-    .service-shortcut-card.card-auto .service-shortcut-img-wrap {
-        width: 44px;
-        height: 44px;
-    }
-
     .service-shortcut-title {
-        font-size: 12.5px;
-        line-height: 1.2;
-    }
-
-    .service-shortcut-card.card-auto .service-shortcut-title {
-        font-size: 14px;
-    }
-
-    .service-shortcut-sub {
-        font-size: 10.5px;
-        line-height: 1.25;
-    }
-
-    .service-shortcut-card.card-auto .service-shortcut-sub {
-        font-size: 11px;
+        font-size: 12px;
     }
 
     .shortcut-arrow-circle {
-        width: 19px;
-        height: 19px;
-    }
-
-    .shortcut-arrow-circle svg {
-        width: 10.5px;
-        height: 10.5px;
-    }
-}
-
-@media (max-width: 330px) {
-    .services-shortcut-grid {
-        gap: 6px;
-    }
-
-    .service-shortcut-card {
-        padding: 8px 6px;
-        gap: 4px;
-    }
-
-    .service-shortcut-img-wrap {
-        width: 30px;
-        height: 30px;
-    }
-
-    .service-shortcut-title {
-        font-size: 11.5px;
-    }
-
-    .service-shortcut-sub {
-        font-size: 10px;
-        line-height: 1.2;
-    }
-
-    .shortcut-arrow-circle {
-        width: 18px;
-        height: 18px;
+        width: 24px;
+        height: 24px;
     }
 }
 
@@ -1237,12 +1254,12 @@
 .home-trust-features {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
-    background: #F8FAFC !important;
+    background: #FFFFFF !important;
     border: 1px solid #E2E8F0 !important;
-    border-radius: 14px !important;
-    padding: 12px 6px !important;
+    border-radius: 20px !important;
+    padding: 16px 8px !important;
     margin: 16px 0 !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02) !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
@@ -1261,8 +1278,8 @@
     align-items: center !important;
     justify-content: center !important;
     text-align: center !important;
-    gap: 6px !important;
-    padding: 2px 4px !important;
+    gap: 8px !important;
+    padding: 2px 6px !important;
     width: 100% !important;
     min-width: 0 !important;
     min-height: auto !important;
@@ -1276,16 +1293,16 @@
 
 .home-trust-features > .trust-feature-item:not(:last-child),
 .home-trust-features > .trust-feature-link:not(:last-child) .trust-feature-item {
-    border-right: 1px solid #E2E8F0 !important;
+    border-right: 1px solid #F1F5F9 !important;
 }
 
 .trust-icon-badge {
-    width: 38px !important;
-    height: 38px !important;
-    min-width: 38px !important;
-    min-height: 38px !important;
-    max-width: 38px !important;
-    max-height: 38px !important;
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    max-width: 42px !important;
+    max-height: 42px !important;
     border-radius: 50% !important;
     display: flex !important;
     align-items: center !important;
@@ -1298,7 +1315,7 @@
 }
 
 .trust-icon-badge.badge-green {
-    background: #E8F5E9 !important;
+    background: #DCFCE7 !important;
 }
 
 .trust-icon-badge.badge-yellow {
@@ -1322,20 +1339,20 @@
 }
 
 .trust-text strong {
-    font-size: 11.5px !important;
-    font-weight: 700 !important;
-    color: #111827 !important;
-    line-height: 1.2 !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    color: #0F172A !important;
+    line-height: 1.25 !important;
     white-space: nowrap !important;
     display: block !important;
     text-align: center !important;
 }
 
 .trust-text span {
-    font-size: 10px !important;
+    font-size: 11px !important;
     font-weight: 500 !important;
-    color: #6B7280 !important;
-    line-height: 1.18 !important;
+    color: #64748B !important;
+    line-height: 1.25 !important;
     margin-top: 2px !important;
     display: block !important;
     text-align: center !important;
