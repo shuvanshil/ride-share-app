@@ -175,6 +175,7 @@ def calculate_dues_and_upcoming(
     current_status: str = "due",
     driver_created_at: Optional[Any] = None,
     reset_baseline_dt: Optional[Any] = None,
+    base_week_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status.
     
@@ -288,6 +289,9 @@ def calculate_dues_and_upcoming(
             break
         iso_year, iso_week, _ = prev_monday.isocalendar()
         prev_week_id = f"{iso_year}-W{iso_week:02d}"
+
+        if base_week_id and prev_week_id < base_week_id:
+            break
 
         week_record = latest_by_week.get(prev_week_id)
         week_status = week_record.get("status") if week_record else "due"

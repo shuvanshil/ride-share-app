@@ -126,12 +126,15 @@ def _get_pause_config(db: Any) -> Dict[str, Any]:
     }
 
 
-def _get_reset_baseline_dt(db: Any, profile: Dict[str, Any]) -> Optional[datetime.datetime]:
+def _get_reset_baseline_info(db: Any, profile: Dict[str, Any]) -> Dict[str, Any]:
     reset_baseline_dt = None
+    base_week_id = None
     try:
         reset_snap = db.collection("systemSettings").document("driverPaymentReset").get()
         if reset_snap.exists:
-            r_val = (reset_snap.to_dict() or {}).get("resetAt")
+            data = reset_snap.to_dict() or {}
+            base_week_id = data.get("baseWeekId") or data.get("resetWeekId")
+            r_val = data.get("baseMondayStart") or data.get("resetAt")
             if r_val:
                 if hasattr(r_val, "astimezone"):
                     reset_baseline_dt = r_val.astimezone(IST)
@@ -154,7 +157,10 @@ def _get_reset_baseline_dt(db: Any, profile: Dict[str, Any]) -> Optional[datetim
         except Exception:
             pass
 
-    return reset_baseline_dt
+    return {
+        "reset_baseline_dt": reset_baseline_dt,
+        "base_week_id": base_week_id,
+    }
 
 
 def _resolve_proof_url(storage_path: Optional[str], client_download_url: Optional[str] = None) -> Optional[str]:
@@ -435,9 +441,14 @@ def get_driver_payment_status(
         key=lambda x: str(x.get("submittedAt") or ""), reverse=True
     )
 
-    reset_baseline_dt = _get_reset_baseline_dt(db, profile)
+    reset_info = _get_reset_baseline_info(db, profile)
     dues_info = calculate_dues_and_upcoming(
-        payment_history, week_info, None, driver_created_at=driver_created_at, reset_baseline_dt=reset_baseline_dt
+        payment_history,
+        week_info,
+        None,
+        driver_created_at=driver_created_at,
+        reset_baseline_dt=reset_info["reset_baseline_dt"],
+        base_week_id=reset_info["base_week_id"],
     )
     total_due = dues_info.get("totalAmountToBePaid", 0)
     unpaid_overdue = dues_info.get("previousUnpaidWeeks", [])
@@ -548,9 +559,14 @@ def submit_weekly_payment(
             "You already have a payment awaiting verification (Under Review). Please wait for approval before making another payment.", 409
         )
 
-    reset_baseline_dt = _get_reset_baseline_dt(db, profile)
+    reset_info = _get_reset_baseline_info(db, profile)
     dues_info = calculate_dues_and_upcoming(
-        all_payments, week_info, "due", driver_created_at=driver_created_at, reset_baseline_dt=reset_baseline_dt
+        all_payments,
+        week_info,
+        "due",
+        driver_created_at=driver_created_at,
+        reset_baseline_dt=reset_info["reset_baseline_dt"],
+        base_week_id=reset_info["base_week_id"],
     )
     calculated_total = dues_info.get("totalAmountToBePaid", DEFAULT_WEEKLY_FEE)
 
@@ -977,121 +993,143 @@ def admin_decline_driver_payment(
     }
 
 
+def _parse_date_bound(date_str: Optional[str], is_end_of_day: bool = False) -> Optional[datetime.datetime]:
+    if not date_str or not str(date_str).strip():
+        return None
+    cleaned = str(date_str).strip()
+    try:
+        if len(cleaned) == 10 and cleaned.count("-") == 2:
+            y, m, d = map(int, cleaned.split("-"))
+            if is_end_of_day:
+                return datetime.datetime(y, m, d, 23, 59, 59, 999999, tzinfo=datetime.timezone.utc)
+            else:
+                return datetime.datetime(y, m, d, 0, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        dt = datetime.datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        if is_end_of_day and dt.hour == 0 and dt.minute == 0:
+            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return dt.astimezone(datetime.timezone.utc)
+    except Exception:
+        return None
+
+
 @admin_router.post("/cleanup-storage")
 def admin_cleanup_payment_storage(
     body: AdminCleanupStorageRequest = Body(...),
     admin_user: Dict[str, Any] = Depends(require_admin),
 ) -> Dict[str, Any]:
-    """Scan and delete old payment proof screenshots from Firebase Storage."""
+    """Scan and delete old payment proof screenshots directly from Firebase Storage."""
+    start_dt = _parse_date_bound(body.startDate, is_end_of_day=False)
+    end_dt = _parse_date_bound(body.endDate, is_end_of_day=True)
+
+    try:
+        bucket = get_storage_bucket()
+    except Exception as e:
+        raise ApiError(f"Storage bucket connection failed: {e}", 500)
+
+    # 1. Directly list blobs from Firebase Storage under payment-proofs/
+    matched_blobs = []
+    total_bytes = 0
+    try:
+        for blob in bucket.list_blobs(prefix="payment-proofs/"):
+            if blob.name.endswith("/") and (blob.size or 0) == 0:
+                continue
+
+            created = blob.time_created or blob.updated
+            if created:
+                if hasattr(created, "astimezone"):
+                    created_utc = created.astimezone(datetime.timezone.utc)
+                else:
+                    created_utc = created.replace(tzinfo=datetime.timezone.utc)
+
+                if start_dt and created_utc < start_dt:
+                    continue
+                if end_dt and created_utc > end_dt:
+                    continue
+
+            matched_blobs.append(blob)
+            total_bytes += (blob.size or 0)
+    except Exception as e:
+        logger.error("Failed to list blobs from Firebase Storage: %s", e)
+        raise ApiError(f"Failed to scan storage: {e}", 500)
+
+    # 2. Check any custom paths recorded in driverPayments
     db = get_firestore()
     docs = list(db.collection("driverPayments").stream())
-    matched_docs = []
-
-    start_dt = None
-    end_dt = None
-    if body.startDate:
-        try:
-            start_dt = datetime.datetime.fromisoformat(body.startDate.replace("Z", "+00:00"))
-            if start_dt.tzinfo is None:
-                start_dt = start_dt.replace(tzinfo=datetime.timezone.utc)
-        except Exception:
-            pass
-    if body.endDate:
-        try:
-            end_dt = datetime.datetime.fromisoformat(body.endDate.replace("Z", "+00:00"))
-            if end_dt.tzinfo is None:
-                end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
-        except Exception:
-            pass
-
+    firestore_additional_blobs = []
     for d in docs:
-        data = d.to_dict() or {}
-        if not data.get("proofStoragePath"):
-            continue
+        d_data = d.to_dict() or {}
+        raw_path = d_data.get("proofStoragePath")
+        if raw_path:
+            clean_path = raw_path.replace("gs://", "").lstrip("/")
+            if not clean_path.startswith("payment-proofs/"):
+                try:
+                    b = bucket.blob(clean_path)
+                    if b.exists() and b.name not in [x.name for x in matched_blobs]:
+                        b_dt = b.time_created or b.updated
+                        b_utc = b_dt.astimezone(datetime.timezone.utc) if b_dt else None
+                        if start_dt and b_utc and b_utc < start_dt:
+                            continue
+                        if end_dt and b_utc and b_utc > end_dt:
+                            continue
+                        firestore_additional_blobs.append(b)
+                        total_bytes += (b.size or 0)
+                except Exception:
+                    pass
 
-        sub_at = data.get("submittedAt")
-        dt = None
-        if hasattr(sub_at, "astimezone"):
-            dt = sub_at.astimezone(datetime.timezone.utc)
-        elif isinstance(sub_at, str):
-            try:
-                dt = datetime.datetime.fromisoformat(sub_at.replace("Z", "+00:00"))
-            except Exception:
-                pass
-        elif isinstance(sub_at, (int, float)):
-            try:
-                dt = datetime.datetime.fromtimestamp(sub_at / 1000.0, datetime.timezone.utc)
-            except Exception:
-                pass
-
-        if start_dt and dt and dt < start_dt:
-            continue
-        if end_dt and dt and dt > end_dt:
-            continue
-
-        matched_docs.append((d, data))
+    all_target_blobs = matched_blobs + firestore_additional_blobs
 
     deleted_count = 0
     errors = []
 
-    if not body.dryRun and matched_docs:
-        try:
-            bucket = get_storage_bucket()
-        except Exception as e:
-            raise ApiError(f"Storage bucket connection failed: {e}", 500)
-
-        deleted_paths = set()
-        for doc_snap, data in matched_docs:
-            raw_path = data.get("proofStoragePath")
-            path = raw_path
-            if path:
-                if path.startswith("gs://"):
-                    parts = path.replace("gs://", "", 1).split("/", 1)
-                    path = parts[1] if len(parts) > 1 else ""
-                path = path.lstrip("/")
-
+    if not body.dryRun and all_target_blobs:
+        deleted_names = set()
+        for blob in all_target_blobs:
             try:
-                if path and path not in deleted_paths:
-                    blob = bucket.blob(path)
-                    if blob.exists():
-                        blob.delete()
-                    else:
-                        # Fallback if path was stored with directory prefix
-                        prefix = path.rstrip("/") + "/"
-                        for b in bucket.list_blobs(prefix=prefix):
-                            try:
-                                b.delete()
-                            except Exception:
-                                pass
-                    deleted_paths.add(raw_path)
-                    deleted_paths.add(path)
+                if blob.name not in deleted_names:
+                    blob.delete()
+                    deleted_names.add(blob.name)
                     deleted_count += 1
-                doc_snap.reference.update({
-                    "proofStoragePath": None,
-                    "proofDownloadUrl": None,
-                    "proofDeleted": True,
-                    "proofDeletedAt": get_ist_now(),
-                })
             except Exception as e:
-                errors.append(f"Failed to delete {raw_path}: {e}")
+                errors.append(f"Failed to delete {blob.name}: {e}")
+
+        # Update Firestore docs referencing deleted files
+        for d in docs:
+            d_data = d.to_dict() or {}
+            raw_path = d_data.get("proofStoragePath")
+            if raw_path:
+                clean_path = raw_path.replace("gs://", "").lstrip("/")
+                if raw_path in deleted_names or clean_path in deleted_names or any(clean_path in n or n in clean_path for n in deleted_names):
+                    try:
+                        d.reference.update({
+                            "proofStoragePath": None,
+                            "proofDownloadUrl": None,
+                            "proofDeleted": True,
+                            "proofDeletedAt": get_ist_now(),
+                        })
+                    except Exception:
+                        pass
     else:
-        deleted_count = len(matched_docs)
+        deleted_count = len(all_target_blobs)
 
     write_audit_log(
         admin_user=admin_user,
         action="driver_payments_storage_cleanup",
         target_type="driverPayments",
         target_id="STORAGE",
-        notes=f"Cleaned up {deleted_count} proof files. Dry run: {body.dryRun}",
+        notes=f"Cleaned up {deleted_count} proof files ({total_bytes} bytes). Dry run: {body.dryRun}",
     )
+
+    human_size = f"{round(total_bytes / (1024 * 1024), 2)} MB" if total_bytes > 1024 * 1024 else f"{round(total_bytes / 1024, 1)} KB"
 
     return {
         "ok": True,
         "dryRun": body.dryRun,
-        "matchedCount": len(matched_docs),
+        "matchedCount": len(all_target_blobs),
         "deletedCount": deleted_count,
-        "errors": errors,
-        "message": f"{'Dry run complete. Found' if body.dryRun else 'Successfully deleted'} {deleted_count} proof file(s)."
+        "totalBytes": total_bytes,
+        "message": f"{'Dry run complete. Found' if body.dryRun else 'Successfully deleted'} {deleted_count} proof file(s) ({human_size}) in Firebase Storage."
     }
 
 
@@ -1115,6 +1153,8 @@ def admin_reset_all_driver_payments(
     reset_payload = {
         "resetAt": now,
         "resetWeekId": week_info["weekId"],
+        "baseWeekId": week_info["weekId"],
+        "baseMondayStart": week_info.get("mondayStart"),
         "resetByAdminEmail": admin_email,
         "resetByAdminUid": admin_user.get("uid"),
     }

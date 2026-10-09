@@ -75,9 +75,22 @@ def firestore_module():
 
 
 def get_storage_bucket():
+    app = get_admin_app()
     bucket_name = get_env("FIREBASE_STORAGE_BUCKET")
-    if not bucket_name:
-        project_id = get_env("FIREBASE_PROJECT_ID")
-        bucket_name = f"{project_id}.firebasestorage.app" if project_id else None
-    return fb_storage.bucket(name=bucket_name, app=get_admin_app())
+    if bucket_name:
+        return fb_storage.bucket(name=bucket_name, app=app)
+
+    project_id = get_env("FIREBASE_PROJECT_ID") or "tripura-rideshare"
+    candidates = [
+        f"{project_id}.firebasestorage.app",
+        f"{project_id}.appspot.com",
+    ]
+    for candidate in candidates:
+        try:
+            b = fb_storage.bucket(name=candidate, app=app)
+            if b.exists():
+                return b
+        except Exception:
+            pass
+    return fb_storage.bucket(name=f"{project_id}.firebasestorage.app", app=app)
 

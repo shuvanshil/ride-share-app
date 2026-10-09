@@ -493,8 +493,12 @@ def test_admin_cleanup_storage_endpoint_and_deduplication():
     ]
 
     mock_blob = MagicMock()
+    mock_blob.name = shared_path
+    mock_blob.size = 10240
+    mock_blob.time_created = datetime.datetime(2026, 8, 15, 12, 0, 0, tzinfo=datetime.timezone.utc)
     mock_blob.exists.return_value = True
     mock_bucket = MagicMock()
+    mock_bucket.list_blobs.return_value = [mock_blob]
     mock_bucket.blob.return_value = mock_blob
 
     admin_user = {"uid": "admin_1", "email": "admin@liphtup.in"}
@@ -616,6 +620,12 @@ def test_admin_reset_all_driver_payments_clears_all_overdues():
         assert reset_res["deletedCount"] == 1
         assert reset_res["resetWeekId"] == week_info["weekId"]
 
+        # Verify systemSettings doc persisted with baseWeekId
+        reset_doc = store.get(("systemSettings", "driverPaymentReset"))
+        assert reset_doc is not None
+        assert reset_doc["baseWeekId"] == week_info["weekId"]
+        assert reset_doc["resetWeekId"] == week_info["weekId"]
+
         # Now driver checks payment status
         status = get_driver_payment_status(auth_user=auth_driver)
         # MUST start fresh with 0 previous dues!
@@ -624,6 +634,24 @@ def test_admin_reset_all_driver_payments_clears_all_overdues():
         assert status["duesSummary"]["totalAmountToBePaid"] == 140
         assert status["isAccountOnHold"] is False
         assert status["currentStatus"] == "due"
+
+        # Verify that if 2 weeks pass, calculation stops at baseWeekId (not going back to createdAt 20 weeks ago)
+        from api.core.payment_schedule import calculate_dues_and_upcoming
+        # Simulate current week being 2 weeks ahead
+        future_dt = monday_dt + datetime.timedelta(days=14)
+        future_week_info = get_payment_week_info(future_dt)
+        future_dues = calculate_dues_and_upcoming(
+            payment_history=[],
+            current_week_info=future_week_info,
+            current_status="due",
+            driver_created_at=driver_created,
+            base_week_id=reset_doc["baseWeekId"],
+        )
+        # Dues should be exactly 2 unpaid weeks (the reset week and the 1 week after), NOT 22 weeks!
+        assert future_dues["previousDuesCount"] == 2
+        for wid in future_dues["previousUnpaidWeeks"]:
+            assert wid >= reset_doc["baseWeekId"]
+
 
 
 
