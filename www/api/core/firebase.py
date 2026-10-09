@@ -12,6 +12,7 @@ from firebase_admin import auth as fb_auth
 from firebase_admin import credentials
 from firebase_admin import firestore as fb_firestore
 from firebase_admin import messaging as fb_messaging
+from firebase_admin import storage as fb_storage
 
 # Ensure compatibility with both camelCase and UPPERCASE naming in firebase_admin.messaging
 if not hasattr(fb_messaging, "ApnsConfig") and hasattr(fb_messaging, "APNSConfig"):
@@ -71,3 +72,12 @@ def get_messaging():
 
 def firestore_module():
     return fb_firestore
+
+
+def get_storage_bucket():
+    bucket_name = get_env("FIREBASE_STORAGE_BUCKET")
+    if not bucket_name:
+        project_id = get_env("FIREBASE_PROJECT_ID")
+        bucket_name = f"{project_id}.firebasestorage.app" if project_id else None
+    return fb_storage.bucket(name=bucket_name, app=get_admin_app())
+

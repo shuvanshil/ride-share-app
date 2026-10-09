@@ -173,7 +173,8 @@ def calculate_dues_and_upcoming(
     payment_history: List[Dict[str, Any]],
     current_week_info: Dict[str, Any],
     current_status: str = "due",
-    driver_created_at: Optional[Any] = None
+    driver_created_at: Optional[Any] = None,
+    reset_baseline_dt: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status.
     
@@ -254,6 +255,21 @@ def calculate_dues_and_upcoming(
         anchor_dt = min(candidates)
     else:
         anchor_dt = monday_dt
+
+    if reset_baseline_dt:
+        try:
+            if hasattr(reset_baseline_dt, "astimezone"):
+                r_dt = reset_baseline_dt.astimezone(IST)
+            elif isinstance(reset_baseline_dt, str):
+                r_dt = datetime.datetime.fromisoformat(reset_baseline_dt.replace("Z", "+00:00")).astimezone(IST)
+            elif isinstance(reset_baseline_dt, (int, float)):
+                r_dt = datetime.datetime.fromtimestamp(reset_baseline_dt / 1000.0, IST)
+            else:
+                r_dt = None
+            if r_dt and anchor_dt < r_dt:
+                anchor_dt = r_dt
+        except Exception:
+            pass
 
     anchor_weekday = anchor_dt.weekday()
     anchor_monday = (anchor_dt - datetime.timedelta(days=anchor_weekday)).replace(

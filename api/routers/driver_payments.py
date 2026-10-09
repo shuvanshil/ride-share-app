@@ -28,6 +28,7 @@ from ..core.payment_schedule import (
     calculate_dues_and_upcoming,
     DEFAULT_WEEKLY_FEE,
     DEFAULT_PAYEE_UPI_ID,
+    IST,
 )
 
 logger = logging.getLogger("driver_payments")
@@ -123,6 +124,37 @@ def _get_pause_config(db: Any) -> Dict[str, Any]:
         "endDate": end_date,
         "message": message,
     }
+
+
+def _get_reset_baseline_dt(db: Any, profile: Dict[str, Any]) -> Optional[datetime.datetime]:
+    reset_baseline_dt = None
+    try:
+        reset_snap = db.collection("systemSettings").document("driverPaymentReset").get()
+        if reset_snap.exists:
+            r_val = (reset_snap.to_dict() or {}).get("resetAt")
+            if r_val:
+                if hasattr(r_val, "astimezone"):
+                    reset_baseline_dt = r_val.astimezone(IST)
+                elif isinstance(r_val, str):
+                    reset_baseline_dt = datetime.datetime.fromisoformat(r_val.replace("Z", "+00:00")).astimezone(IST)
+    except Exception:
+        pass
+
+    driver_reset = profile.get("paymentResetAt")
+    if driver_reset:
+        try:
+            if hasattr(driver_reset, "astimezone"):
+                dr_dt = driver_reset.astimezone(IST)
+            elif isinstance(driver_reset, str):
+                dr_dt = datetime.datetime.fromisoformat(driver_reset.replace("Z", "+00:00")).astimezone(IST)
+            else:
+                dr_dt = None
+            if dr_dt and (not reset_baseline_dt or dr_dt > reset_baseline_dt):
+                reset_baseline_dt = dr_dt
+        except Exception:
+            pass
+
+    return reset_baseline_dt
 
 
 def _resolve_proof_url(storage_path: Optional[str], client_download_url: Optional[str] = None) -> Optional[str]:
@@ -403,8 +435,9 @@ def get_driver_payment_status(
         key=lambda x: str(x.get("submittedAt") or ""), reverse=True
     )
 
+    reset_baseline_dt = _get_reset_baseline_dt(db, profile)
     dues_info = calculate_dues_and_upcoming(
-        payment_history, week_info, None, driver_created_at=driver_created_at
+        payment_history, week_info, None, driver_created_at=driver_created_at, reset_baseline_dt=reset_baseline_dt
     )
     total_due = dues_info.get("totalAmountToBePaid", 0)
     unpaid_overdue = dues_info.get("previousUnpaidWeeks", [])
@@ -515,8 +548,9 @@ def submit_weekly_payment(
             "You already have a payment awaiting verification (Under Review). Please wait for approval before making another payment.", 409
         )
 
+    reset_baseline_dt = _get_reset_baseline_dt(db, profile)
     dues_info = calculate_dues_and_upcoming(
-        all_payments, week_info, "due", driver_created_at=driver_created_at
+        all_payments, week_info, "due", driver_created_at=driver_created_at, reset_baseline_dt=reset_baseline_dt
     )
     calculated_total = dues_info.get("totalAmountToBePaid", DEFAULT_WEEKLY_FEE)
 
@@ -1008,12 +1042,28 @@ def admin_cleanup_payment_storage(
 
         deleted_paths = set()
         for doc_snap, data in matched_docs:
-            path = data.get("proofStoragePath")
+            raw_path = data.get("proofStoragePath")
+            path = raw_path
+            if path:
+                if path.startswith("gs://"):
+                    parts = path.replace("gs://", "", 1).split("/", 1)
+                    path = parts[1] if len(parts) > 1 else ""
+                path = path.lstrip("/")
+
             try:
                 if path and path not in deleted_paths:
                     blob = bucket.blob(path)
                     if blob.exists():
                         blob.delete()
+                    else:
+                        # Fallback if path was stored with directory prefix
+                        prefix = path.rstrip("/") + "/"
+                        for b in bucket.list_blobs(prefix=prefix):
+                            try:
+                                b.delete()
+                            except Exception:
+                                pass
+                    deleted_paths.add(raw_path)
                     deleted_paths.add(path)
                     deleted_count += 1
                 doc_snap.reference.update({
@@ -1023,7 +1073,7 @@ def admin_cleanup_payment_storage(
                     "proofDeletedAt": get_ist_now(),
                 })
             except Exception as e:
-                errors.append(f"Failed to delete {path}: {e}")
+                errors.append(f"Failed to delete {raw_path}: {e}")
     else:
         deleted_count = len(matched_docs)
 
@@ -1057,17 +1107,31 @@ def admin_reset_all_driver_payments(
         doc.reference.delete()
         deleted_count += 1
 
+    now = get_ist_now()
+    week_info = get_payment_week_info()
+    admin_email = admin_user.get("email") or admin_user.get("uid", "admin")
+
+    # Set system-wide reset anchor so all drivers start fresh from current week with 0 dues
+    reset_payload = {
+        "resetAt": now,
+        "resetWeekId": week_info["weekId"],
+        "resetByAdminEmail": admin_email,
+        "resetByAdminUid": admin_user.get("uid"),
+    }
+    db.collection("systemSettings").document("driverPaymentReset").set(reset_payload)
+
     write_audit_log(
         admin_user=admin_user,
         action="driver_payments_reset_all",
         target_type="driverPayments",
         target_id="ALL",
-        notes=f"Deleted {deleted_count} payment records. Reset all drivers to zeroth week.",
+        notes=f"Deleted {deleted_count} payment records. Reset all drivers to current week {week_info['weekId']} with zero dues.",
     )
 
     return {
         "ok": True,
-        "message": f"Successfully reset all driver payments. Deleted {deleted_count} records.",
+        "message": f"Successfully reset all driver payments. Deleted {deleted_count} records. All drivers start fresh with no dues.",
         "deletedCount": deleted_count,
+        "resetWeekId": week_info["weekId"],
     }
 

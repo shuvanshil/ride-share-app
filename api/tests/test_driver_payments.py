@@ -515,6 +515,118 @@ def test_admin_cleanup_storage_endpoint_and_deduplication():
             assert store[("driverPayments", f"doc_{i}")]["proofStoragePath"] is None
 
 
+def test_admin_reset_all_driver_payments_clears_all_overdues():
+    from api.routers.driver_payments import (
+        admin_reset_all_driver_payments,
+        get_driver_payment_status,
+    )
+    from api.core.payment_schedule import get_payment_week_info
+    import datetime
+
+    store = {}
+
+    class DocRef:
+        def __init__(self, coll, doc_id):
+            self.coll = coll
+            self.id = doc_id
+        def get(self):
+            class Snap:
+                def __init__(self, data, doc_id):
+                    self._data = data
+                    self.id = doc_id
+                    self.exists = data is not None
+                def to_dict(self):
+                    return dict(self._data) if self._data else {}
+            return Snap(store.get((self.coll, self.id)), self.id)
+        def set(self, data, merge=False):
+            if merge and (self.coll, self.id) in store:
+                store[(self.coll, self.id)].update(data)
+            else:
+                store[(self.coll, self.id)] = dict(data)
+        def delete(self):
+            store.pop((self.coll, self.id), None)
+
+    class Query:
+        def __init__(self, coll, filters=None):
+            self.coll = coll
+            self.filters = filters or []
+        def where(self, field, op, val):
+            return Query(self.coll, self.filters + [(field, op, val)])
+        def stream(self):
+            results = []
+            for (c, doc_id), data in list(store.items()):
+                if c == self.coll:
+                    match = True
+                    for f, op, val in self.filters:
+                        if op == "==" and data.get(f) != val:
+                            match = False
+                            break
+                    if match:
+                        snap = DocRef(c, doc_id).get()
+                        snap.reference = DocRef(c, doc_id)
+                        results.append(snap)
+            return results
+
+    class Coll:
+        def __init__(self, name):
+            self.name = name
+        def document(self, doc_id=None):
+            if not doc_id:
+                doc_id = f"auto_{len(store)}"
+            return DocRef(self.name, doc_id)
+        def where(self, field, op, val):
+            return Query(self.name).where(field, op, val)
+        def stream(self):
+            return Query(self.name).stream()
+
+    class MockDb:
+        def collection(self, name):
+            return Coll(name)
+
+    mock_db = MockDb()
+
+    week_info = get_payment_week_info()
+    monday_dt = datetime.datetime.fromisoformat(week_info["mondayStart"])
+    # Driver created 20 weeks ago!
+    driver_created = (monday_dt - datetime.timedelta(days=7 * 20)).isoformat()
+
+    store[("users", "driver_old")] = {
+        "role": "driver",
+        "name": "Veteran Driver",
+        "phone": "+919876500000",
+        "createdAt": driver_created,
+    }
+
+    # Old payments in database
+    store[("driverPayments", "pymt_old_1")] = {
+        "driverId": "driver_old",
+        "weekId": "2026-W01",
+        "status": "approved",
+    }
+
+    auth_driver = {"uid": "driver_old", "name": "Veteran Driver"}
+    admin_user = {"uid": "admin_1", "email": "admin@liphtup.in"}
+
+    with patch("api.routers.driver_payments.get_firestore", return_value=mock_db), \
+         patch("api.routers.driver_payments.write_audit_log"):
+
+        # Execute Admin Reset All
+        reset_res = admin_reset_all_driver_payments(admin_user=admin_user)
+        assert reset_res["ok"] is True
+        assert reset_res["deletedCount"] == 1
+        assert reset_res["resetWeekId"] == week_info["weekId"]
+
+        # Now driver checks payment status
+        status = get_driver_payment_status(auth_user=auth_driver)
+        # MUST start fresh with 0 previous dues!
+        assert status["duesSummary"]["previousDuesCount"] == 0
+        assert status["duesSummary"]["previousDuesAmount"] == 0
+        assert status["duesSummary"]["totalAmountToBePaid"] == 140
+        assert status["isAccountOnHold"] is False
+        assert status["currentStatus"] == "due"
+
+
+
 
 
 
