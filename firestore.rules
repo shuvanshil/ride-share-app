@@ -280,7 +280,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Driver Weekly Payments:
+    // Drivers read their own payment records, admins read all; writes managed by FastAPI Admin SDK.
+    match /driverPayments/{paymentId} {
+      allow read: if signedIn()
+        && (resource == null
+          || ('driverId' in resource.data && resource.data.driverId == request.auth.uid)
+          || isAdmin());
+      allow create, update, delete: if false;
+    }
+
     // Dispatch System Collections: Internal backend access only
+
     match /dispatchWPP/{docId} {
       allow read, write: if false;
     }

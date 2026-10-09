@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 import datetime
+import logging
 
 from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel
@@ -15,8 +16,9 @@ from pydantic import BaseModel
 from ..core.auth import current_user
 from ..core.admin import require_admin, write_audit_log, now_utc
 from ..core.errors import ApiError
-from ..core.firebase import get_firestore
+from ..core.firebase import get_admin_app, get_firestore, get_messaging, get_storage_bucket
 from ..core.payment_schedule import (
+
     get_payment_week_info,
     get_ist_now,
     is_date_in_pause_range,
@@ -25,6 +27,8 @@ from ..core.payment_schedule import (
     DEFAULT_PAYEE_UPI_ID,
 )
 
+logger = logging.getLogger("driver_payments")
+
 router = APIRouter(prefix="/api/account/driver-payments", tags=["driver-payments"])
 admin_router = APIRouter(prefix="/api/admin/driver-payments", tags=["admin-driver-payments"])
 
@@ -32,10 +36,22 @@ admin_router = APIRouter(prefix="/api/admin/driver-payments", tags=["admin-drive
 class SubmitPaymentRequest(BaseModel):
     paymentReference: Optional[str] = None
     paymentMethod: Optional[str] = "upi"
+    proofStoragePath: Optional[str] = None
+    proofDownloadUrl: Optional[str] = None
+    proofFileName: Optional[str] = None
+    proofFileSize: Optional[int] = None
+    proofContentType: Optional[str] = None
 
 
 class AdminDeclineRequest(BaseModel):
     declineReason: Optional[str] = "Payment could not be verified by accounts team."
+
+
+class AdminCleanupStorageRequest(BaseModel):
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
+    dryRun: bool = False
+
 
 
 class AdminPauseRequest(BaseModel):
@@ -128,16 +144,93 @@ def _format_payment_doc(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         "weekId": data.get("weekId"),
         "weekLabel": data.get("weekLabel", ""),
         "amount": data.get("amount", DEFAULT_WEEKLY_FEE),
+        "baseFee": data.get("baseFee", DEFAULT_WEEKLY_FEE),
+        "overdueAmount": data.get("overdueAmount", 0),
         "currency": data.get("currency", "INR"),
         "submittedAt": submitted_at_str,
         "status": data.get("status", "submitted"),
         "paymentReference": data.get("paymentReference", ""),
         "paymentMethod": data.get("paymentMethod", "upi"),
+        "proofStoragePath": data.get("proofStoragePath"),
+        "proofDownloadUrl": data.get("proofDownloadUrl"),
+        "proofFileName": data.get("proofFileName"),
+        "proofFileSize": data.get("proofFileSize"),
+        "proofContentType": data.get("proofContentType"),
         "isManualRecord": bool(data.get("isManualRecord", False)),
         "verifiedAt": verified_at_str,
         "verifiedByAdminEmail": data.get("verifiedByAdminEmail"),
         "declineReason": data.get("declineReason"),
     }
+
+
+def _send_payment_notification(
+    db: Any,
+    driver_id: str,
+    status: str,
+    amount: float,
+    reason: Optional[str] = None,
+) -> None:
+    now = get_ist_now()
+    if status == "submitted":
+        title = "Payment Under Review"
+        body = f"We received your payment proof of ₹{int(amount)}. Our team will verify it shortly."
+        notif_type = "payment_submitted"
+    elif status in ("approved", "verified"):
+        title = "Payment Verified"
+        body = f"Your weekly payment of ₹{int(amount)} has been confirmed. You're all set!"
+        notif_type = "payment_verified"
+    elif status == "declined":
+        title = "Payment Declined"
+        decline_msg = f": {reason}" if reason else "."
+        body = f"Your payment could not be verified{decline_msg} Please make the payment again."
+        notif_type = "payment_declined"
+    else:
+        return
+
+    # 1. In-App Notification (Firestore)
+    try:
+        notif_ref = db.collection("users").document(driver_id).collection("inAppNotifications").document()
+        notif_ref.set({
+            "title": title,
+            "body": body,
+            "type": notif_type,
+            "read": False,
+            "createdAt": now,
+            "amount": amount,
+            "status": status,
+            "reason": reason,
+        })
+    except Exception as exc:
+        logger.warning("Failed to save in-app notification for driver %s: %s", driver_id, exc)
+
+    # 2. Push Notification (FCM)
+    try:
+        driver_doc = db.collection("users").document(driver_id).get()
+        if driver_doc.exists:
+            driver_data = driver_doc.to_dict() or {}
+            tokens = set()
+            if driver_data.get("fcmToken"):
+                tokens.add(str(driver_data["fcmToken"]).strip())
+            if driver_data.get("pushToken"):
+                tokens.add(str(driver_data["pushToken"]).strip())
+            for detail in driver_data.get("pushTokenDetails") or []:
+                if isinstance(detail, dict) and detail.get("token"):
+                    tokens.add(str(detail["token"]).strip())
+
+            valid_tokens = [t for t in tokens if t]
+            if valid_tokens:
+                app = get_admin_app()
+                messaging = get_messaging()
+                for tok in valid_tokens[:5]:
+                    message = messaging.Message(
+                        notification=messaging.Notification(title=title, body=body),
+                        data={"type": notif_type, "click_action": "FLUTTER_NOTIFICATION_CLICK"},
+                        token=tok,
+                    )
+                    messaging.send(message, app=app)
+    except Exception as exc:
+        logger.warning("Failed to send push notification for driver %s: %s", driver_id, exc)
+
 
 
 @router.get("/status")
@@ -248,7 +341,6 @@ def submit_weekly_payment(
         .stream()
     )
 
-    target_doc_ref = None
     for doc_snap in existing_docs:
         data = doc_snap.to_dict() or {}
         st = data.get("status")
@@ -260,13 +352,24 @@ def submit_weekly_payment(
             raise ApiError(
                 "Your weekly payment for this period has already been verified and approved.", 409
             )
-        if st == "declined":
-            # Reuse/update the existing declined document
-            target_doc_ref = doc_snap.reference
+        # Note: if status is 'declined', we keep the declined submission in history and create a new submission doc below.
 
-    if not target_doc_ref:
-        doc_id = f"pymt_{uid}_{current_week_id}_{int(datetime.datetime.now().timestamp())}"
-        target_doc_ref = db.collection("driverPayments").document(doc_id)
+    # Calculate authoritative dues dynamically on the server
+    driver_created_at = profile.get("createdAt") or profile.get("approvedAt") or profile.get("registrationDate")
+    payments_ref = db.collection("driverPayments").where("driverId", "==", uid)
+    all_payments = [_format_payment_doc(d.id, d.to_dict() or {}) for d in payments_ref.stream()]
+    dues_info = calculate_dues_and_upcoming(
+        all_payments, week_info, "due", driver_created_at=driver_created_at
+    )
+    total_amount = dues_info.get("totalAmountToBePaid", DEFAULT_WEEKLY_FEE)
+    overdue_amount = dues_info.get("previousDuesAmount", 0)
+    base_fee = DEFAULT_WEEKLY_FEE
+
+    # Always create a new payment document to preserve submission history
+    now_ms = int(datetime.datetime.now().timestamp() * 1000)
+    doc_id = f"pymt_{uid}_{current_week_id}_{now_ms}"
+    target_doc_ref = db.collection("driverPayments").document(doc_id)
+
 
     payload = {
         "driverId": uid,
@@ -274,12 +377,19 @@ def submit_weekly_payment(
         "driverPhone": profile.get("phone", auth_user.get("phone_number", "")),
         "weekId": current_week_id,
         "weekLabel": week_info["weekLabel"],
-        "amount": DEFAULT_WEEKLY_FEE,
+        "baseFee": base_fee,
+        "overdueAmount": overdue_amount,
+        "amount": total_amount,
         "currency": "INR",
         "submittedAt": get_ist_now(),
         "status": "submitted",
         "paymentReference": (body.paymentReference or "").strip()[:100],
         "paymentMethod": body.paymentMethod or "upi",
+        "proofStoragePath": body.proofStoragePath,
+        "proofDownloadUrl": body.proofDownloadUrl,
+        "proofFileName": body.proofFileName,
+        "proofFileSize": body.proofFileSize,
+        "proofContentType": body.proofContentType,
         "isManualRecord": False,
         "verifiedAt": None,
         "verifiedByAdminUid": None,
@@ -287,7 +397,9 @@ def submit_weekly_payment(
         "declineReason": None,
     }
 
-    target_doc_ref.set(payload, merge=True)
+    target_doc_ref.set(payload)
+
+    _send_payment_notification(db, uid, "submitted", total_amount)
 
     return {
         "ok": True,
@@ -295,11 +407,6 @@ def submit_weekly_payment(
         "payment": _format_payment_doc(target_doc_ref.id, payload),
     }
 
-    return {
-        "ok": True,
-        "message": "Payment submitted for verification successfully.",
-        "payment": _format_payment_doc(doc_id, payload),
-    }
 
 
 @router.get("/history")
@@ -471,12 +578,15 @@ def admin_record_manual_payment(
             raise ApiError(
                 f"Driver already has an approved payment record for week {target_week_id}.", 409
             )
-        # If there is a pending or declined payment for this week, update it
-        doc_ref = doc_snap.reference
+        # If there is a pending submission for this week, update it. Declined records remain in history.
+        if d_data.get("status") in ("submitted", "under_review"):
+            doc_ref = doc_snap.reference
+
 
     if not doc_ref:
-        doc_id = f"pymt_manual_{driver_uid}_{target_week_id}_{int(now.timestamp())}"
+        doc_id = f"pymt_manual_{driver_uid}_{target_week_id}_{int(now.timestamp() * 1000)}"
         doc_ref = db.collection("driverPayments").document(doc_id)
+
 
     payload = {
         "driverId": driver_uid,
@@ -555,6 +665,13 @@ def admin_approve_driver_payment(
         after=updates,
     )
 
+    _send_payment_notification(
+        db,
+        payment_data.get("driverId"),
+        "approved",
+        payment_data.get("amount", DEFAULT_WEEKLY_FEE),
+    )
+
     updated_data = {**payment_data, **updates}
     return {
         "ok": True,
@@ -603,11 +720,118 @@ def admin_decline_driver_payment(
         notes=decline_reason,
     )
 
+    _send_payment_notification(
+        db,
+        payment_data.get("driverId"),
+        "declined",
+        payment_data.get("amount", DEFAULT_WEEKLY_FEE),
+        reason=decline_reason,
+    )
+
     updated_data = {**payment_data, **updates}
     return {
         "ok": True,
         "message": "Payment submission declined.",
         "payment": _format_payment_doc(payment_id, updated_data),
+    }
+
+
+@admin_router.post("/cleanup-storage")
+def admin_cleanup_payment_storage(
+    body: AdminCleanupStorageRequest = Body(...),
+    admin_user: Dict[str, Any] = Depends(require_admin),
+) -> Dict[str, Any]:
+    """Scan and delete old payment proof screenshots from Firebase Storage."""
+    db = get_firestore()
+    docs = list(db.collection("driverPayments").stream())
+    matched_docs = []
+
+    start_dt = None
+    end_dt = None
+    if body.startDate:
+        try:
+            start_dt = datetime.datetime.fromisoformat(body.startDate.replace("Z", "+00:00"))
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=datetime.timezone.utc)
+        except Exception:
+            pass
+    if body.endDate:
+        try:
+            end_dt = datetime.datetime.fromisoformat(body.endDate.replace("Z", "+00:00"))
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+        except Exception:
+            pass
+
+    for d in docs:
+        data = d.to_dict() or {}
+        if not data.get("proofStoragePath"):
+            continue
+
+        sub_at = data.get("submittedAt")
+        dt = None
+        if hasattr(sub_at, "astimezone"):
+            dt = sub_at.astimezone(datetime.timezone.utc)
+        elif isinstance(sub_at, str):
+            try:
+                dt = datetime.datetime.fromisoformat(sub_at.replace("Z", "+00:00"))
+            except Exception:
+                pass
+        elif isinstance(sub_at, (int, float)):
+            try:
+                dt = datetime.datetime.fromtimestamp(sub_at / 1000.0, datetime.timezone.utc)
+            except Exception:
+                pass
+
+        if start_dt and dt and dt < start_dt:
+            continue
+        if end_dt and dt and dt > end_dt:
+            continue
+
+        matched_docs.append((d, data))
+
+    deleted_count = 0
+    errors = []
+
+    if not body.dryRun and matched_docs:
+        try:
+            bucket = get_storage_bucket()
+        except Exception as e:
+            raise ApiError(f"Storage bucket connection failed: {e}", 500)
+
+        for doc_snap, data in matched_docs:
+            path = data.get("proofStoragePath")
+            try:
+                blob = bucket.blob(path)
+                if blob.exists():
+                    blob.delete()
+                doc_snap.reference.update({
+                    "proofStoragePath": None,
+                    "proofDownloadUrl": None,
+                    "proofDeleted": True,
+                    "proofDeletedAt": get_ist_now(),
+                })
+                deleted_count += 1
+            except Exception as e:
+                errors.append(f"Failed to delete {path}: {e}")
+    else:
+        deleted_count = len(matched_docs)
+
+    write_audit_log(
+        admin_user=admin_user,
+        action="driver_payments_storage_cleanup",
+        target_type="driverPayments",
+        target_id="STORAGE",
+        notes=f"Cleaned up {deleted_count} proof files. Dry run: {body.dryRun}",
+    )
+
+    return {
+        "ok": True,
+        "dryRun": body.dryRun,
+        "matchedCount": len(matched_docs),
+        "deletedCount": deleted_count,
+        "errors": errors,
+        "message": f"{'Dry run complete. Found' if body.dryRun else 'Successfully deleted'} {deleted_count} proof file(s)."
     }
 
 
@@ -636,3 +860,4 @@ def admin_reset_all_driver_payments(
         "message": f"Successfully reset all driver payments. Deleted {deleted_count} records.",
         "deletedCount": deleted_count,
     }
+

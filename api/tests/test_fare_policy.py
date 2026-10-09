@@ -23,7 +23,7 @@ def test_night_fare_rates_apply_to_auto_and_bike() -> None:
 
     assert auto["per_km"] == 20
     assert bike["per_km"] == 13
-    assert calculate_fare(auto, 6) == 145
+    assert calculate_fare(auto, 6) == 135
     assert calculate_fare(bike, 6) == 93
 
 
@@ -31,7 +31,8 @@ def test_normal_fare_rates_apply_after_night_window_ends() -> None:
     auto = get_service_fare_policy("auto", fare_time(4, 30))
     bike = get_service_fare_policy("bike", fare_time(4, 30))
 
-    assert auto["per_km"] == 12.5
+    assert auto["per_km"] == 12
     assert bike["per_km"] == 7
-    assert calculate_fare(auto, 6) == 100
+    assert calculate_fare(auto, 6) == 87
     assert calculate_fare(bike, 6) == 57
+

@@ -9,6 +9,12 @@ import {
     persistentLocalCache,
     persistentMultipleTabManager
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import {
+    getStorage,
+    ref,
+    uploadBytesResumable,
+    getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -34,4 +40,9 @@ export const db = initializeFirestore(app, {
     })
 });
 
+// Firebase Storage initialization
+export const storage = getStorage(app);
+export { ref, uploadBytesResumable, getDownloadURL };
+
 console.log("Firebase services initialized successfully.");
+

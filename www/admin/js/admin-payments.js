@@ -138,8 +138,8 @@ export function renderPaymentsTable() {
         if (p.status === 'submitted') {
             actionsHtml = `
                 <div class="d-flex gap-2">
-                    <button class="btn btn-success btn-sm approve-pay-btn d-inline-flex align-items-center gap-1" data-id="${p.paymentId}" type="button">
-                        <i class="ti ti-check"></i> Approve
+                    <button class="btn btn-primary btn-sm verify-pay-btn d-inline-flex align-items-center gap-1" data-id="${p.paymentId}" type="button">
+                        <i class="ti ti-receipt"></i> Verify
                     </button>
                     <button class="btn btn-outline-danger btn-sm decline-pay-btn d-inline-flex align-items-center gap-1" data-id="${p.paymentId}" type="button">
                         <i class="ti ti-x"></i> Decline
@@ -154,6 +154,7 @@ export function renderPaymentsTable() {
 
         const methodLabel = (p.paymentMethod || 'upi').toUpperCase();
         const refNote = p.paymentReference ? `<br><small class="text-secondary">Ref: ${p.paymentReference}</small>` : '';
+        const proofLink = p.proofDownloadUrl ? `<br><a href="${p.proofDownloadUrl}" target="_blank" class="small text-primary text-decoration-none" style="font-size: 11px;"><i class="ti ti-photo me-1"></i>View Screenshot</a>` : '';
 
         return `
             <tr>
@@ -167,7 +168,7 @@ export function renderPaymentsTable() {
                 </td>
                 <td>
                     <strong class="text-success">₹${p.amount || 140}</strong><br>
-                    <small class="text-secondary">${methodLabel}</small>${refNote}
+                    <small class="text-secondary">${methodLabel}</small>${refNote}${proofLink}
                 </td>
                 <td>${subDate}</td>
                 <td>${statusBadge}</td>
@@ -198,13 +199,102 @@ export function renderPaymentsTable() {
         </div>
     `;
 
-    // Bind Approve and Decline buttons
-    container.querySelectorAll('.approve-pay-btn').forEach(btn => {
-        btn.addEventListener('click', () => handleApprovePayment(btn.dataset.id, btn));
+    // Bind Verify and Decline buttons
+    container.querySelectorAll('.verify-pay-btn').forEach(btn => {
+        btn.addEventListener('click', () => openVerifyProofModal(btn.dataset.id));
     });
 
     container.querySelectorAll('.decline-pay-btn').forEach(btn => {
         btn.addEventListener('click', () => handleDeclinePayment(btn.dataset.id, btn));
+    });
+}
+
+// ============ VERIFY PROOF MODAL ============
+
+let activeVerifyingPaymentId = null;
+
+function openVerifyProofModal(paymentId) {
+    const modal = document.getElementById('admin-verify-proof-modal');
+    if (!modal) return;
+
+    const payment = cachedPayments.find(p => p.paymentId === paymentId);
+    if (!payment) return;
+
+    activeVerifyingPaymentId = paymentId;
+
+    const nameEl = document.getElementById('verify-modal-driver-name');
+    const phoneEl = document.getElementById('verify-modal-driver-phone');
+    const weekEl = document.getElementById('verify-modal-week-label');
+    const amountEl = document.getElementById('verify-modal-amount');
+    const imgEl = document.getElementById('verify-modal-proof-img');
+    const noImgEl = document.getElementById('verify-modal-no-img');
+    const linkEl = document.getElementById('verify-modal-open-link');
+    const declineReasonInput = document.getElementById('verify-modal-decline-reason');
+
+    if (nameEl) nameEl.innerText = payment.driverName || 'Driver';
+    if (phoneEl) phoneEl.innerText = payment.driverPhone || payment.driverId || '--';
+    if (weekEl) weekEl.innerText = payment.weekLabel || payment.weekId || '--';
+    if (amountEl) amountEl.innerText = `₹${payment.amount || 140}`;
+    if (declineReasonInput) declineReasonInput.value = '';
+
+    if (payment.proofDownloadUrl) {
+        if (imgEl) {
+            imgEl.src = payment.proofDownloadUrl;
+            imgEl.classList.remove('d-none');
+        }
+        if (noImgEl) noImgEl.classList.add('d-none');
+        if (linkEl) {
+            linkEl.href = payment.proofDownloadUrl;
+            linkEl.classList.remove('d-none');
+        }
+    } else {
+        if (imgEl) imgEl.classList.add('d-none');
+        if (noImgEl) noImgEl.classList.remove('d-none');
+        if (linkEl) linkEl.classList.add('d-none');
+    }
+
+    modal.classList.remove('d-none');
+}
+
+function closeVerifyProofModal() {
+    const modal = document.getElementById('admin-verify-proof-modal');
+    if (modal) modal.classList.add('d-none');
+    activeVerifyingPaymentId = null;
+}
+
+async function handleModalApprovePayment(btn) {
+    if (!activeVerifyingPaymentId) return;
+    const paymentId = activeVerifyingPaymentId;
+
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost(`/driver-payments/${paymentId}/approve`);
+            showToast("Payment approved and verified successfully!", "success");
+            closeVerifyProofModal();
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error approving payment:", error);
+            showToast(error.message || "Could not approve payment", "error");
+        }
+    });
+}
+
+async function handleModalDeclinePayment(btn) {
+    if (!activeVerifyingPaymentId) return;
+    const paymentId = activeVerifyingPaymentId;
+    const reasonInput = document.getElementById('verify-modal-decline-reason');
+    const reason = (reasonInput?.value || "Payment could not be verified by accounts team.").trim();
+
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
+            showToast("Payment submission declined.", "warning");
+            closeVerifyProofModal();
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error declining payment:", error);
+            showToast(error.message || "Could not decline payment", "error");
+        }
     });
 }
 
@@ -243,6 +333,7 @@ async function handleDeclinePayment(paymentId, btn) {
         }
     });
 }
+
 
 // ============ PAUSE SETTINGS MODAL ============
 
@@ -424,6 +515,75 @@ async function handleResetAllPayments(btn) {
     });
 }
 
+// ============ CLEANUP STORAGE MODAL ============
+
+function openCleanupStorageModal() {
+    const modal = document.getElementById('admin-cleanup-storage-modal');
+    if (!modal) return;
+    const previewBox = document.getElementById('cleanup-preview-box');
+    if (previewBox) {
+        previewBox.classList.add('d-none');
+        previewBox.innerHTML = '';
+    }
+    modal.classList.remove('d-none');
+}
+
+function closeCleanupStorageModal() {
+    const modal = document.getElementById('admin-cleanup-storage-modal');
+    if (modal) modal.classList.add('d-none');
+}
+
+async function handleScanStorage(btn) {
+    const start = document.getElementById('cleanup-start-date')?.value || null;
+    const end = document.getElementById('cleanup-end-date')?.value || null;
+    const previewBox = document.getElementById('cleanup-preview-box');
+
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminPost('/driver-payments/cleanup-storage', {
+                startDate: start,
+                endDate: end,
+                dryRun: true
+            });
+            if (previewBox) {
+                previewBox.classList.remove('d-none');
+                previewBox.innerHTML = `<strong>Scan Results:</strong> Found <strong>${res.matchedCount || 0}</strong> payment proof screenshot file(s) matching criteria.`;
+            }
+        } catch (err) {
+            console.error("Storage scan error:", err);
+            showToast(err.message || "Failed to scan storage", "error");
+        }
+    });
+}
+
+async function handleConfirmCleanupStorage(btn) {
+    const start = document.getElementById('cleanup-start-date')?.value || null;
+    const end = document.getElementById('cleanup-end-date')?.value || null;
+
+    const confirmed = await showTablerConfirm("Are you sure you want to PERMANENTLY DELETE matching payment proof images from Firebase Storage? This action cannot be undone.", {
+        title: "Confirm Storage Cleanup",
+        variant: "danger",
+        confirmText: "Delete Files"
+    });
+    if (!confirmed) return;
+
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminPost('/driver-payments/cleanup-storage', {
+                startDate: start,
+                endDate: end,
+                dryRun: false
+            });
+            showToast(res.message || "Storage cleanup completed successfully!", "success");
+            closeCleanupStorageModal();
+            await loadAdminPayments();
+        } catch (err) {
+            console.error("Storage cleanup error:", err);
+            showToast(err.message || "Failed to cleanup storage", "error");
+        }
+    });
+}
+
 let paymentsInitialized = false;
 export function initAdminPayments() {
     if (paymentsInitialized) return;
@@ -437,6 +597,21 @@ export function initAdminPayments() {
 
     const resetBtn = document.getElementById('admin-reset-all-payments-btn');
     resetBtn?.addEventListener('click', () => handleResetAllPayments(resetBtn));
+
+    // Verify Proof Modal Triggers
+    document.getElementById('verify-proof-close-btn')?.addEventListener('click', closeVerifyProofModal);
+    const verifyApproveBtn = document.getElementById('verify-modal-approve-btn');
+    verifyApproveBtn?.addEventListener('click', () => handleModalApprovePayment(verifyApproveBtn));
+    const verifyDeclineBtn = document.getElementById('verify-modal-decline-btn');
+    verifyDeclineBtn?.addEventListener('click', () => handleModalDeclinePayment(verifyDeclineBtn));
+
+    // Cleanup Storage Modal Triggers
+    document.getElementById('admin-open-cleanup-storage-btn')?.addEventListener('click', openCleanupStorageModal);
+    document.getElementById('cleanup-storage-close-btn')?.addEventListener('click', closeCleanupStorageModal);
+    const scanBtn = document.getElementById('cleanup-scan-btn');
+    scanBtn?.addEventListener('click', () => handleScanStorage(scanBtn));
+    const confirmCleanupBtn = document.getElementById('cleanup-confirm-btn');
+    confirmCleanupBtn?.addEventListener('click', () => handleConfirmCleanupStorage(confirmCleanupBtn));
 
     // Pause Modal Triggers
     document.getElementById('admin-open-pause-modal-btn')?.addEventListener('click', openPauseModal);
@@ -458,6 +633,7 @@ export function initAdminPayments() {
     // Initialize Wallet Credit Admin UI
     initAdminWalletCredit();
 }
+
 
 // =========================================================================
 // WALLET CREDIT ADMIN PORTAL

@@ -1130,6 +1130,9 @@
                                         <h2 class="page-title h2 fw-bold">Driver Weekly Payments</h2>
                                     </div>
                                     <div class="col-auto ms-auto d-flex flex-wrap gap-2 align-items-center">
+                                        <button id="admin-open-cleanup-storage-btn" class="btn btn-outline-warning btn-sm d-flex align-items-center gap-1" type="button">
+                                            <i class="ti ti-trash"></i> Cleanup Storage
+                                        </button>
                                         <button id="admin-reset-all-payments-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" type="button">
                                             <i class="ti ti-refresh"></i> Reset All Payments
                                         </button>
@@ -1610,6 +1613,111 @@
                         <button type="button" id="pause-clear-btn" class="btn btn-outline-danger w-100">End / Clear Pause</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Verify Driver Payment Submission with Screenshot Proof -->
+    <div id="admin-verify-proof-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1075;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 520px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">
+                        <i class="ti ti-receipt me-2 text-primary"></i>Verify Payment Submission
+                    </h5>
+                    <button id="verify-proof-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="card bg-light border-0 p-3 mb-3">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <span class="text-secondary small d-block">Driver Name</span>
+                                <strong id="verify-modal-driver-name" class="text-dark">--</strong>
+                            </div>
+                            <div class="col-6">
+                                <span class="text-secondary small d-block">Phone Number</span>
+                                <strong id="verify-modal-driver-phone" class="text-dark">--</strong>
+                            </div>
+                            <div class="col-6">
+                                <span class="text-secondary small d-block">Payment Week</span>
+                                <strong id="verify-modal-week-label" class="text-dark">--</strong>
+                            </div>
+                            <div class="col-6">
+                                <span class="text-secondary small d-block">Total Amount</span>
+                                <strong id="verify-modal-amount" class="text-success fs-3">₹--</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Proof Screenshot Section -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold d-flex justify-content-between align-items-center">
+                            <span>Uploaded Payment Screenshot</span>
+                            <a id="verify-modal-open-link" href="#" target="_blank" class="small text-primary text-decoration-none d-none">
+                                <i class="ti ti-external-link me-1"></i>Open Full Image
+                            </a>
+                        </label>
+                        <div id="verify-modal-image-container" class="text-center p-2 border rounded bg-white" style="min-height: 200px; max-height: 340px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                            <img id="verify-modal-proof-img" src="" alt="Payment Proof" style="max-width: 100%; max-height: 320px; object-fit: contain; border-radius: 8px;">
+                            <div id="verify-modal-no-img" class="text-secondary small py-4 d-none">No screenshot proof uploaded with this payment.</div>
+                        </div>
+                    </div>
+
+                    <!-- Optional Decline Reason Input -->
+                    <div id="verify-decline-reason-wrap" class="mb-2">
+                        <label class="form-label fw-bold">Decline Reason (shown to driver if declined)</label>
+                        <input type="text" id="verify-modal-decline-reason" class="form-control" placeholder="e.g. Unclear transaction reference or screenshot">
+                    </div>
+                </div>
+                <div class="modal-footer d-flex gap-2">
+                    <button type="button" id="verify-modal-decline-btn" class="btn btn-outline-danger flex-fill">
+                        <i class="ti ti-x me-1"></i>Decline
+                    </button>
+                    <button type="button" id="verify-modal-approve-btn" class="btn btn-success flex-fill">
+                        <i class="ti ti-check me-1"></i>Approve &amp; Verify
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Cleanup Payment Storage -->
+    <div id="admin-cleanup-storage-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1075;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">
+                        <i class="ti ti-trash me-2 text-warning"></i>Cleanup Payment Storage
+                    </h5>
+                    <button id="cleanup-storage-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary small mb-3">
+                        Permanently deletes uploaded payment screenshot images from Firebase Storage bucket to reduce cloud storage costs. 
+                        <strong>Financial logs, payment amounts, and approval records in Firestore remain completely untouched.</strong>
+                    </p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Start Date (Optional)</label>
+                            <input type="date" id="cleanup-start-date" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">End Date (Optional)</label>
+                            <input type="date" id="cleanup-end-date" class="form-control form-control-sm">
+                        </div>
+                    </div>
+                    <div id="cleanup-preview-box" class="alert alert-info py-2 px-3 small d-none">
+                        <!-- Populated by dry run -->
+                    </div>
+                </div>
+                <div class="modal-footer d-flex gap-2">
+                    <button type="button" id="cleanup-scan-btn" class="btn btn-outline-primary flex-fill">
+                        <i class="ti ti-search me-1"></i>Scan Proofs (Dry Run)
+                    </button>
+                    <button type="button" id="cleanup-confirm-btn" class="btn btn-danger flex-fill">
+                        <i class="ti ti-trash me-1"></i>Confirm Cleanup
+                    </button>
+                </div>
             </div>
         </div>
     </div>

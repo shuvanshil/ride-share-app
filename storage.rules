@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function for admin check matching firestore.rules
+    function isAdmin() {
+      return request.auth != null && (
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('role' in request.auth.token && request.auth.token.role == 'admin')
+      );
+    }
+
+    // Payment proofs submitted by drivers
+    match /payment-proofs/{driverId}/{paymentId}/{fileName} {
+      // Driver can read and write only their own files, must be an image <= 10MB
+      allow read: if request.auth != null && (request.auth.uid == driverId || isAdmin());
+      allow write: if request.auth != null && 
+                     (request.auth.uid == driverId || isAdmin()) &&
+                     request.resource.size <= 10 * 1024 * 1024 &&
+                     request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin();
+    }
+
+    // Default admin access for all other storage paths
+    match /{allPaths=**} {
+      allow read, write, delete: if isAdmin();
+    }
+  }
+}
