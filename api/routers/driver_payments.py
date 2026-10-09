@@ -164,11 +164,22 @@ def _format_payment_doc(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     else:
         verified_at_str = str(verified_at) if verified_at else None
 
+    driver_id = data.get("driverId") or data.get("driver_id")
+    week_id = data.get("weekId") or data.get("week_id")
+
     storage_path = (
         data.get("proofStoragePath")
         or data.get("proof_storage_path")
         or data.get("storagePath")
         or data.get("storage_path")
+        or data.get("proofPath")
+        or data.get("proof_path")
+        or data.get("screenshotPath")
+        or data.get("screenshot_path")
+        or data.get("imagePath")
+        or data.get("image_path")
+        or data.get("filePath")
+        or data.get("file_path")
     )
     download_url = (
         data.get("proofDownloadUrl")
@@ -184,18 +195,70 @@ def _format_payment_doc(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         or data.get("proof")
     )
 
+    # If storage_path is missing or is a folder, inspect bucket to resolve the actual image file
+    if driver_id:
+        try:
+            bucket = get_storage_bucket()
+            if bucket:
+                if not storage_path:
+                    # Search bucket for this driver's uploaded proof
+                    prefix = f"payment-proofs/{driver_id}/{doc_id}/" if doc_id else f"payment-proofs/{driver_id}/"
+                    blobs = list(bucket.list_blobs(prefix=prefix, max_results=3))
+                    if not blobs:
+                        prefix_driver = f"payment-proofs/{driver_id}/"
+                        for b in bucket.list_blobs(prefix=prefix_driver, max_results=20):
+                            if week_id and week_id in b.name:
+                                storage_path = b.name
+                                break
+                            if not storage_path:
+                                storage_path = b.name
+                    elif blobs:
+                        storage_path = blobs[0].name
+                elif storage_path and storage_path.endswith("/"):
+                    # storage_path was saved as a directory prefix
+                    blobs = list(bucket.list_blobs(prefix=storage_path, max_results=1))
+                    if blobs:
+                        storage_path = blobs[0].name
+        except Exception:
+            pass
+
     download_url = _resolve_proof_url(storage_path, download_url)
+
+    covered_weeks = data.get("coveredWeeks") or data.get("covered_weeks")
+    if not covered_weeks and week_id:
+        covered_weeks = [week_id]
+
+    amount_val = data.get("amount")
+    if amount_val is not None:
+        try:
+            amount_val = float(amount_val)
+        except (ValueError, TypeError):
+            amount_val = DEFAULT_WEEKLY_FEE
+    else:
+        amount_val = DEFAULT_WEEKLY_FEE
+
+    overdue_val = data.get("overdueAmount") or data.get("overdue_amount") or 0.0
+    try:
+        overdue_val = float(overdue_val)
+    except (ValueError, TypeError):
+        overdue_val = 0.0
+
+    base_fee_val = data.get("baseFee") or data.get("base_fee") or DEFAULT_WEEKLY_FEE
+    try:
+        base_fee_val = float(base_fee_val)
+    except (ValueError, TypeError):
+        base_fee_val = DEFAULT_WEEKLY_FEE
 
     return {
         "paymentId": doc_id,
-        "driverId": data.get("driverId") or data.get("driver_id"),
+        "driverId": driver_id,
         "driverName": data.get("driverName") or data.get("driver_name", "Driver"),
         "driverPhone": data.get("driverPhone") or data.get("driver_phone", ""),
-        "weekId": data.get("weekId") or data.get("week_id"),
+        "weekId": week_id,
         "weekLabel": data.get("weekLabel") or data.get("week_label", ""),
-        "amount": data.get("amount", DEFAULT_WEEKLY_FEE),
-        "baseFee": data.get("baseFee") or data.get("base_fee", DEFAULT_WEEKLY_FEE),
-        "overdueAmount": data.get("overdueAmount") or data.get("overdue_amount", 0),
+        "amount": amount_val,
+        "baseFee": base_fee_val,
+        "overdueAmount": overdue_val,
         "currency": data.get("currency", "INR"),
         "submittedAt": submitted_at_str,
         "status": data.get("status", "submitted"),
@@ -207,6 +270,7 @@ def _format_payment_doc(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         "proofFileSize": data.get("proofFileSize") or data.get("proof_file_size"),
         "proofContentType": data.get("proofContentType") or data.get("proof_content_type"),
         "isManualRecord": bool(data.get("isManualRecord", False)),
+        "coveredWeeks": covered_weeks or [],
         "verifiedAt": verified_at_str,
         "verifiedByAdminEmail": data.get("verifiedByAdminEmail") or data.get("verified_by_admin_email"),
         "declineReason": data.get("declineReason") or data.get("decline_reason"),
@@ -291,7 +355,14 @@ def get_driver_payment_status(
     uid = auth_user["uid"]
     db = get_firestore()
     profile = _get_driver_profile(db, uid)
-    driver_created_at = profile.get("createdAt") or profile.get("approvedAt") or profile.get("registrationDate")
+    driver_created_at = (
+        profile.get("createdAt")
+        or profile.get("created_at")
+        or profile.get("registrationDate")
+        or profile.get("registration_date")
+        or profile.get("approvedAt")
+        or profile.get("approved_at")
+    )
 
     pause_config = _get_pause_config(db)
     week_info = get_payment_week_info()
@@ -412,7 +483,14 @@ def submit_weekly_payment(
         # Note: if status is 'declined', we keep the declined submission in history and create a new submission doc below.
 
     # Calculate authoritative dues dynamically on the server
-    driver_created_at = profile.get("createdAt") or profile.get("approvedAt") or profile.get("registrationDate")
+    driver_created_at = (
+        profile.get("createdAt")
+        or profile.get("created_at")
+        or profile.get("registrationDate")
+        or profile.get("registration_date")
+        or profile.get("approvedAt")
+        or profile.get("approved_at")
+    )
     seen_ids = set()
     all_payment_snaps = []
     for field in ("driverId", "driver_id"):
@@ -442,11 +520,16 @@ def submit_weekly_payment(
         total_amount = float(calculated_total)
         overdue_amount = float(calculated_overdue)
 
+    # Determine covered weeks (current week plus any overdue weeks paid together)
+    covered_weeks = [current_week_id]
+    if dues_info.get("previousUnpaidWeeks"):
+        covered_weeks.extend(dues_info["previousUnpaidWeeks"])
+    covered_weeks = list(dict.fromkeys(covered_weeks))
+
     # Always create a new payment document to preserve submission history
     now_ms = int(datetime.datetime.now().timestamp() * 1000)
     doc_id = f"pymt_{uid}_{current_week_id}_{now_ms}"
     target_doc_ref = db.collection("driverPayments").document(doc_id)
-
 
     payload = {
         "driverId": uid,
@@ -468,6 +551,7 @@ def submit_weekly_payment(
         "proofFileSize": body.proofFileSize,
         "proofContentType": body.proofContentType,
         "isManualRecord": False,
+        "coveredWeeks": covered_weeks,
         "verifiedAt": None,
         "verifiedByAdminUid": None,
         "verifiedByAdminEmail": None,
@@ -722,6 +806,11 @@ def admin_approve_driver_payment(
     payment_data = snap.to_dict() or {}
     admin_email = admin_user.get("email") or admin_user.get("uid", "admin")
 
+    week_id = payment_data.get("weekId") or payment_data.get("week_id")
+    covered_weeks = payment_data.get("coveredWeeks") or payment_data.get("covered_weeks")
+    if not covered_weeks and week_id:
+        covered_weeks = [week_id]
+
     now = get_ist_now()
     updates = {
         "status": "approved",
@@ -729,6 +818,7 @@ def admin_approve_driver_payment(
         "verifiedByAdminUid": admin_user.get("uid"),
         "verifiedByAdminEmail": admin_email,
         "declineReason": None,
+        "coveredWeeks": covered_weeks,
     }
 
     doc_ref.update(updates)

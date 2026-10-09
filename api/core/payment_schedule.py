@@ -94,67 +94,66 @@ def calculate_dues_and_upcoming(
 ) -> Dict[str, Any]:
     """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status.
     
-    Dues start counting ONLY AFTER the driver's first approved/verified payment week.
-    If the driver has no approved payments yet, there are NO previous due weeks.
+    Dues are calculated from the driver's creation/registration date or earliest payment record.
+    Any prior weeks that are not approved or covered are counted as overdue.
     """
     current_week_id = current_week_info["weekId"]
     monday_dt = datetime.datetime.fromisoformat(current_week_info["mondayStart"])
 
     approved_weeks = set()
     earliest_approved_dt = None
+    earliest_recorded_dt = None
 
     for item in payment_history:
-        w_id = item.get("weekId")
         st = item.get("status")
+        w_id = item.get("weekId")
         if w_id and st in ("approved", "verified", "paused"):
             approved_weeks.add(w_id)
-            sub_at = item.get("submittedAt") or item.get("verifiedAt")
-            if sub_at:
-                try:
-                    if hasattr(sub_at, "astimezone"):
-                        dt = sub_at.astimezone(IST)
-                    elif isinstance(sub_at, str):
-                        dt = datetime.datetime.fromisoformat(sub_at.replace("Z", "+00:00")).astimezone(IST)
-                    elif isinstance(sub_at, (int, float)):
-                        dt = datetime.datetime.fromtimestamp(sub_at / 1000.0, IST)
-                    else:
-                        dt = None
-                    if dt and (not earliest_approved_dt or dt < earliest_approved_dt):
-                        earliest_approved_dt = dt
-                except Exception:
-                    pass
+        # Check coveredWeeks if a previous payment covered multiple weeks
+        for cw in (item.get("coveredWeeks") or item.get("covered_weeks") or []):
+            if st in ("approved", "verified", "paused"):
+                approved_weeks.add(cw)
+
+        date_val = item.get("submittedAt") or item.get("verifiedAt")
+        if date_val:
+            try:
+                if hasattr(date_val, "astimezone"):
+                    dt = date_val.astimezone(IST)
+                elif isinstance(date_val, str):
+                    dt = datetime.datetime.fromisoformat(date_val.replace("Z", "+00:00")).astimezone(IST)
+                elif isinstance(date_val, (int, float)):
+                    dt = datetime.datetime.fromtimestamp(date_val / 1000.0, IST)
+                else:
+                    dt = None
+                if dt:
+                    if not earliest_recorded_dt or dt < earliest_recorded_dt:
+                        earliest_recorded_dt = dt
+                    if st in ("approved", "verified", "paused"):
+                        if not earliest_approved_dt or dt < earliest_approved_dt:
+                            earliest_approved_dt = dt
+            except Exception:
+                pass
 
     current_is_approved = (current_status in ("approved", "verified")) or (current_week_id in approved_weeks)
 
-    # Requisition: The due date calculation MUST, and always, start AFTER the very first payment of the driver.
-    # Means if a driver has not made any first payment yet, there shall be no due amount pending.
-    if not approved_weeks:
-        next_monday = monday_dt + datetime.timedelta(days=7)
-        next_sunday = next_monday + datetime.timedelta(days=6)
-        return {
-            "previousDuesIncluded": False,
-            "previousDuesCount": 0,
-            "previousDuesAmount": 0,
-            "previousDuesText": "No previous dues",
-            "totalAmountToBePaid": DEFAULT_WEEKLY_FEE,
-            "consecutiveUnpaidWeeks": 0,
-            "isAccountOnHold": False,
-            "holdLimitWeeks": 10,
-            "upcomingWeek": {
-                "dueDateLabel": next_sunday.strftime("%d %b %Y (Sun)"),
-                "amount": DEFAULT_WEEKLY_FEE,
-                "currency": "INR"
-            }
-        }
-
-    anchor_dt = earliest_approved_dt
-    if not anchor_dt:
-        earliest_w = sorted(list(approved_weeks))[0]
+    # Resolve driver creation / registration datetime
+    created_dt = None
+    if driver_created_at:
         try:
-            year, week_num = map(int, earliest_w.split("-W"))
-            anchor_dt = datetime.datetime.fromisocalendar(year, week_num, 1).replace(tzinfo=IST)
+            if hasattr(driver_created_at, "astimezone"):
+                created_dt = driver_created_at.astimezone(IST)
+            elif isinstance(driver_created_at, str):
+                created_dt = datetime.datetime.fromisoformat(driver_created_at.replace("Z", "+00:00")).astimezone(IST)
+            elif isinstance(driver_created_at, (int, float)):
+                created_dt = datetime.datetime.fromtimestamp(driver_created_at / 1000.0, IST)
         except Exception:
-            anchor_dt = monday_dt
+            pass
+
+    candidates = [dt for dt in (created_dt, earliest_approved_dt, earliest_recorded_dt) if dt is not None]
+    if candidates:
+        anchor_dt = min(candidates)
+    else:
+        anchor_dt = monday_dt
 
     anchor_weekday = anchor_dt.weekday()
     anchor_monday = (anchor_dt - datetime.timedelta(days=anchor_weekday)).replace(
@@ -196,6 +195,7 @@ def calculate_dues_and_upcoming(
         "previousDuesCount": previous_dues_count,
         "previousDuesAmount": previous_dues_amount,
         "previousDuesText": f"₹{previous_dues_amount} ({previous_dues_count} week{'s' if previous_dues_count > 1 else ''} overdue)" if previous_dues_count > 0 else "No previous dues",
+        "previousUnpaidWeeks": previous_unpaid_weeks,
         "totalAmountToBePaid": total_amount,
         "consecutiveUnpaidWeeks": consecutive_count,
         "isAccountOnHold": is_account_on_hold,

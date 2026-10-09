@@ -265,4 +265,32 @@ def test_payment_decline_and_resubmit_workflow():
         assert new_doc["status"] == "submitted"
 
 
+def test_calculate_dues_with_overdue_and_covered_weeks():
+    from api.core.payment_schedule import calculate_dues_and_upcoming, get_payment_week_info, DEFAULT_WEEKLY_FEE
+    import datetime
+
+    week_info = get_payment_week_info()
+    monday_dt = datetime.datetime.fromisoformat(week_info["mondayStart"])
+    # Driver created 6 weeks ago
+    driver_created = (monday_dt - datetime.timedelta(days=7 * 6)).isoformat()
+
+    # 1. No payments yet: owes 6 overdue weeks (6 * 140 = 840) + this week (140) = 980
+    dues = calculate_dues_and_upcoming([], week_info, current_status="due", driver_created_at=driver_created)
+    assert dues["previousDuesCount"] == 6
+    assert dues["previousDuesAmount"] == 6 * DEFAULT_WEEKLY_FEE
+    assert dues["totalAmountToBePaid"] == 7 * DEFAULT_WEEKLY_FEE  # 980
+    assert dues["previousDuesIncluded"] is True
+
+    # 2. Driver paid 980 covering those 6 weeks + current week:
+    covered_history = [{
+        "weekId": week_info["weekId"],
+        "status": "approved",
+        "coveredWeeks": dues["previousUnpaidWeeks"] + [week_info["weekId"]]
+    }]
+    dues_after = calculate_dues_and_upcoming(covered_history, week_info, current_status="approved", driver_created_at=driver_created)
+    assert dues_after["previousDuesCount"] == 0
+    assert dues_after["previousDuesAmount"] == 0
+
+
+
 

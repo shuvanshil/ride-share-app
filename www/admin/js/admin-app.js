@@ -5,7 +5,7 @@ import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.
 import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal } from "./admin-live.js";
 import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
-import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js";
+import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.4.2";
 import { loadPermissions, initPermissionsModal } from "./admin-permissions.js";
 import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js";
 import { initAdminReports, loadAdminReports } from "./admin-reports.js";

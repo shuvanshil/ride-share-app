@@ -1,7 +1,7 @@
 import { adminGet, adminPost, adminDelete } from './admin-api.js';
 import { toast as showToast } from './admin-toast.js';
 import { showTablerConfirm } from './admin-confirm.js';
-import { storage, ref, getDownloadURL } from '../../js/platform/firebase-init.js';
+import { storage, ref, getDownloadURL, listAll } from '../../js/platform/firebase-init.js';
 
 let cachedPayments = [];
 let cachedPauseConfig = null;
@@ -261,7 +261,7 @@ async function openVerifyProofModal(paymentId) {
     }
 
     const rawUrl = payment.proofDownloadUrl || payment.proof_download_url || payment.proofUrl || payment.proof_url || payment.downloadUrl || payment.imageUrl || payment.screenshotUrl;
-    const storagePath = payment.proofStoragePath || payment.proof_storage_path || payment.storagePath || payment.storage_path;
+    let storagePath = payment.proofStoragePath || payment.proof_storage_path || payment.storagePath || payment.storage_path;
 
     const applyImageSuccess = (url) => {
         if (imgEl) {
@@ -272,15 +272,7 @@ async function openVerifyProofModal(paymentId) {
             };
             imgEl.onerror = () => {
                 console.warn("Direct image render failed for URL:", url);
-                if (storagePath) {
-                    tryStoragePathFallback();
-                } else {
-                    if (imgEl) imgEl.classList.add('d-none');
-                    if (noImgEl) {
-                        noImgEl.innerHTML = `⚠️ Direct preview unavailable.<br><a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary mt-2">Open Image in New Tab</a>`;
-                        noImgEl.classList.remove('d-none');
-                    }
-                }
+                tryStoragePathFallback();
             };
         }
         if (linkEl) {
@@ -290,70 +282,80 @@ async function openVerifyProofModal(paymentId) {
     };
 
     const tryStoragePathFallback = async () => {
-        if (!storagePath) {
-            if (imgEl) imgEl.classList.add('d-none');
-            if (noImgEl) {
-                noImgEl.innerHTML = `No screenshot proof uploaded with this payment.`;
-                noImgEl.classList.remove('d-none');
-            }
-            if (linkEl) linkEl.classList.add('d-none');
-            return;
+        const driverId = payment.driverId;
+        const pId = payment.paymentId;
+        const weekId = payment.weekId;
+
+        if (noImgEl) {
+            noImgEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2 text-primary" role="status"></span>Checking Firebase Storage for screenshot...`;
+            noImgEl.classList.remove('d-none');
         }
 
-        try {
-            if (noImgEl) {
-                noImgEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2 text-primary" role="status"></span>Fetching screenshot from storage...`;
-            }
-            const directUrl = await getDownloadURL(ref(storage, storagePath));
-            if (imgEl) {
-                imgEl.src = directUrl;
-                imgEl.onload = () => {
-                    imgEl.classList.remove('d-none');
-                    if (noImgEl) noImgEl.classList.add('d-none');
-                };
-            }
-            if (linkEl) {
-                linkEl.href = directUrl;
-                linkEl.classList.remove('d-none');
-            }
-        } catch (fetchErr) {
-            console.warn("Could not resolve storage path:", storagePath, fetchErr);
-            const bucket = storage?.app?.options?.storageBucket;
-            if (bucket) {
-                const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(storagePath)}?alt=media`;
-                if (imgEl) {
-                    imgEl.src = publicUrl;
-                    imgEl.onload = () => {
-                        imgEl.classList.remove('d-none');
-                        if (noImgEl) noImgEl.classList.add('d-none');
-                    };
+        const candidatePaths = [];
+        if (storagePath) candidatePaths.push(storagePath);
+        if (driverId && pId) candidatePaths.push(`payment-proofs/${driverId}/${pId}`);
+        if (driverId) candidatePaths.push(`payment-proofs/${driverId}`);
+
+        for (const cPath of candidatePaths) {
+            try {
+                if (/\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(cPath)) {
+                    const directUrl = await getDownloadURL(ref(storage, cPath));
+                    if (directUrl) {
+                        applyImageSuccess(directUrl);
+                        return true;
+                    }
                 }
-                if (linkEl) {
-                    linkEl.href = publicUrl;
-                    linkEl.classList.remove('d-none');
+
+                const folderRef = ref(storage, cPath);
+                const listRes = await listAll(folderRef);
+
+                if (listRes.items && listRes.items.length > 0) {
+                    const item = listRes.items[listRes.items.length - 1];
+                    const url = await getDownloadURL(item);
+                    if (url) {
+                        applyImageSuccess(url);
+                        return true;
+                    }
                 }
-            } else {
-                if (imgEl) imgEl.classList.add('d-none');
-                if (noImgEl) {
-                    noImgEl.innerHTML = `No screenshot proof could be loaded.`;
-                    noImgEl.classList.remove('d-none');
+
+                if (listRes.prefixes && listRes.prefixes.length > 0) {
+                    let targetFolder = listRes.prefixes.find(p => (pId && p.name.includes(pId)) || (weekId && p.name.includes(weekId)));
+                    if (!targetFolder) targetFolder = listRes.prefixes[listRes.prefixes.length - 1];
+                    const subList = await listAll(targetFolder);
+                    if (subList.items && subList.items.length > 0) {
+                        const item = subList.items[subList.items.length - 1];
+                        const url = await getDownloadURL(item);
+                        if (url) {
+                            applyImageSuccess(url);
+                            return true;
+                        }
+                    }
                 }
-                if (linkEl) linkEl.classList.add('d-none');
+            } catch (err) {
+                console.warn("Storage search error on path:", cPath, err);
             }
         }
-    };
 
-    if (rawUrl) {
-        applyImageSuccess(rawUrl);
-    } else if (storagePath) {
-        await tryStoragePathFallback();
-    } else {
+        const bucket = storage?.app?.options?.storageBucket;
+        if (bucket && storagePath) {
+            const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(storagePath)}?alt=media`;
+            applyImageSuccess(publicUrl);
+            return true;
+        }
+
         if (imgEl) imgEl.classList.add('d-none');
         if (noImgEl) {
             noImgEl.innerHTML = `No screenshot proof uploaded with this payment.`;
             noImgEl.classList.remove('d-none');
         }
         if (linkEl) linkEl.classList.add('d-none');
+        return false;
+    };
+
+    if (rawUrl) {
+        applyImageSuccess(rawUrl);
+    } else {
+        await tryStoragePathFallback();
     }
 }
 
@@ -667,32 +669,62 @@ async function handleScanStorage(btn) {
     });
 }
 
+function showCleanupLoading(text = "Deleting payment proof files from Firebase Storage...") {
+    let overlay = document.getElementById("admin-cleanup-loading-overlay");
+    if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "admin-cleanup-loading-overlay";
+        overlay.style.cssText = "position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2100; display: flex; align-items: center; justify-content: center;";
+        document.body.appendChild(overlay);
+    }
+    overlay.innerHTML = `
+        <div class="card p-4 shadow-lg border-0 text-center" style="max-width: 400px; background: #ffffff; border-radius: 12px;">
+            <div class="spinner-border text-danger mx-auto mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+            <h4 class="fw-bold mb-2">${text}</h4>
+            <p class="text-secondary small mb-0">Permanently deleting matching screenshots from storage bucket. Please do not close this window...</p>
+        </div>
+    `;
+    overlay.style.display = "flex";
+}
+
+function hideCleanupLoading() {
+    const overlay = document.getElementById("admin-cleanup-loading-overlay");
+    if (overlay) overlay.style.display = "none";
+}
+
 async function handleConfirmCleanupStorage(btn) {
     const start = document.getElementById('cleanup-start-date')?.value || null;
     const end = document.getElementById('cleanup-end-date')?.value || null;
 
+    closeCleanupStorageModal();
+
     const confirmed = await showTablerConfirm("Are you sure you want to PERMANENTLY DELETE matching payment proof images from Firebase Storage? This action cannot be undone.", {
         title: "Confirm Storage Cleanup",
         variant: "danger",
-        confirmText: "Delete Files"
+        confirmText: "Delete Files",
+        cancelText: "Cancel"
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+        openCleanupStorageModal();
+        return;
+    }
 
-    await withButtonSpinner(btn, async () => {
-        try {
-            const res = await adminPost('/driver-payments/cleanup-storage', {
-                startDate: start,
-                endDate: end,
-                dryRun: false
-            });
-            showToast(res.message || "Storage cleanup completed successfully!", "success");
-            closeCleanupStorageModal();
-            await loadAdminPayments();
-        } catch (err) {
-            console.error("Storage cleanup error:", err);
-            showToast(err.message || "Failed to cleanup storage", "error");
-        }
-    });
+    showCleanupLoading("Deleting payment proofs from Firebase Storage...");
+    try {
+        const res = await adminPost('/driver-payments/cleanup-storage', {
+            startDate: start,
+            endDate: end,
+            dryRun: false
+        });
+        hideCleanupLoading();
+        showToast(res.message || "Storage cleanup completed successfully!", "success");
+        await loadAdminPayments();
+    } catch (err) {
+        hideCleanupLoading();
+        console.error("Storage cleanup error:", err);
+        showToast(err.message || "Failed to cleanup storage", "error");
+        openCleanupStorageModal();
+    }
 }
 
 let paymentsInitialized = false;
