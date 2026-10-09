@@ -64,6 +64,7 @@ export function showTablerConfirm(messageOrOptions, options = {}) {
         function cleanup() {
             modal.style.display = "none";
             modal.classList.add("d-none");
+            modal.classList.remove("show");
             proceedBtn.removeEventListener("click", onProceed);
             cancelBtn.removeEventListener("click", onCancel);
             closeBtn?.removeEventListener("click", onCancel);
@@ -83,8 +84,10 @@ export function showTablerConfirm(messageOrOptions, options = {}) {
         cancelBtn.addEventListener("click", onCancel);
         closeBtn?.addEventListener("click", onCancel);
 
+        modal.style.zIndex = "2200";
         modal.style.display = "block";
         modal.classList.remove("d-none");
+        modal.classList.add("show");
     });
 }
 

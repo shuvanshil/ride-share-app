@@ -86,6 +86,89 @@ def get_payment_week_info(target_dt: Optional[datetime.datetime] = None) -> Dict
     }
 
 
+def get_week_info_for_week_id(week_id: str) -> Dict[str, Any]:
+    """Calculate date bounds and display labels for a given ISO weekId (e.g., '2026-W41')."""
+    try:
+        parts = week_id.split("-W")
+        year = int(parts[0])
+        week_num = int(parts[1])
+        monday = datetime.datetime.fromisocalendar(year, week_num, 1).replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=IST
+        )
+        sunday = (monday + datetime.timedelta(days=6)).replace(
+            hour=23, minute=59, second=59, microsecond=999999, tzinfo=IST
+        )
+        start_str = monday.strftime("%d %b %Y (Mon)")
+        end_str = sunday.strftime("%d %b %Y (Sun)")
+        week_label = f"{start_str} - {end_str}"
+        short_label = f"{monday.strftime('%d %b')} - {sunday.strftime('%d %b %Y')}"
+        return {
+            "weekId": week_id,
+            "weekLabel": week_label,
+            "shortWeekLabel": short_label,
+            "mondayStart": monday.isoformat(),
+            "sundayEnd": sunday.isoformat(),
+            "amount": DEFAULT_WEEKLY_FEE,
+            "currency": "INR",
+        }
+    except Exception:
+        return {
+            "weekId": week_id,
+            "weekLabel": f"Week {week_id}",
+            "shortWeekLabel": week_id,
+            "mondayStart": None,
+            "sundayEnd": None,
+            "amount": DEFAULT_WEEKLY_FEE,
+            "currency": "INR",
+        }
+
+
+def allocate_payment_weeks(
+    unpaid_overdue_weeks: List[str],
+    current_week_id: str,
+    is_current_week_unpaid: bool,
+    num_weeks: int,
+) -> List[str]:
+    """
+    Allocate a multi-instance weekly payment to exact unpaid weeks.
+    Order of allocation:
+    1. Chronological unpaid overdue weeks (oldest first).
+    2. Current week (if unpaid or declined).
+    3. Future consecutive weeks (if payment exceeds total outstanding dues).
+    """
+    allocated: List[str] = []
+
+    # 1. Past unpaid weeks (oldest first)
+    for wid in sorted(unpaid_overdue_weeks):
+        if len(allocated) < num_weeks and wid not in allocated:
+            allocated.append(wid)
+
+    # 2. Current week
+    if len(allocated) < num_weeks and is_current_week_unpaid and current_week_id not in allocated:
+        allocated.append(current_week_id)
+
+    # 3. Advance future weeks
+    if len(allocated) < num_weeks:
+        base_week = allocated[-1] if allocated else current_week_id
+        try:
+            y_str, w_str = base_week.split("-W")
+            curr_y, curr_w = int(y_str), int(w_str)
+            curr_monday = datetime.datetime.fromisocalendar(curr_y, curr_w, 1).replace(tzinfo=IST)
+        except Exception:
+            curr_monday = datetime.datetime.now(IST)
+
+        step = 1
+        while len(allocated) < num_weeks:
+            next_m = curr_monday + datetime.timedelta(days=7 * step)
+            iso_y, iso_w, _ = next_m.isocalendar()
+            next_wid = f"{iso_y}-W{iso_w:02d}"
+            if next_wid not in allocated:
+                allocated.append(next_wid)
+            step += 1
+
+    return allocated
+
+
 def calculate_dues_and_upcoming(
     payment_history: List[Dict[str, Any]],
     current_week_info: Dict[str, Any],
@@ -94,25 +177,41 @@ def calculate_dues_and_upcoming(
 ) -> Dict[str, Any]:
     """Calculate previous dues, total amount to be paid, consecutive unpaid weeks, and account hold status.
     
-    Dues are calculated from the driver's creation/registration date or earliest payment record.
-    Any prior weeks that are not approved or covered are counted as overdue.
+    Each weekly fee is ₹140. Tracks individual week statuses:
+    - Paid: approved/verified
+    - Under review: submitted/under_review
+    - Unpaid / Due: declined or never submitted
     """
     current_week_id = current_week_info["weekId"]
     monday_dt = datetime.datetime.fromisoformat(current_week_info["mondayStart"])
 
+    # Track latest submission record for each weekId
+    latest_by_week: Dict[str, Dict[str, Any]] = {}
     approved_weeks = set()
-    earliest_approved_dt = None
+    under_review_weeks = set()
+    declined_weeks = set()
     earliest_recorded_dt = None
+    earliest_approved_dt = None
 
-    for item in payment_history:
+    for item in sorted(payment_history, key=lambda x: str(x.get("submittedAt") or "")):
+        wid = item.get("weekId")
         st = item.get("status")
-        w_id = item.get("weekId")
-        if w_id and st in ("approved", "verified", "paused"):
-            approved_weeks.add(w_id)
-        # Check coveredWeeks if a previous payment covered multiple weeks
+        if wid:
+            latest_by_week[wid] = item
+            if st in ("approved", "verified", "paused"):
+                approved_weeks.add(wid)
+            elif st in ("submitted", "under_review"):
+                under_review_weeks.add(wid)
+            elif st == "declined":
+                declined_weeks.add(wid)
+
         for cw in (item.get("coveredWeeks") or item.get("covered_weeks") or []):
             if st in ("approved", "verified", "paused"):
                 approved_weeks.add(cw)
+                latest_by_week[cw] = item
+            elif st in ("submitted", "under_review"):
+                under_review_weeks.add(cw)
+                latest_by_week[cw] = item
 
         date_val = item.get("submittedAt") or item.get("verifiedAt")
         if date_val:
@@ -135,6 +234,7 @@ def calculate_dues_and_upcoming(
                 pass
 
     current_is_approved = (current_status in ("approved", "verified")) or (current_week_id in approved_weeks)
+    current_is_under_review = (current_status in ("submitted", "under_review")) or (current_week_id in under_review_weeks)
 
     # Resolve driver creation / registration datetime
     created_dt = None
@@ -173,17 +273,27 @@ def calculate_dues_and_upcoming(
         iso_year, iso_week, _ = prev_monday.isocalendar()
         prev_week_id = f"{iso_year}-W{iso_week:02d}"
 
-        if prev_week_id not in approved_weeks:
+        week_record = latest_by_week.get(prev_week_id)
+        week_status = week_record.get("status") if week_record else "due"
+
+        if week_status not in ("approved", "verified", "paused", "submitted", "under_review"):
+            # Week is unpaid (never submitted or declined)
             previous_unpaid_weeks.append(prev_week_id)
             if counting_consecutive:
                 consecutive_count += 1
         else:
             counting_consecutive = False
 
+    previous_unpaid_weeks = sorted(previous_unpaid_weeks)
     previous_dues_count = len(previous_unpaid_weeks)
     previous_dues_amount = previous_dues_count * DEFAULT_WEEKLY_FEE
 
-    total_amount = DEFAULT_WEEKLY_FEE + previous_dues_amount
+    # Current week fee applies if current week is not approved and not under review
+    current_fee = 0 if (current_is_approved or current_is_under_review) else DEFAULT_WEEKLY_FEE
+    total_amount = current_fee + previous_dues_amount
+    if total_amount == 0 and not current_is_approved and not current_is_under_review:
+        total_amount = DEFAULT_WEEKLY_FEE
+
     is_account_on_hold = (consecutive_count >= 10) and (not current_is_approved)
 
     next_monday = monday_dt + datetime.timedelta(days=7)
@@ -196,6 +306,7 @@ def calculate_dues_and_upcoming(
         "previousDuesAmount": previous_dues_amount,
         "previousDuesText": f"₹{previous_dues_amount} ({previous_dues_count} week{'s' if previous_dues_count > 1 else ''} overdue)" if previous_dues_count > 0 else "No previous dues",
         "previousUnpaidWeeks": previous_unpaid_weeks,
+        "isCurrentWeekUnpaid": (not current_is_approved and not current_is_under_review),
         "totalAmountToBePaid": total_amount,
         "consecutiveUnpaidWeeks": consecutive_count,
         "isAccountOnHold": is_account_on_hold,

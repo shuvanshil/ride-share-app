@@ -158,6 +158,10 @@ export function renderPaymentsTable() {
         const rowProofUrl = p.proofDownloadUrl || p.proof_download_url || p.proofUrl || p.downloadUrl;
         const proofLink = rowProofUrl ? `<br><a href="${rowProofUrl}" target="_blank" rel="noopener noreferrer" class="small text-primary text-decoration-none" style="font-size: 11px;"><i class="ti ti-photo me-1"></i>View Screenshot</a>` : (p.proofStoragePath ? `<br><span class="small text-secondary" style="font-size: 11px;"><i class="ti ti-photo me-1"></i>Proof Attached</span>` : '');
 
+        const instanceBadge = (p.instanceCount && p.instanceCount > 1)
+            ? `<br><span class="badge bg-blue-subtle text-primary border border-primary-subtle" style="font-size: 10px;">Part of ₹${Math.round(p.submissionTotalAmount || (p.amount * p.instanceCount))} (${p.instanceIndex || 1}/${p.instanceCount})</span>`
+            : '';
+
         return `
             <tr>
                 <td>
@@ -169,7 +173,7 @@ export function renderPaymentsTable() {
                     <small class="text-secondary">Week ID: ${p.weekId}</small>
                 </td>
                 <td>
-                    <strong class="text-success">₹${p.amount || 140}</strong>
+                    <strong class="text-success">₹${p.amount || 140}</strong>${instanceBadge}
                     ${p.overdueAmount > 0 ? `<br><span class="badge bg-danger-subtle text-danger" style="font-size: 10px;">Incl. ₹${p.overdueAmount} overdue</span>` : ''}<br>
                     <small class="text-secondary">${methodLabel}</small>${refNote}${proofLink}
                 </td>
@@ -238,7 +242,11 @@ async function openVerifyProofModal(paymentId) {
     if (phoneEl) phoneEl.innerText = payment.driverPhone || payment.driverId || '--';
     if (weekEl) weekEl.innerText = payment.weekLabel || payment.weekId || '--';
     if (amountEl) {
-        amountEl.innerHTML = `₹${payment.amount || 140}${payment.overdueAmount > 0 ? `<br><small class="text-danger fs-6 fw-normal">(Incl. ₹${payment.overdueAmount} overdue)</small>` : ''}`;
+        let multiNote = '';
+        if (payment.instanceCount && payment.instanceCount > 1) {
+            multiNote = `<br><span class="badge bg-blue-subtle text-primary border border-primary-subtle mt-1" style="font-size: 11px;">Week ${payment.instanceIndex || 1} of ${payment.instanceCount} (Total submitted: ₹${Math.round(payment.submissionTotalAmount || (payment.amount * payment.instanceCount))})</span>`;
+        }
+        amountEl.innerHTML = `₹${payment.amount || 140}${multiNote}${payment.overdueAmount > 0 ? `<br><small class="text-danger fs-6 fw-normal">(Incl. ₹${payment.overdueAmount} overdue)</small>` : ''}`;
     }
     if (declineReasonInput) declineReasonInput.value = '';
 

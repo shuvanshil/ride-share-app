@@ -207,11 +207,12 @@ def test_payment_decline_and_resubmit_workflow():
     mock_db = MockDb()
 
     # Seed driver profile
+    week_info = get_payment_week_info()
     store[("users", "driver_abc")] = {
         "role": "driver",
         "name": "Arjun Das",
         "phone": "+919876543210",
-        "createdAt": "2026-01-01T00:00:00+05:30",
+        "createdAt": week_info["mondayStart"],
     }
 
     auth_driver = {"uid": "driver_abc", "name": "Arjun Das"}
@@ -222,6 +223,7 @@ def test_payment_decline_and_resubmit_workflow():
 
         # 1. First submission
         req1 = SubmitPaymentRequest(
+            amount=140.0,
             paymentReference="UPI123",
             proofStoragePath="payment-proofs/driver_abc/p1/shot.jpg",
             proofDownloadUrl="https://example.com/p1.jpg"
@@ -245,6 +247,7 @@ def test_payment_decline_and_resubmit_workflow():
 
         # 4. Driver can now submit a NEW proof for the week, preserving the old declined record
         req2 = SubmitPaymentRequest(
+            amount=140.0,
             paymentReference="UPI123_NEW",
             proofStoragePath="payment-proofs/driver_abc/p2/shot_clear.jpg",
             proofDownloadUrl="https://example.com/p2.jpg"
@@ -290,6 +293,227 @@ def test_calculate_dues_with_overdue_and_covered_weeks():
     dues_after = calculate_dues_and_upcoming(covered_history, week_info, current_status="approved", driver_created_at=driver_created)
     assert dues_after["previousDuesCount"] == 0
     assert dues_after["previousDuesAmount"] == 0
+
+
+def test_multi_week_split_instances_and_independent_admin_actions():
+    from api.routers.driver_payments import (
+        submit_weekly_payment,
+        admin_approve_driver_payment,
+        admin_decline_driver_payment,
+        get_driver_payment_status,
+        SubmitPaymentRequest,
+        AdminDeclineRequest,
+    )
+    from api.core.payment_schedule import get_payment_week_info, DEFAULT_WEEKLY_FEE
+    import datetime
+
+    store = {}
+
+    class DocRef:
+        def __init__(self, coll, doc_id):
+            self.coll = coll
+            self.id = doc_id
+        def get(self):
+            class Snap:
+                def __init__(self, data, doc_id):
+                    self._data = data
+                    self.id = doc_id
+                    self.exists = data is not None
+                def to_dict(self):
+                    return dict(self._data) if self._data else {}
+            return Snap(store.get((self.coll, self.id)), self.id)
+        def set(self, data, merge=False):
+            if merge and (self.coll, self.id) in store:
+                store[(self.coll, self.id)].update(data)
+            else:
+                store[(self.coll, self.id)] = dict(data)
+        def update(self, data):
+            if (self.coll, self.id) in store:
+                store[(self.coll, self.id)].update(data)
+
+    class Query:
+        def __init__(self, coll, filters=None):
+            self.coll = coll
+            self.filters = filters or []
+        def where(self, field, op, val):
+            return Query(self.coll, self.filters + [(field, op, val)])
+        def stream(self):
+            results = []
+            for (c, doc_id), data in list(store.items()):
+                if c == self.coll:
+                    match = True
+                    for f, op, val in self.filters:
+                        if op == "==" and data.get(f) != val:
+                            match = False
+                            break
+                    if match:
+                        snap = DocRef(c, doc_id).get()
+                        results.append(snap)
+            return results
+
+    class Coll:
+        def __init__(self, name):
+            self.name = name
+        def document(self, doc_id=None):
+            if not doc_id:
+                doc_id = f"auto_{len(store)}"
+            return DocRef(self.name, doc_id)
+        def where(self, field, op, val):
+            return Query(self.name).where(field, op, val)
+        def stream(self):
+            return Query(self.name).stream()
+
+    class MockDb:
+        def collection(self, name):
+            return Coll(name)
+
+    mock_db = MockDb()
+
+    week_info = get_payment_week_info()
+    monday_dt = datetime.datetime.fromisoformat(week_info["mondayStart"])
+    driver_created = (monday_dt - datetime.timedelta(days=7 * 2)).isoformat()  # 2 overdue weeks
+
+    store[("users", "driver_multi")] = {
+        "role": "driver",
+        "name": "Multi Week Driver",
+        "phone": "+919999999999",
+        "createdAt": driver_created,
+    }
+
+    auth_driver = {"uid": "driver_multi", "name": "Multi Week Driver"}
+    admin_user = {"uid": "admin_1", "email": "admin@liphtup.in"}
+
+    with patch("api.routers.driver_payments.get_firestore", return_value=mock_db), \
+         patch("api.routers.driver_payments._send_payment_notification"):
+
+        # 1. Driver pays ₹420 (covering 2 overdue weeks + current week = 3 weeks)
+        req = SubmitPaymentRequest(
+            amount=420.0,
+            paymentReference="UPI_420_FULL",
+            proofStoragePath="payment-proofs/driver_multi/sub_1/proof.jpg",
+            proofDownloadUrl="https://storage.googleapis.com/.../proof.jpg"
+        )
+        res = submit_weekly_payment(body=req, auth_user=auth_driver)
+        assert res["ok"] is True
+        payments = res["payments"]
+        assert len(payments) == 3
+
+        # Every instance is strictly ₹140
+        for idx, p in enumerate(payments, 1):
+            assert p["amount"] == 140.0
+            assert p["status"] == "submitted"
+            assert p["instanceCount"] == 3
+            assert p["instanceIndex"] == idx
+            assert p["submissionTotalAmount"] == 420.0
+            assert p["proofStoragePath"] == "payment-proofs/driver_multi/sub_1/proof.jpg"
+
+        p1_id = payments[0]["paymentId"]
+        p2_id = payments[1]["paymentId"]
+        p3_id = payments[2]["paymentId"]
+
+        # Driver status while all under review
+        status_res = get_driver_payment_status(auth_user=auth_driver)
+        assert status_res["currentStatus"] == "submitted"
+        assert status_res["currentStatusLabel"] == "Under Review"
+
+        # Scenario B: Admin verifies Row 1 & Row 2, declines Row 3
+        admin_approve_driver_payment(payment_id=p1_id, admin_user=admin_user)
+        admin_approve_driver_payment(payment_id=p2_id, admin_user=admin_user)
+        dec_req = AdminDeclineRequest(declineReason="UPI screenshot reference invalid for 3rd week")
+        admin_decline_driver_payment(payment_id=p3_id, body=dec_req, admin_user=admin_user)
+
+        # Check driver state after Scenario B:
+        # Row 1 & 2 are approved (₹280 cleared)
+        # Row 3 is declined (₹140 due)
+        status_b = get_driver_payment_status(auth_user=auth_driver)
+        assert status_b["currentStatus"] == "declined"
+        assert status_b["duesSummary"]["totalAmountToBePaid"] == 140.0
+        assert status_b["activeSubmission"]["declineReason"] == "UPI screenshot reference invalid for 3rd week"
+
+        # Driver now re-pays the remaining ₹140
+        req_single = SubmitPaymentRequest(
+            amount=140.0,
+            paymentReference="UPI_140_FIX",
+            proofStoragePath="payment-proofs/driver_multi/sub_2/proof.jpg",
+            proofDownloadUrl="https://storage.googleapis.com/.../proof.jpg"
+        )
+        res_single = submit_weekly_payment(body=req_single, auth_user=auth_driver)
+        assert res_single["ok"] is True
+        assert len(res_single["payments"]) == 1
+        p4_id = res_single["payments"][0]["paymentId"]
+
+        # Now status is under review again
+        status_c = get_driver_payment_status(auth_user=auth_driver)
+        assert status_c["currentStatus"] == "submitted"
+
+        # Admin approves the re-submitted week
+        admin_approve_driver_payment(payment_id=p4_id, admin_user=admin_user)
+
+        # Driver is now all set!
+        status_all_set = get_driver_payment_status(auth_user=auth_driver)
+        assert status_all_set["currentStatus"] == "approved"
+        assert status_all_set["duesSummary"]["totalAmountToBePaid"] == 0
+
+
+def test_admin_cleanup_storage_endpoint_and_deduplication():
+    from api.routers.driver_payments import (
+        admin_cleanup_payment_storage,
+        AdminCleanupStorageRequest
+    )
+
+    store = {}
+    class DocRef:
+        def __init__(self, coll, doc_id):
+            self.coll = coll
+            self.id = doc_id
+        def update(self, data):
+            if (self.coll, self.id) in store:
+                store[(self.coll, self.id)].update(data)
+
+    class Snap:
+        def __init__(self, doc_id, data):
+            self.id = doc_id
+            self._data = data
+            self.reference = DocRef("driverPayments", doc_id)
+        def to_dict(self):
+            return dict(self._data)
+
+    # 3 payment instances sharing the SAME screenshot file path
+    shared_path = "payment-proofs/drv_test/screenshot.jpg"
+    for i in range(1, 4):
+        store[("driverPayments", f"doc_{i}")] = {
+            "driverId": "drv_test",
+            "proofStoragePath": shared_path,
+            "submittedAt": "2026-08-15T12:00:00+05:30",
+        }
+
+    mock_db = MagicMock()
+    mock_db.collection().stream.return_value = [
+        Snap(f"doc_{i}", store[("driverPayments", f"doc_{i}")]) for i in range(1, 4)
+    ]
+
+    mock_blob = MagicMock()
+    mock_blob.exists.return_value = True
+    mock_bucket = MagicMock()
+    mock_bucket.blob.return_value = mock_blob
+
+    admin_user = {"uid": "admin_1", "email": "admin@liphtup.in"}
+    req = AdminCleanupStorageRequest(startDate="2026-08-01", endDate="2026-08-31", dryRun=False)
+
+    with patch("api.routers.driver_payments.get_firestore", return_value=mock_db), \
+         patch("api.routers.driver_payments.get_storage_bucket", return_value=mock_bucket), \
+         patch("api.routers.driver_payments.write_audit_log"):
+
+        res = admin_cleanup_payment_storage(body=req, admin_user=admin_user)
+        assert res["ok"] is True
+        # Blob delete was called exactly once despite 3 instances sharing the file
+        assert mock_blob.delete.call_count == 1
+        assert res["deletedCount"] == 1
+        # All 3 documents in database were updated with proofDeleted: True
+        for i in range(1, 4):
+            assert store[("driverPayments", f"doc_{i}")]["proofDeleted"] is True
+            assert store[("driverPayments", f"doc_{i}")]["proofStoragePath"] is None
+
 
 
 

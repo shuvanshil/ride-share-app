@@ -20,8 +20,9 @@ from ..core.config import get_env
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app, get_firestore, get_messaging, get_storage_bucket
 from ..core.payment_schedule import (
-
     get_payment_week_info,
+    get_week_info_for_week_id,
+    allocate_payment_weeks,
     get_ist_now,
     is_date_in_pause_range,
     calculate_dues_and_upcoming,
@@ -31,8 +32,8 @@ from ..core.payment_schedule import (
 
 logger = logging.getLogger("driver_payments")
 
-router = APIRouter(prefix="/api/account/driver-payments", tags=["driver-payments"])
-admin_router = APIRouter(prefix="/api/admin/driver-payments", tags=["admin-driver-payments"])
+router = APIRouter(prefix="/account/driver-payments", tags=["driver-payments"])
+admin_router = APIRouter(prefix="/admin/driver-payments", tags=["admin-driver-payments"])
 
 
 class SubmitPaymentRequest(BaseModel):
@@ -271,6 +272,10 @@ def _format_payment_doc(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         "proofContentType": data.get("proofContentType") or data.get("proof_content_type"),
         "isManualRecord": bool(data.get("isManualRecord", False)),
         "coveredWeeks": covered_weeks or [],
+        "submissionId": data.get("submissionId"),
+        "submissionTotalAmount": data.get("submissionTotalAmount"),
+        "instanceIndex": data.get("instanceIndex"),
+        "instanceCount": data.get("instanceCount"),
         "verifiedAt": verified_at_str,
         "verifiedByAdminEmail": data.get("verifiedByAdminEmail") or data.get("verified_by_admin_email"),
         "declineReason": data.get("declineReason") or data.get("decline_reason"),
@@ -398,33 +403,50 @@ def get_driver_payment_status(
         key=lambda x: str(x.get("submittedAt") or ""), reverse=True
     )
 
-    active_submission: Optional[Dict[str, Any]] = current_week_submissions[0] if current_week_submissions else None
+    dues_info = calculate_dues_and_upcoming(
+        payment_history, week_info, None, driver_created_at=driver_created_at
+    )
+    total_due = dues_info.get("totalAmountToBePaid", 0)
+    unpaid_overdue = dues_info.get("previousUnpaidWeeks", [])
+    is_curr_unpaid = dues_info.get("isCurrentWeekUnpaid", False)
 
-    # Determine overall current week payment status (4 states: pending, submitted/under_review, approved/verified, declined)
+    under_review_submissions = [p for p in payment_history if p.get("status") in ("submitted", "under_review")]
+    declined_submissions = [p for p in payment_history if p.get("status") == "declined"]
+
+    # Determine overall current week payment status (4 states: due, submitted/under_review, approved/verified, declined)
     if pause_config["isPaused"]:
         status_code = "paused"
         status_label = "Weekly Payments Paused"
-    elif active_submission:
-        current_status = active_submission["status"]
-        if current_status in ("submitted", "under_review"):
-            status_code = "submitted"
-            status_label = "Under Review"
-        elif current_status in ("approved", "verified"):
-            status_code = "approved"
-            status_label = "Verified"
-        elif current_status == "declined":
+        active_submission = current_week_submissions[0] if current_week_submissions else (payment_history[0] if payment_history else None)
+    elif total_due > 0:
+        due_week_ids = set(unpaid_overdue)
+        if is_curr_unpaid:
+            due_week_ids.add(current_week_id)
+
+        declined_for_dues = [p for p in declined_submissions if p.get("weekId") in due_week_ids]
+
+        if declined_for_dues:
             status_code = "declined"
             status_label = "Declined"
+            active_submission = declined_for_dues[0]
+        elif under_review_submissions:
+            status_code = "submitted"
+            status_label = "Under Review"
+            active_submission = under_review_submissions[0]
         else:
             status_code = "due"
             status_label = "Pending"
+            active_submission = current_week_submissions[0] if current_week_submissions else None
     else:
-        status_code = "due"
-        status_label = "Pending"
-
-    dues_info = calculate_dues_and_upcoming(
-        payment_history, week_info, status_code, driver_created_at=driver_created_at
-    )
+        # All dues are 0
+        if under_review_submissions:
+            status_code = "submitted"
+            status_label = "Under Review"
+            active_submission = under_review_submissions[0]
+        else:
+            status_code = "approved"
+            status_label = "Verified"
+            active_submission = current_week_submissions[0] if current_week_submissions else (payment_history[0] if payment_history else None)
 
     return {
         "ok": True,
@@ -461,27 +483,6 @@ def submit_weekly_payment(
     week_info = get_payment_week_info()
     current_week_id = week_info["weekId"]
 
-    # Check for existing active submission for this week
-    existing_docs = list(
-        db.collection("driverPayments")
-        .where("driverId", "==", uid)
-        .where("weekId", "==", current_week_id)
-        .stream()
-    )
-
-    for doc_snap in existing_docs:
-        data = doc_snap.to_dict() or {}
-        st = data.get("status")
-        if st in ("submitted", "under_review"):
-            raise ApiError(
-                "You already have a payment for this week awaiting verification (Under Review).", 409
-            )
-        if st in ("approved", "verified"):
-            raise ApiError(
-                "Your weekly payment for this period has already been verified and approved.", 409
-            )
-        # Note: if status is 'declined', we keep the declined submission in history and create a new submission doc below.
-
     # Calculate authoritative dues dynamically on the server
     driver_created_at = (
         profile.get("createdAt")
@@ -503,69 +504,108 @@ def submit_weekly_payment(
             pass
 
     all_payments = [_format_payment_doc(d.id, d.to_dict() or {}) for d in all_payment_snaps]
+
+    # Prevent duplicate submissions while existing payment is awaiting review
+    pending_submissions = [
+        p for p in all_payments
+        if p.get("status") in ("submitted", "under_review")
+    ]
+    if pending_submissions:
+        raise ApiError(
+            "You already have a payment awaiting verification (Under Review). Please wait for approval before making another payment.", 409
+        )
+
     dues_info = calculate_dues_and_upcoming(
         all_payments, week_info, "due", driver_created_at=driver_created_at
     )
     calculated_total = dues_info.get("totalAmountToBePaid", DEFAULT_WEEKLY_FEE)
-    calculated_overdue = dues_info.get("previousDuesAmount", 0)
-    base_fee = float(body.baseFee) if (body.baseFee is not None and body.baseFee > 0) else float(week_info.get("amount", DEFAULT_WEEKLY_FEE))
 
-    if body.amount is not None and float(body.amount) >= base_fee:
-        total_amount = float(body.amount)
-        if body.overdueAmount is not None:
-            overdue_amount = float(body.overdueAmount)
-        else:
-            overdue_amount = max(0.0, total_amount - base_fee)
-    else:
-        total_amount = float(calculated_total)
-        overdue_amount = float(calculated_overdue)
+    amount_to_pay = float(body.amount) if body.amount is not None else float(calculated_total)
+    if amount_to_pay <= 0:
+        amount_to_pay = float(DEFAULT_WEEKLY_FEE)
 
-    # Determine covered weeks (current week plus any overdue weeks paid together)
-    covered_weeks = [current_week_id]
-    if dues_info.get("previousUnpaidWeeks"):
-        covered_weeks.extend(dues_info["previousUnpaidWeeks"])
-    covered_weeks = list(dict.fromkeys(covered_weeks))
+    if int(round(amount_to_pay)) % DEFAULT_WEEKLY_FEE != 0:
+        raise ApiError(
+            f"Payment amount must be a multiple of ₹{DEFAULT_WEEKLY_FEE} (e.g., ₹140, ₹280, ₹420).", 400
+        )
 
-    # Always create a new payment document to preserve submission history
+    num_instances = max(1, int(round(amount_to_pay // DEFAULT_WEEKLY_FEE)))
+
+    # Gather any weeks that already have approved or active submissions to prevent duplicate allocation
+    existing_covered_weeks = set()
+    for p in all_payments:
+        st = p.get("status")
+        w = p.get("weekId")
+        if w and st in ("approved", "verified", "submitted", "under_review"):
+            existing_covered_weeks.add(w)
+
+    allocated_weeks = allocate_payment_weeks(
+        unpaid_overdue_weeks=dues_info.get("previousUnpaidWeeks", []),
+        current_week_id=current_week_id,
+        is_current_week_unpaid=dues_info.get("isCurrentWeekUnpaid", True),
+        num_weeks=num_instances,
+    )
+
+    # Double check that no allocated week is already awaiting verification
+    for wid in allocated_weeks:
+        for p in all_payments:
+            if p.get("weekId") == wid and p.get("status") in ("submitted", "under_review"):
+                raise ApiError(
+                    f"Week {wid} already has a payment awaiting verification (Under Review).", 409
+                )
+
     now_ms = int(datetime.datetime.now().timestamp() * 1000)
-    doc_id = f"pymt_{uid}_{current_week_id}_{now_ms}"
-    target_doc_ref = db.collection("driverPayments").document(doc_id)
+    submission_id = f"sub_{uid}_{now_ms}"
+    resolved_proof_url = _resolve_proof_url(body.proofStoragePath, body.proofDownloadUrl)
 
-    payload = {
-        "driverId": uid,
-        "driverName": profile.get("name", auth_user.get("name", "Driver")),
-        "driverPhone": profile.get("phone", auth_user.get("phone_number", "")),
-        "weekId": current_week_id,
-        "weekLabel": week_info["weekLabel"],
-        "baseFee": base_fee,
-        "overdueAmount": overdue_amount,
-        "amount": total_amount,
-        "currency": "INR",
-        "submittedAt": get_ist_now(),
-        "status": "submitted",
-        "paymentReference": (body.paymentReference or "").strip()[:100],
-        "paymentMethod": body.paymentMethod or "upi",
-        "proofStoragePath": body.proofStoragePath,
-        "proofDownloadUrl": _resolve_proof_url(body.proofStoragePath, body.proofDownloadUrl),
-        "proofFileName": body.proofFileName,
-        "proofFileSize": body.proofFileSize,
-        "proofContentType": body.proofContentType,
-        "isManualRecord": False,
-        "coveredWeeks": covered_weeks,
-        "verifiedAt": None,
-        "verifiedByAdminUid": None,
-        "verifiedByAdminEmail": None,
-        "declineReason": None,
-    }
+    created_instances: List[Dict[str, Any]] = []
 
-    target_doc_ref.set(payload)
+    for idx, wid in enumerate(allocated_weeks, 1):
+        target_week_info = get_week_info_for_week_id(wid)
+        instance_doc_id = f"pymt_{uid}_{wid}_{now_ms}"
+        doc_payload = {
+            "driverId": uid,
+            "driverName": profile.get("name", auth_user.get("name", "Driver")),
+            "driverPhone": profile.get("phone", auth_user.get("phone_number", "")),
+            "weekId": wid,
+            "weekLabel": target_week_info.get("weekLabel") or f"Week {wid}",
+            "baseFee": float(DEFAULT_WEEKLY_FEE),
+            "overdueAmount": 0.0,
+            "amount": float(DEFAULT_WEEKLY_FEE),
+            "currency": "INR",
+            "submittedAt": get_ist_now(),
+            "status": "submitted",
+            "paymentReference": (body.paymentReference or "").strip()[:100],
+            "paymentMethod": body.paymentMethod or "upi",
+            "proofStoragePath": body.proofStoragePath,
+            "proofDownloadUrl": resolved_proof_url,
+            "proofFileName": body.proofFileName,
+            "proofFileSize": body.proofFileSize,
+            "proofContentType": body.proofContentType,
+            "isManualRecord": False,
+            "coveredWeeks": [wid],
+            "submissionId": submission_id,
+            "submissionTotalAmount": float(amount_to_pay),
+            "instanceIndex": idx,
+            "instanceCount": len(allocated_weeks),
+            "verifiedAt": None,
+            "verifiedByAdminUid": None,
+            "verifiedByAdminEmail": None,
+            "declineReason": None,
+        }
 
-    _send_payment_notification(db, uid, "submitted", total_amount)
+        db.collection("driverPayments").document(instance_doc_id).set(doc_payload)
+        created_instances.append(_format_payment_doc(instance_doc_id, doc_payload))
+
+    # Send driver notification with full submitted amount
+    _send_payment_notification(db, uid, "submitted", amount_to_pay)
 
     return {
         "ok": True,
-        "message": "Payment submitted for verification successfully.",
-        "payment": _format_payment_doc(target_doc_ref.id, payload),
+        "message": f"Payment submitted for verification successfully ({len(allocated_weeks)} weekly session{'s' if len(allocated_weeks) > 1 else ''} of ₹{DEFAULT_WEEKLY_FEE}).",
+        "submissionId": submission_id,
+        "payments": created_instances,
+        "payment": created_instances[0] if created_instances else {},
     }
 
 
@@ -966,19 +1006,22 @@ def admin_cleanup_payment_storage(
         except Exception as e:
             raise ApiError(f"Storage bucket connection failed: {e}", 500)
 
+        deleted_paths = set()
         for doc_snap, data in matched_docs:
             path = data.get("proofStoragePath")
             try:
-                blob = bucket.blob(path)
-                if blob.exists():
-                    blob.delete()
+                if path and path not in deleted_paths:
+                    blob = bucket.blob(path)
+                    if blob.exists():
+                        blob.delete()
+                    deleted_paths.add(path)
+                    deleted_count += 1
                 doc_snap.reference.update({
                     "proofStoragePath": None,
                     "proofDownloadUrl": None,
                     "proofDeleted": True,
                     "proofDeletedAt": get_ist_now(),
                 })
-                deleted_count += 1
             except Exception as e:
                 errors.append(f"Failed to delete {path}: {e}")
     else:
