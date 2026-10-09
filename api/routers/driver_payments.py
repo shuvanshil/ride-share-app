@@ -9,12 +9,14 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import datetime
 import logging
+import urllib.parse
 
 from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel
 
 from ..core.auth import current_user
 from ..core.admin import require_admin, write_audit_log, now_utc
+from ..core.config import get_env
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app, get_firestore, get_messaging, get_storage_bucket
 from ..core.payment_schedule import (
@@ -122,6 +124,29 @@ def _get_pause_config(db: Any) -> Dict[str, Any]:
     }
 
 
+def _resolve_proof_url(storage_path: Optional[str], client_download_url: Optional[str] = None) -> Optional[str]:
+    if client_download_url and str(client_download_url).strip():
+        return str(client_download_url).strip()
+    if not storage_path:
+        return None
+    try:
+        bucket = get_storage_bucket()
+        if bucket:
+            blob = bucket.blob(storage_path)
+            return blob.generate_signed_url(
+                expiration=datetime.timedelta(days=7),
+                method="GET",
+            )
+    except Exception:
+        pass
+    try:
+        bucket_name = get_env("FIREBASE_STORAGE_BUCKET") or f"{get_env('FIREBASE_PROJECT_ID')}.firebasestorage.app"
+        encoded_path = urllib.parse.quote(storage_path, safe="")
+        return f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/{encoded_path}?alt=media"
+    except Exception:
+        return None
+
+
 def _format_payment_doc(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     submitted_at = data.get("submittedAt")
     if hasattr(submitted_at, "isoformat"):
@@ -139,30 +164,52 @@ def _format_payment_doc(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     else:
         verified_at_str = str(verified_at) if verified_at else None
 
+    storage_path = (
+        data.get("proofStoragePath")
+        or data.get("proof_storage_path")
+        or data.get("storagePath")
+        or data.get("storage_path")
+    )
+    download_url = (
+        data.get("proofDownloadUrl")
+        or data.get("proof_download_url")
+        or data.get("proofUrl")
+        or data.get("proof_url")
+        or data.get("downloadUrl")
+        or data.get("download_url")
+        or data.get("screenshotUrl")
+        or data.get("screenshot_url")
+        or data.get("imageUrl")
+        or data.get("image_url")
+        or data.get("proof")
+    )
+
+    download_url = _resolve_proof_url(storage_path, download_url)
+
     return {
         "paymentId": doc_id,
-        "driverId": data.get("driverId"),
-        "driverName": data.get("driverName", "Driver"),
-        "driverPhone": data.get("driverPhone", ""),
-        "weekId": data.get("weekId"),
-        "weekLabel": data.get("weekLabel", ""),
+        "driverId": data.get("driverId") or data.get("driver_id"),
+        "driverName": data.get("driverName") or data.get("driver_name", "Driver"),
+        "driverPhone": data.get("driverPhone") or data.get("driver_phone", ""),
+        "weekId": data.get("weekId") or data.get("week_id"),
+        "weekLabel": data.get("weekLabel") or data.get("week_label", ""),
         "amount": data.get("amount", DEFAULT_WEEKLY_FEE),
-        "baseFee": data.get("baseFee", DEFAULT_WEEKLY_FEE),
-        "overdueAmount": data.get("overdueAmount", 0),
+        "baseFee": data.get("baseFee") or data.get("base_fee", DEFAULT_WEEKLY_FEE),
+        "overdueAmount": data.get("overdueAmount") or data.get("overdue_amount", 0),
         "currency": data.get("currency", "INR"),
         "submittedAt": submitted_at_str,
         "status": data.get("status", "submitted"),
-        "paymentReference": data.get("paymentReference", ""),
-        "paymentMethod": data.get("paymentMethod", "upi"),
-        "proofStoragePath": data.get("proofStoragePath"),
-        "proofDownloadUrl": data.get("proofDownloadUrl"),
-        "proofFileName": data.get("proofFileName"),
-        "proofFileSize": data.get("proofFileSize"),
-        "proofContentType": data.get("proofContentType"),
+        "paymentReference": data.get("paymentReference") or data.get("payment_reference", ""),
+        "paymentMethod": data.get("paymentMethod") or data.get("payment_method", "upi"),
+        "proofStoragePath": storage_path,
+        "proofDownloadUrl": download_url,
+        "proofFileName": data.get("proofFileName") or data.get("proof_file_name"),
+        "proofFileSize": data.get("proofFileSize") or data.get("proof_file_size"),
+        "proofContentType": data.get("proofContentType") or data.get("proof_content_type"),
         "isManualRecord": bool(data.get("isManualRecord", False)),
         "verifiedAt": verified_at_str,
-        "verifiedByAdminEmail": data.get("verifiedByAdminEmail"),
-        "declineReason": data.get("declineReason"),
+        "verifiedByAdminEmail": data.get("verifiedByAdminEmail") or data.get("verified_by_admin_email"),
+        "declineReason": data.get("declineReason") or data.get("decline_reason"),
     }
 
 
@@ -416,7 +463,7 @@ def submit_weekly_payment(
         "paymentReference": (body.paymentReference or "").strip()[:100],
         "paymentMethod": body.paymentMethod or "upi",
         "proofStoragePath": body.proofStoragePath,
-        "proofDownloadUrl": body.proofDownloadUrl,
+        "proofDownloadUrl": _resolve_proof_url(body.proofStoragePath, body.proofDownloadUrl),
         "proofFileName": body.proofFileName,
         "proofFileSize": body.proofFileSize,
         "proofContentType": body.proofContentType,

@@ -1,6 +1,7 @@
 import { adminGet, adminPost, adminDelete } from './admin-api.js';
 import { toast as showToast } from './admin-toast.js';
 import { showTablerConfirm } from './admin-confirm.js';
+import { storage, ref, getDownloadURL } from '../../js/platform/firebase-init.js';
 
 let cachedPayments = [];
 let cachedPauseConfig = null;
@@ -154,7 +155,8 @@ export function renderPaymentsTable() {
 
         const methodLabel = (p.paymentMethod || 'upi').toUpperCase();
         const refNote = p.paymentReference ? `<br><small class="text-secondary">Ref: ${p.paymentReference}</small>` : '';
-        const proofLink = p.proofDownloadUrl ? `<br><a href="${p.proofDownloadUrl}" target="_blank" class="small text-primary text-decoration-none" style="font-size: 11px;"><i class="ti ti-photo me-1"></i>View Screenshot</a>` : '';
+        const rowProofUrl = p.proofDownloadUrl || p.proof_download_url || p.proofUrl || p.downloadUrl;
+        const proofLink = rowProofUrl ? `<br><a href="${rowProofUrl}" target="_blank" rel="noopener noreferrer" class="small text-primary text-decoration-none" style="font-size: 11px;"><i class="ti ti-photo me-1"></i>View Screenshot</a>` : (p.proofStoragePath ? `<br><span class="small text-secondary" style="font-size: 11px;"><i class="ti ti-photo me-1"></i>Proof Attached</span>` : '');
 
         return `
             <tr>
@@ -214,7 +216,7 @@ export function renderPaymentsTable() {
 
 let activeVerifyingPaymentId = null;
 
-function openVerifyProofModal(paymentId) {
+async function openVerifyProofModal(paymentId) {
     const modal = document.getElementById('admin-verify-proof-modal');
     if (!modal) return;
 
@@ -240,25 +242,119 @@ function openVerifyProofModal(paymentId) {
     }
     if (declineReasonInput) declineReasonInput.value = '';
 
-    if (payment.proofDownloadUrl) {
-        if (imgEl) {
-            imgEl.src = payment.proofDownloadUrl;
-            imgEl.classList.remove('d-none');
-        }
-        if (noImgEl) noImgEl.classList.add('d-none');
-        if (linkEl) {
-            linkEl.href = payment.proofDownloadUrl;
-            linkEl.classList.remove('d-none');
-        }
-    } else {
-        if (imgEl) imgEl.classList.add('d-none');
-        if (noImgEl) noImgEl.classList.remove('d-none');
-        if (linkEl) linkEl.classList.add('d-none');
-    }
-
     modal.style.display = 'block';
     modal.classList.remove('d-none');
     modal.classList.add('show');
+
+    // Reset image display state
+    if (imgEl) {
+        imgEl.classList.add('d-none');
+        imgEl.removeAttribute('src');
+    }
+    if (linkEl) {
+        linkEl.classList.add('d-none');
+        linkEl.removeAttribute('href');
+    }
+    if (noImgEl) {
+        noImgEl.classList.remove('d-none');
+        noImgEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2 text-primary" role="status"></span>Loading proof image...`;
+    }
+
+    const rawUrl = payment.proofDownloadUrl || payment.proof_download_url || payment.proofUrl || payment.proof_url || payment.downloadUrl || payment.imageUrl || payment.screenshotUrl;
+    const storagePath = payment.proofStoragePath || payment.proof_storage_path || payment.storagePath || payment.storage_path;
+
+    const applyImageSuccess = (url) => {
+        if (imgEl) {
+            imgEl.src = url;
+            imgEl.onload = () => {
+                imgEl.classList.remove('d-none');
+                if (noImgEl) noImgEl.classList.add('d-none');
+            };
+            imgEl.onerror = () => {
+                console.warn("Direct image render failed for URL:", url);
+                if (storagePath) {
+                    tryStoragePathFallback();
+                } else {
+                    if (imgEl) imgEl.classList.add('d-none');
+                    if (noImgEl) {
+                        noImgEl.innerHTML = `⚠️ Direct preview unavailable.<br><a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary mt-2">Open Image in New Tab</a>`;
+                        noImgEl.classList.remove('d-none');
+                    }
+                }
+            };
+        }
+        if (linkEl) {
+            linkEl.href = url;
+            linkEl.classList.remove('d-none');
+        }
+    };
+
+    const tryStoragePathFallback = async () => {
+        if (!storagePath) {
+            if (imgEl) imgEl.classList.add('d-none');
+            if (noImgEl) {
+                noImgEl.innerHTML = `No screenshot proof uploaded with this payment.`;
+                noImgEl.classList.remove('d-none');
+            }
+            if (linkEl) linkEl.classList.add('d-none');
+            return;
+        }
+
+        try {
+            if (noImgEl) {
+                noImgEl.innerHTML = `<span class="spinner-border spinner-border-sm me-2 text-primary" role="status"></span>Fetching screenshot from storage...`;
+            }
+            const directUrl = await getDownloadURL(ref(storage, storagePath));
+            if (imgEl) {
+                imgEl.src = directUrl;
+                imgEl.onload = () => {
+                    imgEl.classList.remove('d-none');
+                    if (noImgEl) noImgEl.classList.add('d-none');
+                };
+            }
+            if (linkEl) {
+                linkEl.href = directUrl;
+                linkEl.classList.remove('d-none');
+            }
+        } catch (fetchErr) {
+            console.warn("Could not resolve storage path:", storagePath, fetchErr);
+            const bucket = storage?.app?.options?.storageBucket;
+            if (bucket) {
+                const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(storagePath)}?alt=media`;
+                if (imgEl) {
+                    imgEl.src = publicUrl;
+                    imgEl.onload = () => {
+                        imgEl.classList.remove('d-none');
+                        if (noImgEl) noImgEl.classList.add('d-none');
+                    };
+                }
+                if (linkEl) {
+                    linkEl.href = publicUrl;
+                    linkEl.classList.remove('d-none');
+                }
+            } else {
+                if (imgEl) imgEl.classList.add('d-none');
+                if (noImgEl) {
+                    noImgEl.innerHTML = `No screenshot proof could be loaded.`;
+                    noImgEl.classList.remove('d-none');
+                }
+                if (linkEl) linkEl.classList.add('d-none');
+            }
+        }
+    };
+
+    if (rawUrl) {
+        applyImageSuccess(rawUrl);
+    } else if (storagePath) {
+        await tryStoragePathFallback();
+    } else {
+        if (imgEl) imgEl.classList.add('d-none');
+        if (noImgEl) {
+            noImgEl.innerHTML = `No screenshot proof uploaded with this payment.`;
+            noImgEl.classList.remove('d-none');
+        }
+        if (linkEl) linkEl.classList.add('d-none');
+    }
 }
 
 function closeVerifyProofModal() {

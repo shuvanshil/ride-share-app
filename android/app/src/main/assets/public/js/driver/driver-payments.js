@@ -147,7 +147,7 @@ async function fetchPaymentStatus() {
     } finally {
         isFetchingStatus = false;
         if (loadingScreen) loadingScreen.classList.add('d-none');
-        if (!isWalletViewActive && mainContainer) mainContainer.classList.remove('d-none');
+        if (mainContainer) mainContainer.classList.remove('d-none');
     }
 }
 
@@ -706,7 +706,16 @@ async function handleScreenshotSelected(event) {
         if (uploadStatusText) uploadStatusText.innerText = 'Submitting verification request...';
         if (uploadProgressBar) uploadProgressBar.style.width = '95%';
 
-        const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+        let downloadUrl = '';
+        try {
+            downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+        } catch (urlErr) {
+            console.warn("Could not get direct downloadURL:", urlErr);
+            const bucket = storage?.app?.options?.storageBucket;
+            if (bucket && storagePath) {
+                downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(storagePath)}?alt=media`;
+            }
+        }
         const token = await getAuthToken();
 
         const submitResponse = await fetch('/api/account/driver-payments/submit', {
