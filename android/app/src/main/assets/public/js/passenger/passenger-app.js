@@ -120,7 +120,9 @@ function formatFareAmount(value) {
 function fareAdjustmentMessage(ride, fallback = "") {
     const adjustment = ride?.fare_adjustment;
     if (adjustment?.message) return adjustment.message;
-    if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
+    if (ride?.status !== "cancelled" && ride?.status !== "cancelled_by_passenger" && ride?.status !== "cancelled_by_driver") {
+        if (Number.isFinite(Number(ride?.fare))) return `Final fare: ${formatFareAmount(ride.fare)}.`;
+    }
     return fallback;
 }
 
@@ -393,18 +395,22 @@ function getQuickPosition(timeoutMs = 4000) {
         .catch(() => null);
 }
 
+let isPassengerSosInProgress = false;
+
 async function sendPassengerSos() {
+    if (isPassengerSosInProgress) return;
     if (!currentPassengerRideId) {
         await showAlert(t('services.sos_only_active_ride', "SOS is available once a driver is on the way."));
         return;
     }
-    const confirmed = await showConfirm(
-        t('services.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your ride details and location. For any life-threatening emergency, call local emergency services first."),
-        { okText: t('services.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
-    );
-    if (!confirmed) return;
-
+    isPassengerSosInProgress = true;
     try {
+        const confirmed = await showConfirm(
+            t('services.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your ride details and location. For any life-threatening emergency, call local emergency services first."),
+            { okText: t('services.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
+        );
+        if (!confirmed) return;
+
         const position = await getQuickPosition();
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
@@ -419,6 +425,8 @@ async function sendPassengerSos() {
     } catch (error) {
         console.error("SOS failed:", error);
         await showAlert(error.message || t('services.sos_failed', "Could not send the SOS alert."));
+    } finally {
+        isPassengerSosInProgress = false;
     }
 }
 
@@ -1461,15 +1469,83 @@ async function logClientDemandEvent(eventType, metadata = {}) {
     }
 }
 
+let isRetryingRide = false;
+
 async function handleTryAgainNow() {
-    hideNoDriverOptions();
-    startSearchStateUi(35);
-    if (currentPassengerRideId) {
-        try {
-            await expandRideDispatch(currentPassengerRideId);
-        } catch (e) {
-            console.warn("Retry dispatch:", e);
+    if (isRetryingRide) return;
+    isRetryingRide = true;
+    try {
+        hideNoDriverOptions();
+        const now = Date.now();
+        const rideId = currentPassengerRideId;
+
+        if (rideId && currentPassengerRideData?.status === "pending") {
+            if (currentPassengerRideData) {
+                currentPassengerRideData.search_status = "searching_nearby_drivers";
+            }
+            sessionStorage.setItem(`liphtup_ride_search_start_${rideId}`, String(now));
+            passengerSearchStartTimes[rideId] = now;
+            startSearchStateUi(35);
+            const reqBtn = document.getElementById('request-ride-btn');
+            if (reqBtn) {
+                delete reqBtn.dataset.state;
+                reqBtn.disabled = true;
+                reqBtn.innerHTML = "Searching nearby drivers...";
+                reqBtn.className = "btn btn-warning w-100 fw-bold py-2 text-dark";
+            }
+            showPassengerCancelButton(rideId);
+            try {
+                await expandRideDispatch(rideId);
+                scheduleDispatchExpansion(rideId, currentPassengerRideData || {});
+            } catch (e) {
+                console.warn("Retry dispatch error:", e);
+                handleSearchTimeout(rideId);
+            }
+        } else {
+            const pickupText = document.getElementById('pickup-input')?.value || currentPassengerRideData?.pickup_name || "";
+            const dropText = document.getElementById('drop-input')?.value || currentPassengerRideData?.drop_name || "";
+            const fareQuote = window.latestFareQuote || {};
+            const pickupLat = Number.isFinite(Number(fareQuote.pickup_lat)) ? Number(fareQuote.pickup_lat) : Number(currentPassengerRideData?.pickup_lat);
+            const pickupLng = Number.isFinite(Number(fareQuote.pickup_lng)) ? Number(fareQuote.pickup_lng) : Number(currentPassengerRideData?.pickup_lng);
+            const dropLat = Number.isFinite(Number(fareQuote.drop_lat)) ? Number(fareQuote.drop_lat) : Number(currentPassengerRideData?.drop_lat);
+            const dropLng = Number.isFinite(Number(fareQuote.drop_lng)) ? Number(fareQuote.drop_lng) : Number(currentPassengerRideData?.drop_lng);
+            const requestedVehicleType = window.selectedRideService?.id || currentPassengerRideData?.vehicle_type || "";
+
+            if (dropText && Number.isFinite(pickupLat) && Number.isFinite(dropLat) && requestedVehicleType) {
+                startSearchStateUi(35);
+                const requestPayload = {
+                    pickupName: pickupText,
+                    dropName: dropText,
+                    pickupLat: pickupLat,
+                    pickupLng: pickupLng,
+                    dropLat: dropLat,
+                    dropLng: dropLng,
+                    vehicleType: requestedVehicleType,
+                    dropFullAddress: fareQuote.drop_full_address || currentPassengerRideData?.drop_full_address || "",
+                    dropSource: fareQuote.drop_source || currentPassengerRideData?.drop_source || "",
+                    dropProvider: fareQuote.drop_provider || fareQuote.drop_source || currentPassengerRideData?.drop_provider || "",
+                    dropPlaceId: fareQuote.drop_place_id || currentPassengerRideData?.drop_place_id || "",
+                    dropEloc: fareQuote.drop_eloc || currentPassengerRideData?.drop_eloc || "",
+                    dropTypeHint: fareQuote.drop_type_hint || currentPassengerRideData?.drop_type_hint || ""
+                };
+                const backendRide = await createRideThroughBackend(requestPayload);
+                currentPassengerRideId = backendRide.rideId;
+                window._currentActiveRideId = backendRide.rideId;
+                currentPassengerRideData = backendRide.ride || { id: backendRide.rideId, status: "pending", search_status: "searching_nearby_drivers" };
+                sessionStorage.setItem(`liphtup_ride_search_start_${backendRide.rideId}`, String(now));
+                passengerSearchStartTimes[backendRide.rideId] = now;
+                showPassengerCancelButton(backendRide.rideId);
+                listenToRideStatusUpdates(backendRide.rideId);
+                scheduleDispatchExpansion(backendRide.rideId, { status: "pending", dispatch_timeout_ms: 12000 });
+            } else {
+                resetPassengerBookingUi({ preserveSelections: true });
+            }
         }
+    } catch (err) {
+        console.error("handleTryAgainNow failed:", err);
+        resetPassengerBookingUi({ preserveSelections: true });
+    } finally {
+        isRetryingRide = false;
     }
 }
 
@@ -2135,6 +2211,7 @@ async function restorePassengerActiveRide() {
 
         const activeRideDoc = activeRideSnap.docs[0];
         const activeRide = { ...activeRideDoc.data(), id: activeRideDoc.id, rideId: activeRideDoc.id };
+        currentPassengerRideId = activeRideDoc.id;
         window._currentActiveRideId = activeRideDoc.id;
         currentPassengerRideData = activeRide;
 
@@ -2315,18 +2392,52 @@ requestRideButton.addEventListener('click', async () => {
 });
 }
 
+function handlePassengerRideCancelled(ride) {
+    clearDispatchExpansionTimer();
+    stopSearchStateUi();
+    hideNoDriverOptions();
+    hideTripProgressPanel();
+    const driverHadAccepted = Boolean(ride?.driver_id) || ["accepted", "arrived", "started", "en_route", "cancelled_by_driver"].includes(ride?.status);
+    resetPassengerBookingUi({ preserveSelections: driverHadAccepted });
+    window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
+    if (typeof window.clearRouteAndDestination === 'function') {
+        window.clearRouteAndDestination();
+    }
+    if (activeRideListener) {
+        activeRideListener();
+        activeRideListener = null;
+    }
+    const cancelledRideId = ride?.id || ride?.rideId || currentPassengerRideId || window._currentActiveRideId;
+    if (ride?.status === "cancelled_by_driver") {
+        if (cancelledRideId && cancelledRideId !== window._lastAlertedCancelledRideId) {
+            window._lastAlertedCancelledRideId = cancelledRideId;
+            const message = fareAdjustmentMessage(ride, t('services.driver_cancelled_modal', "Your driver has cancelled this ride. Please request a new ride."));
+            showAlert(message);
+        }
+    }
+    if (currentPassengerRideId === cancelledRideId || !cancelledRideId) {
+        currentPassengerRideId = null;
+    }
+    if (window._currentActiveRideId === cancelledRideId || !cancelledRideId) {
+        window._currentActiveRideId = null;
+    }
+}
+
 function listenToRideStatusUpdates(rideId) {
     if (!rideId || typeof rideId !== 'string') return;
     if (activeRideListener) {
         activeRideListener();
         activeRideListener = null;
     }
+    currentPassengerRideId = rideId;
+    window._currentActiveRideId = rideId;
     const requestBtn = document.getElementById('request-ride-btn');
     showPassengerCancelButton(rideId);
 
     activeRideListener = onSnapshot(doc(db, "rides", rideId), (docSnap) => {
         if (!docSnap.exists()) return;
         const ride = { ...docSnap.data(), id: docSnap.id, rideId: docSnap.id };
+        currentPassengerRideId = docSnap.id;
         window._currentActiveRideId = docSnap.id;
         currentPassengerRideData = ride;
 
@@ -2345,24 +2456,7 @@ function listenToRideStatusUpdates(rideId) {
         }
 
         if (["cancelled", "cancelled_by_passenger", "cancelled_by_driver"].includes(ride.status)) {
-            clearDispatchExpansionTimer();
-            stopSearchStateUi();
-            hideNoDriverOptions();
-            const driverHadAccepted = Boolean(ride.driver_id) || ["accepted", "arrived", "started", "en_route", "cancelled_by_driver"].includes(ride.status);
-            resetPassengerBookingUi({ preserveSelections: driverHadAccepted });
-            window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
-            if (activeRideListener) {
-                activeRideListener();
-                activeRideListener = null;
-            }
-            if (ride.status === "cancelled_by_driver") {
-                const message = fareAdjustmentMessage(ride, "Please request a new ride.");
-                showAlert(`Your driver cancelled the trip. ${message}`).finally(() => {
-                    window.location.reload();
-                });
-            } else {
-                window.location.reload();
-            }
+            handlePassengerRideCancelled(ride);
             return;
         }
 
@@ -2371,7 +2465,7 @@ function listenToRideStatusUpdates(rideId) {
             const startTime = getRideSearchStartTime(rideId, ride);
             const elapsed = Date.now() - startTime;
 
-            if (elapsed >= MAX_SEARCH_DURATION_MS || ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers" || ride.search_status === "timeout") {
+            if (elapsed >= MAX_SEARCH_DURATION_MS || ((ride.search_status === "no_available_drivers" || ride.search_status === "no_more_available_drivers") && elapsed >= 45000) || ride.search_status === "timeout") {
                 handleSearchTimeout(rideId);
             } else {
                 scheduleDispatchExpansion(rideId, ride);
@@ -3079,13 +3173,64 @@ window.addEventListener('languageChanged', () => {
     }
 });
 
-window.addEventListener('online', () => {
-    if (currentPassengerRideId) {
-        listenToRideStatusUpdates(currentPassengerRideId);
+async function refreshPassengerActiveRideStatus() {
+    const rideId = currentPassengerRideId || window._currentActiveRideId;
+    if (rideId) {
+        try {
+            const snap = await getDoc(doc(db, "rides", rideId));
+            if (snap.exists()) {
+                const data = { ...snap.data(), id: snap.id, rideId: snap.id };
+                currentPassengerRideData = data;
+                if (["cancelled", "cancelled_by_passenger", "cancelled_by_driver"].includes(data.status)) {
+                    handlePassengerRideCancelled(data);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn("Active ride status refresh failed:", e);
+        }
+        listenToRideStatusUpdates(rideId);
+    } else {
+        restorePassengerActiveRide();
     }
+}
+
+window.addEventListener('online', () => {
+    refreshPassengerActiveRideStatus();
     if (activePendingRequestId) {
         listenToPendingRequestUpdates(activePendingRequestId);
     }
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        refreshPassengerActiveRideStatus();
+    }
+});
+
+window.addEventListener('focus', () => {
+    refreshPassengerActiveRideStatus();
+});
+
+if (window.Capacitor?.Plugins?.App) {
+    window.Capacitor.Plugins.App.addListener('appStateChange', (state) => {
+        if (state.isActive) {
+            refreshPassengerActiveRideStatus();
+        }
+    });
+}
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        const data = event.data || {};
+        if (data.type === 'driver_cancelled' || data.type === 'RIDE_CANCELLED') {
+            refreshPassengerActiveRideStatus();
+        }
+    });
+}
+
+window.addEventListener('ride-cancelled', () => {
+    refreshPassengerActiveRideStatus();
 });
 
 

@@ -313,18 +313,22 @@ function getQuickPosition(timeoutMs = 4000) {
     });
 }
 
+let isDriverSosInProgress = false;
+
 async function sendDriverSos() {
+    if (isDriverSosInProgress) return;
     if (!currentlyAssignedRideId) {
         await showAlert(t('driver.start_trip_first_sos', "Start or accept a trip first, then use SOS during that trip."));
         return;
     }
-    const confirmed = await showConfirm(
-        t('driver.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first."),
-        { okText: t('driver.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
-    );
-    if (!confirmed) return;
-
+    isDriverSosInProgress = true;
     try {
+        const confirmed = await showConfirm(
+            t('driver.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first."),
+            { okText: t('driver.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
+        );
+        if (!confirmed) return;
+
         const position = await getQuickPosition();
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");
@@ -339,6 +343,8 @@ async function sendDriverSos() {
     } catch (error) {
         console.error("SOS failed:", error);
         await showAlert(error.message || "Could not send the SOS alert. Please call local emergency services directly.");
+    } finally {
+        isDriverSosInProgress = false;
     }
 }
 
@@ -1835,6 +1841,17 @@ function routeDriverProfile(profile) {
         if (!isCurrent('index.html')) {
             window.location.replace("/index.html");
         }
+        return;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let pendingRideId = urlParams.get('rideId');
+    if (!pendingRideId && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {
+        pendingRideId = window.LiphtUpNativeStatus.consumePendingRideId();
+    }
+    if (pendingRideId && profile.verificationStatus === "approved") {
+        const targetUrl = `/driver-service.html?rideId=${encodeURIComponent(pendingRideId)}&from=push`;
+        window.location.replace(window.getPlatformUrl ? window.getPlatformUrl(targetUrl) : targetUrl);
         return;
     }
 

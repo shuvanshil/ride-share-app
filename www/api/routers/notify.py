@@ -156,7 +156,7 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
         title_text = "New Ride Request on LiphtUP"
         body_text = f"Pickup: {pickup}\nDrop: {drop}" + (f"\nFare: Rs {fare:g}" if fare > 0 else "")
 
-        notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=push"
+        notification_url = f"{APP_BASE_URL}/driver-service?rideId={ride_id}&from=push"
 
         message = fb_messaging.MulticastMessage(
             tokens=unique_tokens,

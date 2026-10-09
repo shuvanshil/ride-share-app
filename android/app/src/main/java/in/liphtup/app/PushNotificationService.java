@@ -55,6 +55,16 @@ public class PushNotificationService extends FirebaseMessagingService {
         String body = null;
         String rideId = null;
         String url = rawUrl;
+        if (url != null) {
+            try {
+                Uri parsed = Uri.parse(url);
+                if ("https".equalsIgnoreCase(parsed.getScheme()) && ("liphtup.in".equalsIgnoreCase(parsed.getHost()) || "www.liphtup.in".equalsIgnoreCase(parsed.getHost()))) {
+                    String p = parsed.getPath();
+                    String q = parsed.getQuery();
+                    url = (p != null ? p : "/") + (q != null && !q.isEmpty() ? "?" + q : "");
+                }
+            } catch (Exception ignored) {}
+        }
 
         if (dataMap != null && !dataMap.isEmpty()) {
             Log.d(TAG, "Message data payload: " + dataMap);
@@ -119,6 +129,8 @@ public class PushNotificationService extends FirebaseMessagingService {
         }
         if (url != null && !url.isEmpty()) {
             intent.putExtra("url", url);
+        } else if (rideId != null && !rideId.isEmpty()) {
+            intent.putExtra("url", "/driver-service.html?rideId=" + rideId + "&from=push");
         }
         
         // requestCode should be unique if multiple notifications are shown

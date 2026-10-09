@@ -45,7 +45,10 @@ export async function getAuthToken() {
 
 function getCachedProfile() {
     try {
-        const cached = JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || "null");
+        let cached = JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || "null");
+        if (!cached?.uid) {
+            cached = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+        }
         if (!cached?.uid || Date.now() - Number(cached.cachedAt || 0) > 6 * 60 * 60 * 1000) {
             return null;
         }
@@ -61,10 +64,12 @@ function cacheProfile(profile) {
         window.LiphtUpNative.setUserRole(profile?.role || "");
     }
     try {
-        sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
+        const payload = JSON.stringify({
             ...cacheableProfile,
             cachedAt: Date.now()
-        }));
+        });
+        sessionStorage.setItem(PROFILE_CACHE_KEY, payload);
+        localStorage.setItem(PROFILE_CACHE_KEY, payload);
     } catch (error) {
         console.warn("Could not cache profile for fast navigation:", error);
     }
@@ -73,6 +78,7 @@ function cacheProfile(profile) {
 function clearCachedProfile() {
     try {
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
+        localStorage.removeItem(PROFILE_CACHE_KEY);
     } catch {
         // Ignore storage failures; Firebase sign-out is the important operation.
     }
@@ -104,15 +110,31 @@ function renderSession(profile) {
     const isLoginPage = isCurrent('login.html');
 
     if (profile.role === "driver") {
+        const urlParams = new URLSearchParams(window.location.search);
+        let pendingRideId = urlParams.get('rideId');
+        if (!pendingRideId && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {
+            pendingRideId = window.LiphtUpNativeStatus.consumePendingRideId();
+        }
+
+        if (pendingRideId && (!isDriverPage || isCurrent('driver.html'))) {
+            const targetUrl = `/driver-service.html?rideId=${encodeURIComponent(pendingRideId)}&from=push`;
+            if (window.navigateToPage) {
+                window.navigateToPage(targetUrl);
+            } else {
+                window.location.replace(window.getPlatformUrl ? window.getPlatformUrl(targetUrl) : targetUrl);
+            }
+            return true;
+        }
+
         if (!isDriverPage && !isHistoryPage && !isProfilePage && !isLoginPage) {
-            window.location.replace("/driver.html");
+            window.location.replace(window.getPlatformUrl ? window.getPlatformUrl("/driver.html") : "/driver.html");
             return true;
         } else {
             setGuestLoginVisibility(false);
         }
     } else {
         if (isDriverPage) {
-            window.location.replace("/index.html");
+            window.location.replace(window.getPlatformUrl ? window.getPlatformUrl("/index.html") : "/index.html");
             return true;
         } else {
             showPassengerHome();
@@ -191,6 +213,7 @@ onAuthStateChanged(auth, async (user) => {
         setGuestLoginVisibility(true);
         // Only redirect to home if we aren't already on a guest-allowed page
         const isProtectedPage = window.location.pathname.includes('driver.html') ||
+                                window.location.pathname.includes('driver-service.html') ||
                                 window.location.pathname.includes('history.html');
         if (isProtectedPage) {
             window.location.replace("/login.html");

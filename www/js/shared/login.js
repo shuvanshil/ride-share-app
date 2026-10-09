@@ -374,10 +374,12 @@ function restoreActiveOtpSession() {
 function cacheUserProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
     try {
-        sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
+        const payload = JSON.stringify({
             ...cacheableProfile,
             cachedAt: Date.now()
-        }));
+        });
+        sessionStorage.setItem(PROFILE_CACHE_KEY, payload);
+        localStorage.setItem(PROFILE_CACHE_KEY, payload);
     } catch (error) {
         console.warn("Could not cache profile for fast navigation:", error);
     }
@@ -385,7 +387,21 @@ function cacheUserProfile(profile) {
 
 function routeToHome(profile) {
     cacheUserProfile(profile);
-    window.location.replace(profile.role === "driver" ? "/driver.html" : "/index.html");
+    const urlParams = new URLSearchParams(window.location.search);
+    let pendingRideId = urlParams.get('rideId');
+    if (!pendingRideId && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {
+        pendingRideId = window.LiphtUpNativeStatus.consumePendingRideId();
+    }
+    if (profile.role === "driver") {
+        if (pendingRideId) {
+            const targetUrl = `/driver-service.html?rideId=${encodeURIComponent(pendingRideId)}&from=push`;
+            window.location.replace(window.getPlatformUrl ? window.getPlatformUrl(targetUrl) : targetUrl);
+            return;
+        }
+        window.location.replace(window.getPlatformUrl ? window.getPlatformUrl("/driver.html") : "/driver.html");
+    } else {
+        window.location.replace(window.getPlatformUrl ? window.getPlatformUrl("/index.html") : "/index.html");
+    }
 }
 
 function isDriverRegistration() {

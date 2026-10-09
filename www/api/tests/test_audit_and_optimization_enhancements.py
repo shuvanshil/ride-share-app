@@ -626,10 +626,11 @@ def test_cancel_passenger_ride_cascades_to_pending_request(mock_client, mock_app
     assert req_snap["status"] == "cancelled"
 
 
+@patch("api.routers.rides._send_driver_push_notification")
 @patch("api.routers.rides._collect_tokens", lambda db, uids: {})
 @patch("api.routers.rides.get_admin_app")
 @patch("firebase_admin.firestore.client")
-def test_cancel_pending_request_cascades_to_ride(mock_client, mock_app) -> None:
+def test_cancel_pending_request_cascades_to_ride(mock_client, mock_app, mock_push) -> None:
     db = MockFirestoreClient()
     mock_client.return_value = db
     mock_app.return_value = MagicMock()
@@ -650,6 +651,8 @@ def test_cancel_pending_request_cascades_to_ride(mock_client, mock_app) -> None:
 
     ride_snap = db.collection("rides").document("ride_from_pending").get().to_dict()
     assert ride_snap["status"] == "cancelled_by_passenger"
+    # Candidate/locked driver who never accepted must NOT receive a cancellation notification
+    mock_push.assert_not_called()
 
 
 @patch("firebase_admin.firestore.transactional", lambda fn: fn)
@@ -704,11 +707,12 @@ def test_accept_driver_ride_populates_location_and_blocks_busy_driver(mock_clien
 @patch("api.routers.rides._collect_tokens", lambda db, uids: {})
 @patch("api.routers.rides.get_admin_app")
 @patch("firebase_admin.firestore.client")
-def test_cancel_passenger_ride_notifies_all_eligible_drivers(mock_client, mock_app, mock_push) -> None:
+def test_cancel_passenger_ride_notifies_only_assigned_driver(mock_client, mock_app, mock_push) -> None:
     db = MockFirestoreClient()
     mock_client.return_value = db
     mock_app.return_value = MagicMock()
 
+    # Unaccepted search: eligible drivers must NOT receive cancellation push
     db.collection("rides").document("ride_multi_driver").set({
         "status": "pending",
         "passenger_id": "pax_123",
@@ -720,9 +724,21 @@ def test_cancel_passenger_ride_notifies_all_eligible_drivers(mock_client, mock_a
     assert res["ok"] is True
 
     notified = {call.args[1] for call in mock_push.call_args_list}
-    assert {"drv_a", "drv_b", "drv_c"}.issubset(notified)
-    for call in mock_push.call_args_list:
-        assert call.args[4]["type"] == "RIDE_CANCELLED"
+    assert notified == set()
+
+    # Assigned ride: only assigned driver must receive cancellation push
+    mock_push.reset_mock()
+    db.collection("rides").document("ride_assigned").set({
+        "status": "accepted",
+        "passenger_id": "pax_123",
+        "driver_id": "drv_assigned",
+        "eligible_driver_ids": ["drv_a", "drv_b"],
+    })
+    res = rides.cancel_passenger_ride("ride_assigned", user={"uid": "pax_123", "role": "passenger"})
+    assert res["ok"] is True
+    notified = {call.args[1] for call in mock_push.call_args_list}
+    assert notified == {"drv_assigned"}
+    assert mock_push.call_args[0][4]["type"] == "RIDE_CANCELLED"
 
 
 @patch("firebase_admin.firestore.transactional", lambda fn: fn)

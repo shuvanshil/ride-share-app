@@ -67,7 +67,7 @@ def _send_driver_coupon_push(driver_id: str, ride_id: str, discount_inr: float, 
 
         title = "Ride Fare Updated"
         body_text = f"Coupon applied! ₹{discount_inr:g} platform subsidy credited to your wallet. Remaining cash to collect: ₹{remaining_fare_inr:g}."
-        notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=coupon_push"
+        notification_url = f"{APP_BASE_URL}/driver-service?rideId={ride_id}&from=coupon_push"
         data_payload = {
             "type": "COUPON_FARE_ADJUSTMENT",
             "rideId": ride_id,

@@ -896,12 +896,18 @@ function startIncomingRideListener() {
     if (!currentUser?.uid || !ridesContainer || !noRidesMsg) return;
     if (incomingRideUnsubscribe) incomingRideUnsubscribe();
 
+    const urlParams = new URLSearchParams(window.location.search);
+    let requestedRideId = (urlParams.get("rideId") || "").trim();
+    if (!requestedRideId && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {
+        requestedRideId = (window.LiphtUpNativeStatus.consumePendingRideId() || "").trim();
+    }
+
     const incomingRideQuery = query(
         collection(db, "rides"),
         where("eligible_driver_ids", "array-contains", currentUser.uid)
     );
 
-    incomingRideUnsubscribe = onSnapshot(incomingRideQuery, (snapshot) => {
+    incomingRideUnsubscribe = onSnapshot(incomingRideQuery, async (snapshot) => {
         ridesContainer.innerHTML = "";
         ridesContainer.appendChild(noRidesMsg);
         noRidesMsg.classList.add('d-none');
@@ -911,7 +917,7 @@ function startIncomingRideListener() {
 
         // Clear timers for any ride that is no longer active / pending
         activeRideRequestTimers.forEach((_, trackedRideId) => {
-            if (!validSnapshotRideIds.has(trackedRideId)) {
+            if (!validSnapshotRideIds.has(trackedRideId) && trackedRideId !== requestedRideId) {
                 clearRideRequestTimer(trackedRideId);
             }
         });
@@ -921,7 +927,14 @@ function startIncomingRideListener() {
         const driverVehicleType = getDriverRequestVehicleType(currentUser);
 
         const ignored = loadIgnoredRideIds();
-        snapshot.forEach((docSnapshot) => {
+
+        // Sort snapshot docs so that requestedRideId appears first if present
+        const docs = [...snapshot.docs];
+        if (requestedRideId) {
+            docs.sort((a, b) => (a.id === requestedRideId ? -1 : b.id === requestedRideId ? 1 : 0));
+        }
+
+        docs.forEach((docSnapshot) => {
             const rideId = docSnapshot.id;
             if (ignored.includes(rideId)) return;
             const ride = docSnapshot.data();
@@ -958,11 +971,44 @@ function startIncomingRideListener() {
             attachRideCardCountdown(rideId, ride);
         });
 
+        // Direct fallback: if requestedRideId is not in snapshot but pending and driver is eligible
+        if (requestedRideId && !validSnapshotRideIds.has(requestedRideId) && !ignored.includes(requestedRideId)) {
+            try {
+                const directDoc = await getDoc(doc(db, "rides", requestedRideId));
+                if (directDoc.exists()) {
+                    const directRide = directDoc.data();
+                    if (directRide.status === "pending" && !directRide.driver_id && !(directRide.rejected_driver_ids || []).includes(currentUser.uid)) {
+                        const remMs = getRideRemainingMs(directRide);
+                        if (remMs > 0) {
+                            renderedRideCount += 1;
+                            const directCard = renderIncomingRideCard(requestedRideId, directRide);
+                            ridesContainer.insertBefore(directCard, ridesContainer.firstChild);
+                            attachRideCardCountdown(requestedRideId, directRide);
+                            if (!firstPendingRide) {
+                                firstPendingRide = {
+                                    id: requestedRideId,
+                                    body: `${getRideDisplayAddress(directRide, "pickup")} to ${getRideDisplayAddress(directRide, "drop")}`
+                                };
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Direct fetch of requested ride failed:", e);
+            }
+        }
+
         if (renderedRideCount === 0) {
             stopRideRequestRing();
             renderNoIncomingRequests();
         } else {
             startRideRequestRing(firstPendingRide || {});
+            if (requestedRideId) {
+                const requestedCard = ridesContainer.querySelector(`[data-ride-id="${requestedRideId}"]`);
+                if (requestedCard) {
+                    requestedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
         }
 
         updateIncomingRequestsVisibility();
@@ -1589,12 +1635,6 @@ function renderLifecycleState(status, rideData = currentRide) {
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => cancelRideByDriver());
     }
-
-    const sosBtn = document.getElementById('driver-service-sos-btn');
-    if (sosBtn) {
-        sosBtn.addEventListener('click', () => sendDriverSos());
-    }
-
 }
 
 const SHARE_SVG = {
@@ -3630,20 +3670,24 @@ async function cancelRideByDriver() {
     }
 }
 
+let isDriverSosInProgress = false;
+
 async function sendDriverSos() {
+    if (isDriverSosInProgress) return;
     const sosRideId = currentRideId || shareTripData?.anchorRideId || (shareTripData?.childRideIds || [])[0] || "";
     if (!sosRideId) {
         await showAlert(t('driver.no_active_ride_sos', "No active ride found to trigger SOS emergency."));
         return;
     }
 
-    const confirmSos = await showConfirm(
-        t('driver.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first."),
-        { okText: t('driver.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
-    );
-    if (!confirmSos) return;
-
+    isDriverSosInProgress = true;
     try {
+        const confirmSos = await showConfirm(
+            t('driver.sos_confirm_message', "This alerts LiphtUp's safety team immediately with your location. For any life-threatening emergency, call local emergency services first."),
+            { okText: t('driver.send_sos', "Send SOS"), cancelText: t('common.cancel', "Cancel") }
+        );
+        if (!confirmSos) return;
+
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error("Authentication is required.");
 
@@ -3663,6 +3707,7 @@ async function sendDriverSos() {
         await showAlert(t('driver.sos_send_error', "Could not send SOS alert. Please call emergency services (112) directly if in immediate danger."));
     } finally {
         window.LiphtUpLoading?.hidePageLoader?.({ force: true });
+        isDriverSosInProgress = false;
     }
 }
 
@@ -3860,6 +3905,7 @@ document.addEventListener('keydown', (event) => {
 
 document.getElementById('driver-share-cancel-btn')?.addEventListener('click', cancelRideByDriver);
 document.getElementById('driver-share-sos-btn')?.addEventListener('click', sendDriverSos);
+document.getElementById('driver-service-sos-btn')?.addEventListener('click', sendDriverSos);
 
 const shareKebabBtn = document.getElementById('share-mcard-kebab-btn');
 const shareKebabMenu = document.getElementById('share-mcard-menu');

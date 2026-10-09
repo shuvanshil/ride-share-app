@@ -106,7 +106,7 @@ def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: f
 
         title = "Wallet Payment Received"
         body_text = f"The passenger paid ₹{amount_inr:g} using wallet credits. Remaining ride fare: ₹{remaining_fare_inr:g}."
-        notification_url = f"{APP_BASE_URL}/driver?rideId={ride_id}&from=wallet_push"
+        notification_url = f"{APP_BASE_URL}/driver-service?rideId={ride_id}&from=wallet_push"
         data_payload = {
             "type": "wallet_payment_received",
             "rideId": ride_id,

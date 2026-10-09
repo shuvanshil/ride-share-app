@@ -335,7 +335,7 @@ def _claim_assignment_atomic(
                     "assignmentId": aid,
                     "cost": str(assignment.cost),
                     "etaMinutes": str(assignment.eta_minutes),
-                    "url": f"{APP_BASE_URL}/driver?rideId={str(ride_id or '')}&from=push",
+                    "url": f"{APP_BASE_URL}/driver-service?rideId={str(ride_id or '')}&from=push",
                 },
             )
         except Exception:

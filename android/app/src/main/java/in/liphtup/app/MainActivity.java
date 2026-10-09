@@ -78,12 +78,45 @@ public class MainActivity extends BridgeActivity {
         dispatchPendingIntentToWebView();
     }
 
+    private String normalizeNativeUrl(String rawUrl) {
+        if (rawUrl == null || rawUrl.isEmpty()) return rawUrl;
+        String url = rawUrl;
+        try {
+            Uri parsed = Uri.parse(url);
+            if ("https".equalsIgnoreCase(parsed.getScheme()) && ("liphtup.in".equalsIgnoreCase(parsed.getHost()) || "www.liphtup.in".equalsIgnoreCase(parsed.getHost()))) {
+                String p = parsed.getPath();
+                String q = parsed.getQuery();
+                url = (p != null ? p : "/") + (q != null && !q.isEmpty() ? "?" + q : "");
+            }
+        } catch (Exception ignored) {}
+
+        int queryIndex = url.indexOf('?');
+        String path = queryIndex >= 0 ? url.substring(0, queryIndex) : url;
+        String query = queryIndex >= 0 ? url.substring(queryIndex) : "";
+
+        if ((path.equals("/driver") || path.equals("driver") || path.equals("/driver.html") || path.equals("driver.html")) && query.contains("rideId=")) {
+            path = "/driver-service.html";
+        } else if (path.equals("/driver-service") || path.equals("driver-service")) {
+            path = "/driver-service.html";
+        } else if (!path.endsWith(".html") && !path.startsWith("http://") && !path.startsWith("https://")) {
+            if (path.isEmpty() || path.equals("/")) {
+                path = "/index.html";
+            } else {
+                if (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+                path = path + ".html";
+            }
+        }
+
+        return path + query;
+    }
+
     private void handleIncomingIntent(Intent intent) {
         if (intent == null) return;
         
         // Handle explicit notification extras
         if (intent.hasExtra("url")) {
-            pendingNotificationUrl = intent.getStringExtra("url");
+            String rawUrl = intent.getStringExtra("url");
+            pendingNotificationUrl = normalizeNativeUrl(rawUrl);
         }
         if (intent.hasExtra("rideId")) {
             pendingRideId = intent.getStringExtra("rideId");
@@ -105,13 +138,13 @@ public class MainActivity extends BridgeActivity {
                 if (query != null && !query.isEmpty()) {
                     targetPath += "?" + query;
                 }
-                pendingNotificationUrl = targetPath;
+                pendingNotificationUrl = normalizeNativeUrl(targetPath);
             } else if ("https".equalsIgnoreCase(scheme) && ("liphtup.in".equalsIgnoreCase(host) || "www.liphtup.in".equalsIgnoreCase(host))) {
                 String targetPath = path != null ? path : "/";
                 if (query != null && !query.isEmpty()) {
                     targetPath += "?" + query;
                 }
-                pendingNotificationUrl = targetPath;
+                pendingNotificationUrl = normalizeNativeUrl(targetPath);
             }
         }
     }
@@ -121,17 +154,18 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().post(new Runnable() {
                 @Override
                 public void run() {
+                    String target = null;
                     if (pendingNotificationUrl != null && !pendingNotificationUrl.isEmpty()) {
-                        String target = pendingNotificationUrl;
+                        target = normalizeNativeUrl(pendingNotificationUrl);
                         pendingNotificationUrl = null;
-                        getBridge().getWebView().evaluateJavascript(
-                            "(function(){ if (window.navigateToPage) { window.navigateToPage('" + target.replace("'", "\\'") + "'); } else { window.location.href = '" + target.replace("'", "\\'") + "'; } })();", null
-                        );
                     } else if (pendingRideId != null && !pendingRideId.isEmpty()) {
                         String rId = pendingRideId;
                         pendingRideId = null;
+                        target = "/driver-service.html?rideId=" + rId.replace("'", "\\'") + "&from=push";
+                    }
+                    if (target != null && !target.isEmpty()) {
                         getBridge().getWebView().evaluateJavascript(
-                            "(function(){ window.location.href = '/driver.html?rideId=" + rId.replace("'", "\\'") + "&from=push'; })();", null
+                            "(function(){ var url = '" + target.replace("'", "\\'") + "'; if (window.navigateToPage) { window.navigateToPage(url); } else { window.location.href = url; } })();", null
                         );
                     }
                 }

@@ -23,11 +23,14 @@ function ensureRoot() {
     return root;
 }
 
+let currentDialog = null;
+
 function processQueue() {
     if (isShowing || queue.length === 0) return;
     isShowing = true;
 
-    const { message, okText, cancelText, showCancel, resolve } = queue.shift();
+    currentDialog = queue.shift();
+    const { message, okText, cancelText, showCancel, resolve } = currentDialog;
     const root = ensureRoot();
     const overlay = root.querySelector("#lu-dialog-overlay");
     const box = root.querySelector("#lu-dialog-box");
@@ -51,8 +54,11 @@ function processQueue() {
         cancelBtn.removeEventListener("click", onCancel);
         overlay.removeEventListener("mousedown", onOverlayClick);
         window.setTimeout(() => {
+            currentDialog = null;
             isShowing = false;
-            if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+            if (previouslyFocused && typeof previouslyFocused.blur === "function" && (previouslyFocused.id?.includes('sos') || previouslyFocused.classList?.contains('gy-btn-sos'))) {
+                previouslyFocused.blur();
+            } else if (previouslyFocused && typeof previouslyFocused.focus === "function") {
                 previouslyFocused.focus();
             }
             processQueue();
@@ -96,8 +102,15 @@ function processQueue() {
 }
 
 function openDialog(options) {
+    const msg = String(options.message ?? "");
+    if (currentDialog && currentDialog.message === msg) {
+        return Promise.resolve(false);
+    }
+    if (queue.some((item) => item.message === msg)) {
+        return Promise.resolve(false);
+    }
     return new Promise((resolve) => {
-        queue.push({ ...options, resolve });
+        queue.push({ ...options, message: msg, resolve });
         processQueue();
     });
 }

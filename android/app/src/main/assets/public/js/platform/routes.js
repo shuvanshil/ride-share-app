@@ -70,10 +70,42 @@
      * Helper to get the correct URL for a page name.
      */
     window.getPlatformUrl = function (pageName) {
-        if (isNative) {
-            return pageName.endsWith('.html') ? pageName : `${pageName}.html`;
+        if (!pageName || typeof pageName !== 'string') return pageName;
+
+        // If external URL pointing to liphtup.in, convert to relative local path
+        try {
+            if (/^https?:\/\/(www\.)?liphtup\.in/i.test(pageName)) {
+                const parsed = new URL(pageName);
+                pageName = parsed.pathname + parsed.search + parsed.hash;
+            }
+        } catch (e) {}
+
+        // Separate path from query/hash
+        const match = pageName.match(/^([^?#]*)(.*)$/);
+        let path = match ? match[1] : pageName;
+        const rest = match ? match[2] : '';
+
+        // Route incoming driver ride notifications with rideId to driver-service (Services page)
+        if ((path === '/driver' || path === 'driver' || path === '/driver.html' || path === 'driver.html') && rest.includes('rideId=')) {
+            path = path.startsWith('/') ? '/driver-service' : 'driver-service';
         }
-        return pageName.replace(/\.html$/, '');
+
+        if (isNative) {
+            if (!path.endsWith('.html') && !/^https?:\/\//i.test(path)) {
+                if (path !== '/' && path.endsWith('/')) {
+                    path = path.slice(0, -1);
+                }
+                if (path === '' || path === '/') {
+                    path = '/index.html';
+                } else {
+                    path = `${path}.html`;
+                }
+            }
+            return path + rest;
+        }
+
+        path = path.replace(/\.html$/, '');
+        return path + rest;
     };
 
     /**

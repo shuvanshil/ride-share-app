@@ -1119,7 +1119,7 @@ async def create_passenger_ride(
                         "pickupLocation": body.pickupName.strip(),
                         "dropLocation": body.dropName.strip(),
                         "detourMinutes": str(round(priority_candidates[0]["detourMin"], 1)) if is_priority else "0",
-                        "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push",
+                        "url": f"{APP_BASE_URL}/driver-service?rideId={ride_ref.id}&from=push",
                     }
                 else:
                     n_title = "New Ride Request"
@@ -1131,7 +1131,7 @@ async def create_passenger_ride(
                         "fare": str(fare),
                         "pickupLocation": body.pickupName.strip(),
                         "dropLocation": body.dropName.strip(),
-                        "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push",
+                        "url": f"{APP_BASE_URL}/driver-service?rideId={ride_ref.id}&from=push",
                     }
                 _send_driver_push_notification(db, d_id, n_title, n_body, n_payload)
             except Exception:
@@ -1411,15 +1411,12 @@ def cancel_pending_request(
                             "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
                             "updatedAt": fb_firestore.SERVER_TIMESTAMP,
                         })
-                        linked_targets = set(filter(None, [
-                            r_data.get("driver_id"),
-                            r_data.get("current_offer_driver_id"),
-                            *(r_data.get("eligible_driver_ids") or []),
-                        ]))
+                        assigned_driver = str(r_data.get("driver_id") or r_data.get("driverId") or "").strip()
+                        if assigned_driver and r_data.get("status") in {"accepted", "arrived", "started", "en_route"}:
+                            linked_targets = {assigned_driver}
                 except Exception:
                     pass
-            locked_driver = doc_data.get("lockedByDriverId")
-            all_cancel_targets = set(filter(None, [locked_driver, *linked_targets]))
+            all_cancel_targets = linked_targets
             for target_drv in all_cancel_targets:
                 try:
                     _send_driver_push_notification(
@@ -1998,7 +1995,7 @@ def expand_passenger_dispatch(
                         "rideId": clean_ride_id,
                         "rideType": str(ride.get("rideType") or "normal"),
                         "fare": str(ride.get("fare") or 0),
-                        "url": f"{APP_BASE_URL}/driver?rideId={clean_ride_id}&from=push",
+                        "url": f"{APP_BASE_URL}/driver-service?rideId={clean_ride_id}&from=push",
                     },
                 )
             except Exception:
@@ -2500,10 +2497,9 @@ def cancel_passenger_ride(
                         context={"rideId": clean_ride_id},
                     )
 
-            cancelled_targets = set(filter(None, [
-                target_driver_id,
-                *(ride.get("eligible_driver_ids") or []),
-            ]))
+            assigned_driver_id = str(ride.get("driver_id") or ride.get("driverId") or "").strip()
+            is_accepted = bool(assigned_driver_id and ride.get("status") in {"accepted", "arrived", "started", "en_route"})
+            cancelled_targets = {assigned_driver_id} if is_accepted else set()
             for t_driver_id in cancelled_targets:
                 try:
                     _send_driver_push_notification(
@@ -3004,7 +3000,7 @@ def reject_driver_ride(
                         "rideId": clean_ride_id,
                         "rideType": str(ride.get("rideType") or "normal"),
                         "fare": str(ride.get("fare") or 0),
-                        "url": f"{APP_BASE_URL}/driver?rideId={clean_ride_id}&from=push",
+                        "url": f"{APP_BASE_URL}/driver-service?rideId={clean_ride_id}&from=push",
                     },
                 )
             except Exception:
@@ -3514,7 +3510,7 @@ def _send_driver_push_notification(db, driver_id: str, title: str, body: str, da
             return
 
         app = get_admin_app()
-        link_url = data_payload.get("url") or f"{APP_BASE_URL}/driver?rideId={data_payload.get('rideId', '')}&from=push"
+        link_url = data_payload.get("url") or f"{APP_BASE_URL}/driver-service?rideId={data_payload.get('rideId', '')}&from=push"
         ride_id = data_payload.get("rideId") or ""
         tag = data_payload.get("tag") or (f"liphtup-ride-{ride_id}" if ride_id else f"liphtup-driver-{driver_id}")
         message = fb_messaging.MulticastMessage(
@@ -3865,7 +3861,7 @@ def _match_pending_requests_for_driver(
                     "passengerName": str(data.get("passengerName") or "Rider"),
                     "pickupLocation": str(pickup.get("name") or "Pickup"),
                     "estimatedEarning": str(round(fare_amount)),
-                    "url": f"{APP_BASE_URL}/driver?rideId={ride_ref.id}&from=push"
+                    "url": f"{APP_BASE_URL}/driver-service?rideId={ride_ref.id}&from=push"
                 }
             )
             return req_id
