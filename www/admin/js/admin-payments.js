@@ -167,7 +167,8 @@ export function renderPaymentsTable() {
                     <small class="text-secondary">Week ID: ${p.weekId}</small>
                 </td>
                 <td>
-                    <strong class="text-success">₹${p.amount || 140}</strong><br>
+                    <strong class="text-success">₹${p.amount || 140}</strong>
+                    ${p.overdueAmount > 0 ? `<br><span class="badge bg-danger-subtle text-danger" style="font-size: 10px;">Incl. ₹${p.overdueAmount} overdue</span>` : ''}<br>
                     <small class="text-secondary">${methodLabel}</small>${refNote}${proofLink}
                 </td>
                 <td>${subDate}</td>
@@ -234,7 +235,9 @@ function openVerifyProofModal(paymentId) {
     if (nameEl) nameEl.innerText = payment.driverName || 'Driver';
     if (phoneEl) phoneEl.innerText = payment.driverPhone || payment.driverId || '--';
     if (weekEl) weekEl.innerText = payment.weekLabel || payment.weekId || '--';
-    if (amountEl) amountEl.innerText = `₹${payment.amount || 140}`;
+    if (amountEl) {
+        amountEl.innerHTML = `₹${payment.amount || 140}${payment.overdueAmount > 0 ? `<br><small class="text-danger fs-6 fw-normal">(Incl. ₹${payment.overdueAmount} overdue)</small>` : ''}`;
+    }
     if (declineReasonInput) declineReasonInput.value = '';
 
     if (payment.proofDownloadUrl) {
@@ -253,12 +256,18 @@ function openVerifyProofModal(paymentId) {
         if (linkEl) linkEl.classList.add('d-none');
     }
 
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
+    modal.classList.add('show');
 }
 
 function closeVerifyProofModal() {
     const modal = document.getElementById('admin-verify-proof-modal');
-    if (modal) modal.classList.add('d-none');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+        modal.classList.remove('show');
+    }
     activeVerifyingPaymentId = null;
 }
 
@@ -525,12 +534,18 @@ function openCleanupStorageModal() {
         previewBox.classList.add('d-none');
         previewBox.innerHTML = '';
     }
+    modal.style.display = 'block';
     modal.classList.remove('d-none');
+    modal.classList.add('show');
 }
 
 function closeCleanupStorageModal() {
     const modal = document.getElementById('admin-cleanup-storage-modal');
-    if (modal) modal.classList.add('d-none');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+        modal.classList.remove('show');
+    }
 }
 
 async function handleScanStorage(btn) {
@@ -600,6 +615,9 @@ export function initAdminPayments() {
 
     // Verify Proof Modal Triggers
     document.getElementById('verify-proof-close-btn')?.addEventListener('click', closeVerifyProofModal);
+    document.getElementById('admin-verify-proof-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'admin-verify-proof-modal') closeVerifyProofModal();
+    });
     const verifyApproveBtn = document.getElementById('verify-modal-approve-btn');
     verifyApproveBtn?.addEventListener('click', () => handleModalApprovePayment(verifyApproveBtn));
     const verifyDeclineBtn = document.getElementById('verify-modal-decline-btn');
@@ -608,6 +626,9 @@ export function initAdminPayments() {
     // Cleanup Storage Modal Triggers
     document.getElementById('admin-open-cleanup-storage-btn')?.addEventListener('click', openCleanupStorageModal);
     document.getElementById('cleanup-storage-close-btn')?.addEventListener('click', closeCleanupStorageModal);
+    document.getElementById('admin-cleanup-storage-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'admin-cleanup-storage-modal') closeCleanupStorageModal();
+    });
     const scanBtn = document.getElementById('cleanup-scan-btn');
     scanBtn?.addEventListener('click', () => handleScanStorage(scanBtn));
     const confirmCleanupBtn = document.getElementById('cleanup-confirm-btn');

@@ -126,7 +126,7 @@ function renderProfileSummary(profile = {}) {
     }
     const walletRow = document.getElementById('profile-menu-wallet-row');
     if (walletRow) {
-        walletRow.classList.toggle('d-none', isDriver);
+        walletRow.classList.remove('d-none');
     }
 }
 
@@ -1318,11 +1318,7 @@ onAuthStateChanged(auth, async (user) => {
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('open') === 'wallet' || urlParams.get('tab') === 'wallet') {
-        if (currentProfile?.role === 'driver') {
-            window.location.replace('/driver-payments.html?tab=wallet');
-        } else {
-            openWalletSheet();
-        }
+        openWalletSheet();
     }
 });
 

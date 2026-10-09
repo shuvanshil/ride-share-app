@@ -93,7 +93,8 @@
                     <i class="ti ti-menu-2 fs-2 text-dark"></i>
                 </button>
                 <span class="navbar-brand text-primary fw-bold fs-3 m-0 d-flex align-items-center">
-                    LightUp <span id="admin-header-role-badge" class="badge bg-purple-lt text-purple ms-2 fw-bold" style="font-size: 0.72rem;">Super Admin</span>
+                    <img src="/assets/icons/liphtup-icon-192.png" alt="LiphtUp" style="height: 32px; width: 32px; object-fit: contain; border-radius: 6px;">
+                    <span id="admin-header-role-badge" class="badge bg-purple-lt text-purple ms-2 fw-bold" style="font-size: 0.72rem;">Super Admin</span>
                 </span>
                 <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
                     <button id="admin-feed-toggle" class="btn btn-outline-secondary btn-sm rounded-pill d-flex align-items-center px-3" type="button">
@@ -248,7 +249,7 @@
                         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
                             <div>
                                 <h2 class="page-title h2 fw-bold mb-0">Dashboard</h2>
-                                <div class="text-secondary small">Overview of today's LightUp operations</div>
+                                <div class="text-secondary small">Overview of today's LiphtUp operations</div>
                             </div>
                             <div class="badge bg-white text-secondary border shadow-xs d-flex align-items-center gap-2 px-3 py-2 rounded-pill font-weight-medium">
                                 <i class="ti ti-calendar text-primary"></i>
@@ -641,29 +642,23 @@
                                         </span>
                                     </h2>
                                 </div>
-                                <div class="col d-flex align-items-center justify-content-end gap-2 flex-wrap">
+                                <div class="col-auto ms-auto d-flex align-items-center gap-3">
                                     <!-- Search input -->
-                                    <div class="input-icon" style="max-width: 360px; width: 100%;">
+                                    <div class="input-icon" style="width: 300px;">
                                         <span class="input-icon-addon">
                                             <i class="ti ti-search text-secondary"></i>
                                         </span>
-                                        <input type="text" id="live-rides-search" class="form-control" placeholder="Search by ride ID, driver, passenger, phone..." style="border-radius: 6px; font-size: 0.875rem;">
+                                        <input type="text" id="live-rides-search" class="form-control form-control-sm" placeholder="Search ride ID, driver, phone..." style="border-radius: 6px;">
                                     </div>
 
-                                    <!-- Refresh with Last updated -->
-                                    <div class="d-flex flex-column align-items-end">
-                                        <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-2 py-1 px-3" id="live-rides-refresh-btn" style="border-radius: 6px;">
-                                            <i class="ti ti-refresh text-success fs-3" id="live-rides-refresh-icon"></i>
-                                            <span class="fw-medium">Refresh</span>
-                                        </button>
-                                        <div class="text-secondary small mt-1" id="live-rides-last-updated" style="font-size: 0.72rem;">Last updated: --:--:--</div>
-                                    </div>
-
-                                    <!-- Filters button -->
-                                    <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-2 py-1 px-3" id="live-rides-filters-btn" style="border-radius: 6px;">
-                                        <i class="ti ti-adjustments-horizontal"></i>
-                                        <span>Filters</span>
+                                    <!-- Refresh button -->
+                                    <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 py-1 px-3" id="live-rides-refresh-btn" style="border-radius: 6px; white-space: nowrap;">
+                                        <i class="ti ti-refresh text-success" id="live-rides-refresh-icon"></i>
+                                        <span class="fw-medium">Refresh</span>
                                     </button>
+
+                                    <!-- Last updated -->
+                                    <span class="text-secondary small text-nowrap" id="live-rides-last-updated" style="font-size: 0.75rem;">Last updated: --:--:--</span>
                                 </div>
                             </div>
                         </div>
@@ -1618,7 +1613,7 @@
     </div>
 
     <!-- Modal: Verify Driver Payment Submission with Screenshot Proof -->
-    <div id="admin-verify-proof-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1075;">
+    <div id="admin-verify-proof-modal" class="modal modal-blur fade d-none" tabindex="-1" role="dialog" aria-modal="true" style="display: none; background: rgba(0, 0, 0, 0.5); z-index: 1075;">
         <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 520px;">
             <div class="modal-content shadow-lg border-0">
                 <div class="modal-header">
@@ -1682,7 +1677,7 @@
     </div>
 
     <!-- Modal: Cleanup Payment Storage -->
-    <div id="admin-cleanup-storage-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1075;">
+    <div id="admin-cleanup-storage-modal" class="modal modal-blur fade d-none" tabindex="-1" role="dialog" aria-modal="true" style="display: none; background: rgba(0, 0, 0, 0.5); z-index: 1075;">
         <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
             <div class="modal-content shadow-lg border-0">
                 <div class="modal-header">

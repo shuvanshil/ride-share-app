@@ -36,6 +36,9 @@ admin_router = APIRouter(prefix="/api/admin/driver-payments", tags=["admin-drive
 class SubmitPaymentRequest(BaseModel):
     paymentReference: Optional[str] = None
     paymentMethod: Optional[str] = "upi"
+    amount: Optional[float] = None
+    baseFee: Optional[float] = None
+    overdueAmount: Optional[float] = None
     proofStoragePath: Optional[str] = None
     proofDownloadUrl: Optional[str] = None
     proofFileName: Optional[str] = None
@@ -247,10 +250,17 @@ def get_driver_payment_status(
     week_info = get_payment_week_info()
     current_week_id = week_info["weekId"]
 
-    # Query all payment submissions for this driver
-    # Query all payment submissions for this driver
-    payments_ref = db.collection("driverPayments").where("driverId", "==", uid)
-    docs = list(payments_ref.stream())
+    # Query all payment submissions for this driver (checking both driverId and legacy driver_id)
+    seen_ids = set()
+    docs = []
+    for field in ("driverId", "driver_id"):
+        try:
+            for snap in db.collection("driverPayments").where(field, "==", uid).stream():
+                if snap.id not in seen_ids:
+                    seen_ids.add(snap.id)
+                    docs.append(snap)
+        except Exception:
+            pass
 
     payment_history: List[Dict[str, Any]] = []
     current_week_submissions: List[Dict[str, Any]] = []
@@ -356,14 +366,34 @@ def submit_weekly_payment(
 
     # Calculate authoritative dues dynamically on the server
     driver_created_at = profile.get("createdAt") or profile.get("approvedAt") or profile.get("registrationDate")
-    payments_ref = db.collection("driverPayments").where("driverId", "==", uid)
-    all_payments = [_format_payment_doc(d.id, d.to_dict() or {}) for d in payments_ref.stream()]
+    seen_ids = set()
+    all_payment_snaps = []
+    for field in ("driverId", "driver_id"):
+        try:
+            for snap in db.collection("driverPayments").where(field, "==", uid).stream():
+                if snap.id not in seen_ids:
+                    seen_ids.add(snap.id)
+                    all_payment_snaps.append(snap)
+        except Exception:
+            pass
+
+    all_payments = [_format_payment_doc(d.id, d.to_dict() or {}) for d in all_payment_snaps]
     dues_info = calculate_dues_and_upcoming(
         all_payments, week_info, "due", driver_created_at=driver_created_at
     )
-    total_amount = dues_info.get("totalAmountToBePaid", DEFAULT_WEEKLY_FEE)
-    overdue_amount = dues_info.get("previousDuesAmount", 0)
-    base_fee = DEFAULT_WEEKLY_FEE
+    calculated_total = dues_info.get("totalAmountToBePaid", DEFAULT_WEEKLY_FEE)
+    calculated_overdue = dues_info.get("previousDuesAmount", 0)
+    base_fee = float(body.baseFee) if (body.baseFee is not None and body.baseFee > 0) else float(week_info.get("amount", DEFAULT_WEEKLY_FEE))
+
+    if body.amount is not None and float(body.amount) >= base_fee:
+        total_amount = float(body.amount)
+        if body.overdueAmount is not None:
+            overdue_amount = float(body.overdueAmount)
+        else:
+            overdue_amount = max(0.0, total_amount - base_fee)
+    else:
+        total_amount = float(calculated_total)
+        overdue_amount = float(calculated_overdue)
 
     # Always create a new payment document to preserve submission history
     now_ms = int(datetime.datetime.now().timestamp() * 1000)

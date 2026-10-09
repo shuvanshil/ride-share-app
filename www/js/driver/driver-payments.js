@@ -9,24 +9,23 @@ import { auth, db, storage, ref, uploadBytesResumable, getDownloadURL } from '..
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { showAlert } from '../shared/dialog.js';
-import { t } from '../shared/i18n.js';
+import { t, translateDOM } from '../shared/i18n.js';
 import { registerDriverPushToken } from '../shared/messaging.js';
 import { buildUpiUri } from '../shared/upi-qr-helper.js';
 
 let currentAuthUser = null;
 let currentPaymentData = null;
 let realtimeUnsubscribe = null;
-let isWalletViewActive = false;
+let currentTotalAmount = 140;
+let currentBaseFee = 140;
+let currentOverdueAmount = 0;
 
 // DOM Elements
 const backBtn = document.getElementById('payments-back-btn');
 const headerTitle = document.getElementById('fee-header-title');
-const walletToggleBtn = document.getElementById('fee-wallet-toggle-btn');
-const walletToggleLabel = document.getElementById('fee-wallet-toggle-label');
 
 const loadingScreen = document.getElementById('payments-loading-screen');
 const mainContainer = document.getElementById('payments-container');
-const walletContainer = document.getElementById('driver-wallet-tab-content');
 
 // Status Banner Elements
 const bannerEl = document.getElementById('fee-status-banner');
@@ -205,6 +204,13 @@ function renderPaymentPage(data) {
     const overdueAmount = duesSummary.previousDuesAmount || 0;
     const baseFee = weekInfo.amount || 140;
 
+    currentTotalAmount = totalAmount;
+    currentBaseFee = baseFee;
+    currentOverdueAmount = overdueAmount;
+
+    // Apply translations to static DOM elements
+    translateDOM(document);
+
     // Check Account on Hold (10+ unpaid weeks)
     if (duesSummary.isAccountOnHold && state !== 'approved' && state !== 'submitted') {
         accountHoldModal?.classList.remove('d-none');
@@ -222,7 +228,7 @@ function renderPaymentPage(data) {
     if (step1Dates) {
         const monStr = formatShortDate(weekInfo.mondayStart);
         const sunStr = formatShortDate(weekInfo.sundayEnd);
-        step1Dates.innerText = (monStr && sunStr) ? `${monStr} – ${sunStr}` : (weekInfo.shortWeekLabel || 'Current Week');
+        step1Dates.innerText = (monStr && sunStr) ? `${monStr} – ${sunStr}` : (weekInfo.shortWeekLabel || t('driver.current_week', 'Current Week'));
     }
 
     // 4. Step 2: Under review
@@ -252,8 +258,8 @@ function renderStatusBanner(state, totalAmount, activeSub, pauseMessage) {
                 <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
         `;
-        bannerTitleEl.innerText = 'Payment verified';
-        bannerDescEl.innerText = "Your payment has been confirmed. You're all set for this week.";
+        bannerTitleEl.innerText = t('driver.status_verified_title', 'Payment verified');
+        bannerDescEl.innerText = t('driver.status_verified_desc', "Your payment has been confirmed. You're all set for this week.");
     } else if (state === 'submitted') {
         bannerEl.classList.add('submitted');
         bannerIconWrapEl.innerHTML = `
@@ -263,8 +269,8 @@ function renderStatusBanner(state, totalAmount, activeSub, pauseMessage) {
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
         `;
-        bannerTitleEl.innerText = 'Payment under review';
-        bannerDescEl.innerText = "Your payment has been submitted and is being checked. Please don't make another payment.";
+        bannerTitleEl.innerText = t('driver.status_review_title', 'Payment under review');
+        bannerDescEl.innerText = t('driver.status_review_desc', "Your payment has been submitted and is being checked. Please don't make another payment.");
     } else if (state === 'declined') {
         bannerEl.classList.add('declined');
         bannerIconWrapEl.innerHTML = `
@@ -273,9 +279,9 @@ function renderStatusBanner(state, totalAmount, activeSub, pauseMessage) {
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
         `;
-        bannerTitleEl.innerText = 'Payment declined';
-        const reasonText = activeSub?.declineReason ? ` (${activeSub.declineReason}).` : '.';
-        bannerDescEl.innerText = `Your previous payment could not be verified${reasonText} Please make the payment again.`;
+        bannerTitleEl.innerText = t('driver.status_declined_title', 'Payment declined');
+        const reasonPart = activeSub?.declineReason ? ` [${t('driver.decline_reason_tag', 'Reason: {reason}', { reason: activeSub.declineReason })}]` : '';
+        bannerDescEl.innerText = `${t('driver.status_declined_desc', 'Your previous payment could not be verified. Please make the payment again.')}${reasonPart}`;
     } else if (state === 'paused') {
         bannerEl.classList.add('submitted');
         bannerIconWrapEl.innerHTML = `
@@ -285,7 +291,7 @@ function renderStatusBanner(state, totalAmount, activeSub, pauseMessage) {
                 <line x1="14" y1="15" x2="14" y2="9"></line>
             </svg>
         `;
-        bannerTitleEl.innerText = 'Weekly Payments Paused';
+        bannerTitleEl.innerText = t('driver.payments_paused_title', 'Weekly Payments Paused');
         bannerDescEl.innerText = pauseMessage;
     } else {
         // DUE state
@@ -296,8 +302,8 @@ function renderStatusBanner(state, totalAmount, activeSub, pauseMessage) {
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
         `;
-        bannerTitleEl.innerText = 'Payment due';
-        bannerDescEl.innerText = "Please complete this week's service fee.";
+        bannerTitleEl.innerText = t('driver.status_due_title', 'Payment due');
+        bannerDescEl.innerText = t('driver.status_due_desc', "Please complete this week's service fee.");
     }
 }
 
@@ -351,8 +357,8 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, activeSub) {
         // Verified state
         step2Wrapper.innerHTML = `
             <div class="fee-step-card green-bg">
-                <h4 class="fee-step-title">2. Under review</h4>
-                <p class="fee-step-subtitle">Your payment has been reviewed.</p>
+                <h4 class="fee-step-title">${t('driver.step_under_review', '2. Under review')}</h4>
+                <p class="fee-step-subtitle">${t('driver.step_review_done', 'Your payment has been reviewed.')}</p>
             </div>
         `;
         return;
@@ -363,19 +369,19 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, activeSub) {
         const paidTimeStr = activeSub?.submittedAt ? formatFullDateTime(activeSub.submittedAt) : 'Recently submitted';
         const overdueHtml = overdueAmount > 0 ? `
             <div class="fee-overdue-pill">
-                <strong>Includes ₹${overdueAmount} overdue</strong>
-                <span>from previous week</span>
+                <strong>${t('driver.includes_overdue', 'Includes ₹{amount} overdue', { amount: overdueAmount })}</strong>
+                <span>${t('driver.from_previous_week', 'from previous week')}</span>
             </div>
         ` : '';
 
         step2Wrapper.innerHTML = `
             <div class="fee-step-active-container">
-                <h4 class="fee-step-title">2. Under review</h4>
-                <p class="fee-step-subtitle mb-0">We are confirming your payment. This usually takes a few minutes.</p>
+                <h4 class="fee-step-title">${t('driver.step_under_review', '2. Under review')}</h4>
+                <p class="fee-step-subtitle mb-0">${t('driver.step_review_waiting', 'We are confirming your payment. This usually takes a few minutes.')}</p>
                 <div class="fee-inner-white-card">
-                    <div class="fee-card-label">Paid amount</div>
+                    <div class="fee-card-label">${t('driver.paid_amount', 'Paid amount')}</div>
                     <div class="fee-card-amount">₹${totalAmount}</div>
-                    <div class="small text-muted mb-3" style="font-size: 0.8rem;">Paid on ${paidTimeStr}</div>
+                    <div class="small text-muted mb-3" style="font-size: 0.8rem;">${t('driver.paid_on', 'Paid on {date}', { date: paidTimeStr })}</div>
                     ${overdueHtml}
                     <div class="fee-callout-warning">
                         <div class="fee-callout-icon">
@@ -385,8 +391,8 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, activeSub) {
                             </svg>
                         </div>
                         <div class="fee-callout-text">
-                            <strong>Please don't make another payment.</strong>
-                            <p>We will notify you once your payment is confirmed.</p>
+                            <strong>${t('driver.please_dont_pay_again', "Please don't make another payment.")}</strong>
+                            <p>${t('driver.will_notify_confirmed', 'We will notify you once your payment is confirmed.')}</p>
                         </div>
                     </div>
                 </div>
@@ -398,41 +404,45 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, activeSub) {
     // DUE or DECLINED state
     const overdueHtml = overdueAmount > 0 ? `
         <div class="fee-overdue-pill">
-            <strong>Includes ₹${overdueAmount} overdue</strong>
-            <span>from previous week</span>
+            <strong>${t('driver.includes_overdue', 'Includes ₹{amount} overdue', { amount: overdueAmount })}</strong>
+            <span>${t('driver.from_previous_week', 'from previous week')}</span>
         </div>
     ` : '';
 
+    const btnLabel = state === 'declined'
+        ? t('driver.repay_now_btn', 'RE-PAY ₹{amount} NOW', { amount: totalAmount })
+        : t('driver.pay_now_btn', 'PAY ₹{amount} NOW', { amount: totalAmount });
+
     step2Wrapper.innerHTML = `
         <div class="fee-step-active-container">
-            <h4 class="fee-step-title">2. Under review</h4>
-            <p class="fee-step-subtitle mb-0">Make the payment for this week.</p>
+            <h4 class="fee-step-title">${t('driver.step_under_review', '2. Under review')}</h4>
+            <p class="fee-step-subtitle mb-0">${t('driver.step_review_pending', 'Make the payment for this week.')}</p>
             <div class="fee-inner-white-card">
-                <div class="fee-card-label">Total to pay</div>
+                <div class="fee-card-label">${t('driver.total_to_pay', 'Total to pay')}</div>
                 <div class="fee-card-amount">₹${totalAmount}</div>
                 ${overdueHtml}
                 <button id="fee-pay-now-btn" type="button" class="fee-pay-cta-btn">
-                    PAY ₹${totalAmount} NOW
+                    ${btnLabel}
                 </button>
                 <button id="fee-toggle-details-btn" type="button" class="fee-details-toggle">
-                    <span>Payment details</span>
+                    <span>${t('driver.payment_details_label', 'Payment details')}</span>
                     <svg id="fee-toggle-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
                 </button>
                 <div id="fee-collapsible-breakdown" class="fee-collapsible-breakdown d-none">
                     <div class="fee-breakdown-row">
-                        <span>This week’s fee</span>
+                        <span>${t('driver.this_week_fee', "This week’s fee")}</span>
                         <strong>₹${baseFee}</strong>
                     </div>
                     ${overdueAmount > 0 ? `
                     <div class="fee-breakdown-row">
-                        <span>Previous overdue</span>
+                        <span>${t('driver.previous_overdue', 'Previous overdue')}</span>
                         <strong class="text-danger">₹${overdueAmount}</strong>
                     </div>
                     ` : ''}
                     <div class="fee-breakdown-row total-row">
-                        <span>Total to pay</span>
+                        <span>${t('driver.total_to_pay', 'Total to pay')}</span>
                         <strong>₹${totalAmount}</strong>
                     </div>
                 </div>
@@ -467,15 +477,15 @@ function renderStep3(state, activeSub) {
         const paidTimeStr = activeSub?.verifiedAt ? formatFullDateTime(activeSub.verifiedAt) : (activeSub?.submittedAt ? formatFullDateTime(activeSub.submittedAt) : 'Recently confirmed');
         step3Wrapper.innerHTML = `
             <div class="fee-step-card green-bg">
-                <h4 class="fee-step-title">3. Payment verified</h4>
-                <p class="fee-step-subtitle">Paid on ${paidTimeStr}</p>
+                <h4 class="fee-step-title">${t('driver.step_payment_verified', '3. Payment verified')}</h4>
+                <p class="fee-step-subtitle">${t('driver.paid_on', 'Paid on {date}', { date: paidTimeStr })}</p>
             </div>
         `;
     } else {
         step3Wrapper.innerHTML = `
             <div class="fee-step-card gray-bg">
-                <h4 class="fee-step-title">3. Payment verified</h4>
-                <p class="fee-step-subtitle">We’ll confirm your payment and update your status here.</p>
+                <h4 class="fee-step-title">${t('driver.step_payment_verified', '3. Payment verified')}</h4>
+                <p class="fee-step-subtitle">${t('driver.step_verified_waiting', "We’ll confirm your payment and update your status here.")}</p>
             </div>
         `;
     }
@@ -713,26 +723,29 @@ async function handleScreenshotSelected(event) {
                 proofDownloadUrl: downloadUrl,
                 proofFileName: cleanFileName,
                 proofFileSize: file.size,
-                proofContentType: file.type
+                proofContentType: file.type,
+                amount: currentTotalAmount,
+                baseFee: currentBaseFee,
+                overdueAmount: currentOverdueAmount
             })
         });
 
         if (!submitResponse.ok) {
             const errData = await submitResponse.json().catch(() => ({}));
-            throw new Error(formatErrorMessage(errData, 'Failed to submit payment verification request.'));
+            throw new Error(formatErrorMessage(errData, t('driver.submission_failed', 'Failed to submit payment verification request.')));
         }
 
         if (uploadProgressBar) uploadProgressBar.style.width = '100%';
 
         closePaymentModal();
-        showAlert('Payment screenshot submitted successfully! Your payment is now under review.');
+        showAlert(t('driver.proof_submitted_alert', 'Payment screenshot submitted successfully! Your payment is now under review.'));
 
         // Re-fetch payment status immediately
         await fetchPaymentStatus();
 
     } catch (err) {
         console.error("Screenshot upload/submission error:", err);
-        showAlert(err.message || 'Failed to upload screenshot. Please try again.');
+        showAlert(err.message || t('driver.upload_failed_retry', 'Failed to upload screenshot. Please try again.'));
     } finally {
         if (uploadProgressWrap) uploadProgressWrap.classList.add('d-none');
         if (screenshotFileInput) screenshotFileInput.value = '';
@@ -748,17 +761,17 @@ function openHistoryModal() {
 
     if (fullHistoryList) {
         if (!history.length) {
-            fullHistoryList.innerHTML = `<p class="text-center text-muted py-4">No payment records found.</p>`;
+            fullHistoryList.innerHTML = `<p class="text-center text-muted py-4">${t('driver.no_payment_records', 'No payment records found.')}</p>`;
         } else {
             fullHistoryList.innerHTML = history.map(item => {
                 let badgeClass = 'text-warning';
-                let statusLabel = 'UNDER REVIEW';
+                let statusLabel = t('driver.step_under_review', 'Under review');
                 if (item.status === 'approved') {
                     badgeClass = 'text-success';
-                    statusLabel = 'VERIFIED';
+                    statusLabel = t('driver.step_payment_verified', 'Payment verified');
                 } else if (item.status === 'declined') {
                     badgeClass = 'text-danger';
-                    statusLabel = 'DECLINED';
+                    statusLabel = t('driver.status_declined', 'Payment declined');
                 }
 
                 const subDate = item.submittedAt ? formatFullDateTime(item.submittedAt) : '--';
@@ -767,7 +780,7 @@ function openHistoryModal() {
                         <div>
                             <strong class="d-block text-dark" style="font-size: 0.9rem;">${item.weekLabel || item.weekId}</strong>
                             <small class="text-muted">${subDate}</small>
-                            ${item.declineReason ? `<div class="small text-danger mt-1">Reason: ${item.declineReason}</div>` : ''}
+                            ${item.declineReason ? `<div class="small text-danger mt-1">${t('driver.reason', 'Reason')}: ${item.declineReason}</div>` : ''}
                         </div>
                         <div class="text-end">
                             <strong class="d-block" style="font-size: 0.95rem;">₹${item.amount || 140}</strong>
@@ -787,114 +800,6 @@ function closeHistoryModal() {
 }
 
 // -------------------------------------------------------------
-// Driver Wallet Section
-// -------------------------------------------------------------
-let driverWalletTxLimit = 10;
-
-function toggleWalletView() {
-    isWalletViewActive = !isWalletViewActive;
-
-    if (isWalletViewActive) {
-        mainContainer?.classList.add('d-none');
-        walletContainer?.classList.remove('d-none');
-        if (headerTitle) headerTitle.innerText = 'Driver Wallet';
-        if (walletToggleLabel) walletToggleLabel.innerText = 'Service Fee';
-        fetchDriverWalletData();
-    } else {
-        walletContainer?.classList.add('d-none');
-        mainContainer?.classList.remove('d-none');
-        if (headerTitle) headerTitle.innerText = 'Weekly Service Fee';
-        if (walletToggleLabel) walletToggleLabel.innerText = 'Wallet';
-    }
-}
-
-async function fetchDriverWalletData(isLoadMore = false) {
-    if (!currentAuthUser) return;
-    const balanceEl = document.getElementById('driver-wallet-balance-val');
-    const nextSettleEl = document.getElementById('driver-wallet-next-settlement-date');
-    const txListEl = document.getElementById('driver-wallet-tx-list');
-
-    if (!isLoadMore) {
-        driverWalletTxLimit = 10;
-    }
-
-    try {
-        const token = await getAuthToken();
-        if (!token) return;
-
-        const [walletRes, settleRes, txRes] = await Promise.all([
-            fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
-            fetch('/api/wallet/driver/settlement-info', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }),
-            fetch(`/api/wallet/transactions?limit=${driverWalletTxLimit}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
-        ]);
-
-        const walletData = await walletRes.json().catch(() => ({}));
-        const settleData = await settleRes.json().catch(() => ({}));
-        const txData = await txRes.json().catch(() => ({}));
-
-        if (balanceEl && walletData?.wallet) {
-            const balNum = Number(walletData.wallet.balance ?? 0);
-            balanceEl.innerText = `₹${balNum.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        }
-
-        if (nextSettleEl) {
-            const rawDate = settleData?.nextSettlementDate || settleData?.nextSettlementDateFormatted;
-            let formattedDate = 'To be scheduled';
-            if (rawDate && rawDate !== 'To be scheduled') {
-                try {
-                    const parsed = new Date(rawDate);
-                    if (!isNaN(parsed.getTime())) {
-                        const day = String(parsed.getDate()).padStart(2, '0');
-                        const month = parsed.toLocaleString('en-US', { month: 'short' });
-                        const year = parsed.getFullYear();
-                        formattedDate = `${day} ${month} ${year}`;
-                    } else {
-                        formattedDate = rawDate;
-                    }
-                } catch {
-                    formattedDate = rawDate;
-                }
-            }
-            nextSettleEl.innerText = formattedDate;
-        }
-
-        if (txListEl) {
-            const txs = txData?.transactions || [];
-            if (!txs.length) {
-                txListEl.innerHTML = `
-                    <div class="text-center py-4 text-muted">
-                        <p class="small mb-0">${t('wallet.no_transactions', 'No transactions yet')}</p>
-                    </div>
-                `;
-            } else {
-                txListEl.innerHTML = txs.map(tx => {
-                    const isCredit = tx.direction === 'credit';
-                    const sign = isCredit ? '+' : '-';
-                    const amtColor = isCredit ? '#16A34A' : '#1F2937';
-                    const statusLabel = tx.isReversed ? t('wallet.reversed', 'Reversed') : (tx.status === 'completed' ? t('wallet.completed', 'Completed') : tx.status);
-                    const dateStr = tx.createdAt ? new Date(tx.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
-
-                    return `
-                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                            <div>
-                                <strong class="d-block text-dark" style="font-size: 13px;">${tx.description || 'Wallet'}</strong>
-                                <small class="text-muted" style="font-size: 11px;">${dateStr}</small>
-                            </div>
-                            <div class="text-end">
-                                <strong style="font-size: 13px; color: ${amtColor};">${sign}₹${(tx.amount ?? 0).toLocaleString('en-IN')}</strong>
-                                <span class="badge ${tx.isReversed ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} d-block mt-1" style="font-size: 9px;">${statusLabel}</span>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            }
-        }
-    } catch (err) {
-        console.error('Error fetching driver wallet:', err);
-    }
-}
-
-// -------------------------------------------------------------
 // Event Listeners & Initialization
 // -------------------------------------------------------------
 let listenersInitialized = false;
@@ -903,16 +808,13 @@ function setupEventListeners() {
     listenersInitialized = true;
 
     backBtn?.addEventListener('click', () => {
-        if (isWalletViewActive) {
-            toggleWalletView();
-        } else if (window.history.length > 1) {
+        if (window.history.length > 1) {
             window.history.back();
         } else {
             window.location.href = 'driver-dashboard.html';
         }
     });
 
-    walletToggleBtn?.addEventListener('click', toggleWalletView);
     modalCloseBtn?.addEventListener('click', closePaymentModal);
     sheetModal?.addEventListener('click', (e) => {
         if (e.target === sheetModal) closePaymentModal();
@@ -933,14 +835,10 @@ function setupEventListeners() {
     });
 
     holdPayNowBtn?.addEventListener('click', openPaymentModal);
-
-    document.getElementById('py-see-all-wallet-tx')?.addEventListener('click', () => {
-        driverWalletTxLimit += 20;
-        fetchDriverWalletData(true);
-    });
 }
 
 window.addEventListener('languageChanged', () => {
+    translateDOM();
     if (currentPaymentData) {
         renderPaymentPage(currentPaymentData);
     }
@@ -955,8 +853,9 @@ onAuthStateChanged(auth, async (user) => {
         registerDriverPushToken(db, user.uid).catch(() => {});
 
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('tab') === 'wallet' && !isWalletViewActive) {
-            toggleWalletView();
+        if (urlParams.get('tab') === 'wallet') {
+            window.location.href = 'profile.html?open=wallet';
+            return;
         }
 
         await fetchPaymentStatus();

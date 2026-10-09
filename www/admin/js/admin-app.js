@@ -227,6 +227,7 @@ watchAdminAuth(async (user) => {
         refreshSafetyBadge();
         initAdminPayments();
         initAdminWalletCredit();
+        initLiveRidesEvents();
         initAdminCoupons();
         initAdminReports();
         initPermissionsModal();
@@ -279,6 +280,7 @@ async function handleAdminLogin() {
             refreshSafetyBadge();
             initAdminPayments();
             initAdminWalletCredit();
+            initLiveRidesEvents();
             initAdminCoupons();
             initAdminReports();
             initPermissionsModal();
@@ -1658,8 +1660,14 @@ function renderHierarchyTableView() {
                 h.id, h.displayId, h.description,
                 h.driver?.name, h.driver?.phone, h.driver?.plate,
                 h.route?.pickup, h.route?.drop,
-                ...(h.childRides || []).map((c) => `${c.id} ${c.displayId} ${c.passenger?.name} ${c.passenger?.phone} ${c.route?.pickup} ${c.route?.drop}`),
-            ].join(" ").toLowerCase();
+                h.status,
+                ...(h.childRides || []).flatMap((c) => [
+                    c.id, c.displayId, c.status,
+                    c.passenger?.name, c.passenger?.phone,
+                    c.driver?.name, c.driver?.phone, c.driver?.plate,
+                    c.route?.pickup, c.route?.drop
+                ]),
+            ].filter(Boolean).join(" ").toLowerCase();
             return hay.includes(liveSearchQuery);
         });
     }
@@ -1675,7 +1683,7 @@ function renderHierarchyTableView() {
     let rowsHtml = "";
 
     items.forEach((parent) => {
-        const isExpanded = expandedParentIds.has(parent.id) || currentLiveTab === "child";
+        const isExpanded = expandedParentIds.has(parent.id) || currentLiveTab === "child" || Boolean(liveSearchQuery);
         const hasChildren = parent.childRides && parent.childRides.length > 0;
         const vType = (parent.vehicleType || "auto").toLowerCase();
         const isShare = parent.rideType === "share";
@@ -2290,14 +2298,19 @@ async function openRideDrawer(ride) {
                             </tr>
                         </thead>
                         <tbody>
-                            ${siblingChildRides.map(s => `
-                                <tr class="${s.id === r.id ? 'table-active fw-bold' : ''}">
-                                    <td>${escapeHtml(s.id.slice(0, 8))} ${s.id === r.id ? '(This)' : ''}</td>
-                                    <td>${statusChip(s.status)}</td>
-                                    <td>${s.seatsBooked || 1}</td>
-                                    <td>Rs ${s.fare || 0}</td>
+                            ${siblingChildRides.map(s => {
+                                const sId = String(s?.id || s?.rideId || s?.childRideId || '');
+                                const isCurrent = sId && (sId === r.id);
+                                const idLabel = sId ? escapeHtml(sId.slice(0, 8)) : 'Child Ride';
+                                return `
+                                <tr class="${isCurrent ? 'table-active fw-bold' : ''}">
+                                    <td>${idLabel} ${isCurrent ? '(This)' : ''}</td>
+                                    <td>${statusChip(s?.status)}</td>
+                                    <td>${s?.seatsBooked || 1}</td>
+                                    <td>Rs ${s?.fare || 0}</td>
                                 </tr>
-                            `).join("")}
+                                `;
+                            }).join("")}
                         </tbody>
                     </table>
                 </div>
