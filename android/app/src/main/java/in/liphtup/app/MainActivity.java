@@ -10,6 +10,8 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     private String pendingNotificationUrl = null;
     private String pendingRideId = null;
+    private String lastDispatchedUrl = null;
+    private long lastDispatchedAt = 0;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -164,8 +166,14 @@ public class MainActivity extends BridgeActivity {
                         target = "/driver-service.html?rideId=" + rId.replace("'", "\\'") + "&from=push";
                     }
                     if (target != null && !target.isEmpty()) {
+                        long now = System.currentTimeMillis();
+                        if (target.equals(lastDispatchedUrl) && (now - lastDispatchedAt) < 2000) {
+                            return;
+                        }
+                        lastDispatchedUrl = target;
+                        lastDispatchedAt = now;
                         getBridge().getWebView().evaluateJavascript(
-                            "(function(){ var url = '" + target.replace("'", "\\'") + "'; if (window.navigateToPage) { window.navigateToPage(url); } else { window.location.href = url; } })();", null
+                            "(function(){ var url = '" + target.replace("'", "\\'") + "'; if (window.navigateToPage) { window.navigateToPage(url); } else if (window.location.pathname + window.location.search !== url) { window.location.href = url; } })();", null
                         );
                     }
                 }

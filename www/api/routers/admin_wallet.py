@@ -142,7 +142,8 @@ def _send_settlement_resolved_push(driver_id: str, amount_inr: float, upi_id: st
                     title=title,
                     body=body_text,
                     sound="default",
-                    channel_id="ride_requests",
+                    channel_id="liphtup_wallet_channel",
+                    tag="driver-settlement",
                 ),
             ),
             apns=fb_messaging.ApnsConfig(
@@ -223,7 +224,8 @@ def _send_passenger_credit_push(passenger_id: str, amount_inr: float, tag_label:
                     title=title,
                     body=body_text,
                     sound="default",
-                    channel_id="ride_requests",
+                    channel_id="liphtup_wallet_channel",
+                    tag="passenger-credit",
                 ),
             ),
             apns=fb_messaging.ApnsConfig(

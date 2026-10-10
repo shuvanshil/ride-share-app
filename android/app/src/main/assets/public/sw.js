@@ -199,7 +199,7 @@ function getRideNotificationUrl(data = {}) {
     }
     const rideId = data.rideId || data.ride_id || "";
     if (rideId) {
-        const url = new URL("/driver.html", BASE_URL);
+        const url = new URL("/driver-service.html", BASE_URL);
         url.searchParams.set("rideId", rideId);
         url.searchParams.set("from", "push");
         return url.href;
@@ -297,7 +297,7 @@ self.addEventListener("notificationclick", (event) => {
         const sameOriginClient = clientList.find((client) => new URL(client.url).origin === self.location.origin);
         if (sameOriginClient) {
             await sameOriginClient.focus();
-            if (targetUrl) {
+            if (targetUrl && sameOriginClient.url !== targetUrl) {
                 await sameOriginClient.navigate(targetUrl);
             }
             return;

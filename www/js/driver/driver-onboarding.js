@@ -1826,6 +1826,10 @@ function startDriverConsole(profile) {
         setDriverAvailability(currentUser.driverAvailability === "busy" ? "busy" : "searching", initialLoc).catch((error) => {
             console.warn("Initial driver availability sync failed:", error);
         });
+        startDriverPresenceTracking();
+        registerDriverPushToken(db, currentUser.uid).catch((error) => {
+            console.warn("Initial driver push token registration failed:", error);
+        });
     } else {
         stopPresenceTracking();
     }

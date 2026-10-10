@@ -112,9 +112,38 @@ export async function sendTokenToBackend(token) {
             backendError.backendUnavailable = [404, 405, 502, 503].includes(response.status);
             throw backendError;
         }
+        try {
+            localStorage.setItem("liphtup_current_push_token", token);
+        } catch {}
         return { ok: true };
     } catch (error) {
         console.warn("[platform/notifications] backend sync failed:", error);
         return { ok: false, reason: "backend-unavailable" };
     }
 }
+
+/**
+ * Unlinks the current device push token on logout without affecting other devices.
+ */
+export async function unregisterDevicePushToken() {
+    try {
+        const token = localStorage.getItem("liphtup_current_push_token");
+        if (!token) return { ok: true };
+
+        const idToken = await auth.currentUser?.getIdToken();
+        if (idToken) {
+            await fetch("/api/rides/device/unregister", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+                body: JSON.stringify({ token }),
+                signal: AbortSignal.timeout(4000)
+            }).catch(() => {});
+        }
+        localStorage.removeItem("liphtup_current_push_token");
+        return { ok: true };
+    } catch (error) {
+        console.warn("[platform/notifications] unregister push token error:", error);
+        return { ok: false };
+    }
+}
+

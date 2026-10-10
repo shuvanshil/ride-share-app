@@ -179,6 +179,27 @@
             return path + rest;
         }
 
+        var lastNavTarget = '';
+        var lastNavTimestamp = 0;
+        function safeNavigate(target) {
+            if (!target) return;
+            var now = Date.now();
+            if (target === lastNavTarget && (now - lastNavTimestamp) < 2000) {
+                return;
+            }
+            lastNavTarget = target;
+            lastNavTimestamp = now;
+            var current = window.location.pathname + window.location.search;
+            if (current === target || (current + '.html') === target || current === (target + '.html')) {
+                return;
+            }
+            if (window.navigateToPage) {
+                window.navigateToPage(target);
+            } else {
+                window.location.href = target;
+            }
+        }
+
         // --- Pending Notification / Deep Link Dispatch --------------------------
         if (window.LiphtUpNativeStatus) {
             try {
@@ -186,24 +207,14 @@
                     var pendingUrl = window.LiphtUpNativeStatus.consumePendingNotificationUrl();
                     if (pendingUrl && pendingUrl.length > 0) {
                         console.log('[native-bridge] consuming pending notification url:', pendingUrl);
-                        const target = toPlatformNativeUrl(pendingUrl);
-                        if (window.navigateToPage) {
-                            window.navigateToPage(target);
-                        } else {
-                            window.location.href = target;
-                        }
+                        safeNavigate(toPlatformNativeUrl(pendingUrl));
                     }
                 }
                 if (typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {
                     var pendingRide = window.LiphtUpNativeStatus.consumePendingRideId();
                     if (pendingRide && pendingRide.length > 0) {
                         console.log('[native-bridge] consuming pending ride id:', pendingRide);
-                        const targetUrl = toPlatformNativeUrl('/driver-service.html?rideId=' + encodeURIComponent(pendingRide) + '&from=push');
-                        if (window.navigateToPage) {
-                            window.navigateToPage(targetUrl);
-                        } else {
-                            window.location.href = targetUrl;
-                        }
+                        safeNavigate(toPlatformNativeUrl('/driver-service.html?rideId=' + encodeURIComponent(pendingRide) + '&from=push'));
                     }
                 }
             } catch (e) {
@@ -232,19 +243,9 @@
                 console.log('[native-bridge] push action:', notification);
                 var data = (notification && notification.notification && notification.notification.data) || {};
                 if (data.url) {
-                    const target = toPlatformNativeUrl(data.url);
-                    if (window.navigateToPage) {
-                        window.navigateToPage(target);
-                    } else {
-                        window.location.href = target;
-                    }
+                    safeNavigate(toPlatformNativeUrl(data.url));
                 } else if (data.rideId) {
-                    const targetUrl = toPlatformNativeUrl('/driver-service.html?rideId=' + encodeURIComponent(data.rideId) + '&from=push');
-                    if (window.navigateToPage) {
-                        window.navigateToPage(targetUrl);
-                    } else {
-                        window.location.href = targetUrl;
-                    }
+                    safeNavigate(toPlatformNativeUrl('/driver-service.html?rideId=' + encodeURIComponent(data.rideId) + '&from=push'));
                 }
             });
         }

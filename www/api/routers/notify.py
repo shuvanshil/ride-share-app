@@ -206,8 +206,23 @@ async def notify_ride_request(body: NotifyRideRequestBody, authorization: Option
         )
 
         response = fb_messaging.send_each_for_multicast(message, app=app)
+        if response and getattr(response, "failure_count", 0) > 0 and getattr(response, "responses", None):
+            try:
+                from ..core.notifications import cleanup_invalid_tokens
+                invalid_tokens = []
+                for idx, resp in enumerate(response.responses):
+                    if not resp.success and resp.exception:
+                        err_str = str(resp.exception).lower()
+                        if "not-registered" in err_str or "unregistered" in err_str or "invalid-registration-token" in err_str:
+                            if idx < len(unique_tokens):
+                                invalid_tokens.append(unique_tokens[idx])
+                if invalid_tokens:
+                    cleanup_invalid_tokens(db, invalid_tokens)
+            except Exception:  # noqa: BLE001
+                pass
 
         return {"ok": True, "sent": response.success_count, "failed": response.failure_count}
+
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001

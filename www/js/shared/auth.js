@@ -4,6 +4,8 @@ import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/
 import { showAlert } from './dialog.js';
 import { hideInitialLoader, showPageLoader, hidePageLoader } from './loading.js';
 
+import { unregisterDevicePushToken } from '../platform/notifications.js';
+
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 let sessionReadyDispatched = false;
 let authInitialized = false;
@@ -15,6 +17,10 @@ export function registerSignOutHook(fn) {
         signOutHooks.push(fn);
     }
 }
+
+registerSignOutHook(() => {
+    unregisterDevicePushToken().catch(() => {});
+});
 
 /**
  * Returns a promise that resolves when Firebase Auth has finished its initial

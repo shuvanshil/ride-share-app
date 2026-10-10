@@ -4,7 +4,11 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 
@@ -12,6 +16,7 @@ import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
+import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
@@ -19,17 +24,34 @@ import java.util.Map;
 
 public class PushNotificationService extends FirebaseMessagingService {
     private static final String TAG = "PushNotificationService";
-    private static final String CHANNEL_ID = "ride_requests";
-    private static final String CHANNEL_NAME = "Ride Requests";
+    private static final String CHANNEL_RIDE_REQUESTS = "ride_requests";
+    private static final String CHANNEL_WALLET = "liphtup_wallet_channel";
+    private static final String CHANNEL_DRIVER = "liphtup_driver_channel";
+    private static final String CHANNEL_DEFAULT = "default";
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         super.onMessageReceived(remoteMessage);
-        Log.d(TAG, "From: " + remoteMessage.getFrom());
+        Log.d(TAG, "Push message received from: " + remoteMessage.getFrom());
 
-        // Role-based filtering: Suppress any driver ride request notifications unless active user is logged in as a driver
+        // 1. Forward message to Capacitor PushNotificationsPlugin so JS listeners get pushNotificationReceived
+        try {
+            PushNotificationsPlugin.sendRemoteMessage(remoteMessage);
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not forward remote message to Capacitor plugin", t);
+        }
+
         Map<String, String> dataMap = remoteMessage.getData();
         String msgType = dataMap != null ? dataMap.get("type") : null;
+        String rideId = dataMap != null ? dataMap.get("rideId") : null;
+
+        // If this is a ride cancellation event, cancel existing notifications for this ride immediately
+        if ("ride_cancelled".equalsIgnoreCase(msgType) || "RIDE_CANCELLED".equalsIgnoreCase(msgType)) {
+            cancelRideNotification(rideId, dataMap != null ? dataMap.get("tag") : null);
+            return;
+        }
+
+        // 2. Role-based filtering: Suppress any driver ride request notifications unless active user is logged in as a driver
         String rawUrl = dataMap != null ? dataMap.get("url") : null;
         String rawTitle = dataMap != null ? dataMap.get("title") : null;
 
@@ -53,7 +75,6 @@ public class PushNotificationService extends FirebaseMessagingService {
 
         String title = null;
         String body = null;
-        String rideId = null;
         String url = rawUrl;
         if (url != null) {
             try {
@@ -69,7 +90,7 @@ public class PushNotificationService extends FirebaseMessagingService {
         if (dataMap != null && !dataMap.isEmpty()) {
             Log.d(TAG, "Message data payload: " + dataMap);
             if ("NEW_PASSENGER_AVAILABLE".equals(msgType)) {
-                rideId = dataMap.get("rideId");
+                if (rideId == null) rideId = dataMap.get("rideId");
                 String passengerName = dataMap.get("passengerName");
                 String pickupLocation = dataMap.get("pickupLocation");
                 String estimatedEarning = dataMap.get("estimatedEarning");
@@ -83,7 +104,7 @@ public class PushNotificationService extends FirebaseMessagingService {
             } else {
                 title = dataMap.get("title");
                 body = dataMap.get("body");
-                rideId = dataMap.get("rideId");
+                if (rideId == null) rideId = dataMap.get("rideId");
             }
         }
 
@@ -98,13 +119,33 @@ public class PushNotificationService extends FirebaseMessagingService {
         }
 
         if (title == null || title.isEmpty()) {
-            title = "New Ride Request on LiphtUP";
+            title = "LiphtUp Alert";
         }
         if (body == null || body.isEmpty()) {
-            body = "New passenger ride request available nearby.";
+            body = "You have a new update in LiphtUp.";
         }
 
-        showNotification(title, body, rideId, url);
+        String channelId = dataMap != null ? dataMap.get("channel_id") : null;
+        if (channelId == null || channelId.isEmpty()) {
+            if (remoteNotif != null) {
+                channelId = remoteNotif.getChannelId();
+            }
+        }
+        if (channelId == null || channelId.isEmpty()) {
+            channelId = CHANNEL_RIDE_REQUESTS;
+        }
+
+        String tag = dataMap != null ? dataMap.get("tag") : null;
+        if (tag == null || tag.isEmpty()) {
+            if (rideId != null && !rideId.isEmpty()) {
+                tag = "liphtup-ride-" + rideId;
+            } else {
+                tag = "liphtup-general";
+            }
+        }
+
+        String messageId = remoteMessage.getMessageId();
+        showNotification(title, body, rideId, url, channelId, tag, messageId, dataMap);
     }
 
     private boolean isDriverLoggedIn() {
@@ -119,8 +160,29 @@ public class PushNotificationService extends FirebaseMessagingService {
         return "passenger".equalsIgnoreCase(role.trim());
     }
 
-    private void showNotification(String title, String body, String rideId, String url) {
-        createNotificationChannel();
+    private void cancelRideNotification(String rideId, String customTag) {
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+        if (customTag != null && !customTag.isEmpty()) {
+            notificationManager.cancel(customTag, Math.abs(customTag.hashCode()));
+        }
+        if (rideId != null && !rideId.isEmpty()) {
+            String rideTag = "liphtup-ride-" + rideId;
+            notificationManager.cancel(rideTag, Math.abs(rideTag.hashCode()));
+        }
+        Log.d(TAG, "Cancelled notification for ride: " + rideId);
+    }
+
+    private void showNotification(
+            String title,
+            String body,
+            String rideId,
+            String url,
+            String channelId,
+            String tag,
+            String messageId,
+            Map<String, String> dataMap
+    ) {
+        createNotificationChannels();
 
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -132,17 +194,32 @@ public class PushNotificationService extends FirebaseMessagingService {
         } else if (rideId != null && !rideId.isEmpty()) {
             intent.putExtra("url", "/driver-service.html?rideId=" + rideId + "&from=push");
         }
-        
-        // requestCode should be unique if multiple notifications are shown
-        int requestCode = (int) System.currentTimeMillis();
-        
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, requestCode, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        android.net.Uri soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+        // Copy all data extras so MainActivity and Capacitor get full context
+        if (dataMap != null) {
+            for (Map.Entry<String, String> entry : dataMap.entrySet()) {
+                intent.putExtra(entry.getKey(), entry.getValue());
+            }
+        }
+
+        // Add google.message_id so Capacitor PushNotificationsPlugin handles the tap action
+        intent.putExtra("google.message_id", messageId != null ? messageId : String.valueOf(System.currentTimeMillis()));
+
+        // Deterministic notification ID based on tag to replace existing notifications and avoid duplicate cards
+        int notificationId = Math.abs(tag.hashCode());
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                notificationId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        long[] vibrationPattern = new long[]{0, 500, 250, 500, 250, 500};
 
         NotificationCompat.Builder notificationBuilder =
-                new NotificationCompat.Builder(this, CHANNEL_ID)
+                new NotificationCompat.Builder(this, channelId)
                         .setSmallIcon(R.mipmap.ic_launcher)
                         .setContentTitle(title)
                         .setContentText(body)
@@ -151,46 +228,99 @@ public class PushNotificationService extends FirebaseMessagingService {
                         .setPriority(NotificationCompat.PRIORITY_MAX)
                         .setCategory(NotificationCompat.CATEGORY_CALL)
                         .setSound(soundUri)
-                        .setVibrate(new long[]{0, 500, 250, 500, 250, 500})
+                        .setVibrate(vibrationPattern)
                         .setDefaults(Notification.DEFAULT_ALL)
                         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                         .setContentIntent(pendingIntent);
 
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-        
+
         try {
-            notificationManager.notify(requestCode, notificationBuilder.build());
+            notificationManager.notify(tag, notificationId, notificationBuilder.build());
+            Log.d(TAG, "Posted notification [tag=" + tag + ", id=" + notificationId + ", channel=" + channelId + "]");
         } catch (SecurityException e) {
             Log.e(TAG, "SecurityException: No permission to post notifications", e);
         }
     }
 
-    private void createNotificationChannel() {
+    private void createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                // Check if channel already exists
-                NotificationChannel existingChannel = manager.getNotificationChannel(CHANNEL_ID);
-                if (existingChannel == null) {
-                    NotificationChannel channel = new NotificationChannel(
-                            CHANNEL_ID,
-                            CHANNEL_NAME,
-                            NotificationManager.IMPORTANCE_HIGH
-                    );
-                    channel.setDescription("Notifications for new ride requests");
-                    channel.enableLights(true);
-                    channel.enableVibration(true);
-                    channel.setVibrationPattern(new long[]{0, 500, 250, 500, 250, 500});
-                    android.net.Uri soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
-                    android.media.AudioAttributes audioAttributes = new android.media.AudioAttributes.Builder()
-                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                            .build();
-                    channel.setSound(soundUri, audioAttributes);
-                    channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-                    channel.setShowBadge(true);
-                    manager.createNotificationChannel(channel);
-                }
+            if (manager == null) return;
+
+            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .build();
+            long[] vibrationPattern = new long[]{0, 500, 250, 500, 250, 500};
+
+            // 1. Ride requests channel
+            if (manager.getNotificationChannel(CHANNEL_RIDE_REQUESTS) == null) {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_RIDE_REQUESTS,
+                        "Ride Requests & Alerts",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                channel.setDescription("Critical notifications for incoming rides and status updates");
+                channel.enableLights(true);
+                channel.enableVibration(true);
+                channel.setVibrationPattern(vibrationPattern);
+                channel.setSound(soundUri, audioAttributes);
+                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                channel.setShowBadge(true);
+                manager.createNotificationChannel(channel);
+            }
+
+            // 2. Wallet channel
+            if (manager.getNotificationChannel(CHANNEL_WALLET) == null) {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_WALLET,
+                        "Wallet & Payments",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                channel.setDescription("Platform fee dues, payment verification, and wallet credits");
+                channel.enableLights(true);
+                channel.enableVibration(true);
+                channel.setVibrationPattern(vibrationPattern);
+                channel.setSound(soundUri, audioAttributes);
+                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                channel.setShowBadge(true);
+                manager.createNotificationChannel(channel);
+            }
+
+            // 3. Driver channel
+            if (manager.getNotificationChannel(CHANNEL_DRIVER) == null) {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_DRIVER,
+                        "Driver Updates",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                channel.setDescription("Driver onboarding, document approval, and operational updates");
+                channel.enableLights(true);
+                channel.enableVibration(true);
+                channel.setVibrationPattern(vibrationPattern);
+                channel.setSound(soundUri, audioAttributes);
+                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                channel.setShowBadge(true);
+                manager.createNotificationChannel(channel);
+            }
+
+            // 4. Default channel
+            if (manager.getNotificationChannel(CHANNEL_DEFAULT) == null) {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_DEFAULT,
+                        "LiphtUp Notifications",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                channel.setDescription("General system notices and passenger booking alerts");
+                channel.enableLights(true);
+                channel.enableVibration(true);
+                channel.setVibrationPattern(vibrationPattern);
+                channel.setSound(soundUri, audioAttributes);
+                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                channel.setShowBadge(true);
+                manager.createNotificationChannel(channel);
             }
         }
     }
@@ -199,5 +329,10 @@ public class PushNotificationService extends FirebaseMessagingService {
     public void onNewToken(@NonNull String token) {
         super.onNewToken(token);
         Log.d(TAG, "Refreshed token: " + token);
+        try {
+            PushNotificationsPlugin.onNewToken(token);
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not forward refreshed token to Capacitor plugin", t);
+        }
     }
 }

@@ -143,7 +143,8 @@ def _send_driver_wallet_payment_push(driver_id: str, ride_id: str, amount_inr: f
                     title=title,
                     body=body_text,
                     sound="default",
-                    channel_id="ride_requests",
+                    channel_id="liphtup_wallet_channel",
+                    tag=f"wallet-pay-{ride_id}",
                 ),
             ),
             apns=fb_messaging.ApnsConfig(
@@ -227,7 +228,8 @@ def _send_passenger_wallet_payment_push(passenger_id: str, ride_id: str, amount_
                     title=title,
                     body=body_text,
                     sound="default",
-                    channel_id="ride_requests",
+                    channel_id="liphtup_wallet_channel",
+                    tag=f"wallet-pay-pass-{ride_id}",
                 ),
             ),
             apns=fb_messaging.ApnsConfig(
