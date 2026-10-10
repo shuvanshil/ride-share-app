@@ -59,12 +59,13 @@
                 <div class="brand-logo">
                     <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
                 </div>
-                <div class="d-flex align-items-center gap-2">
+                <div class="driver-header-actions d-flex align-items-center gap-2">
+                    <div id="driver-lang-switcher"></div>
                     <span id="driver-duty-pill" class="driver-status-badge online">
                         <span class="status-dot"></span>
                         <span id="driver-duty-status-text" data-i18n="driver.duty_online">Online</span>
                     </span>
-                    <button id="logout-btn" class="mini-action" type="button" data-i18n="common.logout">Logout</button>
+                    <button id="logout-btn" class="mini-action d-none" type="button" data-i18n="common.logout">Logout</button>
                 </div>
             </header>
 
@@ -75,14 +76,23 @@
                         <span id="driver-avatar-initials">DR</span>
                     </div>
                     <div class="driver-greeting-info">
-                        <h2 id="driver-welcome-name">Good morning, Driver 👋</h2>
-                        <p data-i18n="driver.greeting_title">Drive safe and earn more with LightUp</p>
+                        <h2 id="driver-welcome-name">Good evening, Driver 👋</h2>
+                        <p data-i18n="driver.greeting_title">Drive safe & earn with LightUp</p>
                     </div>
                 </section>
 
                 <!-- Driver Duty Console Card -->
                 <section class="duty-console-card">
                     <div class="duty-console-top">
+                        <div class="duty-console-icon-wrap" aria-hidden="true">
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <circle cx="12" cy="12" r="3"/>
+                                <line x1="12" y1="2" x2="12" y2="9"/>
+                                <line x1="2.05" y1="13" x2="9.05" y2="12.5"/>
+                                <line x1="21.95" y1="13" x2="14.95" y2="12.5"/>
+                            </svg>
+                        </div>
                         <div class="duty-console-info">
                             <h3 data-i18n="driver.duty_console">Driver Duty Console</h3>
                             <p id="driver-duty-helper" data-i18n="driver.duty_helper">Ride alerts can continue while you stay online, even if the app is minimized.</p>
@@ -96,29 +106,75 @@
                         </div>
                     </div>
                     <div class="duty-console-actions">
-                        <button id="driver-history-btn" class="console-action-btn" type="button">
-                            <span class="btn-icon">🕒</span> <span data-i18n="history.title">History</span>
+                        <button id="driver-history-btn" class="console-action-card" type="button">
+                            <div class="console-action-badge icon-history" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                            </div>
+                            <div class="console-action-text">
+                                <span class="console-action-title" data-i18n="driver.ride_history">Ride History</span>
+                                <span class="console-action-sub" data-i18n="driver.view_past_rides">View your past rides</span>
+                            </div>
+                            <svg class="console-action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
                         </button>
-                        <div class="console-action-divider"></div>
-                        <button id="driver-earnings-btn" class="console-action-btn" type="button">
-                            <span class="btn-icon">💼</span> <span data-i18n="driver.earnings">Earnings</span>
+                        <div class="console-action-v-divider" aria-hidden="true"></div>
+                        <button id="driver-earnings-btn" class="console-action-card" type="button">
+                            <div class="console-action-badge icon-earnings" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                                </svg>
+                            </div>
+                            <div class="console-action-text">
+                                <span class="console-action-title" data-i18n="driver.earnings">Earnings</span>
+                                <span class="console-action-sub" data-i18n="driver.check_earnings">Check your earnings</span>
+                            </div>
+                            <svg class="console-action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
                         </button>
                     </div>
                 </section>
 
                 <!-- View Dashboard Primary CTA -->
                 <button id="driver-dashboard-link-btn" class="driver-dashboard-cta-btn" type="button" onclick="window.location.href='/driver-dashboard.html'">
-                    <span class="btn-icon">🗺️</span>
-                    <span data-i18n="driver.view_dashboard">View Your Dashboard</span>
+                    <div class="cta-left-content">
+                        <svg class="cta-grid-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                            <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                            <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                            <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+                        </svg>
+                        <span data-i18n="driver.view_dashboard">View Your Dashboard</span>
+                    </div>
+                    <svg class="cta-arrow-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="9 18 15 12 9 6"/>
+                    </svg>
                 </button>
 
                 <!-- Incoming Local Ride Requests Section -->
                 <section class="incoming-requests-section">
                     <div class="requests-section-header">
                         <h6 class="section-title" data-i18n="driver.incoming_requests">Incoming Local Ride Requests</h6>
-                        <span id="incoming-requests-badge" class="requests-badge d-none">
-                            <span id="incoming-requests-count">0 New</span> <span>›</span>
-                        </span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="listening-indicator" class="listening-status">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="radar-pulse" aria-hidden="true">
+                                    <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
+                                    <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+                                    <circle cx="12" cy="12" r="2" fill="#16a34a"/>
+                                    <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
+                                    <path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/>
+                                </svg>
+                                <span data-i18n="driver.listening_for_rides">Listening for rides...</span>
+                            </span>
+                            <span id="incoming-requests-badge" class="requests-badge d-none">
+                                <span id="incoming-requests-count">0 New</span> <span>›</span>
+                            </span>
+                        </div>
                     </div>
 
                     <div id="available-rides-list" class="ride-list">
@@ -146,11 +202,38 @@
             </main>
 
             <!-- Bottom Navigation Bar -->
-            <nav class="bottom-nav">
-                <button class="active" type="button"><span class="webicon webicon-home" aria-hidden="true"></span><span data-i18n="nav.home">Home</span></button>
-                <button type="button" onclick="window.location.href='/driver-service.html'"><span class="webicon webicon-services" aria-hidden="true"></span><span data-i18n="nav.services">Services</span></button>
-                <button type="button" onclick="document.getElementById('driver-history-btn').click()"><span class="webicon webicon-history" aria-hidden="true"></span><span data-i18n="nav.history">History</span></button>
-                <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="nav.profile">Profile</span></button>
+            <nav class="bottom-nav driver-bottom-nav">
+                <button class="active" type="button">
+                    <div class="nav-active-pill">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V9.5z"/>
+                        </svg>
+                        <span data-i18n="nav.home">Home</span>
+                    </div>
+                    <span class="active-indicator-bar" aria-hidden="true"></span>
+                </button>
+                <button type="button" onclick="window.location.href='/driver-service.html'">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+                        <line x1="8" y1="2" x2="8" y2="18"/>
+                        <line x1="16" y1="6" x2="16" y2="22"/>
+                    </svg>
+                    <span data-i18n="nav.services">Services</span>
+                </button>
+                <button type="button" onclick="document.getElementById('driver-history-btn').click()">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span data-i18n="nav.history">History</span>
+                </button>
+                <button type="button" onclick="window.location.href='/profile.html'">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                    <span data-i18n="nav.profile">Profile</span>
+                </button>
             </nav>
         </div>
     </div>
@@ -263,9 +346,13 @@
     <script src="js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
-    <script src="js/shared/qrcode.min.js"></script>
     <script type="module" src="js/driver/driver-onboarding.js?v=2.0.1"></script>
     <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module">
+        import { renderLanguageSwitcher } from './js/shared/i18n.js';
+        const langEl = document.getElementById('driver-lang-switcher');
+        if (langEl) renderLanguageSwitcher(langEl);
+    </script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
 </html>

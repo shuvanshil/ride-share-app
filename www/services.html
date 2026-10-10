@@ -947,25 +947,61 @@
         <!-- ===== Save Address Editor Dialog Sub-Modal ===== -->
         <div id="save-address-editor-modal" class="saved-places-modal-shell d-none" role="dialog" aria-modal="true" style="z-index: 10500;">
             <div class="saved-places-modal-backdrop" id="save-address-editor-backdrop"></div>
-            <div class="saved-places-modal-card editor-card">
-                <button type="button" class="saved-places-close-btn" id="save-address-editor-close">&times;</button>
-                <div class="saved-places-modal-header">
-                    <h3 id="save-address-editor-title" data-i18n="services.save_address_title">Save Address</h3>
-                    <p id="save-address-editor-subtitle" data-i18n="services.save_address_desc">Choose a location to save for fast booking</p>
+            <div class="saved-places-modal-card editor-card save-address-redesign-card">
+                <button type="button" class="saved-places-close-btn" id="save-address-editor-close" aria-label="Close dialog">&times;</button>
+                <div class="saved-places-modal-header d-flex align-items-center gap-3">
+                    <div class="save-address-header-badge">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 id="save-address-editor-title" data-i18n="services.save_address_title">Save Address</h3>
+                        <p id="save-address-editor-subtitle" data-i18n="services.save_address_desc">Choose a location to save for fast booking</p>
+                    </div>
                 </div>
                 <form id="save-address-editor-form" class="mt-3">
-                    <div class="mb-3">
-                        <label for="save-address-type-input" class="form-label text-muted small fw-bold mb-1" data-i18n="services.place_label_name">Place Label / Name</label>
-                        <input type="text" id="save-address-type-input" class="form-control gy-input" placeholder="e.g. Home, Work, Gym, School" data-i18n-placeholder="services.place_label_placeholder" required>
+                    <div id="save-address-quick-tags" class="save-address-quick-tags mb-3">
+                        <span class="text-muted small fw-bold" data-i18n="services.quick_labels">Quick labels:</span>
+                        <div class="d-flex gap-2 flex-wrap mt-1">
+                            <button type="button" class="save-address-tag-chip" data-label="Home">🏠 <span data-i18n="profile.home">Home</span></button>
+                            <button type="button" class="save-address-tag-chip" data-label="Work">💼 <span data-i18n="profile.work">Work</span></button>
+                            <button type="button" class="save-address-tag-chip" data-label="Gym">🏋️ Gym</button>
+                            <button type="button" class="save-address-tag-chip" data-label="School">🎓 School</button>
+                        </div>
                     </div>
+
+                    <div class="mb-3">
+                        <label for="save-address-type-input" class="form-label text-dark small fw-bold mb-1" data-i18n="services.place_label_name">Place Label / Name</label>
+                        <div class="save-address-field-wrap">
+                            <span class="save-address-field-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                </svg>
+                            </span>
+                            <input type="text" id="save-address-type-input" class="form-control save-address-outlined-input" placeholder="e.g. Home, Work, Gym, School" data-i18n-placeholder="services.place_label_placeholder" required>
+                        </div>
+                    </div>
+
                     <div class="mb-3 position-relative">
-                        <label for="save-address-location-input" class="form-label text-muted small fw-bold mb-1" data-i18n="profile.address_label">Address</label>
-                        <input type="text" id="save-address-location-input" class="form-control gy-input" placeholder="Enter landmark, street or town" data-i18n-placeholder="services.save_address_placeholder" autocomplete="off" required>
+                        <label for="save-address-location-input" class="form-label text-dark small fw-bold mb-1" data-i18n="profile.address_label">Address</label>
+                        <div class="save-address-field-wrap">
+                            <span class="save-address-field-icon">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                                    <circle cx="12" cy="10" r="3"/>
+                                </svg>
+                            </span>
+                            <input type="text" id="save-address-location-input" class="form-control save-address-outlined-input" placeholder="Enter landmark, street or town" data-i18n-placeholder="services.save_address_placeholder" autocomplete="off" required>
+                        </div>
                         <div id="save-address-suggestions" class="destination-suggestions mt-1"></div>
                     </div>
+
                     <div class="d-flex gap-2 justify-content-end mt-4">
-                        <button type="button" id="save-address-cancel-btn" class="gy-btn gy-btn-outline px-4" data-i18n="common.cancel">Cancel</button>
-                        <button type="submit" id="save-address-submit-btn" class="gy-btn gy-btn-primary px-4" data-i18n="services.save_address">Save Address</button>
+                        <button type="button" id="save-address-cancel-btn" class="gy-btn gy-btn-outline save-address-btn-cancel px-4" data-i18n="common.cancel">Cancel</button>
+                        <button type="submit" id="save-address-submit-btn" class="gy-btn gy-btn-primary save-address-btn-submit px-4" data-i18n="services.save_address">Save Address</button>
                     </div>
                 </form>
             </div>

@@ -128,96 +128,252 @@
         <button id="profile-edit-backdrop" class="profile-edit-backdrop" type="button" aria-label="Close profile editor"></button>
         <section class="profile-edit-sheet">
             <header class="profile-edit-head">
-                <div>
-                    <span id="profile-edit-role" class="profile-role-badge">Account</span>
-                    <h2 id="profile-edit-title" data-i18n="profile.edit_profile">Edit Profile</h2>
+                <div class="profile-edit-head-left">
+                    <div class="profile-edit-head-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                        </svg>
+                    </div>
+                    <div class="profile-edit-head-titles">
+                        <span id="profile-edit-role" class="profile-role-badge">Passenger Account</span>
+                        <h2 id="profile-edit-title" data-i18n="profile.edit_profile">Edit Profile</h2>
+                        <p class="profile-edit-subtitle" data-i18n="profile.edit_subtitle">Keep your information up to date</p>
+                    </div>
                 </div>
                 <button id="profile-edit-close-btn" class="profile-sheet-close" type="button" aria-label="Close">&times;</button>
             </header>
 
             <form id="profile-edit-form" class="profile-edit-form" novalidate>
-                <section class="profile-photo-editor" aria-label="Profile photo">
-                    <div id="profile-edit-avatar" class="profile-avatar profile-edit-avatar">G</div>
-                    <div class="profile-photo-actions">
-                        <label class="profile-photo-upload" for="profile-photo-file" data-i18n="profile.choose_photo">Choose photo</label>
-                        <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-                        <button id="profile-photo-remove-btn" class="profile-photo-remove" type="button" data-i18n="common.remove">Remove</button>
-                        <small data-i18n="profile.photo_hint">JPG, PNG or WebP. The image is resized before saving.</small>
+                <!-- Avatar / Photo Editor Card -->
+                <section class="profile-photo-editor-card" aria-label="Profile photo">
+                    <div class="profile-avatar-wrapper">
+                        <div id="profile-edit-avatar" class="profile-avatar profile-edit-avatar">G</div>
+                        <div class="profile-avatar-camera-badge" aria-hidden="true">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                <circle cx="12" cy="13" r="4"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="profile-photo-card-actions">
+                        <div class="profile-photo-btns-row">
+                            <label class="profile-photo-upload-btn" for="profile-photo-file">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                    <circle cx="12" cy="13" r="4"/>
+                                </svg>
+                                <span data-i18n="profile.change_photo">Change Photo</span>
+                            </label>
+                            <input id="profile-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+                            <button id="profile-photo-remove-btn" class="profile-photo-remove-btn" type="button">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    <line x1="10" y1="11" x2="10" y2="17"/>
+                                    <line x1="14" y1="11" x2="14" y2="17"/>
+                                </svg>
+                                <span data-i18n="common.remove">Remove</span>
+                            </button>
+                        </div>
+                        <p class="profile-photo-hint-text" data-i18n="profile.photo_hint">JPG, PNG or WebP. The image is resized before saving.</p>
                     </div>
                 </section>
 
-                <div class="profile-form-field">
-                    <label for="profile-edit-name" data-i18n="auth.full_name">Full name</label>
-                    <input id="profile-edit-name" class="form-control gy-input" type="text" maxlength="80" autocomplete="name" required>
+                <!-- Full Name -->
+                <div class="profile-field-row">
+                    <div class="profile-field-icon-box">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </div>
+                    <div class="profile-field-content">
+                        <label for="profile-edit-name">
+                            <span data-i18n="auth.full_name">Full Name</span>
+                            <span class="required-star">*</span>
+                        </label>
+                        <input id="profile-edit-name" class="form-control profile-field-input" type="text" maxlength="80" autocomplete="name" required>
+                    </div>
                 </div>
 
-                <div class="profile-form-field">
-                    <label for="profile-edit-email"><span data-i18n="profile.email">Email</span> <span class="text-muted small" data-i18n="common.optional">Optional</span></label>
-                    <input id="profile-edit-email" class="form-control gy-input" type="email" maxlength="120" autocomplete="email">
+                <!-- Email Address -->
+                <div class="profile-field-row">
+                    <div class="profile-field-icon-box">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                            <polyline points="22,6 12,13 2,6"/>
+                        </svg>
+                    </div>
+                    <div class="profile-field-content">
+                        <label for="profile-edit-email">
+                            <span data-i18n="profile.email">Email Address</span>
+                            <span class="profile-optional-badge" data-i18n="common.optional">Optional</span>
+                        </label>
+                        <input id="profile-edit-email" class="form-control profile-field-input" type="email" maxlength="120" autocomplete="email">
+                    </div>
                 </div>
 
-                <div class="profile-form-field">
-                    <label for="profile-edit-gender" data-i18n="auth.gender">Gender</label>
-                    <select id="profile-edit-gender" class="form-select gy-input">
-                        <option value="" disabled selected data-i18n="auth.select_gender_placeholder">Select Gender Preferences</option>
-                        <option value="Male" data-i18n="auth.gender_male">Male</option>
-                        <option value="Female" data-i18n="auth.gender_female">Female</option>
-                        <option value="Others" data-i18n="auth.gender_others">Others</option>
-                    </select>
+                <!-- Gender -->
+                <div class="profile-field-row">
+                    <div class="profile-field-icon-box">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="10" cy="14" r="5"/>
+                            <line x1="19" y1="5" x2="13.6" y2="10.4"/>
+                            <line x1="19" y1="5" x2="14" y2="5"/>
+                            <line x1="19" y1="5" x2="19" y2="10"/>
+                        </svg>
+                    </div>
+                    <div class="profile-field-content">
+                        <label for="profile-edit-gender">
+                            <span data-i18n="auth.gender">Gender</span>
+                            <span class="required-star">*</span>
+                        </label>
+                        <select id="profile-edit-gender" class="form-select profile-field-input">
+                            <option value="" disabled selected data-i18n="auth.select_gender_placeholder">Select Gender Preferences</option>
+                            <option value="Male" data-i18n="auth.gender_male">Male</option>
+                            <option value="Female" data-i18n="auth.gender_female">Female</option>
+                            <option value="Others" data-i18n="auth.gender_others">Others</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="profile-form-field">
-                    <label for="profile-edit-phone" data-i18n="auth.mobile_number">Mobile number</label>
-                    <input id="profile-edit-phone" class="form-control gy-input" type="tel" readonly aria-readonly="true">
-                    <small data-i18n="profile.phone_readonly_hint">Mobile number is secured by phone authentication and cannot be changed here.</small>
+                <!-- Mobile Number -->
+                <div class="profile-field-row">
+                    <div class="profile-field-icon-box">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                        </svg>
+                    </div>
+                    <div class="profile-field-content">
+                        <label for="profile-edit-phone">
+                            <span data-i18n="auth.mobile_number">Mobile Number</span>
+                            <span class="required-star">*</span>
+                        </label>
+                        <input id="profile-edit-phone" class="form-control profile-field-input field-readonly" type="tel" readonly aria-readonly="true">
+                        <small class="profile-field-hint" data-i18n="profile.phone_readonly_hint">Mobile number is secured by phone authentication and cannot be changed here.</small>
+                    </div>
                 </div>
 
-                <div class="profile-form-field">
-                    <label for="profile-photo-url"><span data-i18n="profile.photo_url_label">Profile photo URL</span> <span class="text-muted small" data-i18n="common.optional">Optional</span></label>
-                    <input id="profile-photo-url" class="form-control gy-input" type="url" maxlength="1500" placeholder="https://example.com/photo.jpg">
+                <!-- Profile Photo URL -->
+                <div class="profile-field-row">
+                    <div class="profile-field-icon-box">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                    </div>
+                    <div class="profile-field-content">
+                        <label for="profile-photo-url">
+                            <span data-i18n="profile.photo_url_label">Profile Photo URL</span>
+                            <span class="profile-optional-badge" data-i18n="common.optional">Optional</span>
+                        </label>
+                        <input id="profile-photo-url" class="form-control profile-field-input" type="url" maxlength="1500" placeholder="https://example.com/photo.jpg">
+                    </div>
                 </div>
 
+                <!-- Driver Specific Details Section -->
                 <section id="profile-driver-fields" class="profile-driver-fields d-none">
                     <div class="profile-form-section-title">
                         <h3 data-i18n="profile.driver_details">Driver Details</h3>
                         <p data-i18n="profile.driver_details_hint">Keep these details identical to your registered documents.</p>
                     </div>
 
-                    <div class="profile-form-field">
-                        <label for="profile-edit-vehicle-type" data-i18n="profile.ride_service_label">Ride service</label>
-                        <select id="profile-edit-vehicle-type" class="form-select gy-input">
-                            <option value="" data-i18n="profile.select_vehicle_type">Select vehicle type</option>
-                            <option value="bike" data-i18n="services.bike">Bike / Scooty</option>
-                            <option value="auto" data-i18n="services.auto">Auto</option>
-                        </select>
+                    <div class="profile-field-row">
+                        <div class="profile-field-icon-box">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="18.5" cy="17.5" r="3.5"/>
+                                <circle cx="5.5" cy="17.5" r="3.5"/>
+                                <circle cx="15" cy="5" r="1"/>
+                                <path d="M12 17.5V14l-3-3 4-3 2 3h2"/>
+                            </svg>
+                        </div>
+                        <div class="profile-field-content">
+                            <label for="profile-edit-vehicle-type">
+                                <span data-i18n="profile.ride_service_label">Ride service</span>
+                                <span class="required-star">*</span>
+                            </label>
+                            <select id="profile-edit-vehicle-type" class="form-select profile-field-input">
+                                <option value="" data-i18n="profile.select_vehicle_type">Select vehicle type</option>
+                                <option value="bike" data-i18n="services.bike">Bike / Scooty</option>
+                                <option value="auto" data-i18n="services.auto">Auto</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <div class="profile-form-field">
-                        <label for="profile-edit-vehicle-model" data-i18n="profile.vehicle_model">Vehicle model</label>
-                        <input id="profile-edit-vehicle-model" class="form-control gy-input" type="text" maxlength="80">
+                    <div class="profile-field-row">
+                        <div class="profile-field-icon-box">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="1" y="3" width="15" height="13"/>
+                                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+                                <circle cx="5.5" cy="18.5" r="2.5"/>
+                                <circle cx="18.5" cy="18.5" r="2.5"/>
+                            </svg>
+                        </div>
+                        <div class="profile-field-content">
+                            <label for="profile-edit-vehicle-model" data-i18n="profile.vehicle_model">Vehicle model</label>
+                            <input id="profile-edit-vehicle-model" class="form-control profile-field-input" type="text" maxlength="80">
+                        </div>
                     </div>
 
-                    <div class="profile-form-field">
-                        <label for="profile-edit-vehicle-number" data-i18n="profile.vehicle_number">Vehicle number</label>
-                        <input id="profile-edit-vehicle-number" class="form-control gy-input text-uppercase" type="text" maxlength="20">
+                    <div class="profile-field-row">
+                        <div class="profile-field-icon-box">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="2" y="6" width="20" height="12" rx="2"/>
+                                <circle cx="6" cy="12" r="1"/>
+                                <circle cx="18" cy="12" r="1"/>
+                                <path d="M10 12h4"/>
+                            </svg>
+                        </div>
+                        <div class="profile-field-content">
+                            <label for="profile-edit-vehicle-number">
+                                <span data-i18n="profile.vehicle_number">Vehicle number</span>
+                                <span class="required-star">*</span>
+                            </label>
+                            <input id="profile-edit-vehicle-number" class="form-control profile-field-input text-uppercase" type="text" maxlength="20">
+                        </div>
                     </div>
 
-                    <div class="profile-form-field">
-                        <label for="profile-edit-license" data-i18n="profile.driving_licence">Driving licence number</label>
-                        <input id="profile-edit-license" class="form-control gy-input text-uppercase" type="text" maxlength="30">
+                    <div class="profile-field-row">
+                        <div class="profile-field-icon-box">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="3" y="4" width="18" height="16" rx="2"/>
+                                <circle cx="9" cy="10" r="2"/>
+                                <line x1="15" y1="8" x2="17" y2="8"/>
+                                <line x1="15" y1="12" x2="17" y2="12"/>
+                                <line x1="7" y1="16" x2="17" y2="16"/>
+                            </svg>
+                        </div>
+                        <div class="profile-field-content">
+                            <label for="profile-edit-license">
+                                <span data-i18n="profile.driving_licence">Driving licence number</span>
+                                <span class="required-star">*</span>
+                            </label>
+                            <input id="profile-edit-license" class="form-control profile-field-input text-uppercase" type="text" maxlength="30">
+                        </div>
                     </div>
 
-                    <div class="profile-form-field">
-                        <label for="profile-edit-upi" data-i18n="profile.upi_id">UPI ID</label>
-                        <input id="profile-edit-upi" class="form-control gy-input" type="text" maxlength="100" inputmode="email" placeholder="drivername@upi">
+                    <div class="profile-field-row">
+                        <div class="profile-field-icon-box">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="2" y="5" width="20" height="14" rx="2"/>
+                                <line x1="2" y1="10" x2="22" y2="10"/>
+                            </svg>
+                        </div>
+                        <div class="profile-field-content">
+                            <label for="profile-edit-upi">
+                                <span data-i18n="profile.upi_id">UPI ID</span>
+                                <span class="required-star">*</span>
+                            </label>
+                            <input id="profile-edit-upi" class="form-control profile-field-input" type="text" maxlength="100" inputmode="email" placeholder="drivername@upi">
+                        </div>
                     </div>
                 </section>
 
                 <div id="profile-edit-error" class="profile-edit-error d-none" role="alert"></div>
 
                 <footer class="profile-edit-footer">
-                    <button id="profile-edit-cancel-btn" class="gy-btn profile-cancel-btn" type="button" data-i18n="common.cancel">Cancel</button>
-                    <button id="profile-save-btn" class="gy-btn gy-btn-primary" type="submit" data-i18n="profile.save_changes">Save Changes</button>
+                    <button id="profile-edit-cancel-btn" class="gy-btn profile-redesign-cancel-btn" type="button" data-i18n="common.cancel">Cancel</button>
+                    <button id="profile-save-btn" class="gy-btn profile-redesign-save-btn" type="submit" data-i18n="profile.save_changes">Save Changes</button>
                 </footer>
             </form>
         </section>
