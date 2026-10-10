@@ -2,6 +2,7 @@ import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { hideInitialLoader } from '../shared/loading.js';
+import { paymentReminderManager } from './driver-payment-reminder.js';
 
 const REFRESH_INTERVAL_MS = 30000;
 let refreshTimer = null;
@@ -109,6 +110,7 @@ onAuthStateChanged(auth, async (user) => {
         }
 
         await loadDashboard();
+        paymentReminderManager.init(user);
         hideInitialLoader();
         if (refreshTimer) clearInterval(refreshTimer);
         refreshTimer = setInterval(loadDashboard, REFRESH_INTERVAL_MS);

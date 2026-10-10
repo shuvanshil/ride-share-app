@@ -26,6 +26,7 @@ from ..core.payment_schedule import (
     get_ist_now,
     is_date_in_pause_range,
     calculate_dues_and_upcoming,
+    check_payment_reminder_eligibility,
     DEFAULT_WEEKLY_FEE,
     DEFAULT_PAYEE_UPI_ID,
     IST,
@@ -36,6 +37,11 @@ APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https:/
 
 router = APIRouter(prefix="/account/driver-payments", tags=["driver-payments"])
 admin_router = APIRouter(prefix="/admin/driver-payments", tags=["admin-driver-payments"])
+
+
+class SnoozeReminderRequest(BaseModel):
+    reminderType: str = "overdue"
+    snoozeHours: float = 4.0
 
 
 class SubmitPaymentRequest(BaseModel):
@@ -549,6 +555,17 @@ def get_driver_payment_status(
             status_label = "Verified"
             active_submission = current_week_submissions[0] if current_week_submissions else (payment_history[0] if payment_history else None)
 
+    snooze_config = profile.get("paymentReminderSnooze") or {}
+    reminder_info = check_payment_reminder_eligibility(
+        current_status=status_code,
+        dues_info=dues_info,
+        week_info=week_info,
+        active_submission=active_submission,
+        snooze_config=snooze_config,
+        is_paused=pause_config["isPaused"],
+        overdue_threshold_hours=24,
+    )
+
     return {
         "ok": True,
         "isPaused": pause_config["isPaused"],
@@ -561,8 +578,61 @@ def get_driver_payment_status(
         "duesSummary": dues_info,
         "upcomingWeek": dues_info["upcomingWeek"],
         "isAccountOnHold": dues_info["isAccountOnHold"],
+        "reminder": reminder_info,
         "history": payment_history,
     }
+
+
+@router.post("/reminder/snooze")
+def snooze_driver_payment_reminder(
+    body: SnoozeReminderRequest = Body(...),
+    auth_user: Dict[str, Any] = Depends(current_user),
+) -> Dict[str, Any]:
+    """Postpone payment reminder for 4 hours (or specified hours)."""
+    uid = auth_user["uid"]
+    db = get_firestore()
+    profile = _get_driver_profile(db, uid)
+
+    now = get_ist_now()
+    snooze_hours = max(0.5, min(float(body.snoozeHours or 4.0), 24.0))
+    snoozed_until = now + datetime.timedelta(hours=snooze_hours)
+
+    current_snooze = profile.get("paymentReminderSnooze") or {}
+    updated_snooze = dict(current_snooze)
+    updated_snooze["snoozedAt"] = now.isoformat()
+
+    if body.reminderType == "declined":
+        updated_snooze["declineSnoozedUntil"] = snoozed_until.isoformat()
+        try:
+            declined_snaps = list(
+                db.collection("driverPayments")
+                .where("driverId", "==", uid)
+                .where("status", "==", "declined")
+                .limit(1)
+                .stream()
+            )
+            if declined_snaps:
+                updated_snooze["declinedPaymentId"] = declined_snaps[0].id
+        except Exception:
+            pass
+    else:
+        updated_snooze["overdueSnoozedUntil"] = snoozed_until.isoformat()
+
+    try:
+        db.collection("users").document(uid).update({
+            "paymentReminderSnooze": updated_snooze
+        })
+    except Exception as exc:
+        logger.warning("Failed to update reminder snooze in users collection for %s: %s", uid, exc)
+
+    return {
+        "ok": True,
+        "reminderType": body.reminderType,
+        "snoozedAt": now.isoformat(),
+        "snoozedUntil": snoozed_until.isoformat(),
+        "snoozeHours": snooze_hours,
+    }
+
 
 
 @router.post("/submit")

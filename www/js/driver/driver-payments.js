@@ -752,6 +752,10 @@ async function handleScreenshotSelected(event) {
         // Re-fetch payment status immediately
         await fetchPaymentStatus();
 
+        if (window.LiphtUpPaymentReminder) {
+            window.LiphtUpPaymentReminder.hideModal();
+        }
+
     } catch (err) {
         console.error("Screenshot upload/submission error:", err);
         showAlert(err.message || t('driver.upload_failed_retry', 'Failed to upload screenshot. Please try again.'));

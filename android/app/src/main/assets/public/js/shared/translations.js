@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20261009-v1";
+export const TRANSLATIONS_VERSION = "20261010-v2";
 
 export const TRANSLATIONS = {
     "en": {
@@ -1157,6 +1157,17 @@ export const TRANSLATIONS = {
             "inactive_or_invalid": "Coupon code is invalid, expired, or inactive.",
             "not_eligible": "You are not eligible for this coupon promotion.",
             "ride_already_has_coupon": "A coupon has already been applied to this active ride."
+        },
+        "payment_reminder": {
+            "overdue_title": "A Friendly Reminder About Your Weekly Service Payment",
+            "overdue_notice": "Dear Driver, your service payment for this week is still pending. Your contribution helps us maintain and improve LiphtUp so we can continue serving you and our passengers. Whenever convenient, please complete your payment. Thank you for being a valued part of LiphtUp!",
+            "declined_title": "Action Needed for Your Service Payment",
+            "declined_notice": "Dear Driver, your recent service payment could not be approved. Please visit your payment page to review its current status and any feedback provided by our team. You can then make the necessary corrections and submit your payment again. Thank you for your patience and understanding.",
+            "remind_later": "Remind me later",
+            "pay_now": "Pay now",
+            "review_payment": "Review payment",
+            "close": "Close",
+            "feedback_reason": "Reason: {reason}"
         }
     },
     "bn": {
@@ -2309,6 +2320,17 @@ export const TRANSLATIONS = {
             "inactive_or_invalid": "কুপন কোডটি অবৈধ, মেয়াদোত্তীর্ণ অথবা নিষ্ক্রিয়।",
             "not_eligible": "আপনি এই কুপন প্রচারের জন্য যোগ্য নন।",
             "ride_already_has_coupon": "এই রাইডে ইতিমধ্যে একটি কুপন প্রয়োগ করা হয়েছে।"
+        },
+        "payment_reminder": {
+            "overdue_title": "আপনার সাপ্তাহিক সার্ভিস পেমেন্ট সম্পর্কে একটি বিনীত স্মারক",
+            "overdue_notice": "প্রিয় ড্রাইভার, এই সপ্তাহের জন্য আপনার সার্ভিস পেমেন্ট এখনও বকেয়া রয়েছে। আপনার অবদান LiphtUp-কে সচল ও উন্নত রাখতে সাহায্য করে যাতে আমরা আপনাকে এবং আমাদের যাত্রীদের সেবা দিতে পারি। সুবিধামতো আপনার পেমেন্ট সম্পন্ন করুন। LiphtUp-এর মূল্যবান অংশ হওয়ার জন্য ধন্যবাদ!",
+            "declined_title": "আপনার সার্ভিস পেমেন্টের জন্য পদক্ষেপ প্রয়োজন",
+            "declined_notice": "প্রিয় ড্রাইভার, আপনার সাম্প্রতিক সার্ভিস পেমেন্টটি অনুমোদিত হতে পারেনি। অনুগ্রহ করে পেমেন্ট পেজে গিয়ে বর্তমান স্ট্যাটাস এবং আমাদের টিমের মতামত দেখে নিন। এরপর প্রয়োজনীয় সংশোধন করে আবার পেমেন্ট জমা দিন। আপনার ধৈর্য এবং সহযোগিতার জন্য ধন্যবাদ।",
+            "remind_later": "পরে মনে করিয়ে দিন",
+            "pay_now": "এখন পরিশোধ করুন",
+            "review_payment": "পেমেন্ট পর্যালোচনা করুন",
+            "close": "বন্ধ করুন",
+            "feedback_reason": "কারণ: {reason}"
         }
     }
 };

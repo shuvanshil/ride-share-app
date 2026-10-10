@@ -22,6 +22,7 @@ import {
 } from '../shared/messaging.js';
 import { unregisterDevicePushToken } from '../platform/notifications.js';
 import { driverStatusManager } from './driver-status-manager.js';
+import { paymentReminderManager } from './driver-payment-reminder.js';
 import { renderDriverFareQr } from '../shared/upi-qr-helper.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
@@ -2124,6 +2125,7 @@ async function bootstrapDriver() {
             profileData.uid = user.uid;
             routeDriverProfile(profileData);
             checkDriverAccountHoldStatus(user);
+            paymentReminderManager.init(user);
             hideInitialLoader();
         }, (error) => {
             console.warn("Driver profile realtime listener error:", error);

@@ -22,6 +22,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { renderDriverFareQr } from '../shared/upi-qr-helper.js';
+import { paymentReminderManager } from './driver-payment-reminder.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const ACTIVE_RIDE_STATUSES = ["accepted", "arrived", "started", "en_route"];
@@ -4047,6 +4048,7 @@ async function bootstrapDriverService() {
         cacheProfile(profile);
         updateDriverAvailabilityUI(currentUser.driverAvailability);
         checkDriverAccountHoldStatus(user);
+        paymentReminderManager.init(user);
         registerDriverPushToken(db, currentUser.uid).catch((error) => {
             console.warn("Driver service push token registration failed:", error);
         });

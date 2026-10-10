@@ -362,3 +362,186 @@ def is_date_in_pause_range(
     except (ValueError, TypeError):
         return is_paused_flag
 
+
+def check_payment_reminder_eligibility(
+    current_status: str,
+    dues_info: Dict[str, Any],
+    week_info: Dict[str, Any],
+    active_submission: Optional[Dict[str, Any]] = None,
+    snooze_config: Optional[Dict[str, Any]] = None,
+    target_dt: Optional[datetime.datetime] = None,
+    is_paused: bool = False,
+    overdue_threshold_hours: int = 24,
+) -> Dict[str, Any]:
+    """Determine whether a driver is eligible for a payment reminder modal, and which notice to show.
+
+    Modal priority:
+    1. Declined notice (Priority 1):
+       Displayed when latest relevant payment is declined and requires action, subject to its own snooze.
+    2. Routine overdue reminder (Priority 2):
+       Displayed when payment is unpaid ('due'), the relevant weekend has ended,
+       and one full day (24 hours) has passed, subject to its own snooze.
+    3. Suppressed if payment is submitted / under review.
+    4. Suppressed if payment is verified / approved / no dues or if payments are paused.
+
+    Never stacks or displays both notices simultaneously.
+    """
+    now = target_dt.astimezone(IST) if target_dt else get_ist_now()
+
+    if is_paused:
+        return {
+            "eligible": False,
+            "type": None,
+            "reason": "payments_paused",
+            "isSnoozed": False,
+            "snoozedUntil": None,
+        }
+
+    total_due = dues_info.get("totalAmountToBePaid", 0)
+    if current_status in ("approved", "verified") or total_due <= 0:
+        return {
+            "eligible": False,
+            "type": None,
+            "reason": "no_dues",
+            "isSnoozed": False,
+            "snoozedUntil": None,
+        }
+
+    # Priority 1: Declined notice
+    if current_status == "declined":
+        snooze = snooze_config or {}
+        decline_snoozed_until = snooze.get("declineSnoozedUntil")
+        snoozed_payment_id = snooze.get("declinedPaymentId")
+        active_payment_id = active_submission.get("paymentId") if active_submission else None
+        decline_reason = active_submission.get("declineReason") if active_submission else None
+
+        is_snoozed = False
+        snoozed_until_dt = None
+        if decline_snoozed_until:
+            try:
+                if hasattr(decline_snoozed_until, "astimezone"):
+                    snoozed_until_dt = decline_snoozed_until.astimezone(IST)
+                elif isinstance(decline_snoozed_until, str):
+                    snoozed_until_dt = datetime.datetime.fromisoformat(decline_snoozed_until.replace("Z", "+00:00")).astimezone(IST)
+                elif isinstance(decline_snoozed_until, (int, float)):
+                    snoozed_until_dt = datetime.datetime.fromtimestamp(decline_snoozed_until / 1000.0, IST)
+            except Exception:
+                snoozed_until_dt = None
+
+        if snoozed_until_dt:
+            if active_payment_id and snoozed_payment_id and active_payment_id != snoozed_payment_id:
+                # Genuinely new decline detected; snooze superseded
+                is_snoozed = False
+            elif now < snoozed_until_dt:
+                is_snoozed = True
+
+        if is_snoozed:
+            return {
+                "eligible": False,
+                "type": "declined",
+                "isSnoozed": True,
+                "snoozedUntil": snoozed_until_dt.isoformat() if snoozed_until_dt else str(decline_snoozed_until),
+                "reason": "declined_snoozed",
+                "declineReason": decline_reason,
+            }
+
+        return {
+            "eligible": True,
+            "type": "declined",
+            "isSnoozed": False,
+            "snoozedUntil": None,
+            "reason": "action_required",
+            "declineReason": decline_reason,
+        }
+
+    # Priority 3: Submitted / Under review (suppresses ordinary overdue reminder)
+    if current_status in ("submitted", "under_review"):
+        return {
+            "eligible": False,
+            "type": None,
+            "reason": "under_review",
+            "isSnoozed": False,
+            "snoozedUntil": None,
+        }
+
+    # Priority 2: Unpaid and overdue reminder
+    if current_status == "due":
+        previous_unpaid = dues_info.get("previousUnpaidWeeks", [])
+        if previous_unpaid:
+            # Previous weeks ended at least 1 week ago; threshold has passed
+            threshold_passed = True
+        elif dues_info.get("isCurrentWeekUnpaid"):
+            sunday_end_val = week_info.get("sundayEnd")
+            sun_dt = None
+            if sunday_end_val:
+                try:
+                    if hasattr(sunday_end_val, "astimezone"):
+                        sun_dt = sunday_end_val.astimezone(IST)
+                    elif isinstance(sunday_end_val, str):
+                        sun_dt = datetime.datetime.fromisoformat(sunday_end_val.replace("Z", "+00:00")).astimezone(IST)
+                except Exception:
+                    sun_dt = None
+            if not sun_dt:
+                sun_dt = now
+
+            threshold_dt = sun_dt + datetime.timedelta(hours=overdue_threshold_hours)
+            threshold_passed = now >= threshold_dt
+        else:
+            threshold_passed = False
+
+        if not threshold_passed:
+            return {
+                "eligible": False,
+                "type": "overdue",
+                "overdueThresholdPassed": False,
+                "isSnoozed": False,
+                "snoozedUntil": None,
+                "reason": "threshold_not_passed",
+            }
+
+        snooze = snooze_config or {}
+        overdue_snoozed_until = snooze.get("overdueSnoozedUntil")
+        is_snoozed = False
+        snoozed_until_dt = None
+        if overdue_snoozed_until:
+            try:
+                if hasattr(overdue_snoozed_until, "astimezone"):
+                    snoozed_until_dt = overdue_snoozed_until.astimezone(IST)
+                elif isinstance(overdue_snoozed_until, str):
+                    snoozed_until_dt = datetime.datetime.fromisoformat(overdue_snoozed_until.replace("Z", "+00:00")).astimezone(IST)
+                elif isinstance(overdue_snoozed_until, (int, float)):
+                    snoozed_until_dt = datetime.datetime.fromtimestamp(overdue_snoozed_until / 1000.0, IST)
+            except Exception:
+                snoozed_until_dt = None
+
+            if snoozed_until_dt and now < snoozed_until_dt:
+                is_snoozed = True
+
+        if is_snoozed:
+            return {
+                "eligible": False,
+                "type": "overdue",
+                "overdueThresholdPassed": True,
+                "isSnoozed": True,
+                "snoozedUntil": snoozed_until_dt.isoformat() if snoozed_until_dt else str(overdue_snoozed_until),
+                "reason": "overdue_snoozed",
+            }
+
+        return {
+            "eligible": True,
+            "type": "overdue",
+            "overdueThresholdPassed": True,
+            "isSnoozed": False,
+            "snoozedUntil": None,
+            "reason": "overdue_unpaid",
+        }
+
+    return {
+        "eligible": False,
+        "type": None,
+        "reason": "not_applicable",
+        "isSnoozed": False,
+        "snoozedUntil": None,
+    }
+
+
