@@ -26,6 +26,7 @@ from ..core.payment_schedule import (
     get_ist_now,
     is_date_in_pause_range,
     calculate_dues_and_upcoming,
+    check_payment_reminder_eligibility,
     DEFAULT_WEEKLY_FEE,
     DEFAULT_PAYEE_UPI_ID,
     IST,
@@ -36,6 +37,12 @@ APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https:/
 
 router = APIRouter(prefix="/account/driver-payments", tags=["driver-payments"])
 admin_router = APIRouter(prefix="/admin/driver-payments", tags=["admin-driver-payments"])
+
+
+class SnoozeReminderRequest(BaseModel):
+    reminderType: str = "overdue"
+    snoozeHours: float = 4.0
+    paymentId: Optional[str] = None
 
 
 class SubmitPaymentRequest(BaseModel):
@@ -515,6 +522,13 @@ def get_driver_payment_status(
     declined_submissions = [p for p in payment_history if p.get("status") == "declined"]
 
     # Determine overall current week payment status (4 states: due, submitted/under_review, approved/verified, declined)
+    # Build map of latest submission by weekId
+    latest_submission_by_week: Dict[str, Dict[str, Any]] = {}
+    for p in payment_history:
+        wid = p.get("weekId")
+        if wid and wid not in latest_submission_by_week:
+            latest_submission_by_week[wid] = p
+
     if pause_config["isPaused"]:
         status_code = "paused"
         status_label = "Weekly Payments Paused"
@@ -524,16 +538,34 @@ def get_driver_payment_status(
         if is_curr_unpaid:
             due_week_ids.add(current_week_id)
 
-        declined_for_dues = [p for p in declined_submissions if p.get("weekId") in due_week_ids]
+        # Check for genuine active decline on outstanding weeks
+        # (only if the latest submission for that week is declined)
+        declined_for_dues = []
+        for p in declined_submissions:
+            w = p.get("weekId")
+            if w in due_week_ids:
+                latest_p = latest_submission_by_week.get(w)
+                if latest_p and latest_p.get("status") == "declined" and latest_p.get("paymentId") == p.get("paymentId"):
+                    declined_for_dues.append(p)
 
         if declined_for_dues:
             status_code = "declined"
             status_label = "Declined"
             active_submission = declined_for_dues[0]
         elif under_review_submissions:
-            status_code = "submitted"
-            status_label = "Under Review"
-            active_submission = under_review_submissions[0]
+            # Check if any under_review submission covers a due week
+            active_under_review = [
+                p for p in under_review_submissions
+                if p.get("weekId") in due_week_ids or any(cw in due_week_ids for cw in (p.get("coveredWeeks") or []))
+            ]
+            if active_under_review:
+                status_code = "submitted"
+                status_label = "Under Review"
+                active_submission = active_under_review[0]
+            else:
+                status_code = "due"
+                status_label = "Pending"
+                active_submission = current_week_submissions[0] if current_week_submissions else None
         else:
             status_code = "due"
             status_label = "Pending"
@@ -549,6 +581,17 @@ def get_driver_payment_status(
             status_label = "Verified"
             active_submission = current_week_submissions[0] if current_week_submissions else (payment_history[0] if payment_history else None)
 
+    snooze_config = profile.get("paymentReminderSnooze") or {}
+    reminder_info = check_payment_reminder_eligibility(
+        current_status=status_code,
+        dues_info=dues_info,
+        week_info=week_info,
+        active_submission=active_submission,
+        snooze_config=snooze_config,
+        is_paused=pause_config["isPaused"],
+        overdue_threshold_hours=24,
+    )
+
     return {
         "ok": True,
         "isPaused": pause_config["isPaused"],
@@ -561,8 +604,64 @@ def get_driver_payment_status(
         "duesSummary": dues_info,
         "upcomingWeek": dues_info["upcomingWeek"],
         "isAccountOnHold": dues_info["isAccountOnHold"],
+        "reminder": reminder_info,
         "history": payment_history,
     }
+
+
+@router.post("/reminder/snooze")
+def snooze_driver_payment_reminder(
+    body: SnoozeReminderRequest = Body(...),
+    auth_user: Dict[str, Any] = Depends(current_user),
+) -> Dict[str, Any]:
+    """Postpone payment reminder for 4 hours (or specified hours)."""
+    uid = auth_user["uid"]
+    db = get_firestore()
+    profile = _get_driver_profile(db, uid)
+
+    now = get_ist_now()
+    snooze_hours = max(0.5, min(float(body.snoozeHours or 4.0), 24.0))
+    snoozed_until = now + datetime.timedelta(hours=snooze_hours)
+
+    current_snooze = profile.get("paymentReminderSnooze") or {}
+    updated_snooze = dict(current_snooze)
+    updated_snooze["snoozedAt"] = now.isoformat()
+
+    if body.reminderType == "declined":
+        updated_snooze["declineSnoozedUntil"] = snoozed_until.isoformat()
+        if body.paymentId:
+            updated_snooze["declinedPaymentId"] = body.paymentId
+        else:
+            try:
+                declined_snaps = list(
+                    db.collection("driverPayments")
+                    .where("driverId", "==", uid)
+                    .where("status", "==", "declined")
+                    .stream()
+                )
+                if declined_snaps:
+                    latest_doc = max(declined_snaps, key=lambda s: str((s.to_dict() or {}).get("submittedAt") or ""))
+                    updated_snooze["declinedPaymentId"] = latest_doc.id
+            except Exception:
+                pass
+    else:
+        updated_snooze["overdueSnoozedUntil"] = snoozed_until.isoformat()
+
+    try:
+        db.collection("users").document(uid).update({
+            "paymentReminderSnooze": updated_snooze
+        })
+    except Exception as exc:
+        logger.warning("Failed to update reminder snooze in users collection for %s: %s", uid, exc)
+
+    return {
+        "ok": True,
+        "reminderType": body.reminderType,
+        "snoozedAt": now.isoformat(),
+        "snoozedUntil": snoozed_until.isoformat(),
+        "snoozeHours": snooze_hours,
+    }
+
 
 
 @router.post("/submit")

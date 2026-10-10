@@ -692,6 +692,23 @@ def test_payment_reminder_eligibility_scenarios():
     assert res_mon["eligible"] is False
     assert res_mon["reason"] == "threshold_not_passed"
 
+    # Realistic Monday morning: current week is W35, W34 ended yesterday and is in previousUnpaidWeeks
+    week_info_w35 = get_payment_week_info(mon_next)
+    dues_monday = {
+        "totalAmountToBePaid": 280,
+        "isCurrentWeekUnpaid": True,
+        "previousUnpaidWeeks": ["2026-W34"],
+    }
+    res_mon_real = check_payment_reminder_eligibility(
+        current_status="due",
+        dues_info=dues_monday,
+        week_info=week_info_w35,
+        target_dt=mon_next,
+        overdue_threshold_hours=24,
+    )
+    assert res_mon_real["eligible"] is False
+    assert res_mon_real["reason"] == "threshold_not_passed"
+
     # Scenario 2: The relevant weekend has ended and 24-hour threshold has passed (Tuesday 25 Aug 2026)
     tue_next = datetime.datetime(2026, 8, 25, 0, 1, 0, tzinfo=IST)
     res_tue = check_payment_reminder_eligibility(
@@ -705,7 +722,19 @@ def test_payment_reminder_eligibility_scenarios():
     assert res_tue["type"] == "overdue"
     assert res_tue["overdueThresholdPassed"] is True
 
-    # Scenario 2b: Driver has previous overdue unpaid weeks
+    # Realistic Tuesday morning: W34 ended Sunday 23:59:59, 24h passed -> eligible
+    res_tue_real = check_payment_reminder_eligibility(
+        current_status="due",
+        dues_info=dues_monday,
+        week_info=week_info_w35,
+        target_dt=tue_next,
+        overdue_threshold_hours=24,
+    )
+    assert res_tue_real["eligible"] is True
+    assert res_tue_real["type"] == "overdue"
+    assert res_tue_real["weekId"] == "2026-W34"
+
+    # Scenario 2b: Driver has previous overdue unpaid weeks from 2 weeks ago
     dues_with_prev = {
         "totalAmountToBePaid": 280,
         "isCurrentWeekUnpaid": True,
@@ -771,6 +800,7 @@ def test_payment_reminder_eligibility_scenarios():
     )
     assert res_declined["eligible"] is True
     assert res_declined["type"] == "declined"
+    assert res_declined["paymentId"] == "pymt_dec_1"
     assert res_declined["declineReason"] == "Screenshot blurred. Please re-upload."
 
     # Scenario 3: Driver taps "Remind me later" (snooze 4 hours)
@@ -835,6 +865,7 @@ def test_payment_reminder_eligibility_scenarios():
     )
     assert res_dec_new["eligible"] is True
     assert res_dec_new["type"] == "declined"
+    assert res_dec_new["paymentId"] == "pymt_dec_2"
     assert res_dec_new["declineReason"] == "Amount mismatch. Need ₹140."
 
 
@@ -864,4 +895,13 @@ def test_snooze_reminder_endpoint_mock():
         call_args = mock_db.collection("users").document("test_drv_1").update.call_args[0][0]
         assert "paymentReminderSnooze" in call_args
         assert "overdueSnoozedUntil" in call_args["paymentReminderSnooze"]
+
+        # Test declined snooze with paymentId
+        mock_db.reset_mock()
+        req_dec = SnoozeReminderRequest(reminderType="declined", snoozeHours=4.0, paymentId="pymt_specific_id")
+        res_dec = snooze_driver_payment_reminder(body=req_dec, auth_user={"uid": "test_drv_1"})
+        assert res_dec["ok"] is True
+        assert res_dec["reminderType"] == "declined"
+        call_args_dec = mock_db.collection("users").document("test_drv_1").update.call_args[0][0]
+        assert call_args_dec["paymentReminderSnooze"]["declinedPaymentId"] == "pymt_specific_id"
 

@@ -17,6 +17,7 @@ class PaymentReminderManager {
     constructor() {
         this.overlayEl = null;
         this.activeType = null;
+        this.currentReminder = null;
         this.isChecking = false;
         this.lastCheckedAt = 0;
         this.snoozeTimerId = null;
@@ -104,7 +105,7 @@ class PaymentReminderManager {
             .pr-illustration-wrap {
                 width: 100%;
                 position: relative;
-                background: #ECFDF5;
+                background: #F4FBF6;
                 overflow: hidden;
                 display: flex;
                 align-items: center;
@@ -123,6 +124,11 @@ class PaymentReminderManager {
                 display: block;
             }
             .pr-body {
+                background: #FFFFFF;
+                border-radius: 28px 28px 0 0;
+                margin-top: -24px;
+                position: relative;
+                z-index: 2;
                 padding: 22px 24px 26px 24px;
                 text-align: center;
             }
@@ -162,8 +168,8 @@ class PaymentReminderManager {
             .pr-btn {
                 flex: 1;
                 padding: 12px 16px;
-                border-radius: 9999px;
-                font-size: 0.92rem;
+                border-radius: 14px;
+                font-size: 0.94rem;
                 font-weight: 700;
                 cursor: pointer;
                 transition: transform 0.12s ease, background 0.15s ease, opacity 0.15s ease;
@@ -187,10 +193,10 @@ class PaymentReminderManager {
                 background: #F0FDF4;
             }
             .pr-btn-primary {
-                background: #166534;
-                border: 1.5px solid #166534;
+                background: #15803D;
+                border: 1.5px solid #15803D;
                 color: #FFFFFF;
-                box-shadow: 0 4px 12px rgba(22, 101, 52, 0.25);
+                box-shadow: 0 4px 12px rgba(21, 128, 61, 0.25);
             }
             .pr-btn-primary:hover {
                 background: #14532D;
@@ -388,6 +394,7 @@ class PaymentReminderManager {
         this.hideModal();
 
         this.injectStyles();
+        this.currentReminder = reminder;
 
         const overlay = document.createElement('div');
         overlay.id = OVERLAY_ID;
@@ -528,12 +535,12 @@ class PaymentReminderManager {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                        body: JSON.stringify({
-                            reminderType: type,
-                            snoozeHours: 4.0
-                        })
-                    });
-                }
+                    body: JSON.stringify({
+                        reminderType: type,
+                        snoozeHours: 4.0,
+                        paymentId: this.currentReminder?.paymentId || null
+                    })
+                });
             }
         } catch (err) {
             console.warn('[payment-reminder] snooze persistence error:', err);
@@ -550,7 +557,7 @@ class PaymentReminderManager {
         if (typeof window.navigateToPage === 'function') {
             window.navigateToPage('driver-payments.html');
         } else {
-            const dest = window.getPlatformUrl ? window.getPlatformUrl('driver-payments.html') : '/driver-payments.html';
+            const dest = window.getPlatformUrl ? window.getPlatformUrl('driver-payments.html') : 'driver-payments.html';
             window.location.href = dest;
         }
     }

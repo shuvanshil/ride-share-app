@@ -42,6 +42,7 @@ admin_router = APIRouter(prefix="/admin/driver-payments", tags=["admin-driver-pa
 class SnoozeReminderRequest(BaseModel):
     reminderType: str = "overdue"
     snoozeHours: float = 4.0
+    paymentId: Optional[str] = None
 
 
 class SubmitPaymentRequest(BaseModel):
@@ -521,6 +522,13 @@ def get_driver_payment_status(
     declined_submissions = [p for p in payment_history if p.get("status") == "declined"]
 
     # Determine overall current week payment status (4 states: due, submitted/under_review, approved/verified, declined)
+    # Build map of latest submission by weekId
+    latest_submission_by_week: Dict[str, Dict[str, Any]] = {}
+    for p in payment_history:
+        wid = p.get("weekId")
+        if wid and wid not in latest_submission_by_week:
+            latest_submission_by_week[wid] = p
+
     if pause_config["isPaused"]:
         status_code = "paused"
         status_label = "Weekly Payments Paused"
@@ -530,16 +538,34 @@ def get_driver_payment_status(
         if is_curr_unpaid:
             due_week_ids.add(current_week_id)
 
-        declined_for_dues = [p for p in declined_submissions if p.get("weekId") in due_week_ids]
+        # Check for genuine active decline on outstanding weeks
+        # (only if the latest submission for that week is declined)
+        declined_for_dues = []
+        for p in declined_submissions:
+            w = p.get("weekId")
+            if w in due_week_ids:
+                latest_p = latest_submission_by_week.get(w)
+                if latest_p and latest_p.get("status") == "declined" and latest_p.get("paymentId") == p.get("paymentId"):
+                    declined_for_dues.append(p)
 
         if declined_for_dues:
             status_code = "declined"
             status_label = "Declined"
             active_submission = declined_for_dues[0]
         elif under_review_submissions:
-            status_code = "submitted"
-            status_label = "Under Review"
-            active_submission = under_review_submissions[0]
+            # Check if any under_review submission covers a due week
+            active_under_review = [
+                p for p in under_review_submissions
+                if p.get("weekId") in due_week_ids or any(cw in due_week_ids for cw in (p.get("coveredWeeks") or []))
+            ]
+            if active_under_review:
+                status_code = "submitted"
+                status_label = "Under Review"
+                active_submission = active_under_review[0]
+            else:
+                status_code = "due"
+                status_label = "Pending"
+                active_submission = current_week_submissions[0] if current_week_submissions else None
         else:
             status_code = "due"
             status_label = "Pending"
@@ -603,18 +629,21 @@ def snooze_driver_payment_reminder(
 
     if body.reminderType == "declined":
         updated_snooze["declineSnoozedUntil"] = snoozed_until.isoformat()
-        try:
-            declined_snaps = list(
-                db.collection("driverPayments")
-                .where("driverId", "==", uid)
-                .where("status", "==", "declined")
-                .limit(1)
-                .stream()
-            )
-            if declined_snaps:
-                updated_snooze["declinedPaymentId"] = declined_snaps[0].id
-        except Exception:
-            pass
+        if body.paymentId:
+            updated_snooze["declinedPaymentId"] = body.paymentId
+        else:
+            try:
+                declined_snaps = list(
+                    db.collection("driverPayments")
+                    .where("driverId", "==", uid)
+                    .where("status", "==", "declined")
+                    .stream()
+                )
+                if declined_snaps:
+                    latest_doc = max(declined_snaps, key=lambda s: str((s.to_dict() or {}).get("submittedAt") or ""))
+                    updated_snooze["declinedPaymentId"] = latest_doc.id
+            except Exception:
+                pass
     else:
         updated_snooze["overdueSnoozedUntil"] = snoozed_until.isoformat()
 

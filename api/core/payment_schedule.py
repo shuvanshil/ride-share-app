@@ -439,6 +439,7 @@ def check_payment_reminder_eligibility(
             return {
                 "eligible": False,
                 "type": "declined",
+                "paymentId": active_payment_id,
                 "isSnoozed": True,
                 "snoozedUntil": snoozed_until_dt.isoformat() if snoozed_until_dt else str(decline_snoozed_until),
                 "reason": "declined_snoozed",
@@ -448,6 +449,7 @@ def check_payment_reminder_eligibility(
         return {
             "eligible": True,
             "type": "declined",
+            "paymentId": active_payment_id,
             "isSnoozed": False,
             "snoozedUntil": None,
             "reason": "action_required",
@@ -466,28 +468,32 @@ def check_payment_reminder_eligibility(
 
     # Priority 2: Unpaid and overdue reminder
     if current_status == "due":
-        previous_unpaid = dues_info.get("previousUnpaidWeeks", [])
-        if previous_unpaid:
-            # Previous weeks ended at least 1 week ago; threshold has passed
-            threshold_passed = True
-        elif dues_info.get("isCurrentWeekUnpaid"):
+        # Check all unpaid weeks: has at least one unpaid week passed the threshold (weekend end + 24 hours)?
+        threshold_passed = False
+        overdue_week_id = None
+
+        for wid in dues_info.get("previousUnpaidWeeks", []):
+            try:
+                winfo = get_week_info_for_week_id(wid)
+                if winfo.get("sundayEnd"):
+                    w_sun_end = datetime.datetime.fromisoformat(str(winfo["sundayEnd"]).replace("Z", "+00:00")).astimezone(IST)
+                    if now >= (w_sun_end + datetime.timedelta(hours=overdue_threshold_hours)):
+                        threshold_passed = True
+                        overdue_week_id = wid
+                        break
+            except Exception:
+                pass
+
+        if not threshold_passed and dues_info.get("isCurrentWeekUnpaid"):
             sunday_end_val = week_info.get("sundayEnd")
-            sun_dt = None
             if sunday_end_val:
                 try:
-                    if hasattr(sunday_end_val, "astimezone"):
-                        sun_dt = sunday_end_val.astimezone(IST)
-                    elif isinstance(sunday_end_val, str):
-                        sun_dt = datetime.datetime.fromisoformat(sunday_end_val.replace("Z", "+00:00")).astimezone(IST)
+                    sun_dt = datetime.datetime.fromisoformat(str(sunday_end_val).replace("Z", "+00:00")).astimezone(IST)
+                    if now >= (sun_dt + datetime.timedelta(hours=overdue_threshold_hours)):
+                        threshold_passed = True
+                        overdue_week_id = week_info.get("weekId")
                 except Exception:
-                    sun_dt = None
-            if not sun_dt:
-                sun_dt = now
-
-            threshold_dt = sun_dt + datetime.timedelta(hours=overdue_threshold_hours)
-            threshold_passed = now >= threshold_dt
-        else:
-            threshold_passed = False
+                    pass
 
         if not threshold_passed:
             return {
@@ -521,6 +527,7 @@ def check_payment_reminder_eligibility(
             return {
                 "eligible": False,
                 "type": "overdue",
+                "weekId": overdue_week_id,
                 "overdueThresholdPassed": True,
                 "isSnoozed": True,
                 "snoozedUntil": snoozed_until_dt.isoformat() if snoozed_until_dt else str(overdue_snoozed_until),
@@ -530,6 +537,7 @@ def check_payment_reminder_eligibility(
         return {
             "eligible": True,
             "type": "overdue",
+            "weekId": overdue_week_id,
             "overdueThresholdPassed": True,
             "isSnoozed": False,
             "snoozedUntil": None,
