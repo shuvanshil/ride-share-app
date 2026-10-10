@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.3.0-force-cache-invalidation-final";
+const CACHE_VERSION = "liphtup-v2.5.0-instant-css-cache";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -20,6 +20,7 @@ const APP_SHELL = [
     "/driver.html",
     "/driver-service.html",
     "/driver-dashboard.html",
+    "/driver-payments.html",
     "/services.html",
     "/profile.html",
     "/history.html",
@@ -30,14 +31,21 @@ const APP_SHELL = [
     "/terms.html",
     "/help.html",
     "/safety.html",
+    "/track.html",
     "manifest.webmanifest",
     "fare-policy.config.json",
     "favicon.ico",
+    "css/bootstrap.min.css",
+    "css/style.css",
     "css/base/main.css",
     "css/passenger/booking.css",
+    "css/passenger/feedback.css",
     "css/driver/driver.css",
+    "css/driver/driver-status-modal.css",
+    "css/driver-service.css",
+    "css/driver-dashboard.css",
+    "css/track.css",
     "css/shared/pages.css",
-    "css/style.css",
     "js/platform/firebase-init.js",
     "js/platform/routes.js",
     "js/platform/wake-lock.js",
@@ -46,8 +54,10 @@ const APP_SHELL = [
     "js/platform/share.js",
     "js/platform/storage.js",
     "js/platform/native-bridge.js",
+    "js/bootstrap.bundle.min.js",
     "js/shared/auth.js",
     "js/passenger/passenger-app.js",
+    "js/passenger/passenger-feedback.js",
     "js/driver/driver-onboarding.js",
     "js/driver/driver-service.js",
     "js/driver/driver-dashboard.js",
@@ -113,13 +123,13 @@ async function networkFirst(request) {
         if (response.ok) cache.put(request, response.clone());
         return response;
     } catch {
-        return await cache.match(request) || await cache.match(OFFLINE_URL);
+        return await cache.match(request, { ignoreSearch: true }) || await cache.match(OFFLINE_URL);
     }
 }
 
 async function staleWhileRevalidate(request) {
     const cache = await caches.open(CACHE_VERSION);
-    const cached = await cache.match(request);
+    const cached = await cache.match(request, { ignoreSearch: true });
     const network = fetch(request).then((response) => {
         if (response.ok) cache.put(request, response.clone());
         return response;
@@ -141,6 +151,8 @@ self.addEventListener("fetch", (event) => {
     }
 
     if (["style", "script", "image", "font"].includes(request.destination)
+        || url.pathname.endsWith(".css")
+        || url.pathname.endsWith(".js")
         || url.pathname.endsWith(".webmanifest")) {
         event.respondWith(staleWhileRevalidate(request));
     }

@@ -11,6 +11,12 @@
     --gy-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
 }
 
+body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
 /* Language Switcher Pill (Matching User Demo Design) */
 .lang-switcher-pill-wrap {
     position: relative;

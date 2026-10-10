@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="js/platform/native-bridge.js"></script>
-    <script src="js/platform/routes.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#1A7A2E">
     <title>LiphtUp Offline</title>
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="assets/icons/liphtup-icon-180.png">
-    <link rel="stylesheet" href="css/style.css?v=20260731-passenger-nav-cleanurls">
-    <script src="js/platform/routes.js"></script>
+    <link rel="preload" href="css/bootstrap.min.css" as="style">
+    <link rel="preload" href="css/style.css?v=20261010-v2" as="style">
+    <link rel="stylesheet" href="css/bootstrap.min.css" blocking="render">
+    <link rel="stylesheet" href="css/style.css?v=20261010-v2" blocking="render">
+    <script src="js/platform/native-bridge.js"></script>
+    <script src="js/platform/routes.js" defer></script>
 </head>
 <body>
     <main class="pwa-offline-page">

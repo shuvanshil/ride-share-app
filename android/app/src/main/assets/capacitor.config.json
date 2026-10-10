@@ -17,7 +17,7 @@
     "SplashScreen": {
       "launchShowDuration": 2000,
       "launchAutoHide": true,
-      "backgroundColor": "#1A7A2E",
+      "backgroundColor": "#FFFFFF",
       "androidSplashResourceName": "splash",
       "androidScaleType": "CENTER_CROP",
       "showSpinner": false
@@ -27,7 +27,8 @@
       "style": "DARK"
     },
     "PushNotifications": {
-      "presentationOptions": ["badge", "sound"]
+      "presentationOptions": ["badge", "sound"],
+      "iconColor": "#1A7A2E"
     }
   },
   "android": {
