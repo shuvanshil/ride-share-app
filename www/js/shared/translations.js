@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20261010-v3";
+export const TRANSLATIONS_VERSION = "20261011-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -529,6 +529,8 @@ export const TRANSLATIONS = {
         },
         "profile": {
             "title": "Profile",
+            "driver_account": "Driver Account",
+            "passenger_account": "Passenger Account",
             "edit_profile": "Edit Profile",
             "phone": "Phone Number",
             "email": "Email Address",
@@ -1700,6 +1702,8 @@ export const TRANSLATIONS = {
         },
         "profile": {
             "title": "প্রোফাইল",
+            "driver_account": "চালক অ্যাকাউন্ট",
+            "passenger_account": "যাত্রী অ্যাকাউন্ট",
             "edit_profile": "প্রোফাইল এডিট করুন",
             "phone": "ফোন নম্বর",
             "email": "ইমেল ঠিকানা",

@@ -569,6 +569,12 @@ function openSaveAddressEditor(targetKey, defaultLabel = "", defaultAddress = ""
         if (saveAddressEditorTitle) saveAddressEditorTitle.textContent = t('services.save_new_address', "Save New Address");
     }
 
+    const quickTags = document.getElementById('save-address-quick-tags');
+    if (quickTags) quickTags.classList.toggle('d-none', Boolean(saveAddressTypeInput?.readOnly));
+    document.querySelectorAll('.save-address-tag-chip').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.label === saveAddressTypeInput?.value);
+    });
+
     if (saveAddressLocationInput) saveAddressLocationInput.value = defaultAddress || "";
     if (saveAddressSuggestions) saveAddressSuggestions.innerHTML = "";
     saveAddressEditorModal.classList.remove('d-none');
@@ -790,6 +796,17 @@ document.getElementById('add-new-saved-place-btn')?.addEventListener('click', ()
 document.getElementById('save-address-editor-close')?.addEventListener('click', closeSaveAddressEditor);
 document.getElementById('save-address-editor-backdrop')?.addEventListener('click', closeSaveAddressEditor);
 document.getElementById('save-address-cancel-btn')?.addEventListener('click', closeSaveAddressEditor);
+
+document.querySelectorAll('.save-address-tag-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+        if (saveAddressTypeInput && !saveAddressTypeInput.readOnly) {
+            saveAddressTypeInput.value = chip.dataset.label || '';
+            document.querySelectorAll('.save-address-tag-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            saveAddressLocationInput?.focus();
+        }
+    });
+});
 
 saveAddressEditorForm?.addEventListener('submit', (e) => {
     e.preventDefault();

@@ -649,6 +649,7 @@ function updateDutySwitchUi() {
     const helper = document.getElementById('driver-duty-helper');
     const badge = document.getElementById('incoming-requests-badge');
     const noRidesMsg = document.getElementById('no-rides-msg');
+    const listeningIndicator = document.getElementById('listening-indicator');
 
     const online = isDriverDutyOnline();
 
@@ -658,15 +659,22 @@ function updateDutySwitchUi() {
         pill.classList.toggle('offline', !online);
     }
     if (pillText) {
-        pillText.textContent = online ? "Online" : "Offline";
+        pillText.textContent = online ? t('driver.duty_online', "Online") : t('driver.duty_offline', "Offline");
     }
     if (label) {
-        label.textContent = online ? "Online" : "Offline";
+        label.textContent = online ? t('driver.duty_online', "Online") : t('driver.duty_offline', "Offline");
     }
     if (helper) {
         helper.textContent = online
-            ? "Ride alerts can continue while you stay online, even if the app is minimized."
-            : "Passengers cannot see you and ride alerts are paused.";
+            ? t('driver.duty_helper', "Ride alerts can continue while you stay online, even if the app is minimized.")
+            : t('driver.duty_helper_offline', "Passengers cannot see you and ride alerts are paused.");
+    }
+    if (listeningIndicator) {
+        if (online) {
+            listeningIndicator.classList.remove('d-none');
+        } else {
+            listeningIndicator.classList.add('d-none');
+        }
     }
 
     if (noRidesMsg) {
@@ -2141,6 +2149,8 @@ bootstrapDriver();
 
 window.addEventListener('languageChanged', () => {
     if (currentUser) {
+        showDriverHome(currentUser);
+        updateDutySwitchUi();
         driverStatusManager.evaluateStatus(currentUser, {
             onAcknowledged: (updatedProfile) => {
                 currentUser = updatedProfile;

@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20261010-v2";
+export const TRANSLATIONS_VERSION = "20261011-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -226,7 +226,7 @@ export const TRANSLATIONS = {
             "railway_title": "Railway Station",
             "railway_desc": "Go anywhere with LiphtUp",
             "share_card_title": "Ride Together,<br>Save Together.",
-            "share_card_desc": "Invite friends & get exciting discounts on first few rides.",
+            "share_card_desc": "Invite friends & get exciting discounts.",
             "invite_btn": "Invite Friends",
             "home_chip": "Home",
             "work_chip": "Work",
@@ -234,6 +234,7 @@ export const TRANSLATIONS = {
             "greeting": "Hello, {name}"
         },
         "services": {
+            "quick_labels": "Quick labels:",
             "booking_title": "Book Your Ride",
             "booking_sub": "Fast, safe and reliable rides to your destination",
             "pickup_label": "Pickup location",
@@ -528,6 +529,8 @@ export const TRANSLATIONS = {
         },
         "profile": {
             "title": "Profile",
+            "driver_account": "Driver Account",
+            "passenger_account": "Passenger Account",
             "edit_profile": "Edit Profile",
             "phone": "Phone Number",
             "email": "Email Address",
@@ -582,6 +585,8 @@ export const TRANSLATIONS = {
             "safety_standards_sub": "Learn about our safety standards, passenger guidelines, and driver guidelines.",
             "read_safety_guidelines": "Read Safety Guidelines →",
             "choose_photo": "Choose photo",
+            "change_photo": "Change Photo",
+            "edit_subtitle": "Keep your information up to date",
             "photo_hint": "JPG, PNG or WebP. The image is resized before saving.",
             "phone_readonly_hint": "Mobile number is secured by phone authentication and cannot be changed here.",
             "photo_url_label": "Profile photo URL",
@@ -622,8 +627,8 @@ export const TRANSLATIONS = {
             "contact_limit_alert": "You can save up to 3 emergency contacts.",
             "save_contact_failed": "Could not save this contact. Please try again.",
             "link_copied": "LiphtUp link copied",
-            "driver_account": "Driver account",
-            "passenger_account": "Passenger account",
+            "driver_account": "Driver Account",
+            "passenger_account": "Passenger Account",
             "type_delete_error": "Type DELETE exactly to confirm permanent deletion.",
             "enter_password_error": "Enter your account password to delete this account.",
             "deleting_account": "Deleting account...",
@@ -660,11 +665,16 @@ export const TRANSLATIONS = {
         "driver": {
             "duty_console": "Driver Duty Console",
             "duty_helper": "Ride alerts can continue while you stay online, even if the app is minimized.",
+            "duty_helper_offline": "Passengers cannot see you and ride alerts are paused.",
             "duty_online": "Online",
             "duty_offline": "Offline",
             "go_online": "Go Online",
             "go_offline": "Go Offline",
-            "greeting_title": "Drive safe & earn with LiphtUp",
+            "greeting_title": "Drive safe & earn with LightUp",
+            "ride_history": "Ride History",
+            "view_past_rides": "View your past rides",
+            "check_earnings": "Check your earnings",
+            "listening_for_rides": "Listening for rides...",
             "weekly_payment": "Payment",
             "new_ride_request": "New Ride Request!",
             "pickup_distance": "Pickup distance",
@@ -1397,6 +1407,7 @@ export const TRANSLATIONS = {
             "greeting": "নমস্কার, {name}"
         },
         "services": {
+            "quick_labels": "দ্রুত লেবেল:",
             "booking_title": "রাইড বুক করুন",
             "booking_sub": "আপনার গন্তব্যে দ্রুত, নিরাপদ ও নির্ভরযোগ্য রাইড",
             "pickup_label": "পিকআপ স্থান",
@@ -1691,6 +1702,8 @@ export const TRANSLATIONS = {
         },
         "profile": {
             "title": "প্রোফাইল",
+            "driver_account": "চালক অ্যাকাউন্ট",
+            "passenger_account": "যাত্রী অ্যাকাউন্ট",
             "edit_profile": "প্রোফাইল এডিট করুন",
             "phone": "ফোন নম্বর",
             "email": "ইমেল ঠিকানা",
@@ -1745,6 +1758,8 @@ export const TRANSLATIONS = {
             "safety_standards_sub": "আমাদের নিরাপত্তা মানদণ্ড এবং নির্দেশিকা সম্পর্কে জানুন।",
             "read_safety_guidelines": "নিরাপত্তা নির্দেশিকা পড়ুন →",
             "choose_photo": "ছবি বেছে নিন",
+            "change_photo": "ছবি পরিবর্তন করুন",
+            "edit_subtitle": "আপনার তথ্য আপডেট রাখুন",
             "photo_hint": "JPG, PNG বা WebP। সংরক্ষণের আগে ছবি রিসাইজ করা হবে।",
             "phone_readonly_hint": "মোবাইল নম্বর ফোন অথেনটিকেশন দ্বারা সুরক্ষিত এবং এখানে পরিবর্তন করা যাবে না।",
             "photo_url_label": "প্রোফাইল ছবির URL",
@@ -1823,11 +1838,16 @@ export const TRANSLATIONS = {
         "driver": {
             "duty_console": "ড্রাইভার ডিউটি কনসোল",
             "duty_helper": "অ্যাপ ছোট করা থাকলেও অনলাইনে রাইড এলার্ট পাবেন।",
+            "duty_helper_offline": "যাত্রীরা আপনাকে দেখতে পাবেন না এবং রাইড অ্যালার্ট বন্ধ থাকবে।",
             "duty_online": "অনলাইন",
             "duty_offline": "অফলাইন",
             "go_online": "অনলাইন হন",
             "go_offline": "অফলাইন হন",
-            "greeting_title": "নিরাপদে গাড়ি চালান ও লিফটআপ-এ আয় করুন",
+            "greeting_title": "নিরাপদে গাড়ি চালান ও লাইটআপ-এ আয় করুন",
+            "ride_history": "রাইডের ইতিহাস",
+            "view_past_rides": "আপনার পূর্ববর্তী রাইডগুলি দেখুন",
+            "check_earnings": "আপনার উপার্জন দেখুন",
+            "listening_for_rides": "রাইডের জন্য অপেক্ষা করা হচ্ছে...",
             "weekly_payment": "পেমেন্ট",
             "new_ride_request": "নতুন রাইড রিকোয়েস্ট!",
             "pickup_distance": "পিকআপ দূরত্ব",

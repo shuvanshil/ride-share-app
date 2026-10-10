@@ -151,23 +151,39 @@ body {
 .duty-console-top {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    gap: 16px;
+    align-items: center;
+    gap: 14px;
     margin-bottom: 16px;
 }
 
+.duty-console-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #E8F8EE;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.duty-console-info {
+    flex: 1;
+    min-width: 0;
+}
+
 .duty-console-info h3 {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 800;
     color: var(--lu-text-dark);
-    margin: 0 0 6px;
+    margin: 0 0 4px;
 }
 
 .duty-console-info p {
-    font-size: 13px;
+    font-size: 12.5px;
     color: var(--lu-text-muted);
     margin: 0;
-    line-height: 1.45;
+    line-height: 1.4;
 }
 
 .duty-toggle-wrapper {
@@ -251,44 +267,96 @@ body {
 }
 
 /* Console Actions Row */
+/* Console Actions Row */
 .duty-console-actions {
     display: flex;
     align-items: center;
-    border-top: 1px solid #F3F4F6;
-    padding-top: 14px;
-    margin-top: 4px;
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 6px 8px;
+    gap: 6px;
+    margin-top: 6px;
 }
 
-.console-action-btn {
+.console-action-card {
     flex: 1;
     background: transparent;
     border: none;
-    padding: 6px 12px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: background 0.15s ease, transform 0.1s ease;
+    text-decoration: none;
+    min-width: 0;
+}
+
+.console-action-card:hover {
+    background: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.console-action-card:active {
+    transform: scale(0.98);
+}
+
+.console-action-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #374151;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: background 0.15s ease;
+    flex-shrink: 0;
 }
 
-.console-action-btn:hover, .console-action-btn:active {
-    background: #F9FAFB;
-    color: var(--lu-green);
+.console-action-badge.icon-history {
+    background: #EFF6FF;
 }
 
-.console-action-btn .btn-icon {
-    font-size: 16px;
+.console-action-badge.icon-earnings {
+    background: #FDF2F8;
 }
 
-.console-action-divider {
+.console-action-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.console-action-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.25;
+}
+
+.console-action-sub {
+    font-size: 11.5px;
+    color: #6B7280;
+    line-height: 1.2;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.console-action-arrow {
+    flex-shrink: 0;
+    color: #9CA3AF;
+    margin-left: 2px;
+}
+
+.console-action-v-divider {
     width: 1px;
-    height: 20px;
-    background-color: #E5E7EB;
+    height: 36px;
+    background-color: #E2E8F0;
+    flex-shrink: 0;
 }
 
 /* Dashboard Link CTA Button */
@@ -297,16 +365,15 @@ body {
     color: #ffffff;
     border: none;
     border-radius: 14px;
-    padding: 14px 20px;
+    padding: 15px 20px;
     font-size: 15px;
     font-weight: 700;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
+    justify-content: space-between;
     width: 100%;
-    margin-bottom: 24px;
-    box-shadow: 0 4px 12px rgba(26, 122, 46, 0.2);
+    margin-bottom: 22px;
+    box-shadow: 0 4px 14px rgba(26, 122, 46, 0.22);
     cursor: pointer;
     transition: background-color 0.2s ease, transform 0.1s ease;
 }
@@ -318,6 +385,51 @@ body {
 
 .driver-dashboard-cta-btn:active {
     transform: scale(0.99);
+}
+
+.cta-left-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cta-grid-icon {
+    flex-shrink: 0;
+    opacity: 0.95;
+}
+
+.cta-arrow-icon {
+    flex-shrink: 0;
+}
+
+/* Listening Indicator */
+.listening-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #16A34A;
+    background: #E8F8EE;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid #BBF7D0;
+}
+
+.radar-pulse {
+    animation: radar-pulse-anim 2s ease-in-out infinite;
+    transform-origin: center;
+}
+
+@keyframes radar-pulse-anim {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.55;
+        transform: scale(1.15);
+    }
 }
 
 /* Section Titles */
@@ -3523,5 +3635,13 @@ body {
     align-items: center;
     gap: 10px;
 }
+
+/* Driver Redesign Header Actions */
+.driver-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 
 

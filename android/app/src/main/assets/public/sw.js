@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.5.0-instant-css-cache";
+const CACHE_VERSION = "liphtup-v2.6.0-css-v3";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -129,12 +129,20 @@ async function networkFirst(request) {
 
 async function staleWhileRevalidate(request) {
     const cache = await caches.open(CACHE_VERSION);
-    const cached = await cache.match(request, { ignoreSearch: true });
-    const network = fetch(request).then((response) => {
-        if (response.ok) cache.put(request, response.clone());
+    const cached = await cache.match(request);
+    if (cached) {
+        fetch(request).then((response) => {
+            if (response && response.ok) cache.put(request, response.clone());
+        }).catch(() => null);
+        return cached;
+    }
+    try {
+        const response = await fetch(request);
+        if (response && response.ok) cache.put(request, response.clone());
         return response;
-    }).catch(() => null);
-    return cached || await network || Response.error();
+    } catch {
+        return await cache.match(request, { ignoreSearch: true }) || Response.error();
+    }
 }
 
 self.addEventListener("fetch", (event) => {

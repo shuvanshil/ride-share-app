@@ -321,6 +321,11 @@ function renderEmergencyContacts() {
 
 window.addEventListener('languageChanged', () => {
     renderEmergencyContacts();
+    if (roleBadge && currentProfile) {
+        roleBadge.innerText = (currentProfile.role === "driver")
+            ? t('profile.driver_account', "Driver Account")
+            : t('profile.passenger_account', "Passenger Account");
+    }
 });
 
 function escapeHtmlText(text) {
