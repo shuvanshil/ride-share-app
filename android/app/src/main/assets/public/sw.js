@@ -207,6 +207,9 @@ function getRideNotificationUrl(data = {}) {
     return new URL("/index.html", BASE_URL).href;
 }
 
+const recentNotifications = new Map();
+const SW_DEDUP_WINDOW_MS = 5000;
+
 async function showRideNotification(payload = {}) {
     const data = payload.data || {};
     const notification = payload.notification || {};
@@ -215,6 +218,24 @@ async function showRideNotification(payload = {}) {
 
     const targetUrl = getRideNotificationUrl(data);
     const tag = data.tag || (data.rideId ? `liphtup-ride-${data.rideId}` : (data.requestId ? `liphtup-req-${data.requestId}` : "liphtup-general"));
+
+    // Prevent duplicate alerts from firing both onBackgroundMessage and raw push events
+    const dedupKey = data.eventId || payload.messageId || (tag + "::" + title);
+    const now = Date.now();
+    if (dedupKey && recentNotifications.has(dedupKey)) {
+        if (now - recentNotifications.get(dedupKey) < SW_DEDUP_WINDOW_MS) {
+            console.log("SW: Suppressed duplicate notification for:", dedupKey);
+            return;
+        }
+    }
+    if (dedupKey) {
+        recentNotifications.set(dedupKey, now);
+        if (recentNotifications.size > 50) {
+            for (const [k, v] of recentNotifications.entries()) {
+                if (now - v > SW_DEDUP_WINDOW_MS * 2) recentNotifications.delete(k);
+            }
+        }
+    }
 
     const isRideRequestPush = data.type === "ride_request"
         || data.type === "ride_offer"

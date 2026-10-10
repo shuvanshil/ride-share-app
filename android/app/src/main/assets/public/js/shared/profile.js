@@ -3,6 +3,7 @@ import { serverTimestamp, doc, getDoc, setDoc } from "https://www.gstatic.com/fi
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { showAlert, showConfirm } from './dialog.js';
 import { hideInitialLoader } from './loading.js';
+import { unregisterDevicePushToken } from '../platform/notifications.js';
 import { t } from './i18n.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
@@ -623,6 +624,7 @@ async function logoutCurrentUser() {
     window.LiphtUpLoading?.showPageLoader?.(t('common.logging_out', "Logging out..."));
     try {
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
+        await unregisterDevicePushToken().catch(() => {});
         await signOut(auth);
     } catch (err) {
         console.warn("Logout error:", err);

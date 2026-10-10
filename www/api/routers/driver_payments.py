@@ -32,6 +32,7 @@ from ..core.payment_schedule import (
 )
 
 logger = logging.getLogger("driver_payments")
+APP_BASE_URL = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https://liphtup.in").rstrip("/")
 
 router = APIRouter(prefix="/account/driver-payments", tags=["driver-payments"])
 admin_router = APIRouter(prefix="/admin/driver-payments", tags=["admin-driver-payments"])
@@ -341,8 +342,20 @@ def _send_payment_notification(
         decline_msg = f": {reason}" if reason else "."
         body = f"Your payment could not be verified{decline_msg} Please make the payment again."
         notif_type = "payment_declined"
+    elif status in ("due", "payment_due"):
+        title = "Weekly Platform Fee Due"
+        body = f"Your weekly platform fee of ₹{int(amount)} is due. Please pay to keep receiving rides."
+        notif_type = "payment_due"
+    elif status == "action_required":
+        title = "Payment Action Required"
+        body = f"Action is required on your platform fee of ₹{int(amount)}. Please update your payment."
+        notif_type = "payment_action_required"
     else:
         return
+
+    dest_url = f"{APP_BASE_URL}/driver-payments"
+    tag = f"liphtup-payment-{driver_id}"
+    channel_id = "liphtup_wallet_channel"
 
     # 1. In-App Notification (Firestore)
     try:
@@ -351,6 +364,7 @@ def _send_payment_notification(
             "title": title,
             "body": body,
             "type": notif_type,
+            "url": dest_url,
             "read": False,
             "createdAt": now,
             "amount": amount,
@@ -370,6 +384,9 @@ def _send_payment_notification(
                 tokens.add(str(driver_data["fcmToken"]).strip())
             if driver_data.get("pushToken"):
                 tokens.add(str(driver_data["pushToken"]).strip())
+            for token in driver_data.get("pushTokens") or []:
+                if isinstance(token, str) and token.strip():
+                    tokens.add(token.strip())
             for detail in driver_data.get("pushTokenDetails") or []:
                 if isinstance(detail, dict) and detail.get("token"):
                     tokens.add(str(detail["token"]).strip())
@@ -379,11 +396,51 @@ def _send_payment_notification(
                 app = get_admin_app()
                 messaging = get_messaging()
                 for tok in valid_tokens[:5]:
-                    message = messaging.Message(
-                        notification=messaging.Notification(title=title, body=body),
-                        data={"type": notif_type, "click_action": "FLUTTER_NOTIFICATION_CLICK"},
-                        token=tok,
-                    )
+                    android_cfg = None
+                    if hasattr(messaging, "AndroidConfig") and hasattr(messaging, "AndroidNotification"):
+                        android_cfg = messaging.AndroidConfig(
+                            priority="high",
+                            notification=messaging.AndroidNotification(
+                                title=title,
+                                body=body,
+                                sound="default",
+                                channel_id=channel_id,
+                                priority="high",
+                                default_vibrate_timings=True,
+                                tag=tag,
+                            ),
+                        )
+                    webpush_cfg = None
+                    if hasattr(messaging, "WebpushConfig") and hasattr(messaging, "WebpushNotification") and hasattr(messaging, "WebpushFCMOptions"):
+                        webpush_cfg = messaging.WebpushConfig(
+                            headers={"Urgency": "high"},
+                            fcm_options=messaging.WebpushFCMOptions(link=dest_url),
+                            notification=messaging.WebpushNotification(
+                                title=title,
+                                body=body,
+                                icon=f"{APP_BASE_URL}/assets/icons/liphtup-icon-192.png",
+                                tag=tag,
+                            ),
+                        )
+                    msg_kwargs = {
+                        "notification": messaging.Notification(title=title, body=body),
+                        "data": {
+                            "type": notif_type,
+                            "title": title,
+                            "body": body,
+                            "url": dest_url,
+                            "channel_id": channel_id,
+                            "tag": tag,
+                            "amount": str(amount),
+                            "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                        },
+                        "token": tok,
+                    }
+                    if android_cfg:
+                        msg_kwargs["android"] = android_cfg
+                    if webpush_cfg:
+                        msg_kwargs["webpush"] = webpush_cfg
+                    message = messaging.Message(**msg_kwargs)
                     messaging.send(message, app=app)
     except Exception as exc:
         logger.warning("Failed to send push notification for driver %s: %s", driver_id, exc)

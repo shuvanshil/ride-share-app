@@ -20,6 +20,7 @@ import {
     startRideRequestRing,
     stopRideRequestRing
 } from '../shared/messaging.js';
+import { unregisterDevicePushToken } from '../platform/notifications.js';
 import { driverStatusManager } from './driver-status-manager.js';
 import { renderDriverFareQr } from '../shared/upi-qr-helper.js';
 
@@ -1913,6 +1914,7 @@ addOptionalClickListener('logout-btn-review', async () => {
     window.LiphtUpLoading?.showPageLoader?.("Logging out...");
     try {
         clearCachedProfile();
+        await unregisterDevicePushToken().catch(() => {});
         await setDriverAvailability("offline").catch(() => {});
         await signOut(auth);
         window.location.href = "/login.html";
@@ -2023,6 +2025,7 @@ addOptionalClickListener('close-driver-payment-icon-btn', () => {
 addOptionalClickListener('logout-btn', async () => {
     try {
         clearCachedProfile();
+        await unregisterDevicePushToken().catch(() => {});
         await setDriverAvailability("offline").catch(() => {});
         await signOut(auth);
         window.location.href = "/login.html";

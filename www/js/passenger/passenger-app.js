@@ -2200,16 +2200,41 @@ async function restorePassengerActiveRide() {
     if (!currentUser || currentUser.role !== "passenger") return;
 
     try {
-        const activeRideQuery = query(
-            collection(db, "rides"),
-            where("passenger_id", "==", currentUser.uid),
-            where("status", "in", ACTIVE_RIDE_STATUSES)
-        );
+        const urlParams = new URLSearchParams(window.location.search);
+        let requestedRideId = (urlParams.get("rideId") || "").trim();
+        let activeRideDoc = null;
 
-        const activeRideSnap = await getDocs(activeRideQuery);
-        if (activeRideSnap.empty) return false;
+        if (requestedRideId) {
+            try {
+                const directDoc = await getDoc(doc(db, "rides", requestedRideId));
+                if (directDoc.exists()) {
+                    const dData = directDoc.data();
+                    if (dData.passenger_id === currentUser.uid) {
+                        if (ACTIVE_RIDE_STATUSES.includes(dData.status)) {
+                            activeRideDoc = directDoc;
+                        } else if (["cancelled", "cancelled_by_passenger", "cancelled_by_driver"].includes(dData.status)) {
+                            handlePassengerRideCancelled({ ...dData, id: directDoc.id, rideId: directDoc.id });
+                            return true;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn("Direct fetch of requested passenger ride failed:", err);
+            }
+        }
 
-        const activeRideDoc = activeRideSnap.docs[0];
+        if (!activeRideDoc) {
+            const activeRideQuery = query(
+                collection(db, "rides"),
+                where("passenger_id", "==", currentUser.uid),
+                where("status", "in", ACTIVE_RIDE_STATUSES)
+            );
+
+            const activeRideSnap = await getDocs(activeRideQuery);
+            if (activeRideSnap.empty) return false;
+            activeRideDoc = activeRideSnap.docs[0];
+        }
+
         const activeRide = { ...activeRideDoc.data(), id: activeRideDoc.id, rideId: activeRideDoc.id };
         currentPassengerRideId = activeRideDoc.id;
         window._currentActiveRideId = activeRideDoc.id;

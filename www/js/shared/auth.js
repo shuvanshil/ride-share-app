@@ -18,8 +18,8 @@ export function registerSignOutHook(fn) {
     }
 }
 
-registerSignOutHook(() => {
-    unregisterDevicePushToken().catch(() => {});
+registerSignOutHook(async () => {
+    await unregisterDevicePushToken().catch(() => {});
 });
 
 /**
@@ -166,8 +166,13 @@ function dispatchSessionReady(profile) {
 
     // Only hide if we aren't mid-redirect
     const isCurrent = window.isCurrentPage || ((p) => window.location.pathname.includes(p));
-    const isDriverPage = isCurrent('driver.html') || isCurrent('driver-service.html');
+    const isDriverPage = isCurrent('driver.html') || isCurrent('driver-service.html') || isCurrent('driver-payments.html');
     const roleMismatch = (profile.role === "driver" && !isDriverPage) || (profile.role !== "driver" && isDriverPage);
+
+    if (profile.role !== "driver" && isDriverPage) {
+        window.location.replace(window.getPlatformUrl ? window.getPlatformUrl("/index.html") : "/index.html");
+        return;
+    }
 
     if (!roleMismatch) {
         hideInitialLoader();
@@ -196,10 +201,10 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
         if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
             window.LiphtUpNative.setUserRole("");
         }
-        // Run registered sign-out hooks safely
-        signOutHooks.forEach((hook) => {
-            try { hook(); } catch (e) { console.warn("Signout hook error:", e); }
-        });
+        // Run registered sign-out hooks safely and await token unregistration
+        for (const hook of signOutHooks) {
+            try { await hook(); } catch (e) { console.warn("Signout hook error:", e); }
+        }
         await signOut(auth);
         window.location.href = "/login.html";
     } catch (error) {
@@ -217,12 +222,15 @@ onAuthStateChanged(auth, async (user) => {
             window.LiphtUpNative.setUserRole("");
         }
         setGuestLoginVisibility(true);
-        // Only redirect to home if we aren't already on a guest-allowed page
+        // Only redirect to login if we are on a protected page, and preserve target URL
         const isProtectedPage = window.location.pathname.includes('driver.html') ||
                                 window.location.pathname.includes('driver-service.html') ||
+                                window.location.pathname.includes('driver-payments.html') ||
                                 window.location.pathname.includes('history.html');
         if (isProtectedPage) {
-            window.location.replace("/login.html");
+            const currentDest = window.location.pathname + window.location.search;
+            const redirectUrl = `/login.html?redirect=${encodeURIComponent(currentDest)}`;
+            window.location.replace(window.getPlatformUrl ? window.getPlatformUrl(redirectUrl) : redirectUrl);
         } else {
             showPassengerHome();
         }

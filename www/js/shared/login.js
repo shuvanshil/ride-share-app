@@ -392,6 +392,27 @@ function routeToHome(profile) {
     if (!pendingRideId && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {
         pendingRideId = window.LiphtUpNativeStatus.consumePendingRideId();
     }
+
+    const redirectTarget = urlParams.get('redirect') || urlParams.get('url');
+    if (redirectTarget) {
+        try {
+            const cleanTarget = decodeURIComponent(redirectTarget);
+            // Security validation: ensure local path only and respect role authorization
+            if (/^\/[a-zA-Z0-9_\-\.\/?=&%#]*$/.test(cleanTarget) && !cleanTarget.startsWith('//')) {
+                const isDriverTarget = cleanTarget.includes('/driver') || cleanTarget.includes('driver-service') || cleanTarget.includes('driver-payments');
+                if (profile.role === "driver" && isDriverTarget) {
+                    window.location.replace(window.getPlatformUrl ? window.getPlatformUrl(cleanTarget) : cleanTarget);
+                    return;
+                } else if (profile.role !== "driver" && !isDriverTarget) {
+                    window.location.replace(window.getPlatformUrl ? window.getPlatformUrl(cleanTarget) : cleanTarget);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to parse redirect target:", e);
+        }
+    }
+
     if (profile.role === "driver") {
         if (pendingRideId) {
             const targetUrl = `/driver-service.html?rideId=${encodeURIComponent(pendingRideId)}&from=push`;

@@ -169,3 +169,39 @@ def test_device_unregister_endpoint():
     finally:
         app.dependency_overrides.pop(current_user, None)
 
+
+def test_payment_notifications_deep_links_and_channels():
+    from api.routers.driver_payments import _send_payment_notification
+    mock_db = MagicMock()
+    mock_user_doc = FakeDoc(exists=True, data={"pushTokens": ["drv_token_1"]}, doc_id="drv_99")
+    mock_db.collection.return_value.document.return_value.get.return_value = mock_user_doc
+    mock_inapp_ref = MagicMock()
+    mock_db.collection.return_value.document.return_value.collection.return_value.document.return_value = mock_inapp_ref
+
+    mock_messaging = MagicMock()
+    mock_app = MagicMock()
+
+    with patch("api.routers.driver_payments.get_messaging", return_value=mock_messaging), \
+         patch("api.routers.driver_payments.get_admin_app", return_value=mock_app):
+        # 1. Weekly payment due
+        _send_payment_notification(mock_db, "drv_99", "due", 140)
+        assert mock_messaging.send.called
+        msg = mock_messaging.Message.call_args[1]
+        assert msg["data"]["channel_id"] == "liphtup_wallet_channel"
+        assert "/driver-payments" in msg["data"]["url"]
+        assert msg["data"]["type"] == "payment_due"
+        assert mock_messaging.AndroidNotification.call_args[1]["channel_id"] == "liphtup_wallet_channel"
+        assert mock_messaging.WebpushFCMOptions.call_args[1]["link"].endswith("/driver-payments")
+
+        # 2. Action required
+        _send_payment_notification(mock_db, "drv_99", "action_required", 140)
+        msg2 = mock_messaging.Message.call_args[1]
+        assert msg2["data"]["type"] == "payment_action_required"
+        assert "/driver-payments" in msg2["data"]["url"]
+
+        # 3. Verified
+        _send_payment_notification(mock_db, "drv_99", "verified", 140)
+        msg3 = mock_messaging.Message.call_args[1]
+        assert msg3["data"]["type"] == "payment_verified"
+
+

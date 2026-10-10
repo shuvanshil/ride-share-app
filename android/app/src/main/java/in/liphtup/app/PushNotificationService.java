@@ -29,10 +29,42 @@ public class PushNotificationService extends FirebaseMessagingService {
     private static final String CHANNEL_DRIVER = "liphtup_driver_channel";
     private static final String CHANNEL_DEFAULT = "default";
 
+    private static final java.util.Map<String, Long> RECENT_PROCESSED_MESSAGES = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long DEDUP_WINDOW_MS = 5000;
+
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         super.onMessageReceived(remoteMessage);
         Log.d(TAG, "Push message received from: " + remoteMessage.getFrom());
+
+        // Deduplication guard against repeated triggers and FCM retries
+        Map<String, String> dataMap = remoteMessage.getData();
+        String dedupKey = null;
+        if (dataMap != null && dataMap.containsKey("eventId")) {
+            dedupKey = dataMap.get("eventId");
+        } else if (remoteMessage.getMessageId() != null) {
+            dedupKey = remoteMessage.getMessageId();
+        } else if (dataMap != null && dataMap.containsKey("tag")) {
+            dedupKey = dataMap.get("tag");
+        }
+
+        long now = System.currentTimeMillis();
+        if (dedupKey != null && !dedupKey.isEmpty()) {
+            Long lastSeen = RECENT_PROCESSED_MESSAGES.get(dedupKey);
+            if (lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS) {
+                Log.d(TAG, "Suppressed duplicate push message in service: " + dedupKey);
+                return;
+            }
+            RECENT_PROCESSED_MESSAGES.put(dedupKey, now);
+
+            if (RECENT_PROCESSED_MESSAGES.size() > 100) {
+                for (Map.Entry<String, Long> entry : RECENT_PROCESSED_MESSAGES.entrySet()) {
+                    if (now - entry.getValue() > DEDUP_WINDOW_MS * 2) {
+                        RECENT_PROCESSED_MESSAGES.remove(entry.getKey());
+                    }
+                }
+            }
+        }
 
         // 1. Forward message to Capacitor PushNotificationsPlugin so JS listeners get pushNotificationReceived
         try {
@@ -41,7 +73,6 @@ public class PushNotificationService extends FirebaseMessagingService {
             Log.w(TAG, "Could not forward remote message to Capacitor plugin", t);
         }
 
-        Map<String, String> dataMap = remoteMessage.getData();
         String msgType = dataMap != null ? dataMap.get("type") : null;
         String rideId = dataMap != null ? dataMap.get("rideId") : null;
 
@@ -182,7 +213,7 @@ public class PushNotificationService extends FirebaseMessagingService {
             String messageId,
             Map<String, String> dataMap
     ) {
-        createNotificationChannels();
+        createNotificationChannels(this);
 
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -243,9 +274,9 @@ public class PushNotificationService extends FirebaseMessagingService {
         }
     }
 
-    private void createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager manager = getSystemService(NotificationManager.class);
+    public static void createNotificationChannels(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && context != null) {
+            NotificationManager manager = context.getSystemService(NotificationManager.class);
             if (manager == null) return;
 
             Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
