@@ -1,8 +1,8 @@
-import { adminGet, adminPatch } from "./admin-api.js";
-import { showTablerConfirm } from "./admin-confirm.js";
-import { toast } from "./admin-toast.js";
-import { showReadOnlyDrawer } from "./admin-drawer.js";
-import { trackRideOnMap, stopTracking } from "./admin-live.js";
+import { adminGet, adminPatch } from "./admin-api.js?v=2.5.1";
+import { showTablerConfirm } from "./admin-confirm.js?v=2.5.1";
+import { toast } from "./admin-toast.js?v=2.5.1";
+import { showReadOnlyDrawer } from "./admin-drawer.js?v=2.5.1";
+import { trackRideOnMap, stopTracking } from "./admin-live.js?v=2.5.1";
 import { db, auth } from "../../js/platform/firebase-init.js";
 import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 

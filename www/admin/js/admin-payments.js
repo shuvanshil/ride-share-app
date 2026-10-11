@@ -1,6 +1,6 @@
-import { adminGet, adminPost, adminDelete } from './admin-api.js';
-import { toast as showToast } from './admin-toast.js';
-import { showTablerConfirm } from './admin-confirm.js';
+import { adminGet, adminPost, adminDelete } from './admin-api.js?v=2.5.1';
+import { toast as showToast } from './admin-toast.js?v=2.5.1';
+import { showTablerConfirm } from './admin-confirm.js?v=2.5.1';
 import { storage, ref, getDownloadURL, listAll } from '../../js/platform/firebase-init.js';
 
 let cachedPayments = [];

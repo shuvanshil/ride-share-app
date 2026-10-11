@@ -1,6 +1,6 @@
-import { adminGet, adminPost, adminDelete } from "./admin-api.js";
-import { showTablerConfirm } from "./admin-confirm.js";
-import { toast } from "./admin-toast.js";
+import { adminGet, adminPost, adminDelete } from "./admin-api.js?v=2.5.1";
+import { showTablerConfirm } from "./admin-confirm.js?v=2.5.1";
+import { toast } from "./admin-toast.js?v=2.5.1";
 
 const $ = (id) => document.getElementById(id);
 

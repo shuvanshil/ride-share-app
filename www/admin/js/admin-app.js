@@ -1,14 +1,14 @@
-import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken } from "./admin-api.js";
-import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js";
-import { DataTable } from "./data-table.js";
-import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
-import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderGodViewMap } from "./admin-live.js";
-import { toast } from "./admin-toast.js";
-import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
-import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.4.2";
-import { loadPermissions, initPermissionsModal } from "./admin-permissions.js";
-import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js";
-import { initAdminReports, loadAdminReports } from "./admin-reports.js";
+import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken } from "./admin-api.js?v=2.5.1";
+import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js?v=2.5.1";
+import { DataTable } from "./data-table.js?v=2.5.1";
+import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js?v=2.5.1";
+import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderGodViewMap } from "./admin-live.js?v=2.5.1";
+import { toast } from "./admin-toast.js?v=2.5.1";
+import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js?v=2.5.1";
+import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.5.1";
+import { loadPermissions, initPermissionsModal } from "./admin-permissions.js?v=2.5.1";
+import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js?v=2.5.1";
+import { initAdminReports, loadAdminReports } from "./admin-reports.js?v=2.5.1";
 
 const $ = (id) => document.getElementById(id);
 

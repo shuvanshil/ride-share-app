@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.6.0-css-v3";
+const CACHE_VERSION = "liphtup-v2.7.0-admin-v2";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -153,7 +153,7 @@ self.addEventListener("fetch", (event) => {
     if (url.origin !== self.location.origin) return;
     if (url.pathname.includes("/api/")) return;
 
-    if (request.mode === "navigate") {
+    if (request.mode === "navigate" || url.pathname.startsWith("/admin")) {
         event.respondWith(networkFirst(request));
         return;
     }
