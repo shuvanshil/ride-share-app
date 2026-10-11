@@ -55,8 +55,9 @@ export function startLiveFeed(onEvent, onError) {
     feedSink = onEvent;
     errorSink = onError || null;
 
-    // Driver online/offline
-    const u1 = onSnapshot(collection(db, "driverMapPresence"), (snap) => {
+    // Driver online/offline (bounded to 100 active presence docs)
+    const driverPresenceQuery = query(collection(db, "driverMapPresence"), fsLimit(100));
+    const u1 = onSnapshot(driverPresenceQuery, (snap) => {
         snap.docChanges().forEach((change) => {
             const data = change.doc.data();
             const uid = change.doc.id;
@@ -74,7 +75,7 @@ export function startLiveFeed(onEvent, onError) {
     }, (error) => handleListenerError("driverMapPresence", error));
     unsubs.push(u1);
 
-    // Ride lifecycle
+    // Ride lifecycle (bounded to 50 most recently updated rides)
     const recentRidesQuery = query(collection(db, "rides"), orderBy("updatedAt", "desc"), fsLimit(50));
     const u2 = onSnapshot(recentRidesQuery, (snap) => {
         snap.docChanges().forEach((change) => {
@@ -91,7 +92,7 @@ export function startLiveFeed(onEvent, onError) {
                 started: "Ride started",
             }[data.status];
             if (label) {
-                emit({ type: `ride_${data.status}`, text: `${label} \u00b7 ${data.pickupName || "ride"} \u2192 ${data.dropName || ""}` });
+                emit({ type: `ride_${data.status}`, text: `${label} \u00b7 ${data.pickupName || data.pickup_name || "ride"} \u2192 ${data.dropName || data.drop_name || ""}` });
             }
             if (data.payment_status === "paid" && prevStatus !== undefined) {
                 emit({ type: "payment_completed", text: `Payment completed for a ride (Rs ${data.fare || 0})` });
@@ -101,8 +102,9 @@ export function startLiveFeed(onEvent, onError) {
     }, (error) => handleListenerError("rides", error));
     unsubs.push(u2);
 
-    // New registrations & status updates
-    const u3 = onSnapshot(collection(db, "users"), (snap) => {
+    // New registrations & status updates (bounded to 50 newest users)
+    const recentUsersQuery = query(collection(db, "users"), orderBy("createdAt", "desc"), fsLimit(50));
+    const u3 = onSnapshot(recentUsersQuery, (snap) => {
         snap.docChanges().forEach((change) => {
             const data = change.doc.data();
             const uid = change.doc.id;
@@ -127,9 +129,10 @@ export function startLiveFeed(onEvent, onError) {
     }, (error) => handleListenerError("users", error));
     unsubs.push(u3);
 
-    // Driver Payments
+    // Driver Payments (bounded to 50 most recent submissions)
     let firstPaymentsSnapshot = true;
-    const u4 = onSnapshot(collection(db, "driverPayments"), (snap) => {
+    const recentPaymentsQuery = query(collection(db, "driverPayments"), orderBy("submittedAt", "desc"), fsLimit(50));
+    const u4 = onSnapshot(recentPaymentsQuery, (snap) => {
         snap.docChanges().forEach((change) => {
             if (firstPaymentsSnapshot) return;
             const data = change.doc.data();
@@ -143,9 +146,10 @@ export function startLiveFeed(onEvent, onError) {
     }, (error) => handleListenerError("driverPayments", error));
     unsubs.push(u4);
 
-    // Coupons
+    // Coupons (bounded to 50 docs)
     let firstCouponsSnapshot = true;
-    const u5 = onSnapshot(collection(db, "coupons"), (snap) => {
+    const recentCouponsQuery = query(collection(db, "coupons"), fsLimit(50));
+    const u5 = onSnapshot(recentCouponsQuery, (snap) => {
         snap.docChanges().forEach((change) => {
             if (firstCouponsSnapshot) return;
             const data = change.doc.data();
@@ -198,7 +202,7 @@ function calculateBearing(a, b) {
     return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-async function ensureGoogleMaps() {
+export async function ensureGoogleMaps() {
     if (window.google?.maps) return true;
     try {
         await new Promise((resolve, reject) => {
@@ -258,7 +262,7 @@ export function openLiveRideMapModal(rideId, rideData = {}) {
     const dropText = rideData.route?.drop || rideData.drop_name || "Drop";
     if (pickupNameEl) pickupNameEl.textContent = pickupText;
     if (dropNameEl) dropNameEl.textContent = dropText;
-    if (telemetryEl) telemetryEl.textContent = "Connecting live GPS telemetry...";
+    if (telemetryEl) telemetryEl.textContent = "Checking live GPS telemetry...";
 
     modal.style.display = "block";
     modal.classList.add("show");
@@ -307,156 +311,173 @@ function renderCanvasRouteMap(container, readoutEl, pickup, drop, driverPos, rid
     container.appendChild(canvas);
 
     const ctx = canvas.getContext("2d");
-    let progress = 0.35;
-    let animDir = 1;
+    const hasRealDriverGps = Boolean(
+        driverPos &&
+        typeof driverPos.lat === "number" &&
+        typeof driverPos.lng === "number" &&
+        (driverPos.lat !== pickup.lat || driverPos.lng !== pickup.lng)
+    );
 
-    function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Map background pattern
-        ctx.fillStyle = "#f8fafc";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Grid lines for clean map aesthetic
-        ctx.strokeStyle = "#e2e8f0";
-        ctx.lineWidth = 1;
-        for (let x = 40; x < canvas.width; x += 60) {
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, canvas.height);
-            ctx.stroke();
+    let progress = null;
+    if (hasRealDriverGps && pickup?.lat && drop?.lat) {
+        const totalDist = haversineMeters(pickup, drop);
+        const coveredDist = haversineMeters(pickup, driverPos);
+        if (totalDist > 0) {
+            progress = Math.max(0.05, Math.min(0.95, coveredDist / totalDist));
         }
-        for (let y = 40; y < canvas.height; y += 60) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(canvas.width, y);
-            ctx.stroke();
-        }
+    }
 
-        // Coordinates for route path
-        const p1 = { x: 100, y: canvas.height - 100 };
-        const p2 = { x: canvas.width / 2, y: canvas.height / 2 - 40 };
-        const p3 = { x: canvas.width - 120, y: 100 };
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Route line (dotted background + solid active)
-        ctx.strokeStyle = "#cbd5e1";
-        ctx.lineWidth = 6;
-        ctx.lineCap = "round";
+    // Map background pattern
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid lines for clean map aesthetic
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 1;
+    for (let x = 40; x < canvas.width; x += 60) {
         ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.quadraticCurveTo(p2.x, p2.y, p3.x, p3.y);
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
         ctx.stroke();
+    }
+    for (let y = 40; y < canvas.height; y += 60) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
 
-        // Traveled route (green)
+    // Coordinates for static route path
+    const p1 = { x: 110, y: canvas.height - 110 };
+    const p2 = { x: canvas.width / 2, y: canvas.height / 2 - 35 };
+    const p3 = { x: canvas.width - 130, y: 110 };
+
+    // Route line
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 5;
+    ctx.setLineDash([8, 6]);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.quadraticCurveTo(p2.x, p2.y, p3.x, p3.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // If real driver GPS progress is known, highlight traveled segment
+    if (progress !== null) {
+        const t = progress;
+        const curX = (1 - t) * (1 - t) * p1.x + 2 * (1 - t) * t * p2.x + t * t * p3.x;
+        const curY = (1 - t) * (1 - t) * p1.y + 2 * (1 - t) * t * p2.y + t * t * p3.y;
+
         ctx.strokeStyle = "#16a34a";
         ctx.lineWidth = 6;
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
-        // Approximate point along quadratic curve
-        const t = progress;
-        const curX = (1 - t) * (1 - t) * p1.x + 2 * (1 - t) * t * p2.x + t * t * p3.x;
-        const curY = (1 - t) * (1 - t) * p1.y + 2 * (1 - t) * t * p2.y + t * t * p3.y;
-        
-        ctx.quadraticCurveTo(
-            (1 - t) * p1.x + t * p2.x,
-            (1 - t) * p1.y + t * p2.y,
-            curX,
-            curY
-        );
+        ctx.quadraticCurveTo((1 - t) * p1.x + t * p2.x, (1 - t) * p1.y + t * p2.y, curX, curY);
         ctx.stroke();
 
-        // Pickup Marker (Green Pin)
-        ctx.fillStyle = "#16a34a";
-        ctx.beginPath();
-        ctx.arc(p1.x, p1.y, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 11px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("P", p1.x, p1.y);
-
-        // Pickup Label
-        ctx.fillStyle = "#1e293b";
-        ctx.font = "600 12px sans-serif";
-        ctx.fillText(rideData.route?.pickup || rideData.pickup_name || "Pickup Point", p1.x, p1.y + 22);
-
-        // Drop Marker (Red Pin)
-        ctx.fillStyle = "#dc2626";
-        ctx.beginPath();
-        ctx.arc(p3.x, p3.y, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 11px sans-serif";
-        ctx.fillText("D", p3.x, p3.y);
-
-        // Drop Label
-        ctx.fillStyle = "#1e293b";
-        ctx.font = "600 12px sans-serif";
-        ctx.fillText(rideData.route?.drop || rideData.drop_name || "Drop Destination", p3.x, p3.y - 20);
-
-        // Animated Moving Vehicle
-        // Calculate tangent angle for rotation
-        const dx = 2 * (1 - t) * (p2.x - p1.x) + 2 * t * (p3.x - p2.x);
-        const dy = 2 * (1 - t) * (p2.y - p1.y) + 2 * t * (p3.y - p2.y);
-        const angle = Math.atan2(dy, dx);
-
-        ctx.save();
-        ctx.translate(curX, curY);
-        ctx.rotate(angle);
-
-        // Vehicle badge shadow & background
+        // Static Driver Position Marker
         ctx.fillStyle = "rgba(37, 99, 235, 0.2)";
         ctx.beginPath();
-        ctx.arc(0, 0, 18, 0, Math.PI * 2);
+        ctx.arc(curX, curY, 18, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = "#2563eb";
         ctx.beginPath();
-        ctx.arc(0, 0, 14, 0, Math.PI * 2);
+        ctx.arc(curX, curY, 12, 0, Math.PI * 2);
         ctx.fill();
 
-        // Vehicle icon arrow pointing along route
         ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.moveTo(8, 0);
-        ctx.lineTo(-6, -6);
-        ctx.lineTo(-3, 0);
-        ctx.lineTo(-6, 6);
-        ctx.closePath();
-        ctx.fill();
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("DRV", curX, curY);
 
-        ctx.restore();
-
-        // Progress increment
-        progress += 0.0018;
-        if (progress >= 0.94) {
-            progress = 0.08;
-        }
-
-        const pct = Math.round(progress * 100);
-        if (readoutEl) {
-            readoutEl.textContent = `Speed: 28 km/h • ${pct}% of route completed • Real-time GPS active`;
-        }
-
-        animFrameId = requestAnimationFrame(draw);
+        ctx.fillStyle = "#1e40af";
+        ctx.font = "600 11px sans-serif";
+        ctx.fillText(
+            `Driver (${Number(driverPos.lat).toFixed(4)}, ${Number(driverPos.lng).toFixed(4)})`,
+            curX,
+            curY - 22
+        );
     }
 
-    draw();
+    // Pickup Marker (Green Pin)
+    ctx.fillStyle = "#16a34a";
+    ctx.beginPath();
+    ctx.arc(p1.x, p1.y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("P", p1.x, p1.y);
+
+    // Pickup Label & Coords
+    ctx.fillStyle = "#1e293b";
+    ctx.font = "600 12px sans-serif";
+    ctx.fillText(rideData.route?.pickup || rideData.pickup_name || "Pickup Point", p1.x, p1.y + 22);
+    if (pickup?.lat && pickup?.lng) {
+        ctx.fillStyle = "#64748b";
+        ctx.font = "11px sans-serif";
+        ctx.fillText(`(${Number(pickup.lat).toFixed(4)}, ${Number(pickup.lng).toFixed(4)})`, p1.x, p1.y + 38);
+    }
+
+    // Drop Marker (Red Pin)
+    ctx.fillStyle = "#dc2626";
+    ctx.beginPath();
+    ctx.arc(p3.x, p3.y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("D", p3.x, p3.y);
+
+    // Drop Label & Coords
+    ctx.fillStyle = "#1e293b";
+    ctx.font = "600 12px sans-serif";
+    ctx.fillText(rideData.route?.drop || rideData.drop_name || "Drop Destination", p3.x, p3.y - 24);
+    if (drop?.lat && drop?.lng) {
+        ctx.fillStyle = "#64748b";
+        ctx.font = "11px sans-serif";
+        ctx.fillText(`(${Number(drop.lat).toFixed(4)}, ${Number(drop.lng).toFixed(4)})`, p3.x, p3.y - 10);
+    }
+
+    // Direct distance badge in center
+    if (pickup?.lat && drop?.lat) {
+        const directKm = (haversineMeters(pickup, drop) / 1000).toFixed(2);
+        ctx.fillStyle = "#334155";
+        ctx.font = "600 12px sans-serif";
+        ctx.fillText(`Direct route distance: ${directKm} km (Static Map View)`, canvas.width / 2, 24);
+    }
+
+    if (readoutEl) {
+        if (hasRealDriverGps) {
+            const pct = progress !== null ? `${Math.round(progress * 100)}% of direct distance` : "Coordinates reported";
+            readoutEl.textContent = `Last reported driver GPS: (${Number(driverPos.lat).toFixed(4)}, ${Number(driverPos.lng).toFixed(4)}) • ${pct} • Static route view`;
+        } else {
+            readoutEl.textContent = "Live GPS telemetry unavailable for this ride • Showing static pickup & drop route";
+        }
+    }
 }
 
 export async function trackRideOnMap(container, readoutEl, rideId, initialRideData = {}) {
     stopTracking();
 
     const pickup = {
-        lat: initialRideData.route?.pickup_lat || initialRideData.pickup_lat || 23.8315,
-        lng: initialRideData.route?.pickup_lng || initialRideData.pickup_lng || 91.2868,
+        lat: Number(initialRideData.route?.pickup_lat ?? initialRideData.pickup_lat) || 23.8315,
+        lng: Number(initialRideData.route?.pickup_lng ?? initialRideData.pickup_lng) || 91.2868,
     };
     const drop = {
-        lat: initialRideData.route?.drop_lat || initialRideData.drop_lat || 23.8385,
-        lng: initialRideData.route?.drop_lng || initialRideData.drop_lng || 91.2950,
+        lat: Number(initialRideData.route?.drop_lat ?? initialRideData.drop_lat) || 23.8385,
+        lng: Number(initialRideData.route?.drop_lng ?? initialRideData.drop_lng) || 91.2950,
     };
-    const driverPos = initialRideData.driverLocation || initialRideData.driver?.location || pickup;
+    const rawDriverLoc = initialRideData.driverLocation || initialRideData.driver?.location || null;
+    const driverPos =
+        rawDriverLoc && rawDriverLoc.lat != null && rawDriverLoc.lng != null
+            ? { lat: Number(rawDriverLoc.lat), lng: Number(rawDriverLoc.lng) }
+            : null;
 
     const hasGmaps = await ensureGoogleMaps();
     if (!hasGmaps || !window.google?.maps) {
@@ -465,7 +486,7 @@ export async function trackRideOnMap(container, readoutEl, rideId, initialRideDa
     }
 
     trackingMap = new window.google.maps.Map(container, {
-        center: driverPos.lat ? driverPos : pickup,
+        center: driverPos || pickup,
         zoom: 14,
         disableDefaultUI: true,
         zoomControl: true,
@@ -516,30 +537,48 @@ export async function trackRideOnMap(container, readoutEl, rideId, initialRideDa
                 rotation: calculateBearing(driverPos, drop),
             },
         });
-        const path = [pickup, driverPos, drop].filter((p) => p.lat && p.lng);
-        routeLine = new window.google.maps.Polyline({
-            path,
-            map: trackingMap,
-            strokeColor: "#16a34a",
-            strokeWeight: 4,
-            strokeOpacity: 0.9,
-        });
+    }
+
+    const initialPath = [pickup, ...(driverPos ? [driverPos] : []), drop].filter((p) => p && p.lat && p.lng);
+    routeLine = new window.google.maps.Polyline({
+        path: initialPath,
+        map: trackingMap,
+        strokeColor: "#16a34a",
+        strokeWeight: 4,
+        strokeOpacity: 0.9,
+    });
+
+    if (readoutEl) {
+        if (driverPos) {
+            readoutEl.textContent = `Last reported driver GPS: (${driverPos.lat.toFixed(4)}, ${driverPos.lng.toFixed(4)}) • Listening for live telemetry...`;
+        } else {
+            readoutEl.textContent = "No live driver GPS coordinates reported yet • Listening for telemetry updates...";
+        }
     }
 
     // Subscribe to real-time updates for ride (supports both rides and shareTrips)
     if (rideId && typeof rideId === "string") {
-        const targetColl = initialRideData.isParent || initialRideData.rideType === "share" && !initialRideData.isChild ? "shareTrips" : "rides";
+        const targetColl =
+            initialRideData.isParent || (initialRideData.rideType === "share" && !initialRideData.isChild)
+                ? "shareTrips"
+                : "rides";
         try {
             trackingUnsub = onSnapshot(doc(db, targetColl, rideId), (snap) => {
                 if (!snap.exists()) return;
                 const ride = snap.data();
-                const curPickup = { lat: ride.pickup_lat || pickup.lat, lng: ride.pickup_lng || pickup.lng };
-                const curDrop = { lat: ride.drop_lat || drop.lat, lng: ride.drop_lng || drop.lng };
-                const curDriverPos = ride.driverLocation;
+                const curPickup = { lat: Number(ride.pickup_lat) || pickup.lat, lng: Number(ride.pickup_lng) || pickup.lng };
+                const curDrop = { lat: Number(ride.drop_lat) || drop.lat, lng: Number(ride.drop_lng) || drop.lng };
+                const curDriverPos =
+                    ride.driverLocation && ride.driverLocation.lat != null && ride.driverLocation.lng != null
+                        ? { lat: Number(ride.driverLocation.lat), lng: Number(ride.driverLocation.lng) }
+                        : null;
 
-                if (curDriverPos?.lat && curDriverPos?.lng) {
+                if (curDriverPos) {
                     if (driverMarker) {
-                        const bearing = calculateBearing(driverMarker.getPosition() ? { lat: driverMarker.getPosition().lat(), lng: driverMarker.getPosition().lng() } : curDriverPos, curDrop);
+                        const prevPos = driverMarker.getPosition()
+                            ? { lat: driverMarker.getPosition().lat(), lng: driverMarker.getPosition().lng() }
+                            : curDriverPos;
+                        const bearing = calculateBearing(prevPos, curDrop);
                         driverMarker.setPosition(curDriverPos);
                         driverMarker.setIcon({
                             path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
@@ -549,6 +588,20 @@ export async function trackRideOnMap(container, readoutEl, rideId, initialRideDa
                             strokeWeight: 2,
                             strokeColor: "#ffffff",
                             rotation: bearing,
+                        });
+                    } else if (trackingMap) {
+                        driverMarker = new window.google.maps.Marker({
+                            position: curDriverPos,
+                            map: trackingMap,
+                            icon: {
+                                path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                                scale: 6,
+                                fillColor: "#2563eb",
+                                fillOpacity: 1,
+                                strokeWeight: 2,
+                                strokeColor: "#ffffff",
+                                rotation: calculateBearing(curDriverPos, curDrop),
+                            },
                         });
                     }
                     if (routeLine) {
@@ -572,19 +625,15 @@ export async function trackRideOnMap(container, readoutEl, rideId, initialRideDa
                         if (total > 0) progressPct = Math.max(0, Math.min(100, Math.round((done / total) * 100)));
                     }
                     if (readoutEl) {
-                        readoutEl.textContent = `Speed: ${speedKmh != null ? `${speedKmh} km/h` : "24 km/h"} • Progress: ${
-                            progressPct != null ? `${progressPct}%` : "62%"
-                        } of route • Real-time GPS active`;
+                        const speedText = speedKmh != null ? `Speed: ${speedKmh} km/h` : `GPS: (${curDriverPos.lat.toFixed(4)}, ${curDriverPos.lng.toFixed(4)})`;
+                        const progText = progressPct != null ? `${progressPct}% of direct route` : "Route active";
+                        readoutEl.textContent = `${speedText} • ${progText} • Live GPS telemetry active`;
                     }
                 }
             }, (err) => {
                 console.warn("[admin-live] Snapshot listener:", err);
             });
         } catch {}
-    }
-
-    if (readoutEl && (!readoutEl.textContent || readoutEl.textContent.includes("Connecting"))) {
-        readoutEl.textContent = "Speed: 24 km/h • 65% of route completed • Real-time GPS active";
     }
 
     return stopTracking;
@@ -605,4 +654,393 @@ export function stopTracking() {
     routeLine = null;
     lastPing = null;
 }
+
+// ---------------------------------------------------------------------
+// Priority 1: Unified "God View" Live Fleet & Demand Map
+// ---------------------------------------------------------------------
+
+export async function renderGodViewMap(container, mapData = {}, filters = {}, callbacks = {}) {
+    if (!container) return;
+    const showOnline = filters.showOnlineDrivers !== false;
+    const showBusy = filters.showBusyDrivers !== false;
+    const showWaiting = filters.showWaitingPassengers !== false;
+    const showRides = filters.showActiveRides !== false;
+    const vehicleFilter = (filters.vehicleType || "all").toLowerCase();
+
+    const drivers = (mapData.drivers || []).filter((d) => {
+        if (d.status === "online" && !showOnline) return false;
+        if (d.status === "busy" && !showBusy) return false;
+        if (vehicleFilter !== "all" && String(d.vehicleType || "").toLowerCase() !== vehicleFilter) return false;
+        return true;
+    });
+    const waitingPassengers = showWaiting
+        ? (mapData.waitingPassengers || []).filter((p) => {
+              if (vehicleFilter === "all") return true;
+              return String(p.vehicleType || p.type || "").toLowerCase() === vehicleFilter;
+          })
+        : [];
+    const activeRides = showRides
+        ? (mapData.activeRides || []).filter((r) => {
+              if (vehicleFilter === "all") return true;
+              return String(r.vehicleType || "").toLowerCase() === vehicleFilter;
+          })
+        : [];
+
+    const modeLabelEl = document.getElementById("god-map-mode-label");
+    const hasGmaps = await ensureGoogleMaps();
+    if (hasGmaps && window.google?.maps) {
+        if (modeLabelEl) modeLabelEl.textContent = "Google Maps Live View";
+        container.innerHTML = "";
+        const map = new window.google.maps.Map(container, {
+            center: { lat: 23.8315, lng: 91.2868 },
+            zoom: 13,
+            disableDefaultUI: false,
+            mapTypeControl: false,
+            streetViewControl: false,
+        });
+        const infoWin = new window.google.maps.InfoWindow();
+        const bounds = new window.google.maps.LatLngBounds();
+        let hasPoints = false;
+
+        drivers.forEach((d) => {
+            const lat = Number(d.lat);
+            const lng = Number(d.lng);
+            if (!lat || !lng) return;
+            hasPoints = true;
+            bounds.extend({ lat, lng });
+            const isBusy = d.status === "busy";
+            const marker = new window.google.maps.Marker({
+                position: { lat, lng },
+                map,
+                title: `${d.name} (${d.status})`,
+                label: { text: isBusy ? "B" : "D", color: "#ffffff", fontWeight: "bold", fontSize: "11px" },
+                icon: {
+                    path: window.google.maps.SymbolPath.CIRCLE,
+                    scale: 11,
+                    fillColor: isBusy ? "#2563eb" : "#16a34a",
+                    fillOpacity: 1,
+                    strokeWeight: 2,
+                    strokeColor: "#ffffff",
+                },
+            });
+            marker.addListener("click", () => {
+                const div = document.createElement("div");
+                div.style.cssText = "min-width:190px;padding:4px;";
+                div.innerHTML = `
+                    <div style="font-weight:700;color:#0f172a;">${d.name || "Driver"}</div>
+                    <div style="font-size:12px;color:#64748b;">${d.plate || "No Plate"} • ${(d.vehicleType || "auto").toUpperCase()}</div>
+                    <div style="font-size:12px;margin-top:4px;">Status: <strong>${isBusy ? "On Trip" : "Online / Idle"}</strong></div>
+                    ${d.idleTimeText ? `<div style="font-size:11px;color:#475569;">Idle: ${d.idleTimeText}</div>` : ""}
+                    <button type="button" class="btn btn-sm btn-outline-primary w-100 mt-2 gm-driver-btn">Driver Profile</button>
+                `;
+                div.querySelector(".gm-driver-btn")?.addEventListener("click", () => {
+                    infoWin.close();
+                    if (callbacks.onSelectDriver) callbacks.onSelectDriver(d);
+                });
+                infoWin.setContent(div);
+                infoWin.open(map, marker);
+            });
+        });
+
+        waitingPassengers.forEach((p) => {
+            const lat = Number(p.pickup_lat);
+            const lng = Number(p.pickup_lng);
+            if (!lat || !lng) return;
+            hasPoints = true;
+            bounds.extend({ lat, lng });
+            const isUrgent = Number(p.waitTimeMinutes || 0) >= 15;
+            const marker = new window.google.maps.Marker({
+                position: { lat, lng },
+                map,
+                title: `Waiting: ${p.name}`,
+                label: { text: "W", color: "#ffffff", fontWeight: "bold", fontSize: "11px" },
+                icon: {
+                    path: window.google.maps.SymbolPath.CIRCLE,
+                    scale: 12,
+                    fillColor: isUrgent ? "#dc2626" : "#d97706",
+                    fillOpacity: 1,
+                    strokeWeight: 2,
+                    strokeColor: "#ffffff",
+                },
+            });
+            marker.addListener("click", () => {
+                const div = document.createElement("div");
+                div.style.cssText = "min-width:210px;padding:4px;";
+                div.innerHTML = `
+                    <div style="font-weight:700;color:#0f172a;">${p.name || "Waiting Passenger"}</div>
+                    <div style="font-size:12px;color:#64748b;">${p.pickupLocation || "Pickup"}</div>
+                    <div style="font-size:12px;margin-top:4px;color:#b45309;font-weight:600;">Waiting: ${p.waitTimeText || "1 min"} (${p.type || "Auto"})</div>
+                    <button type="button" class="btn btn-sm btn-primary w-100 mt-2 gm-assign-btn">Assign Driver</button>
+                `;
+                div.querySelector(".gm-assign-btn")?.addEventListener("click", () => {
+                    infoWin.close();
+                    if (callbacks.onAssignPassenger) callbacks.onAssignPassenger(p);
+                });
+                infoWin.setContent(div);
+                infoWin.open(map, marker);
+            });
+        });
+
+        activeRides.forEach((r) => {
+            const pLat = Number(r.route?.pickup_lat);
+            const pLng = Number(r.route?.pickup_lng);
+            const dLat = Number(r.route?.drop_lat);
+            const dLng = Number(r.route?.drop_lng);
+            if (pLat && pLng && dLat && dLng) {
+                hasPoints = true;
+                bounds.extend({ lat: pLat, lng: pLng });
+                bounds.extend({ lat: dLat, lng: dLng });
+                const poly = new window.google.maps.Polyline({
+                    path: [
+                        { lat: pLat, lng: pLng },
+                        { lat: dLat, lng: dLng },
+                    ],
+                    map,
+                    strokeColor: r.rideType === "share" ? "#7c3aed" : "#2563eb",
+                    strokeOpacity: 0.75,
+                    strokeWeight: 3,
+                });
+                poly.addListener("click", () => {
+                    if (callbacks.onSelectRide) callbacks.onSelectRide(r);
+                });
+            }
+        });
+
+        if (hasPoints) {
+            map.fitBounds(bounds);
+        }
+        return;
+    }
+
+    if (modeLabelEl) modeLabelEl.textContent = "Coordinate Map Active";
+
+    // Fallback: Interactive Coordinate Canvas & Live Fleet Overlay when Google Maps API key is not configured
+    container.innerHTML = "";
+    const wrapper = document.createElement("div");
+    wrapper.className = "position-relative w-100 h-100 d-flex flex-column";
+    wrapper.style.minHeight = "440px";
+    wrapper.style.background = "#f8fafc";
+
+    const canvas = document.createElement("canvas");
+    canvas.width = container.clientWidth || 880;
+    canvas.height = 440;
+    canvas.style.width = "100%";
+    canvas.style.height = "440px";
+    canvas.style.display = "block";
+    canvas.style.cursor = "pointer";
+    wrapper.appendChild(canvas);
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "card shadow-sm border p-2 position-absolute d-none";
+    tooltip.style.cssText = "z-index:20; min-width:220px; max-width:280px; pointer-events:auto;";
+    wrapper.appendChild(tooltip);
+    container.appendChild(wrapper);
+
+    const ctx = canvas.getContext("2d");
+
+    // Collect all valid coordinates to compute bounding box around Agartala (23.8315, 91.2868)
+    const allCoords = [];
+    drivers.forEach((d) => {
+        if (d.lat && d.lng) allCoords.push({ lat: Number(d.lat), lng: Number(d.lng) });
+    });
+    waitingPassengers.forEach((p) => {
+        if (p.pickup_lat && p.pickup_lng) allCoords.push({ lat: Number(p.pickup_lat), lng: Number(p.pickup_lng) });
+    });
+    activeRides.forEach((r) => {
+        if (r.route?.pickup_lat && r.route?.pickup_lng) {
+            allCoords.push({ lat: Number(r.route.pickup_lat), lng: Number(r.route.pickup_lng) });
+        }
+        if (r.route?.drop_lat && r.route?.drop_lng) {
+            allCoords.push({ lat: Number(r.route.drop_lat), lng: Number(r.route.drop_lng) });
+        }
+    });
+
+    if (allCoords.length === 0) {
+        allCoords.push({ lat: 23.8200, lng: 91.2700 }, { lat: 23.8450, lng: 91.3050 });
+    }
+
+    let minLat = Math.min(...allCoords.map((c) => c.lat));
+    let maxLat = Math.max(...allCoords.map((c) => c.lat));
+    let minLng = Math.min(...allCoords.map((c) => c.lng));
+    let maxLng = Math.max(...allCoords.map((c) => c.lng));
+
+    if (Math.abs(maxLat - minLat) < 0.01) {
+        minLat -= 0.008;
+        maxLat += 0.008;
+    }
+    if (Math.abs(maxLng - minLng) < 0.01) {
+        minLng -= 0.008;
+        maxLng += 0.008;
+    }
+
+    const pad = 55;
+    const project = (lat, lng, idx = 0) => {
+        if (!lat || !lng) {
+            // Deterministic spread if exact GPS is missing on a doc
+            const col = idx % 5;
+            const row = Math.floor(idx / 5);
+            return {
+                x: pad + 60 + col * ((canvas.width - pad * 2 - 100) / 4),
+                y: pad + 50 + row * 70,
+            };
+        }
+        const xRatio = (Number(lng) - minLng) / (maxLng - minLng);
+        const yRatio = 1 - (Number(lat) - minLat) / (maxLat - minLat);
+        return {
+            x: Math.round(pad + xRatio * (canvas.width - pad * 2)),
+            y: Math.round(pad + yRatio * (canvas.height - pad * 2)),
+        };
+    };
+
+    // Draw background grid
+    ctx.fillStyle = "#f1f5f9";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 1;
+    for (let x = 40; x < canvas.width; x += 60) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
+    for (let y = 40; y < canvas.height; y += 60) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
+
+    // Draw active ride route lines
+    activeRides.forEach((r, idx) => {
+        const p1 = project(r.route?.pickup_lat, r.route?.pickup_lng, idx);
+        const p2 = project(r.route?.drop_lat, r.route?.drop_lng, idx + 3);
+        ctx.strokeStyle = r.rideType === "share" ? "#7c3aed" : "#3b82f6";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    });
+
+    const hitTargets = [];
+
+    // Draw drivers
+    drivers.forEach((d, idx) => {
+        const pt = project(d.lat, d.lng, idx);
+        const isBusy = d.status === "busy";
+        ctx.fillStyle = isBusy ? "rgba(37, 99, 235, 0.18)" : "rgba(22, 163, 74, 0.18)";
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 17, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = isBusy ? "#2563eb" : "#16a34a";
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(isBusy ? "B" : "D", pt.x, pt.y);
+
+        ctx.fillStyle = "#1e293b";
+        ctx.font = "600 11px sans-serif";
+        ctx.fillText(d.name || "Driver", pt.x, pt.y + 20);
+
+        hitTargets.push({ x: pt.x, y: pt.y, r: 16, kind: "driver", item: d });
+    });
+
+    // Draw waiting passengers
+    waitingPassengers.forEach((p, idx) => {
+        const pt = project(p.pickup_lat, p.pickup_lng, idx + drivers.length + 2);
+        const isUrgent = Number(p.waitTimeMinutes || 0) >= 15;
+        ctx.fillStyle = isUrgent ? "rgba(220, 38, 38, 0.2)" : "rgba(217, 119, 6, 0.2)";
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 18, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = isUrgent ? "#dc2626" : "#d97706";
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("W", pt.x, pt.y);
+
+        ctx.fillStyle = "#7c2d12";
+        ctx.font = "600 11px sans-serif";
+        ctx.fillText(`${p.name || "Passenger"} (${p.waitTimeText || "1m"})`, pt.x, pt.y - 18);
+
+        hitTargets.push({ x: pt.x, y: pt.y, r: 16, kind: "passenger", item: p });
+    });
+
+    if (drivers.length === 0 && waitingPassengers.length === 0 && activeRides.length === 0) {
+        ctx.fillStyle = "#64748b";
+        ctx.font = "600 14px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("No active drivers, waiting passengers, or live rides match current filters.", canvas.width / 2, canvas.height / 2);
+    }
+
+    canvas.addEventListener("click", (ev) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mx = (ev.clientX - rect.left) * scaleX;
+        const my = (ev.clientY - rect.top) * scaleY;
+
+        const hit = hitTargets.find((t) => Math.hypot(t.x - mx, t.y - my) <= t.r + 4);
+        if (!hit) {
+            tooltip.classList.add("d-none");
+            return;
+        }
+
+        tooltip.style.left = `${Math.min(rect.width - 250, Math.max(12, ev.clientX - rect.left + 10))}px`;
+        tooltip.style.top = `${Math.min(rect.height - 140, Math.max(12, ev.clientY - rect.top + 10))}px`;
+        tooltip.classList.remove("d-none");
+
+        if (hit.kind === "driver") {
+            const d = hit.item;
+            tooltip.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="fw-bold text-dark">${d.name || "Driver"}</div>
+                    <span class="badge ${d.status === "busy" ? "bg-blue-lt text-blue" : "bg-green-lt text-green"}">${d.status === "busy" ? "On Trip" : "Online"}</span>
+                </div>
+                <div class="text-secondary small mt-1">${d.plate || "No Plate"} • ${(d.vehicleType || "auto").toUpperCase()}</div>
+                <div class="text-secondary small">${d.currentLocation || ""}</div>
+                ${d.idleTimeText ? `<div class="text-muted small mt-1">Idle: ${d.idleTimeText}</div>` : ""}
+                <button type="button" class="btn btn-sm btn-outline-primary w-100 mt-2 canvas-driver-btn">
+                    <i class="ti ti-id me-1"></i>Driver Profile
+                </button>
+            `;
+            tooltip.querySelector(".canvas-driver-btn")?.addEventListener("click", () => {
+                tooltip.classList.add("d-none");
+                if (callbacks.onSelectDriver) callbacks.onSelectDriver(d);
+            });
+        } else if (hit.kind === "passenger") {
+            const p = hit.item;
+            tooltip.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="fw-bold text-dark">${p.name || "Waiting Passenger"}</div>
+                    <span class="badge bg-amber-lt text-amber">${p.waitTimeText || "Waiting"}</span>
+                </div>
+                <div class="text-secondary small mt-1">Pickup: ${p.pickupLocation || "Pickup"}</div>
+                <div class="text-secondary small">Type: ${p.type || "Auto"}</div>
+                <button type="button" class="btn btn-sm btn-primary w-100 mt-2 canvas-assign-btn">
+                    <i class="ti ti-steering-wheel me-1"></i>Assign Driver
+                </button>
+            `;
+            tooltip.querySelector(".canvas-assign-btn")?.addEventListener("click", () => {
+                tooltip.classList.add("d-none");
+                if (callbacks.onAssignPassenger) callbacks.onAssignPassenger(p);
+            });
+        }
+    });
+}
+
 

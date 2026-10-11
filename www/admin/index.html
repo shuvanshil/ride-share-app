@@ -16,9 +16,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Tabler UI Core CSS and Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+    <!-- Tabler UI Core CSS and Icons (pinned versions) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css">
     
     <!-- Shared brand styles & Admin custom overrides -->
     <link rel="stylesheet" href="/css/style.css">
@@ -214,6 +214,12 @@
 
                             <!-- SYSTEM -->
                             <li class="nav-header text-uppercase text-secondary fw-bold px-3 pt-3 pb-1" style="font-size: 0.68rem; letter-spacing: 0.05em;">System</li>
+                            <li class="nav-item" id="nav-item-notifications">
+                                <button class="admin-nav-item nav-link w-100 text-start" data-section="notifications" type="button">
+                                    <i class="ti ti-bell-ringing nav-link-icon text-azure me-2"></i>
+                                    <span class="nav-link-title">Notifications</span>
+                                </button>
+                            </li>
                             <li class="nav-item" id="nav-item-audit-log">
                                 <button class="admin-nav-item nav-link w-100 text-start" data-section="audit-log" type="button">
                                     <i class="ti ti-file-description nav-link-icon me-2"></i>
@@ -651,6 +657,13 @@
                                         <input type="text" id="live-rides-search" class="form-control form-control-sm" placeholder="Search ride ID, driver, phone..." style="border-radius: 6px;">
                                     </div>
 
+                                    <!-- Dispatch Diagnostics button -->
+                                    <button type="button" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1 py-1 px-3" id="live-dispatch-diagnostics-btn" style="border-radius: 6px; white-space: nowrap;">
+                                        <i class="ti ti-Cpu text-primary ti-cpu"></i>
+                                        <span class="fw-medium">Dispatch Health</span>
+                                        <span class="badge bg-green-lt text-green ms-1" id="dispatch-health-pill">OK</span>
+                                    </button>
+
                                     <!-- Refresh button -->
                                     <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 py-1 px-3" id="live-rides-refresh-btn" style="border-radius: 6px; white-space: nowrap;">
                                         <i class="ti ti-refresh text-success" id="live-rides-refresh-icon"></i>
@@ -660,6 +673,25 @@
                                     <!-- Last updated -->
                                     <span class="text-secondary small text-nowrap" id="live-rides-last-updated" style="font-size: 0.75rem;">Last updated: --:--:--</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Dispatch Engine Diagnostics Strip -->
+                        <div id="dispatch-stats-banner" class="card border-0 shadow-xs mb-3 bg-white">
+                            <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div class="d-flex align-items-center flex-wrap gap-3 small">
+                                    <span class="fw-bold text-dark d-flex align-items-center gap-1">
+                                        <i class="ti ti-radar-2 text-primary"></i> Dispatch Engine:
+                                    </span>
+                                    <span class="text-secondary">WPP: <strong class="text-dark" id="diag-wpp-size">0</strong></span>
+                                    <span class="text-secondary">DAP: <strong class="text-dark" id="diag-dap-size">0</strong></span>
+                                    <span class="text-secondary">Active Offers: <strong class="text-dark" id="diag-offers-size">0</strong></span>
+                                    <span class="text-secondary">Oldest Wait: <strong class="text-dark" id="diag-oldest-wpp">0s</strong></span>
+                                    <span class="text-secondary">Invariants: <span class="badge bg-green-lt text-green" id="diag-violations-badge">0 violations</span></span>
+                                </div>
+                                <button type="button" class="btn btn-ghost-primary btn-sm py-1 px-2" id="btn-open-dispatch-drawer">
+                                    <i class="ti ti-Report-analytics me-1 ti-report-analytics"></i>Full Diagnostics
+                                </button>
                             </div>
                         </div>
 
@@ -679,6 +711,9 @@
                             </button>
                             <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="waiting-pools">
                                 <i class="ti ti-clock me-1"></i> Waiting Pools <span class="badge bg-secondary-lt ms-1" id="tab-count-waiting">0</span>
+                            </button>
+                            <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="live-map">
+                                <i class="ti ti-map-2 me-1"></i> Live Map <span class="badge bg-secondary-lt ms-1" id="tab-count-map">0</span>
                             </button>
                         </div>
 
@@ -819,11 +854,52 @@
                                         <div class="alert alert-info d-flex align-items-center gap-2 m-3 mb-2 p-2 border-0" style="background-color: #eff6ff; border-radius: 6px;">
                                             <i class="ti ti-info-circle text-primary fs-3 flex-shrink-0"></i>
                                             <div class="small text-secondary" style="font-size: 0.78rem; line-height: 1.4;">
-                                                Drivers in this pool are online and available, but not yet assigned to any ride. They will be matched based on the dispatch algorithm.
+                                                Drivers in this pool are online and available, but not yet assigned to any ride. Use <strong>Assign Driver</strong> in the Passenger Pool or Live Map to manually override dispatch.
                                             </div>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- View 3: Live Fleet & Demand Map ("God View") -->
+                        <div id="live-fleet-map-view" class="card border-0 shadow-xs d-none">
+                            <div class="card-header border-bottom py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2 bg-white">
+                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                    <span class="fw-bold text-dark d-flex align-items-center gap-1">
+                                        <i class="ti ti-map-pin text-primary"></i> Live Fleet &amp; Demand Map
+                                    </span>
+                                    <label class="form-check form-check-inline m-0 small">
+                                        <input class="form-check-input" type="checkbox" id="god-map-filter-online" checked>
+                                        <span class="form-check-label"><span class="badge bg-green p-1 rounded-circle me-1"></span>Online Drivers (<span id="god-map-count-online">0</span>)</span>
+                                    </label>
+                                    <label class="form-check form-check-inline m-0 small">
+                                        <input class="form-check-input" type="checkbox" id="god-map-filter-busy" checked>
+                                        <span class="form-check-label"><span class="badge bg-blue p-1 rounded-circle me-1"></span>On-Trip Drivers (<span id="god-map-count-busy">0</span>)</span>
+                                    </label>
+                                    <label class="form-check form-check-inline m-0 small">
+                                        <input class="form-check-input" type="checkbox" id="god-map-filter-waiting" checked>
+                                        <span class="form-check-label"><span class="badge bg-amber p-1 rounded-circle me-1"></span>Waiting Passengers (<span id="god-map-count-waiting">0</span>)</span>
+                                    </label>
+                                    <label class="form-check form-check-inline m-0 small">
+                                        <input class="form-check-input" type="checkbox" id="god-map-filter-rides" checked>
+                                        <span class="form-check-label">Active Routes (<span id="god-map-count-rides">0</span>)</span>
+                                    </label>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <select id="god-map-vehicle-filter" class="form-select form-select-sm w-auto">
+                                        <option value="all" selected>All Vehicles</option>
+                                        <option value="auto">Auto</option>
+                                        <option value="bike">Bike</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div id="god-view-map-canvas" style="min-height: 450px; width: 100%;"></div>
+                            </div>
+                            <div class="card-footer bg-light py-2 px-3 small text-secondary d-flex justify-content-between flex-wrap gap-2">
+                                <span><i class="ti ti-click me-1 text-primary"></i>Click any marker on the map to inspect details or manually assign a waiting passenger to an available driver.</span>
+                                <span id="god-map-mode-label">Coordinate Map Active</span>
                             </div>
                         </div>
                     </section>
@@ -1007,6 +1083,14 @@
                                     <div class="page-pretitle">Management</div>
                                     <h2 class="page-title h2 fw-bold">Passengers</h2>
                                 </div>
+                                <div class="col-auto ms-auto d-flex flex-wrap gap-2">
+                                    <select id="passenger-status-filter" class="form-select form-select-sm w-auto">
+                                        <option value="">All statuses</option>
+                                        <option value="active">Active</option>
+                                        <option value="restricted">Restricted</option>
+                                        <option value="blocked">Blocked</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <div id="passengers-table-wrap"></div>
@@ -1017,20 +1101,226 @@
                         <div class="page-header d-print-none mb-3">
                             <div class="row align-items-center">
                                 <div class="col">
-                                    <div class="page-pretitle">Reports</div>
+                                    <div class="page-pretitle">Reports &amp; Insights</div>
                                     <h2 class="page-title h2 fw-bold">Analytics</h2>
+                                </div>
+                                <div class="col-auto ms-auto d-flex align-items-center gap-2">
+                                    <span class="text-secondary small">Period:</span>
+                                    <div class="btn-group btn-group-sm" role="group" id="analytics-period-group">
+                                        <button type="button" class="btn btn-outline-secondary analytics-period-btn" data-days="7">7 Days</button>
+                                        <button type="button" class="btn btn-primary analytics-period-btn active" data-days="14">14 Days</button>
+                                        <button type="button" class="btn btn-outline-secondary analytics-period-btn" data-days="30">30 Days</button>
+                                        <button type="button" class="btn btn-outline-secondary analytics-period-btn" data-days="90">90 Days</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="card shadow-xs border-0">
+
+                        <!-- Analytics KPI Summary Cards -->
+                        <div class="row row-cards mb-3">
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="card card-sm border-0 shadow-xs">
+                                    <div class="card-body">
+                                        <div class="subheader text-secondary">Total Rides in Period</div>
+                                        <div class="h2 fw-bold mb-0 mt-1" id="analytics-kpi-total-rides">0</div>
+                                        <div class="text-secondary small mt-1" id="analytics-kpi-distance">0 km total distance</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="card card-sm border-0 shadow-xs">
+                                    <div class="card-body">
+                                        <div class="subheader text-secondary">Completion Rate</div>
+                                        <div class="h2 fw-bold text-success mb-0 mt-1" id="analytics-kpi-completion-rate">0%</div>
+                                        <div class="text-secondary small mt-1" id="analytics-kpi-completed-count">0 completed rides</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="card card-sm border-0 shadow-xs">
+                                    <div class="card-body">
+                                        <div class="subheader text-secondary">Cancellation Rate</div>
+                                        <div class="h2 fw-bold text-danger mb-0 mt-1" id="analytics-kpi-cancel-rate">0%</div>
+                                        <div class="text-secondary small mt-1" id="analytics-kpi-cancelled-count">0 cancelled rides</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="card card-sm border-0 shadow-xs">
+                                    <div class="card-body">
+                                        <div class="subheader text-secondary">Gross Fare Revenue</div>
+                                        <div class="h2 fw-bold text-primary mb-0 mt-1" id="analytics-kpi-revenue">₹0</div>
+                                        <div class="text-secondary small mt-1" id="analytics-kpi-avg-fare">Avg ₹0 / completed ride</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card shadow-xs border-0 mb-3">
                             <div class="card-header">
-                                <h3 class="card-title fw-bold">
+                                <h3 class="card-title fw-bold" id="analytics-daily-chart-title">
                                     <i class="ti ti-chart-bar me-2 text-primary"></i>Rides &amp; Revenue (Last 14 Days)
                                 </h3>
                             </div>
                             <div class="card-body">
-                                <div style="position: relative; height: 340px; width: 100%;">
+                                <div style="position: relative; height: 320px; width: 100%;">
                                     <canvas id="rides-daily-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Analytics Breakdown Row: Cancellation Breakdown + Vehicle/Ride-Type Split -->
+                        <div class="row row-cards">
+                            <div class="col-lg-6">
+                                <div class="card shadow-xs border-0 h-100">
+                                    <div class="card-header">
+                                        <h3 class="card-title fw-bold">
+                                            <i class="ti ti-circle-x me-2 text-danger"></i>Cancellation Breakdown
+                                        </h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row align-items-center g-3">
+                                            <div class="col-sm-6">
+                                                <div style="position: relative; height: 210px; width: 100%;">
+                                                    <canvas id="analytics-cancellation-chart"></canvas>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-6">
+                                                <div class="fw-bold small text-secondary text-uppercase mb-2">Top Cancellation Reasons</div>
+                                                <div id="analytics-cancel-reasons-list" class="d-flex flex-column gap-2 small">
+                                                    <div class="text-secondary">No cancellations in selected period.</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-6">
+                                <div class="card shadow-xs border-0 h-100">
+                                    <div class="card-header">
+                                        <h3 class="card-title fw-bold">
+                                            <i class="ti ti-car me-2 text-azure"></i>Vehicle &amp; Ride-Type Split
+                                        </h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row align-items-center g-3">
+                                            <div class="col-sm-6">
+                                                <div style="position: relative; height: 210px; width: 100%;">
+                                                    <canvas id="analytics-vehicle-split-chart"></canvas>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-6">
+                                                <div class="fw-bold small text-secondary text-uppercase mb-2">Distribution Summary</div>
+                                                <div id="analytics-vehicle-split-summary" class="d-flex flex-column gap-2 small">
+                                                    <div class="text-secondary">Loading split...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Push Notification Broadcast Center -->
+                    <section id="section-notifications" class="admin-section d-none">
+                        <div class="page-header d-print-none mb-3">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <div class="page-pretitle">Communications</div>
+                                    <h2 class="page-title h2 fw-bold d-flex align-items-center gap-2">
+                                        <i class="ti ti-bell-ringing text-azure"></i>Push Notification Center
+                                    </h2>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row row-cards">
+                            <!-- Left: Composer -->
+                            <div class="col-lg-5">
+                                <div class="card shadow-xs border-0">
+                                    <div class="card-header">
+                                        <h3 class="card-title fw-bold">
+                                            <i class="ti ti-send me-2 text-primary"></i>Send Push Broadcast
+                                        </h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="form-admin-broadcast">
+                                            <div class="mb-3">
+                                                <label class="form-label required fw-bold">Target Audience</label>
+                                                <select id="broadcast-target-select" class="form-select" required>
+                                                    <option value="all">All Users (Passengers + Drivers)</option>
+                                                    <option value="passengers">All Passengers</option>
+                                                    <option value="drivers">All Drivers</option>
+                                                    <option value="online_drivers">Online / Active Drivers Only</option>
+                                                    <option value="pending_drivers">Pending Approval Drivers</option>
+                                                    <option value="overdue_drivers">Overdue Fee Drivers</option>
+                                                    <option value="user">Specific User (by UID, Phone, or Email)</option>
+                                                </select>
+                                            </div>
+                                            <div class="mb-3 d-none" id="broadcast-target-uid-wrap">
+                                                <label class="form-label required fw-bold">User UID, Phone, or Email</label>
+                                                <input type="text" id="broadcast-target-uid" class="form-control" placeholder="e.g. uid_123 or +919876543210">
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label required fw-bold">Notification Title</label>
+                                                <input type="text" id="broadcast-title-input" class="form-control" maxlength="120" placeholder="e.g. Rain Surge &amp; Service Advisory" required>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label required fw-bold">Message Body</label>
+                                                <textarea id="broadcast-body-input" class="form-control" rows="3" maxlength="500" placeholder="Enter the notification message to display on devices..." required></textarea>
+                                            </div>
+                                            <div class="row g-2 mb-3">
+                                                <div class="col-7">
+                                                    <label class="form-label fw-bold small">Deep Link Path (Optional)</label>
+                                                    <input type="text" id="broadcast-deeplink-input" class="form-control form-control-sm" value="/" placeholder="/">
+                                                </div>
+                                                <div class="col-5">
+                                                    <label class="form-label fw-bold small">Channel</label>
+                                                    <select id="broadcast-channel-select" class="form-select form-select-sm">
+                                                        <option value="general" selected>General</option>
+                                                        <option value="promotions">Promotions</option>
+                                                        <option value="ride_updates">Ride Updates</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <button type="submit" id="broadcast-submit-btn" class="btn btn-primary w-100">
+                                                <i class="ti ti-send me-1"></i>Dispatch Notification
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Broadcast History -->
+                            <div class="col-lg-7">
+                                <div class="card shadow-xs border-0 h-100">
+                                    <div class="card-header d-flex align-items-center justify-content-between">
+                                        <h3 class="card-title fw-bold m-0">
+                                            <i class="ti ti-history me-2 text-secondary"></i>Recent Broadcast History
+                                        </h3>
+                                        <button type="button" id="broadcast-history-refresh-btn" class="btn btn-outline-secondary btn-sm">
+                                            <i class="ti ti-refresh me-1"></i>Refresh
+                                        </button>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-vcenter card-table table-striped m-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Title &amp; Message</th>
+                                                    <th>Audience</th>
+                                                    <th>Delivery</th>
+                                                    <th>Sent By</th>
+                                                    <th>Sent At</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="admin-broadcast-history-tbody">
+                                                <tr>
+                                                    <td colspan="5" class="text-center py-4 text-secondary small">No broadcasts sent yet.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2236,7 +2526,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
-    <script type="module" src="/admin/js/admin-app.js?v=2.4.2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
+    <script type="module" src="/admin/js/admin-app.js?v=2.5.0"></script>
 </body>
 </html>

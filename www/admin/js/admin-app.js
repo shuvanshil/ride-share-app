@@ -1,8 +1,8 @@
-import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, refreshAdminToken } from "./admin-api.js";
+import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken } from "./admin-api.js";
 import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js";
 import { DataTable } from "./data-table.js";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js";
-import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal } from "./admin-live.js";
+import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderGodViewMap } from "./admin-live.js";
 import { toast } from "./admin-toast.js";
 import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js";
 import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.4.2";
@@ -23,6 +23,9 @@ let driversTable = null;
 let passengersTable = null;
 let historyTable = null;
 let auditTable = null;
+let driversSearchQuery = "";
+let passengersSearchQuery = "";
+let historySearchQuery = "";
 let feedUnreadCount = 0;
 let feedStarted = false;
 let liveErrorShown = false;
@@ -191,6 +194,7 @@ function applyRolePermissions(role, userDetails = {}) {
     $("nav-item-analytics")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-audit-log")?.classList.toggle("d-none", hideManagerRestricted);
     $("nav-item-live-rides")?.classList.toggle("d-none", hideManagerRestricted);
+    $("nav-item-notifications")?.classList.toggle("d-none", hideManagerRestricted);
 }
 
 function isSectionAllowed(section) {
@@ -231,6 +235,8 @@ watchAdminAuth(async (user) => {
         initAdminCoupons();
         initAdminReports();
         initPermissionsModal();
+        initNotificationsEvents();
+        initAnalyticsEvents();
         startSosRealtimeAlerts();
         if (!feedStarted) {
             feedStarted = true;
@@ -284,6 +290,8 @@ async function handleAdminLogin() {
             initAdminCoupons();
             initAdminReports();
             initPermissionsModal();
+            initNotificationsEvents();
+            initAnalyticsEvents();
             startSosRealtimeAlerts();
             if (!feedStarted) {
                 feedStarted = true;
@@ -459,6 +467,7 @@ function loadSection(name) {
     if (name === "audit-log") loadAuditLog(true);
     if (name === "permissions") loadPermissions();
     if (name === "reports") loadAdminReports(true);
+    if (name === "notifications") loadNotificationsCenter();
 }
 
 function goToSection(name, filters = {}) {
@@ -479,6 +488,7 @@ function goToSection(name, filters = {}) {
 }
 
 $("driver-status-filter")?.addEventListener("change", () => loadDrivers(true));
+$("passenger-status-filter")?.addEventListener("change", () => loadPassengers(true));
 ["history-status-filter", "history-vehicle-filter", "history-ridetype-filter", "history-feedback-filter", "history-month-filter"].forEach((id) =>
     $(id)?.addEventListener("change", () => loadHistory(true))
 );
@@ -516,38 +526,47 @@ function formatTimeAgo(dateInput) {
     }
 }
 
-function renderRideActivityChart(hourlyData = {}, timeframe = "today") {
+function renderRideActivityChart(activityPayload = {}, timeframe = "today") {
     const canvas = $("ride-activity-chart");
     if (!canvas || !window.Chart) return;
     
     let labels = [];
     let values = [];
 
+    const hourlyData = activityPayload?.hourly || activityPayload || {};
+    const daily7d = activityPayload?.daily7d || {};
+    const daily30d = activityPayload?.daily30d || {};
+
     if (timeframe === "today") {
         labels = ["6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM"];
-        values = labels.map(l => Number(hourlyData[l] || 0));
-        // If all zeros, show realistic curve based on current hour
-        const allZero = values.every(v => v === 0);
-        if (allZero) {
-            const h = new Date().getHours();
-            if (h >= 6) values[0] = 3;
-            if (h >= 9) values[1] = 12;
-            if (h >= 12) values[2] = 28;
-            if (h >= 15) values[3] = 42;
-            if (h >= 18) values[4] = 68;
-            if (h >= 21) values[5] = 85;
-        }
+        values = labels.map((l) => Number(hourlyData[l] || 0));
     } else if (timeframe === "7d") {
-        const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-        labels = Array.from({ length: 7 }, (_, i) => {
-            const d = new Date();
-            d.setDate(d.getDate() - (6 - i));
-            return days[d.getDay()];
-        });
-        values = [28, 42, 65, 54, 88, 112, 127];
+        const keys = Object.keys(daily7d);
+        if (keys.length > 0) {
+            labels = keys;
+            values = keys.map((k) => Number(daily7d[k] || 0));
+        } else {
+            const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            labels = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - (6 - i));
+                return days[d.getDay()];
+            });
+            values = [0, 0, 0, 0, 0, 0, 0];
+        }
     } else if (timeframe === "30d") {
-        labels = ["Day 1", "Day 5", "Day 10", "Day 15", "Day 20", "Day 25", "Day 30"];
-        values = [22, 54, 78, 105, 120, 158, 183];
+        const keys = Object.keys(daily30d);
+        if (keys.length > 0) {
+            labels = keys;
+            values = keys.map((k) => Number(daily30d[k] || 0));
+        } else {
+            labels = Array.from({ length: 7 }, (_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - (29 - i * 4));
+                return d.toISOString().slice(5, 10);
+            });
+            values = [0, 0, 0, 0, 0, 0, 0];
+        }
     }
 
     if (rideActivityChartInstance) {
@@ -983,12 +1002,12 @@ async function loadDashboard() {
             }
         }
 
-        // Wire attention banner buttons
-        $("att-drivers-btn")?.addEventListener("click", () => goToSection("drivers", { "driver-status-filter": "pending_review" }));
-        $("att-payments-btn")?.addEventListener("click", () => goToSection("payments"));
-        $("att-sos-btn")?.addEventListener("click", () => goToSection("safety"));
-        $("att-safety-btn")?.addEventListener("click", () => goToSection("safety"));
-        $("btn-attention-view-all")?.addEventListener("click", () => openAttentionDrawer(data));
+        // Wire attention banner buttons (idempotent onclick assignment)
+        if ($("att-drivers-btn")) $("att-drivers-btn").onclick = () => goToSection("drivers", { "driver-status-filter": "pending_review" });
+        if ($("att-payments-btn")) $("att-payments-btn").onclick = () => goToSection("payments");
+        if ($("att-sos-btn")) $("att-sos-btn").onclick = () => goToSection("safety");
+        if ($("att-safety-btn")) $("att-safety-btn").onclick = () => goToSection("safety");
+        if ($("btn-attention-view-all")) $("btn-attention-view-all").onclick = () => openAttentionDrawer(data);
 
         // 3. First Row: 3 KPI Cards
         // Card 1: Rides Today
@@ -998,8 +1017,10 @@ async function loadDashboard() {
         const ridesCanc = $("kpi-rides-cancelled");
         const ridesOngo = $("kpi-rides-ongoing");
 
+        const ridesDeltaVal = Number(data.today?.vsYesterdayPercent ?? 0);
+        const ridesDeltaArrow = ridesDeltaVal >= 0 ? "ti-arrow-up-right" : "ti-arrow-down-right";
         if (ridesTodayVal) ridesTodayVal.textContent = data.today?.totalRides ?? 0;
-        if (ridesTodayDelta) ridesTodayDelta.innerHTML = `<i class="ti ti-arrow-up-right me-1"></i>${data.today?.vsYesterdayPercent ?? 12.4}% vs yesterday`;
+        if (ridesTodayDelta) ridesTodayDelta.innerHTML = `<i class="ti ${ridesDeltaArrow} me-1"></i>${ridesDeltaVal}% vs yesterday`;
         if (ridesComp) ridesComp.textContent = data.today?.completedRides ?? 0;
         if (ridesCanc) ridesCanc.textContent = data.today?.cancelledRides ?? 0;
         if (ridesOngo) ridesOngo.textContent = data.today?.activeRides ?? 0;
@@ -1010,8 +1031,10 @@ async function loadDashboard() {
         const activePass = $("kpi-active-passengers");
         const activeDriv = $("kpi-active-drivers");
 
+        const usersDeltaVal = Number(data.activeUsers?.vsYesterdayPercent ?? 0);
+        const usersDeltaArrow = usersDeltaVal >= 0 ? "ti-arrow-up-right" : "ti-arrow-down-right";
         if (activeUsersVal) activeUsersVal.textContent = data.activeUsers?.total ?? ((data.drivers?.activeOnline || 0) + (data.today?.activeRides || 0));
-        if (activeUsersDelta) activeUsersDelta.innerHTML = `<i class="ti ti-arrow-up-right me-1"></i>${data.activeUsers?.vsYesterdayPercent ?? 8.2}% vs yesterday`;
+        if (activeUsersDelta) activeUsersDelta.innerHTML = `<i class="ti ${usersDeltaArrow} me-1"></i>${usersDeltaVal}% vs yesterday`;
         if (activePass) activePass.textContent = data.activeUsers?.passengers ?? (data.passengers?.newRegistrationsToday || 0);
         if (activeDriv) activeDriv.textContent = data.activeUsers?.drivers ?? ((data.drivers?.activeOnline || 0) + (data.drivers?.busy || 0));
 
@@ -1041,7 +1064,7 @@ async function loadDashboard() {
         if (shareAvgVal) shareAvgVal.textContent = Number(data.share?.avgRidersPerShareTrip ?? 0).toFixed(1);
 
         // 4. Second Row Charts
-        renderRideActivityChart(data.rideActivity?.hourly || {}, currentChartTimeframe);
+        renderRideActivityChart(data.rideActivity || {}, currentChartTimeframe);
         renderDriverAvailabilityDonut(onlineCount, busyCount, offlineCount);
 
         // Chart Range Toggles
@@ -1050,32 +1073,38 @@ async function loadDashboard() {
         const btn30d = $("btn-chart-30d");
         const rangeLabel = $("ride-activity-range-label");
 
-        btnToday?.addEventListener("click", () => {
-            currentChartTimeframe = "today";
-            btnToday.className = "btn btn-primary active";
-            if (btn7d) btn7d.className = "btn btn-outline-secondary";
-            if (btn30d) btn30d.className = "btn btn-outline-secondary";
-            if (rangeLabel) rangeLabel.textContent = "(Today)";
-            renderRideActivityChart(data.rideActivity?.hourly || {}, "today");
-        });
+        if (btnToday) {
+            btnToday.onclick = () => {
+                currentChartTimeframe = "today";
+                btnToday.className = "btn btn-primary active";
+                if (btn7d) btn7d.className = "btn btn-outline-secondary";
+                if (btn30d) btn30d.className = "btn btn-outline-secondary";
+                if (rangeLabel) rangeLabel.textContent = "(Today)";
+                renderRideActivityChart(dashboardOverviewData?.rideActivity || {}, "today");
+            };
+        }
 
-        btn7d?.addEventListener("click", () => {
-            currentChartTimeframe = "7d";
-            if (btnToday) btnToday.className = "btn btn-outline-secondary";
-            btn7d.className = "btn btn-primary active";
-            if (btn30d) btn30d.className = "btn btn-outline-secondary";
-            if (rangeLabel) rangeLabel.textContent = "(7 days)";
-            renderRideActivityChart(data.rideActivity?.hourly || {}, "7d");
-        });
+        if (btn7d) {
+            btn7d.onclick = () => {
+                currentChartTimeframe = "7d";
+                if (btnToday) btnToday.className = "btn btn-outline-secondary";
+                btn7d.className = "btn btn-primary active";
+                if (btn30d) btn30d.className = "btn btn-outline-secondary";
+                if (rangeLabel) rangeLabel.textContent = "(7 days)";
+                renderRideActivityChart(dashboardOverviewData?.rideActivity || {}, "7d");
+            };
+        }
 
-        btn30d?.addEventListener("click", () => {
-            currentChartTimeframe = "30d";
-            if (btnToday) btnToday.className = "btn btn-outline-secondary";
-            if (btn7d) btn7d.className = "btn btn-outline-secondary";
-            btn30d.className = "btn btn-primary active";
-            if (rangeLabel) rangeLabel.textContent = "(30 days)";
-            renderRideActivityChart(data.rideActivity?.hourly || {}, "30d");
-        });
+        if (btn30d) {
+            btn30d.onclick = () => {
+                currentChartTimeframe = "30d";
+                if (btnToday) btnToday.className = "btn btn-outline-secondary";
+                if (btn7d) btn7d.className = "btn btn-outline-secondary";
+                btn30d.className = "btn btn-primary active";
+                if (rangeLabel) rangeLabel.textContent = "(30 days)";
+                renderRideActivityChart(dashboardOverviewData?.rideActivity || {}, "30d");
+            };
+        }
 
         // 5. Recent Activity Feed - use real data from server API (up to 25 items)
         const incomingActivities = Array.isArray(data.recentActivity) ? data.recentActivity : (Array.isArray(data.activities) ? data.activities : []);
@@ -1094,9 +1123,11 @@ async function loadDashboard() {
             `).join("");
         }
 
-        $("btn-recent-act-view-all")?.addEventListener("click", () => {
-            $("admin-feed-toggle")?.click();
-        });
+        if ($("btn-recent-act-view-all")) {
+            $("btn-recent-act-view-all").onclick = () => {
+                $("admin-feed-toggle")?.click();
+            };
+        }
 
         // 6. User Growth Section
         const growthToday = $("growth-today-val");
@@ -1106,16 +1137,20 @@ async function loadDashboard() {
         const growthDriv = $("growth-drivers-count");
 
         if (growthToday) growthToday.textContent = `+${data.userGrowth?.today ?? data.today?.newUsersToday ?? 0}`;
-        if (growthWeek) growthWeek.textContent = `+${data.userGrowth?.thisWeek ?? 42}`;
-        if (growthMonth) growthMonth.textContent = `+${data.userGrowth?.thisMonth ?? 183}`;
+        if (growthWeek) growthWeek.textContent = `+${data.userGrowth?.thisWeek ?? 0}`;
+        if (growthMonth) growthMonth.textContent = `+${data.userGrowth?.thisMonth ?? 0}`;
         if (growthPass) growthPass.textContent = data.userGrowth?.passengers ?? data.passengers?.total ?? 0;
         if (growthDriv) growthDriv.textContent = data.userGrowth?.drivers ?? data.drivers?.total ?? 0;
 
-        $("btn-user-growth-view-all")?.addEventListener("click", () => goToSection("passengers"));
+        if ($("btn-user-growth-view-all")) {
+            $("btn-user-growth-view-all").onclick = () => goToSection("passengers");
+        }
 
         // 7. Recent Rides Table
         renderRecentRidesTable(data.recentRides || []);
-        $("btn-recent-rides-view-all")?.addEventListener("click", () => goToSection("ride-history"));
+        if ($("btn-recent-rides-view-all")) {
+            $("btn-recent-rides-view-all").onclick = () => goToSection("ride-history");
+        }
 
     } catch (error) {
         toast(`Error loading dashboard: ${error.message}`, "error");
@@ -1238,9 +1273,14 @@ function ensureDriversTable() {
     driversTable = new DataTable({
         container: $("drivers-table-wrap"),
         exportFileName: "liphtup-drivers",
+        searchPlaceholder: "Search drivers by name, phone, email, or vehicle...",
         getRowId: (r) => r.uid,
         onRowClick: (r) => openDriverDrawer(r.uid),
         onLoadMore: () => loadDrivers(false),
+        onSearch: (q) => {
+            driversSearchQuery = q;
+            loadDrivers(true);
+        },
         bulkActions: [
             { label: "Approve selected", onClick: (ids) => bulkDriverAction(ids, "approve") },
             { label: "Suspend selected", onClick: (ids) => bulkDriverAction(ids, "suspend") },
@@ -1323,7 +1363,11 @@ async function loadDrivers(reset) {
     const table = ensureDriversTable();
     if (reset) table.setLoading(true);
     try {
-        const data = await adminGet("/drivers", { status, cursor: reset ? null : cursors.drivers });
+        const data = await adminGet("/drivers", {
+            status,
+            q: driversSearchQuery || undefined,
+            cursor: reset ? null : cursors.drivers,
+        });
         cursors.drivers = data.nextCursor;
         table.setRows(data.drivers, { append: !reset, hasMore: !!data.nextCursor });
     } catch (error) {
@@ -1331,11 +1375,77 @@ async function loadDrivers(reset) {
     }
 }
 
+function renderDriverRatingHtml(ratingSummary) {
+    if (!ratingSummary || !ratingSummary.totalFeedbackCount) {
+        return `<span class="text-secondary">No passenger ratings yet</span>`;
+    }
+    const avg = Number(ratingSummary.averageRating || 0).toFixed(2);
+    const total = ratingSummary.totalFeedbackCount;
+    const bd = ratingSummary.breakdown || {};
+    const topReasons = (ratingSummary.topReasons || [])
+        .map((r) => `<span class="badge bg-azure-lt text-azure me-1 mb-1">${escapeHtml(String(r.reason || "").replace(/_/g, " "))} (${r.count})</span>`)
+        .join("");
+    return `
+        <div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-yellow-lt text-yellow fw-bold"><i class="ti ti-star-filled me-1"></i>${avg} / 5.0</span>
+                <span class="text-secondary small">(${total} feedback${total === 1 ? "" : "s"})</span>
+            </div>
+            <div class="text-secondary small mt-1">
+                Loved: <strong>${bd.loved || 0}</strong> &bull;
+                Good: <strong>${bd.good || 0}</strong> &bull;
+                Decent: <strong>${bd.decent || 0}</strong> &bull;
+                Poor: <strong class="text-danger">${bd.poor || 0}</strong>
+            </div>
+            ${topReasons ? `<div class="mt-1">${topReasons}</div>` : ""}
+        </div>
+    `;
+}
+
+function renderKycDocumentsSection(d) {
+    const docItems = [
+        { label: "Driving License Photo", url: d.licensePhotoUrl },
+        { label: "Vehicle RC Document", url: d.rcPhotoUrl },
+        { label: "Aadhaar / ID Proof", url: d.aadhaarUrl },
+        { label: "Vehicle Photo", url: d.vehiclePhotoUrl },
+    ];
+    if (d.kycDocuments && typeof d.kycDocuments === "object") {
+        Object.entries(d.kycDocuments).forEach(([k, v]) => {
+            if (typeof v === "string" && v.trim()) {
+                docItems.push({ label: k.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim(), url: v });
+            }
+        });
+    }
+    const availableDocs = docItems.filter((item) => item.url);
+    const docsLinksHtml = availableDocs.length
+        ? `<div class="d-flex flex-wrap gap-2 mt-2">${availableDocs
+              .map(
+                  (doc) => `<a href="${escapeAttr(doc.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">
+                      <i class="ti ti-file-certificate me-1"></i>${escapeHtml(doc.label)}
+                  </a>`
+              )
+              .join("")}</div>`
+        : `<div class="text-secondary small py-1">No uploaded document URLs on file.</div>`;
+
+    return `
+        <h4 class="admin-drawer-subsection">KYC &amp; Vehicle Verification</h4>
+        ${detailRow("Driving License #", d.drivingLicenseNumber || "Not provided")}
+        ${detailRow("Vehicle Type & Model", `${(d.vehicleType || "auto").toUpperCase()} — ${d.vehicleModel || "Not specified"}`)}
+        ${detailRow("Registration Plate", d.vehicleNumber || "Not provided")}
+        ${detailRow("UPI ID", d.upiId || "Not provided")}
+        <div class="admin-detail-row flex-column align-items-start">
+            <span class="text-secondary small">Uploaded Verification Documents</span>
+            ${docsLinksHtml}
+        </div>
+    `;
+}
+
 async function openDriverDrawer(uid) {
     showReadOnlyDrawer("Driver Profile", `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading profile...</div></div>`);
     try {
         const data = await adminGet(`/drivers/${uid}`);
         const d = data.driver;
+        const ratingSummary = data.ratingSummary || d.ratingSummary;
         const recentRidesHtml = data.recentRides.length
             ? `<div class="card border-0 shadow-xs mb-2"><div class="table-responsive"><table class="table table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Fare</th><th>Status</th></tr></thead><tbody>${data.recentRides
                   .map((r) => `<tr><td>${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}</td><td>Rs ${r.fare || 0}</td><td>${statusChip(r.status)}</td></tr>`)
@@ -1355,7 +1465,7 @@ async function openDriverDrawer(uid) {
             ${d.suspensionReason ? detailRow("Suspension Reason", `<span class="text-warning fw-bold">${escapeHtml(d.suspensionReason)}</span>`) : ""}
             ${d.blockingReason ? detailRow("Blocking Reason", `<span class="text-danger fw-bold">${escapeHtml(d.blockingReason)}</span>`) : ""}
             ${detailRow("Online status", escapeHtml(d.driverAvailability || "offline"))}
-            ${detailRow("Rating", "Not collected yet")}
+            ${detailRow("Passenger Rating", renderDriverRatingHtml(ratingSummary))}
             ${detailRow("Earnings balance", `Lifetime: Rs ${d.lifetimeEarnings || 0}`)}
             ${detailRow("Completed trips", d.totalCompletedTrips || 0)}
             ${d.approvedAt ? detailRow("Approved Date", formatTimestamp(d.approvedAt)) : ""}
@@ -1363,6 +1473,7 @@ async function openDriverDrawer(uid) {
             ${d.suspendedAt ? detailRow("Suspended Date", formatTimestamp(d.suspendedAt)) : ""}
             ${d.blockedAt ? detailRow("Blocked Date", formatTimestamp(d.blockedAt)) : ""}
             ${d.reappliedAt ? detailRow("Re-applied Date", formatTimestamp(d.reappliedAt)) : ""}
+            ${renderKycDocumentsSection(d)}
             <div class="d-flex flex-wrap gap-1 mt-3">
                 ${d.verificationStatus === "pending_review" ? `
                     ${actionBtn("approve", '<i class="ti ti-check me-1"></i>Approve', "btn-success")}
@@ -1507,7 +1618,7 @@ async function openDriverDrawer(uid) {
 }
 
 // ---------------------------------------------------------------------
-// Live rides + waiting pools + live tracking
+// Live rides + waiting pools + God View Map + Dispatch Diagnostics
 // ---------------------------------------------------------------------
 
 let liveEventsInitialized = false;
@@ -1516,6 +1627,8 @@ let liveSearchQuery = "";
 let liveRidesHierarchy = [];
 let liveCounts = { all: 0, single: 0, share: 0, child: 0 };
 let waitingPoolsData = { passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } };
+let liveFleetMapData = { drivers: [], waitingPassengers: [], activeRides: [], counts: {} };
+let latestDispatchStats = null;
 const expandedParentIds = new Set();
 
 function initLiveRidesEvents() {
@@ -1555,6 +1668,25 @@ function initLiveRidesEvents() {
         $("live-rides-search")?.focus();
     });
 
+    // Dispatch diagnostics buttons
+    $("btn-open-dispatch-drawer")?.addEventListener("click", () => openDispatchDiagnosticsDrawer());
+    $("live-dispatch-diagnostics-btn")?.addEventListener("click", () => openDispatchDiagnosticsDrawer());
+
+    // God View Map layer checkboxes and vehicle selector
+    [
+        "god-map-filter-online",
+        "god-map-filter-busy",
+        "god-map-filter-waiting",
+        "god-map-filter-rides",
+        "god-map-vehicle-filter",
+        "god-map-filter-drivers",
+        "god-map-filter-passengers",
+    ].forEach((id) => {
+        $(id)?.addEventListener("change", () => {
+            if (currentLiveTab === "live-map") renderLiveFleetMapView();
+        });
+    });
+
     // Waiting pools filters
     $("wpp-type-filter")?.addEventListener("change", renderWaitingPoolsView);
     $("wpp-sort-filter")?.addEventListener("change", renderWaitingPoolsView);
@@ -1567,18 +1699,119 @@ function formatCurrentTime() {
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
 }
 
+function renderDispatchDiagnosticsBanner(stats) {
+    if (!stats) return;
+    const banner = $("dispatch-stats-banner");
+    if (banner) banner.classList.remove("d-none");
+
+    const wppCount = stats.pools?.waiting_passenger_pool?.total ?? 0;
+    const dapCount = stats.pools?.driver_available_pool?.total ?? 0;
+    const activeOffers = stats.offers?.active_pending ?? 0;
+    const oldestWaitSec = stats.pools?.waiting_passenger_pool?.oldest_wait_seconds ?? 0;
+    const oldestWaitMin = oldestWaitSec ? `${Math.round(oldestWaitSec / 60)}m` : "0m";
+    const violations = Array.isArray(stats.invariant_violations) ? stats.invariant_violations : [];
+
+    if ($("diag-wpp-size")) $("diag-wpp-size").textContent = wppCount;
+    if ($("diag-dap-size")) $("diag-dap-size").textContent = dapCount;
+    if ($("diag-offers-size")) $("diag-offers-size").textContent = activeOffers;
+    if ($("diag-oldest-wpp")) $("diag-oldest-wpp").textContent = oldestWaitMin;
+
+    const vBadge = $("diag-violations-badge");
+    const hPill = $("dispatch-health-pill");
+    if (violations.length > 0) {
+        if (vBadge) {
+            vBadge.className = "badge bg-danger-lt text-danger";
+            vBadge.textContent = `${violations.length} violation${violations.length === 1 ? "" : "s"}`;
+        }
+        if (hPill) {
+            hPill.className = "badge bg-danger-lt text-danger ms-1";
+            hPill.textContent = `${violations.length} issue${violations.length === 1 ? "" : "s"}`;
+        }
+    } else {
+        if (vBadge) {
+            vBadge.className = "badge bg-success-lt text-success";
+            vBadge.textContent = "0 violations";
+        }
+        if (hPill) {
+            hPill.className = "badge bg-success-lt text-success ms-1";
+            hPill.textContent = "OK";
+        }
+    }
+}
+
+async function openDispatchDiagnosticsDrawer() {
+    showReadOnlyDrawer(
+        "Dispatch Engine Diagnostics",
+        `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Inspecting dispatch pools &amp; invariants...</div></div>`
+    );
+    try {
+        const stats = await adminGet("/dispatch-stats", {}, { cacheable: false });
+        latestDispatchStats = stats;
+        renderDispatchDiagnosticsBanner(stats);
+
+        const wpp = stats.pools?.waiting_passenger_pool || {};
+        const dap = stats.pools?.driver_available_pool || {};
+        const offers = stats.offers || {};
+        const recon = stats.reconciliation || {};
+        const violations = Array.isArray(stats.invariant_violations) ? stats.invariant_violations : [];
+
+        const violationsHtml = violations.length
+            ? `<div class="list-group list-group-flush border rounded mb-3">${violations
+                  .map(
+                      (v) => `<div class="list-group-item py-2">
+                          <div class="fw-bold text-danger small"><i class="ti ti-alert-triangle me-1"></i>${escapeHtml(v.type || v.code || "Invariant Violation")}</div>
+                          <div class="text-secondary small">${escapeHtml(v.detail || v.message || JSON.stringify(v))}</div>
+                      </div>`
+                  )
+                  .join("")}</div>`
+            : `<div class="alert alert-success py-2 px-3 small"><i class="ti ti-circle-check me-1"></i>Zero invariant violations detected across pools, rides, and offers.</div>`;
+
+        const html = `
+            <h4 class="admin-drawer-subsection">Invariant Health</h4>
+            ${violationsHtml}
+
+            <h4 class="admin-drawer-subsection">Waiting Passenger Pool (WPP)</h4>
+            ${detailRow("Total Waiting", wpp.total ?? 0)}
+            ${detailRow("Oldest Wait (seconds)", wpp.oldest_wait_seconds ?? 0)}
+            ${detailRow("By Vehicle Type", JSON.stringify(wpp.by_vehicle_type || {}))}
+
+            <h4 class="admin-drawer-subsection">Driver Available Pool (DAP)</h4>
+            ${detailRow("Total Available", dap.total ?? 0)}
+            ${detailRow("Fresh Heartbeat (< 2 min)", dap.fresh_heartbeat ?? 0)}
+            ${detailRow("Stale Heartbeat", dap.stale_heartbeat ?? 0)}
+            ${detailRow("By Vehicle Type", JSON.stringify(dap.by_vehicle_type || {}))}
+
+            <h4 class="admin-drawer-subsection">Ride Offers &amp; Reconciliation</h4>
+            ${detailRow("Active Pending Offers", offers.active_pending ?? 0)}
+            ${detailRow("Expired Uncleaned Offers", offers.expired_uncleaned ?? 0)}
+            ${detailRow("Searching Rides in DB", recon.searching_rides_count ?? 0)}
+            ${detailRow("Active Trips in DB", recon.active_rides_count ?? 0)}
+        `;
+        showReadOnlyDrawer("Dispatch Engine Diagnostics", html);
+    } catch (error) {
+        showReadOnlyDrawer("Dispatch Engine Diagnostics", `<p class="text-danger text-center py-4">${escapeHtml(error.message)}</p>`);
+    }
+}
+
 async function loadLiveRides() {
     const tbody = $("live-rides-hierarchy-tbody");
     const legacyList = $("live-rides-list");
     try {
-        const [liveRes, poolsRes] = await Promise.all([
+        const [liveRes, poolsRes, mapRes, diagRes] = await Promise.all([
             adminGet("/rides/live"),
             adminGet("/waiting-pools").catch(() => ({ ok: true, passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } })),
+            adminGet("/live-map").catch(() => ({ ok: true, drivers: [], waitingPassengers: [], activeRides: [], counts: {} })),
+            adminGet("/dispatch-stats", {}, { cacheable: false }).catch(() => null),
         ]);
 
         liveRidesHierarchy = liveRes?.hierarchy || [];
         liveCounts = liveRes?.counts || { all: 0, single: 0, share: 0, child: 0 };
         waitingPoolsData = poolsRes || { passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } };
+        liveFleetMapData = mapRes || { drivers: [], waitingPassengers: [], activeRides: [], counts: {} };
+        if (diagRes) {
+            latestDispatchStats = diagRes;
+            renderDispatchDiagnosticsBanner(diagRes);
+        }
 
         // By default on first load, expand first parent if any share rides
         if (expandedParentIds.size === 0 && liveRidesHierarchy.length > 0) {
@@ -1592,12 +1825,18 @@ async function loadLiveRides() {
             $("live-rides-last-updated").textContent = `Last updated: ${timeStr}`;
         }
 
+        const totalMapEntities =
+            (liveFleetMapData.drivers?.length || 0) +
+            (liveFleetMapData.waitingPassengers?.length || 0) +
+            (liveFleetMapData.activeRides?.length || 0);
+
         // Update tab pill counts
         if ($("tab-count-all")) $("tab-count-all").textContent = liveCounts.all ?? liveRidesHierarchy.length;
         if ($("tab-count-single")) $("tab-count-single").textContent = liveCounts.single ?? 0;
         if ($("tab-count-share")) $("tab-count-share").textContent = liveCounts.share ?? 0;
         if ($("tab-count-child")) $("tab-count-child").textContent = liveCounts.child ?? 0;
         if ($("tab-count-waiting")) $("tab-count-waiting").textContent = waitingPoolsData.counts?.total ?? ((waitingPoolsData.passengers?.length || 0) + (waitingPoolsData.drivers?.length || 0));
+        if ($("tab-count-map")) $("tab-count-map").textContent = totalMapEntities;
 
         renderLiveSectionViews();
     } catch (error) {
@@ -1612,14 +1851,55 @@ async function loadLiveRides() {
 
 function renderLiveSectionViews() {
     const isPools = currentLiveTab === "waiting-pools";
-    $("live-rides-table-view")?.classList.toggle("d-none", isPools);
+    const isMap = currentLiveTab === "live-map";
+    $("live-rides-table-view")?.classList.toggle("d-none", isPools || isMap);
     $("waiting-pools-view")?.classList.toggle("d-none", !isPools);
+    $("live-fleet-map-view")?.classList.toggle("d-none", !isMap);
 
-    if (isPools) {
+    if (isMap) {
+        renderLiveFleetMapView();
+    } else if (isPools) {
         renderWaitingPoolsView();
     } else {
         renderHierarchyTableView();
     }
+}
+
+function renderLiveFleetMapView() {
+    const container = $("god-view-map-canvas");
+    if (!container) return;
+
+    const drivers = liveFleetMapData.drivers || [];
+    const waiting = liveFleetMapData.waitingPassengers || [];
+    const rides = liveFleetMapData.activeRides || [];
+
+    const availCount = drivers.filter((d) => d.status !== "busy").length;
+    const busyCount = drivers.filter((d) => d.status === "busy").length;
+
+    if ($("god-map-count-online")) $("god-map-count-online").textContent = availCount;
+    if ($("god-map-count-avail")) $("god-map-count-avail").textContent = availCount;
+    if ($("god-map-count-busy")) $("god-map-count-busy").textContent = busyCount;
+    if ($("god-map-count-waiting")) $("god-map-count-waiting").textContent = waiting.length;
+    if ($("god-map-count-rides")) $("god-map-count-rides").textContent = rides.length;
+
+    const showOnlineEl = $("god-map-filter-online") || $("god-map-filter-drivers");
+    const showBusyEl = $("god-map-filter-busy") || $("god-map-filter-drivers");
+    const showWaitingEl = $("god-map-filter-waiting") || $("god-map-filter-passengers");
+    const showRidesEl = $("god-map-filter-rides");
+
+    const filters = {
+        showOnlineDrivers: showOnlineEl ? showOnlineEl.checked : true,
+        showBusyDrivers: showBusyEl ? showBusyEl.checked : true,
+        showWaitingPassengers: showWaitingEl ? showWaitingEl.checked : true,
+        showActiveRides: showRidesEl ? showRidesEl.checked : true,
+        vehicleType: $("god-map-vehicle-filter")?.value || "all",
+    };
+
+    renderGodViewMap(container, liveFleetMapData, filters, {
+        onAssignPassenger: (pax) => openAssignDriverModal(pax),
+        onSelectDriver: (drv) => openDriverDrawer(drv.driver_id || drv.id),
+        onSelectRide: (ride) => openRideDrawer(ride),
+    });
 }
 
 function getAvatarColor(name = "") {
@@ -1954,6 +2234,91 @@ function renderHierarchyTableView() {
     });
 }
 
+function openAssignDriverModal(passenger) {
+    const paxId = passenger.passenger_id || passenger.id;
+    const rideId = passenger.ride_id || "";
+    const paxName = passenger.name || "Passenger";
+    const paxVehicle = (passenger.vehicleType || passenger.type || "auto").toLowerCase();
+
+    const availableDrivers = [...(waitingPoolsData.drivers || [])];
+    const driverOptionsHtml = availableDrivers.length
+        ? availableDrivers
+              .map(
+                  (d) => `<option value="${escapeAttr(d.driver_id || d.id)}">
+                      ${escapeHtml(d.name)} (${escapeHtml(d.vehicleType || "Auto")} - ${escapeHtml(d.plate || "No Plate")})
+                  </option>`
+              )
+              .join("")
+        : `<option value="">No drivers currently in Available Pool</option>`;
+
+    const html = `
+        <div class="mb-3">
+            <div class="fw-bold text-dark mb-1">Manual Dispatch Override</div>
+            <div class="text-secondary small">Assigning an available driver directly to waiting passenger <strong>${escapeHtml(paxName)}</strong> (${escapeHtml(passenger.pickupLocation || "Pickup")}).</div>
+        </div>
+        ${detailRow("Passenger ID", paxId)}
+        ${rideId ? detailRow("Ride ID", rideId) : ""}
+        ${detailRow("Requested Type", paxVehicle.toUpperCase())}
+        <div class="mt-3">
+            <label class="form-label fw-semibold">Select Available Driver</label>
+            <select id="manual-assign-driver-select" class="form-select mb-2">
+                ${driverOptionsHtml}
+            </select>
+            <div class="text-secondary small mb-3">Or enter a specific Driver UID manually:</div>
+            <input type="text" id="manual-assign-driver-uid" class="form-control mb-3" placeholder="Optional override Driver UID">
+            <button type="button" id="btn-confirm-manual-assign" class="btn btn-primary w-100">
+                <i class="ti ti-steering-wheel me-1"></i>Assign Driver Now
+            </button>
+        </div>
+    `;
+
+    const { bodyEl } = showReadOnlyDrawer("Assign Driver to Passenger", html);
+    const confirmBtn = bodyEl.querySelector("#btn-confirm-manual-assign");
+    confirmBtn?.addEventListener("click", async () => {
+        const manualUid = bodyEl.querySelector("#manual-assign-driver-uid")?.value?.trim();
+        const selectUid = bodyEl.querySelector("#manual-assign-driver-select")?.value?.trim();
+        const driverId = manualUid || selectUid;
+        if (!driverId) {
+            return toast("Select or enter a driver ID to assign.", "error");
+        }
+        await withButtonSpinner(confirmBtn, async () => {
+            try {
+                await adminPost("/waiting-pools/assign", {
+                    passenger_id: paxId,
+                    driver_id: driverId,
+                    ride_id: rideId || undefined,
+                });
+                toast(`Assigned driver to ${paxName}.`);
+                closeDrawer(true);
+                await loadLiveRides();
+            } catch (err) {
+                toast(err.message, "error");
+            }
+        });
+    });
+}
+
+async function removeWaitingPassenger(passenger) {
+    const paxId = passenger.id || passenger.passenger_id;
+    const paxName = passenger.name || paxId;
+    const confirmed = await showTablerConfirm(
+        `Remove ${paxName} from the waiting passenger pool and cancel their searching ride request?`,
+        {
+            title: "Remove from Waiting Pool",
+            variant: "danger",
+            confirmText: "Remove Passenger",
+        }
+    );
+    if (!confirmed) return;
+    try {
+        await adminDelete(`/waiting-pools/passengers/${encodeURIComponent(paxId)}`);
+        toast(`${paxName} removed from waiting pool.`);
+        await loadLiveRides();
+    } catch (err) {
+        toast(err.message, "error");
+    }
+}
+
 function renderWaitingPoolsView() {
     // 1. Passenger Pool
     const wppTbody = $("wpp-table-tbody");
@@ -2030,17 +2395,13 @@ function renderWaitingPoolsView() {
                         </td>
                         <td class="text-end">
                             <div class="d-inline-flex align-items-center gap-1">
-                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1" data-view-pax="${escapeHtml(p.passenger_id || p.id)}">View</button>
-                                <div class="dropdown">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle p-0 d-inline-flex align-items-center justify-content-center" data-bs-toggle="dropdown" aria-expanded="false" style="width: 28px; height: 28px;">
-                                        <i class="ti ti-dots"></i>
-                                    </button>
-                                    <div class="dropdown-menu dropdown-menu-end shadow-sm">
-                                        <button type="button" class="dropdown-item" data-view-pax="${escapeHtml(p.passenger_id || p.id)}">
-                                            <i class="ti ti-user me-2"></i> Passenger Profile
-                                        </button>
-                                    </div>
-                                </div>
+                                <button type="button" class="btn btn-sm btn-primary rounded-pill px-2 py-1 wpp-assign-btn" data-wpp-idx="${idx}" title="Manually assign driver">
+                                    <i class="ti ti-steering-wheel me-1"></i>Assign Driver
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-2 py-1 wpp-remove-btn" data-wpp-idx="${idx}" title="Remove from pool">
+                                    Remove
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1" data-view-pax="${escapeHtml(p.passenger_id || p.id)}">Profile</button>
                             </div>
                         </td>
                     </tr>
@@ -2049,6 +2410,18 @@ function renderWaitingPoolsView() {
 
             wppTbody.querySelectorAll("[data-view-pax]").forEach((btn) => {
                 btn.addEventListener("click", () => openPassengerDrawer(btn.dataset.viewPax));
+            });
+            wppTbody.querySelectorAll(".wpp-assign-btn").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const p = passengers[Number(btn.dataset.wppIdx)];
+                    if (p) openAssignDriverModal(p);
+                });
+            });
+            wppTbody.querySelectorAll(".wpp-remove-btn").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const p = passengers[Number(btn.dataset.wppIdx)];
+                    if (p) removeWaitingPassenger(p);
+                });
             });
         }
     }
@@ -2167,9 +2540,14 @@ function ensureHistoryTable() {
     historyTable = new DataTable({
         container: $("history-table-wrap"),
         exportFileName: "liphtup-ride-history",
+        searchPlaceholder: "Search rides by route, driver, passenger, or ID...",
         getRowId: (r) => r.id,
         onRowClick: (r) => openRideDrawer(r),
         onLoadMore: () => loadHistory(false),
+        onSearch: (q) => {
+            historySearchQuery = q;
+            loadHistory(true);
+        },
         columns: [
             { key: "driver_name", label: "Driver", sortable: true, render: (r) => escapeHtml(r.driver_name || "Unassigned") },
             { key: "passenger_id", label: "Passenger", sortable: false, render: (r) => (r.passenger_id || "").slice(0, 8) },
@@ -2232,6 +2610,7 @@ async function loadHistory(reset) {
             hasFeedback,
             dateFrom,
             dateTo,
+            q: historySearchQuery || undefined,
             cursor: reset ? null : cursors.history,
         });
         cursors.history = data.nextCursor;
@@ -2413,8 +2792,14 @@ function ensurePassengersTable() {
     passengersTable = new DataTable({
         container: $("passengers-table-wrap"),
         exportFileName: "liphtup-passengers",
+        searchPlaceholder: "Search passengers by name, phone, email, or UID...",
         getRowId: (r) => r.uid,
+        onRowClick: (r) => openPassengerDrawer(r.uid),
         onLoadMore: () => loadPassengers(false),
+        onSearch: (q) => {
+            passengersSearchQuery = q;
+            loadPassengers(true);
+        },
         bulkActions: [
             { label: "Restrict selected", onClick: (ids) => bulkPassengerAction(ids, "restrict") },
             { label: "Block selected", onClick: (ids) => bulkPassengerAction(ids, "block") },
@@ -2461,10 +2846,15 @@ async function bulkPassengerAction(ids, action) {
 
 async function loadPassengers(reset) {
     if (reset) cursors.passengers = null;
+    const status = $("passenger-status-filter")?.value || "";
     const table = ensurePassengersTable();
     if (reset) table.setLoading(true);
     try {
-        const data = await adminGet("/passengers", { cursor: reset ? null : cursors.passengers });
+        const data = await adminGet("/passengers", {
+            status: status || undefined,
+            q: passengersSearchQuery || undefined,
+            cursor: reset ? null : cursors.passengers,
+        });
         cursors.passengers = data.nextCursor;
         table.setRows(data.passengers, { append: !reset, hasMore: !!data.nextCursor });
         table.container.querySelectorAll("[data-passenger-action]").forEach((select) => {
@@ -2496,40 +2886,502 @@ async function loadPassengers(reset) {
     }
 }
 
+async function openPassengerDrawer(uid) {
+    if (!uid) return;
+    showReadOnlyDrawer(
+        "Passenger Profile",
+        `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading passenger profile...</div></div>`
+    );
+    try {
+        const data = await adminGet(`/passengers/${encodeURIComponent(uid)}`);
+        const p = data.passenger || {};
+        const stats = data.rideStats || {};
+        const wallet = data.wallet || {};
+        const recentRides = data.recentRides || [];
+        const redeemedCoupons = data.redeemedCoupons || [];
+        const safetyEvents = data.safetyEvents || [];
+        const notes = Array.isArray(p.adminNotes) ? p.adminNotes : [];
+
+        const recentRidesHtml = recentRides.length
+            ? `<div class="card border-0 shadow-xs mb-2"><div class="table-responsive"><table class="table table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Fare</th><th>Status</th></tr></thead><tbody>${recentRides
+                  .slice(0, 8)
+                  .map(
+                      (r) =>
+                          `<tr><td>${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}</td><td>₹${r.fare || 0}</td><td>${statusChip(r.status)}</td></tr>`
+                  )
+                  .join("")}</tbody></table></div></div>`
+            : `<p class="text-secondary text-center py-2">No rides recorded yet.</p>`;
+
+        const walletTxns = Array.isArray(wallet.recentTransactions)
+            ? wallet.recentTransactions
+            : Array.isArray(wallet.transactions)
+            ? wallet.transactions
+            : [];
+        const txnsHtml = walletTxns.length
+            ? `<div class="list-group list-group-flush border rounded mb-2">${walletTxns
+                  .slice(0, 5)
+                  .map((tx) => {
+                      const rawAmt =
+                          tx.amount !== undefined && tx.amount !== null
+                              ? Number(tx.amount)
+                              : (Number(tx.amountPaise || 0) / 100) *
+                                (String(tx.direction || "").toLowerCase() === "debit" ? -1 : 1);
+                      const amtRounded = Math.round(rawAmt * 100) / 100;
+                      return `<div class="list-group-item py-2 d-flex justify-content-between align-items-center">
+                          <div>
+                              <div class="fw-medium small">${escapeHtml(tx.description || tx.type || tx.reason || "Transaction")}</div>
+                              <div class="text-secondary" style="font-size:0.75rem;">${formatTimestamp(tx.createdAt)}</div>
+                          </div>
+                          <span class="fw-bold ${amtRounded >= 0 ? "text-success" : "text-danger"}">${amtRounded >= 0 ? "+" : ""}₹${amtRounded}</span>
+                      </div>`;
+                  })
+                  .join("")}</div>`
+            : `<p class="text-secondary small mb-2">No recent wallet transactions.</p>`;
+
+        const couponsHtml = redeemedCoupons.length
+            ? `<div class="d-flex flex-wrap gap-1 mb-2">${redeemedCoupons
+                  .map((c) => `<span class="badge bg-purple-lt text-purple">${escapeHtml(c.code || c.couponCode || c.id)} (₹${c.amount || c.discountAmount || 0})</span>`)
+                  .join("")}</div>`
+            : `<p class="text-secondary small mb-2">No redeemed coupons.</p>`;
+
+        const safetyHtml = safetyEvents.length
+            ? `<div class="list-group list-group-flush border rounded mb-2">${safetyEvents
+                  .map(
+                      (ev) => `<div class="list-group-item py-2">
+                          <span class="badge bg-danger-lt text-danger me-1">${escapeHtml(ev.eventType || "SOS")}</span>
+                          <span class="small">${escapeHtml(ev.status || "open")} &bull; ${formatTimestamp(ev.createdAt)}</span>
+                      </div>`
+                  )
+                  .join("")}</div>`
+            : `<p class="text-secondary small mb-2">No SOS or safety incidents recorded.</p>`;
+
+        const html = `
+            <div class="admin-drawer-photo-row">
+                ${p.profilePhotoUrl ? `<img src="${escapeAttr(p.profilePhotoUrl)}" class="admin-drawer-photo" alt="">` : `<div class="admin-drawer-photo admin-drawer-photo-placeholder d-flex align-items-center justify-content-center text-secondary"><i class="ti ti-user fs-2"></i></div>`}
+                <div>
+                    <div class="admin-drawer-name">${escapeHtml(p.name || "Unnamed Passenger")}</div>
+                    <div class="admin-drawer-sub">UID: ${escapeHtml(p.uid || uid)}</div>
+                </div>
+            </div>
+
+            ${detailRow("Account Status", statusChip(p.accountStatus || "active"))}
+            ${detailRow("Phone", p.phone || "—")}
+            ${detailRow("Email", p.email || "—")}
+            ${detailRow("Joined", formatTimestamp(p.createdAt) || "—")}
+
+            <div class="d-flex flex-wrap gap-1 mt-3">
+                ${actionBtn("restrict", '<i class="ti ti-alert-circle me-1"></i>Restrict', "btn-warning")}
+                ${actionBtn("unrestrict", '<i class="ti ti-check me-1"></i>Unrestrict', "btn-outline-success")}
+                ${actionBtn("block", '<i class="ti ti-ban me-1"></i>Block', "btn-danger")}
+                ${actionBtn("unblock", '<i class="ti ti-lock-open me-1"></i>Unblock', "btn-outline-primary")}
+                <button type="button" id="passenger-drawer-grant-credit-toggle" class="btn btn-sm btn-outline-teal">
+                    <i class="ti ti-wallet me-1"></i>Grant Wallet Credit
+                </button>
+            </div>
+
+            <div id="passenger-drawer-grant-credit-box" class="card bg-teal-lt border-teal p-2 mt-2 d-none">
+                <div class="fw-bold small text-dark mb-2"><i class="ti ti-coin me-1"></i>Grant Promotional / Refund Credit</div>
+                <div class="row g-2 mb-2">
+                    <div class="col-5">
+                        <input type="number" id="drawer-credit-amount" class="form-control form-control-sm" min="1" max="10000" step="1" placeholder="Amount (₹)">
+                    </div>
+                    <div class="col-7">
+                        <select id="drawer-credit-tag" class="form-select form-select-sm">
+                            <option value="Bonus" selected>Bonus</option>
+                            <option value="Refund">Refund</option>
+                            <option value="Changes settlement">Changes settlement</option>
+                            <option value="Conflict settlement">Conflict settlement</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="input-group input-group-sm">
+                    <input type="text" id="drawer-credit-desc" class="form-control" placeholder="Reason / note (optional)">
+                    <button type="button" id="drawer-credit-submit" class="btn btn-teal">Grant</button>
+                </div>
+            </div>
+
+            <h4 class="admin-drawer-subsection">Ride Statistics</h4>
+            ${detailRow("Total Rides", stats.totalRides ?? 0)}
+            ${detailRow("Completed Rides", stats.completedRides ?? 0)}
+            ${detailRow("Cancelled by Passenger", stats.cancelledByPassenger ?? 0)}
+            ${detailRow("Cancelled by Driver", stats.cancelledByDriver ?? 0)}
+            ${detailRow("Total Spent", `₹${stats.totalSpent ?? 0}`)}
+
+            <h4 class="admin-drawer-subsection">Wallet &amp; Coupons</h4>
+            ${detailRow("Current Wallet Balance", `<span class="fw-bold text-success">₹${wallet.balance ?? p.walletBalance ?? 0}</span>`)}
+            ${txnsHtml}
+            <div class="fw-medium small mb-1">Redeemed Coupons:</div>
+            ${couponsHtml}
+
+            <h4 class="admin-drawer-subsection">Safety &amp; SOS History</h4>
+            ${safetyHtml}
+
+            <h4 class="admin-drawer-subsection">Recent Rides</h4>
+            ${recentRidesHtml}
+
+            <h4 class="admin-drawer-subsection">Admin Notes</h4>
+            <div class="admin-notes-list mb-3">
+                ${notes.length ? notes.map((n) => `<div class="admin-note"><div>${escapeHtml(n.text)}</div><div class="admin-note-meta">${escapeHtml(n.byEmail || "")} \u00b7 ${formatTimestamp(n.at)}</div></div>`).join("") : `<p class="text-secondary text-center py-2">No notes yet.</p>`}
+            </div>
+            <div class="input-group mb-3">
+                <input type="text" id="passenger-note-input" class="form-control" placeholder="Add an internal note...">
+                <button id="passenger-note-save" class="btn btn-outline-secondary" type="button">Add Note</button>
+            </div>
+        `;
+
+        const { bodyEl } = showReadOnlyDrawer(p.name || "Passenger Profile", html);
+
+        bodyEl.querySelectorAll("[data-action]").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const action = btn.dataset.action;
+                const confirmed = await showTablerConfirm(
+                    `Are you sure you want to ${action} passenger ${p.name || uid}?`,
+                    {
+                        title: `${action.toUpperCase()} Passenger`,
+                        variant: action === "block" || action === "restrict" ? "danger" : "primary",
+                    }
+                );
+                if (!confirmed) return;
+                await withButtonSpinner(btn, async () => {
+                    try {
+                        await adminPatch(`/passengers/${encodeURIComponent(uid)}`, { action });
+                        toast(`Passenger status updated (${action}).`);
+                        openPassengerDrawer(uid);
+                        loadPassengers(true);
+                    } catch (err) {
+                        toast(err.message, "error");
+                    }
+                });
+            });
+        });
+
+        const creditToggleBtn = bodyEl.querySelector("#passenger-drawer-grant-credit-toggle");
+        const creditBox = bodyEl.querySelector("#passenger-drawer-grant-credit-box");
+        creditToggleBtn?.addEventListener("click", () => {
+            creditBox?.classList.toggle("d-none");
+            if (!creditBox?.classList.contains("d-none")) {
+                bodyEl.querySelector("#drawer-credit-amount")?.focus();
+            }
+        });
+
+        const creditSubmitBtn = bodyEl.querySelector("#drawer-credit-submit");
+        creditSubmitBtn?.addEventListener("click", async () => {
+            const amount = parseFloat(bodyEl.querySelector("#drawer-credit-amount")?.value || "0");
+            const tag = bodyEl.querySelector("#drawer-credit-tag")?.value || "Bonus";
+            const description = bodyEl.querySelector("#drawer-credit-desc")?.value?.trim() || "Admin drawer credit";
+            if (!amount || amount <= 0) {
+                return toast("Enter a valid credit amount greater than ₹0.", "error");
+            }
+            await withButtonSpinner(creditSubmitBtn, async () => {
+                try {
+                    const res = await adminPost("/wallet/passenger/grant-credit", {
+                        passengerId: uid,
+                        amount,
+                        tags: [tag],
+                        description,
+                    });
+                    toast(res.message || `Granted ₹${amount} wallet credit.`);
+                    openPassengerDrawer(uid);
+                } catch (err) {
+                    toast(err.message, "error");
+                }
+            });
+        });
+
+        const noteBtn = bodyEl.querySelector("#passenger-note-save");
+        noteBtn?.addEventListener("click", async () => {
+            const text = bodyEl.querySelector("#passenger-note-input")?.value?.trim();
+            if (!text) return;
+            await withButtonSpinner(noteBtn, async () => {
+                try {
+                    await adminPatch(`/passengers/${encodeURIComponent(uid)}`, { action: "add_note", notes: text });
+                    toast("Note added to passenger profile.");
+                    openPassengerDrawer(uid);
+                } catch (err) {
+                    toast(err.message, "error");
+                }
+            });
+        });
+    } catch (error) {
+        showReadOnlyDrawer("Passenger Profile", `<p class="text-danger text-center py-4 my-0">${escapeHtml(error.message)}</p>`);
+    }
+}
+
 // ---------------------------------------------------------------------
 // Analytics
 // ---------------------------------------------------------------------
 
 let ridesDailyChart = null;
+let analyticsCancelChart = null;
+let analyticsVehicleChart = null;
+let currentAnalyticsDays = 14;
+let analyticsEventsInitialized = false;
 
-async function loadAnalytics() {
-    try {
-        const data = await adminGet("/analytics/rides-daily", { days: 14 }, { cacheable: true });
-        const labels = data.days.map((d) => d.date.slice(5));
-        const rides = data.days.map((d) => d.rides);
-        const fare = data.days.map((d) => d.fare);
-        const ctx = document.getElementById("rides-daily-chart");
-        if (ridesDailyChart) ridesDailyChart.destroy();
-        ridesDailyChart = new Chart(ctx, {
-            type: "bar",
-            data: {
-                labels,
-                datasets: [
-                    { label: "Rides", data: rides, backgroundColor: "#206bc4", yAxisID: "y" },
-                    { label: "Fare collected (Rs)", data: fare, type: "line", borderColor: "#d63939", yAxisID: "y1" },
-                ],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { position: "left", beginAtZero: true },
-                    y1: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false } },
-                },
-            },
+function initAnalyticsEvents() {
+    if (analyticsEventsInitialized) return;
+    analyticsEventsInitialized = true;
+    document.querySelectorAll(".analytics-period-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".analytics-period-btn").forEach((b) => {
+                b.className = "btn btn-sm btn-outline-secondary analytics-period-btn";
+            });
+            btn.className = "btn btn-sm btn-primary active analytics-period-btn";
+            const days = Number(btn.dataset.days || 14);
+            currentAnalyticsDays = days;
+            loadAnalytics(days);
         });
+    });
+}
+
+async function loadAnalytics(days = currentAnalyticsDays) {
+    initAnalyticsEvents();
+    try {
+        const data = await adminGet("/analytics/rides-daily", { days }, { cacheable: true });
+        const summary = data.summary || {};
+        const cancelBd = data.cancellationBreakdown || {};
+        const vehicleSplit = data.vehicleSplit || {};
+
+        // 1. KPI Summary Cards
+        if ($("analytics-kpi-total-rides")) $("analytics-kpi-total-rides").textContent = summary.totalRides ?? 0;
+        if ($("analytics-kpi-distance")) $("analytics-kpi-distance").textContent = `${summary.totalDistanceKm ?? 0} km total distance`;
+        if ($("analytics-kpi-completion-rate")) $("analytics-kpi-completion-rate").textContent = `${summary.completionRate ?? 0}%`;
+        if ($("analytics-kpi-completed-count")) $("analytics-kpi-completed-count").textContent = `${summary.completedRides ?? 0} completed`;
+        if ($("analytics-kpi-cancel-rate")) $("analytics-kpi-cancel-rate").textContent = `${summary.cancellationRate ?? 0}%`;
+        if ($("analytics-kpi-cancelled-count")) $("analytics-kpi-cancelled-count").textContent = `${summary.cancelledRides ?? 0} cancelled`;
+        if ($("analytics-kpi-revenue")) $("analytics-kpi-revenue").textContent = `₹${summary.totalFare ?? 0}`;
+        if ($("analytics-kpi-avg-fare")) $("analytics-kpi-avg-fare").textContent = `₹${summary.avgFarePerCompletedRide ?? 0} avg / ride`;
+
+        // 2. Daily Rides & Fare Chart
+        const labels = (data.days || []).map((d) => d.date.slice(5));
+        const rides = (data.days || []).map((d) => d.rides);
+        const fare = (data.days || []).map((d) => d.fare);
+        const ctx = document.getElementById("rides-daily-chart");
+        if (ctx && window.Chart) {
+            if (ridesDailyChart) ridesDailyChart.destroy();
+            ridesDailyChart = new window.Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [
+                        { label: "Total Rides", data: rides, backgroundColor: "#206bc4", yAxisID: "y" },
+                        { label: "Fare collected (₹)", data: fare, type: "line", borderColor: "#2fb344", yAxisID: "y1" },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { position: "left", beginAtZero: true },
+                        y1: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false } },
+                    },
+                },
+            });
+        }
+
+        // 3. Cancellation Breakdown Chart & Reasons
+        const cancelCtx = document.getElementById("analytics-cancellation-chart");
+        if (cancelCtx && window.Chart) {
+            if (analyticsCancelChart) analyticsCancelChart.destroy();
+            analyticsCancelChart = new window.Chart(cancelCtx, {
+                type: "doughnut",
+                data: {
+                    labels: ["By Passenger", "By Driver", "Admin / System"],
+                    datasets: [
+                        {
+                            data: [
+                                cancelBd.byPassenger || 0,
+                                cancelBd.byDriver || 0,
+                                cancelBd.byAdminOrSystem || 0,
+                            ],
+                            backgroundColor: ["#f59f00", "#d63939", "#64748b"],
+                            borderWidth: 0,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "65%",
+                    plugins: { legend: { position: "bottom" } },
+                },
+            });
+        }
+
+        const reasonsEl = $("analytics-cancel-reasons-list");
+        if (reasonsEl) {
+            const topReasons = Array.isArray(cancelBd.topReasons) ? cancelBd.topReasons : [];
+            reasonsEl.innerHTML = topReasons.length
+                ? `<div class="fw-semibold text-dark mb-1">Top Cancellation Reasons:</div>` +
+                  topReasons
+                      .map(
+                          (r) =>
+                              `<div class="d-flex justify-content-between"><span>${escapeHtml(r.reason)}</span><span class="fw-bold">${r.count}</span></div>`
+                      )
+                      .join("")
+                : `<div class="text-secondary">No cancellation reasons recorded in this window.</div>`;
+        }
+
+        // 4. Vehicle & Ride Type Split Chart
+        const vehicleCtx = document.getElementById("analytics-vehicle-split-chart");
+        const byVeh = vehicleSplit.byVehicle || {};
+        const byType = vehicleSplit.byRideType || {};
+        if (vehicleCtx && window.Chart) {
+            if (analyticsVehicleChart) analyticsVehicleChart.destroy();
+            analyticsVehicleChart = new window.Chart(vehicleCtx, {
+                type: "doughnut",
+                data: {
+                    labels: ["Auto", "Bike", "Car"],
+                    datasets: [
+                        {
+                            data: [byVeh.auto || 0, byVeh.bike || 0, byVeh.car || 0],
+                            backgroundColor: ["#2fb344", "#0054a6", "#7950f2"],
+                            borderWidth: 0,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "65%",
+                    plugins: { legend: { position: "bottom" } },
+                },
+            });
+        }
+
+        const splitSummaryEl = $("analytics-vehicle-split-summary");
+        if (splitSummaryEl) {
+            const singleCount = byType.single || 0;
+            const shareCount = byType.share || 0;
+            const totalTyped = singleCount + shareCount;
+            const sharePct = totalTyped ? Math.round((shareCount / totalTyped) * 100) : 0;
+            splitSummaryEl.innerHTML = `
+                <div class="d-flex justify-content-between mb-1">
+                    <span>Single / Private Rides:</span>
+                    <span class="fw-bold text-dark">${singleCount} (${totalTyped ? 100 - sharePct : 0}%)</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span>Share Auto Rides:</span>
+                    <span class="fw-bold text-teal">${shareCount} (${sharePct}%)</span>
+                </div>
+            `;
+        }
     } catch (error) {
         toast(error.message, "error");
+    }
+}
+
+// ---------------------------------------------------------------------
+// Broadcast & Push Notification Center (Priority 2)
+// ---------------------------------------------------------------------
+
+let notificationsEventsInitialized = false;
+
+function initNotificationsEvents() {
+    if (notificationsEventsInitialized) return;
+    notificationsEventsInitialized = true;
+
+    const targetSelect = $("broadcast-target-select");
+    const uidWrap = $("broadcast-target-uid-wrap");
+    targetSelect?.addEventListener("change", () => {
+        const isSpecific = targetSelect.value === "user" || targetSelect.value === "specific_user";
+        uidWrap?.classList.toggle("d-none", !isSpecific);
+    });
+
+    $("broadcast-history-refresh-btn")?.addEventListener("click", () => loadNotificationsCenter());
+    $("btn-refresh-broadcasts")?.addEventListener("click", () => loadNotificationsCenter());
+
+    const form = $("form-admin-broadcast");
+    form?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const target = $("broadcast-target-select")?.value || "all";
+        const targetUid = $("broadcast-target-uid")?.value?.trim() || "";
+        const category = $("broadcast-category-select")?.value || "announcement";
+        const deepLink = $("broadcast-deeplink-input")?.value?.trim() || "/";
+        const channelId = $("broadcast-channel-select")?.value || "general";
+        const title = $("broadcast-title-input")?.value?.trim() || "";
+        const body = $("broadcast-body-input")?.value?.trim() || "";
+        const isSpecific = target === "user" || target === "specific_user";
+
+        if (!title || !body) {
+            return toast("Enter both a notification title and message body.", "error");
+        }
+        if (isSpecific && !targetUid) {
+            return toast("Enter a Target User UID, phone, or email for specific user delivery.", "error");
+        }
+
+        const confirmed = await showTablerConfirm(
+            `Send push & in-app notification "${title}" to ${target.replace(/_/g, " ")}?`,
+            {
+                title: "Confirm Broadcast Dispatch",
+                variant: "primary",
+                confirmText: "Send Notification",
+            }
+        );
+        if (!confirmed) return;
+
+        const submitBtn = $("broadcast-submit-btn") || $("btn-send-broadcast");
+        await withButtonSpinner(submitBtn, async () => {
+            try {
+                const res = await adminPost("/notifications/broadcast", {
+                    target,
+                    targetUid: isSpecific ? targetUid : undefined,
+                    category,
+                    deepLink,
+                    channelId,
+                    title,
+                    body,
+                });
+                toast(`Broadcast sent to ${res.broadcast?.recipientCount ?? res.recipientCount ?? 0} recipient(s).`);
+                if ($("broadcast-title-input")) $("broadcast-title-input").value = "";
+                if ($("broadcast-body-input")) $("broadcast-body-input").value = "";
+                await loadNotificationsCenter();
+            } catch (err) {
+                toast(err.message, "error");
+            }
+        });
+    });
+}
+
+async function loadNotificationsCenter() {
+    initNotificationsEvents();
+    const tbody = $("admin-broadcast-history-tbody") || $("broadcast-history-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-secondary small"><span class="spinner-border spinner-border-sm me-2"></span>Loading broadcast history...</td></tr>`;
+    try {
+        const data = await adminGet("/notifications/broadcasts", { limit: 30 }, { cacheable: false });
+        const broadcasts = data.broadcasts || [];
+        if (broadcasts.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-secondary small">No broadcasts dispatched yet.</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = broadcasts
+            .map((b) => {
+                const targetLabel = String(b.target || "all").replace(/_/g, " ");
+                const sentCount = b.sentCount ?? 0;
+                const failedCount = b.failedCount ?? 0;
+                const tokenCount = b.tokenCount ?? b.fcmDispatchedCount ?? 0;
+                return `
+                    <tr>
+                        <td>
+                            <div class="fw-bold text-dark">${escapeHtml(b.title || "")}</div>
+                            <div class="text-secondary small text-truncate" style="max-width: 280px;">${escapeHtml(b.body || "")}</div>
+                        </td>
+                        <td>
+                            <span class="badge bg-blue-lt text-blue text-uppercase">${escapeHtml(targetLabel)}</span>
+                            ${b.targetUid ? `<div class="text-secondary small font-monospace mt-1">${escapeHtml(b.targetUid.slice(0, 14))}</div>` : ""}
+                        </td>
+                        <td>
+                            <span class="fw-semibold text-dark">${b.recipientCount ?? 0} users</span>
+                            <div class="text-secondary small">${tokenCount} push (${sentCount} sent${failedCount ? `, ${failedCount} failed` : ""})</div>
+                        </td>
+                        <td class="text-secondary small">${escapeHtml(b.sentByEmail || "Admin")}</td>
+                        <td class="text-secondary small">${formatTimestamp(b.createdAt)}</td>
+                    </tr>
+                `;
+            })
+            .join("");
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-danger small">${escapeHtml(error.message)}</td></tr>`;
     }
 }
 

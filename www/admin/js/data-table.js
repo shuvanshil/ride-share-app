@@ -11,8 +11,20 @@ export class DataTable {
      * @param {string} [opts.exportFileName]
      * @param {Array<{label:string, onClick:(ids:string[])=>void, variant?:string}>} [opts.bulkActions]
      * @param {()=>Promise<void>} [opts.onLoadMore] - called when the scroll sentinel becomes visible
+     * @param {(q:string)=>Promise<void>|void} [opts.onSearch] - optional server-side search handler
+     * @param {string} [opts.searchPlaceholder]
      */
-    constructor({ container, columns, getRowId, onRowClick, exportFileName = "export", bulkActions = [], onLoadMore }) {
+    constructor({
+        container,
+        columns,
+        getRowId,
+        onRowClick,
+        exportFileName = "export",
+        bulkActions = [],
+        onLoadMore,
+        onSearch,
+        searchPlaceholder,
+    }) {
         this.container = container;
         this.columns = columns;
         this.getRowId = getRowId;
@@ -20,6 +32,8 @@ export class DataTable {
         this.exportFileName = exportFileName;
         this.bulkActions = bulkActions;
         this.onLoadMore = onLoadMore;
+        this.onSearch = onSearch || null;
+        this.searchPlaceholder = searchPlaceholder || (onSearch ? "Search all records..." : "Filter loaded rows...");
 
         this.rows = [];
         this.sortKey = null;
@@ -29,6 +43,7 @@ export class DataTable {
         this.selected = new Set();
         this.hasMore = false;
         this.loadingMore = false;
+        this._searchTimer = null;
 
         this._observer = null;
         this._buildShell();
@@ -77,12 +92,20 @@ export class DataTable {
         searchWrap.style.maxWidth = "280px";
         searchWrap.innerHTML = `
             <span class="input-icon-addon"><i class="ti ti-search text-secondary"></i></span>
-            <input type="text" class="form-control form-control-sm dt-search" placeholder="Filter loaded rows...">
+            <input type="text" class="form-control form-control-sm dt-search" placeholder="${this.searchPlaceholder}">
         `;
         this.searchInput = searchWrap.querySelector("input");
         this.searchInput.addEventListener("input", () => {
-            this.searchTerm = this.searchInput.value.trim().toLowerCase();
-            this._renderBody();
+            const rawVal = this.searchInput.value.trim();
+            this.searchTerm = rawVal.toLowerCase();
+            if (this.onSearch) {
+                clearTimeout(this._searchTimer);
+                this._searchTimer = setTimeout(() => {
+                    this.onSearch(rawVal);
+                }, 300);
+            } else {
+                this._renderBody();
+            }
         });
         toolbar.appendChild(searchWrap);
 
@@ -229,7 +252,7 @@ export class DataTable {
 
     _visibleRows() {
         let rows = this.rows;
-        if (this.searchTerm) {
+        if (this.searchTerm && !this.onSearch) {
             rows = rows.filter((r) =>
                 this.columns.some((c) => String(r[c.key] ?? "").toLowerCase().includes(this.searchTerm))
             );

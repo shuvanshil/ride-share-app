@@ -15,6 +15,7 @@ changes were needed. Every mutation is authenticated with `require_admin`
 from __future__ import annotations
 
 import hmac
+import logging
 from datetime import datetime, date, timedelta, timezone
 from typing import Any, Optional
 
@@ -34,6 +35,8 @@ from ..core.admin import (
 from ..core.config import get_env
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -108,6 +111,39 @@ def _paginate(base_query, cursor: Optional[str], limit: int, id_field_collection
     return items, next_cursor
 
 
+def _batch_get_users(db, uids: Any) -> dict[str, dict[str, Any]]:
+    clean_uids = [str(u).strip() for u in (uids or []) if u and str(u).strip()]
+    unique_uids = list(dict.fromkeys(clean_uids))
+    if not unique_uids:
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    if hasattr(db, "get_all"):
+        for idx in range(0, len(unique_uids), 100):
+            chunk = unique_uids[idx : idx + 100]
+            refs = [db.collection("users").document(uid) for uid in chunk]
+            try:
+                for snap in db.get_all(refs):
+                    if getattr(snap, "exists", False):
+                        result[snap.id] = snap.to_dict() or {}
+            except Exception:
+                for uid in chunk:
+                    try:
+                        snap = db.collection("users").document(uid).get()
+                        if snap.exists:
+                            result[uid] = snap.to_dict() or {}
+                    except Exception:
+                        pass
+    else:
+        for uid in unique_uids:
+            try:
+                snap = db.collection("users").document(uid).get()
+                if snap.exists:
+                    result[uid] = snap.to_dict() or {}
+            except Exception:
+                pass
+    return result
+
+
 def _backfill_driver_names(rides: list[dict[str, Any]]) -> list[dict[str, Any]]:
     missing_ids = {
         r.get("driver_id")
@@ -117,13 +153,11 @@ def _backfill_driver_names(rides: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not missing_ids:
         return rides
     db = _db()
+    user_map = _batch_get_users(db, missing_ids)
     names: dict[str, str] = {}
-    for uid in missing_ids:
-        snap = db.collection("users").document(uid).get()
-        if snap.exists:
-            data = snap.to_dict() or {}
-            if data.get("name"):
-                names[uid] = str(data["name"])[:80]
+    for uid, data in user_map.items():
+        if data.get("name"):
+            names[uid] = str(data["name"])[:80]
     for r in rides:
         driver_id = r.get("driver_id")
         if driver_id and not str(r.get("driver_name") or "").strip():
@@ -155,6 +189,42 @@ def _apply_search(items: list[dict[str, Any]], q: str, fields: list[str]) -> lis
         if needle in haystack:
             out.append(item)
     return out
+
+
+def _paginate_with_search(
+    base_query,
+    cursor: Optional[str],
+    limit: int,
+    id_field_collection: str,
+    q: Optional[str],
+    search_fields: list[str],
+    pre_search_transform=None,
+):
+    if not q or not str(q).strip():
+        items, next_cursor = _paginate(base_query, cursor, limit, id_field_collection)
+        if pre_search_transform:
+            items = pre_search_transform(items)
+        return items, next_cursor
+
+    scan_limit = max(limit * 10, 500)
+    docs = _stream(base_query.limit(scan_limit))
+    all_items = [_doc_dict(d) for d in docs]
+    if pre_search_transform:
+        all_items = pre_search_transform(all_items)
+    matched = _apply_search(all_items, q, search_fields)
+
+    if cursor:
+        cursor_idx = next(
+            (i for i, item in enumerate(matched) if (item.get("id") or item.get("uid")) == cursor),
+            None,
+        )
+        if cursor_idx is not None:
+            matched = matched[cursor_idx + 1 :]
+
+    has_more = len(matched) > limit
+    page = matched[:limit]
+    next_cursor = (page[-1].get("id") or page[-1].get("uid")) if has_more and page else None
+    return page, next_cursor
 
 
 # ---------------------------------------------------------------------------
@@ -389,8 +459,13 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     today_km = round(sum(float(r.get("estimated_distance_km") or r.get("distance_km") or 0) for r in today_completed_docs), 2)
     avg_km = round(today_km / today_completed, 2) if today_completed > 0 else 0.0
 
-    yesterday_rides_count = _safe_count(rides_coll.where("createdAt", ">=", yesterday_start).where("createdAt", "<", today_start))
-    rides_delta_percent = round(((today_total - yesterday_rides_count) / yesterday_rides_count * 100), 1) if yesterday_rides_count > 0 else (12.4 if today_total > 0 else 0.0)
+    yesterday_rides_docs = [_doc_dict(d) for d in _stream(rides_coll.where("createdAt", ">=", yesterday_start).where("createdAt", "<", today_start))]
+    yesterday_rides_count = len(yesterday_rides_docs)
+    rides_delta_percent = (
+        round(((today_total - yesterday_rides_count) / yesterday_rides_count * 100), 1)
+        if yesterday_rides_count > 0
+        else (100.0 if today_total > 0 else 0.0)
+    )
 
     total_share_rides = _safe_count(rides_coll.where("rideType", "==", "share"))
     completed_share_trips = [_doc_dict(d) for d in _stream(db.collection("shareTrips").where("status", "==", "completed").limit(100))]
@@ -406,10 +481,24 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     open_sos = _safe_count(db.collection("sosAlerts").where("status", "==", "open"))
     open_reports = _safe_count(db.collection("safetyReports").where("status", "==", "open"))
 
-    # Active users count
+    # Active users count & real vs-yesterday comparison
     today_passenger_ids = list({r.get("passenger_id") for r in today_docs if r.get("passenger_id")})
     active_passenger_count = len(today_passenger_ids) or max(0, new_passengers_today)
     active_users_total = (active_online_drivers + busy_drivers) + active_passenger_count
+
+    yesterday_active_uids = {
+        uid
+        for r in yesterday_rides_docs
+        for uid in (r.get("passenger_id"), r.get("driver_id"))
+        if uid
+    }
+    yesterday_new_users = _safe_count(users_coll.where("createdAt", ">=", yesterday_start).where("createdAt", "<", today_start))
+    yesterday_active_total = max(len(yesterday_active_uids), yesterday_new_users)
+    active_users_delta_percent = (
+        round(((active_users_total - yesterday_active_total) / yesterday_active_total * 100), 1)
+        if yesterday_active_total > 0
+        else (100.0 if active_users_total > 0 else 0.0)
+    )
 
     # Recent Rides query (latest 10)
     recent_rides_query = rides_coll.order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(10)
@@ -595,6 +684,41 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
         else:
             hourly_activity["9 PM"] += 1
 
+    # Real 7-day and 30-day ride activity series (ending today)
+    start_30d = today_start - timedelta(days=29)
+    date_counts_30d: dict[str, int] = {}
+    date_labels_30d: dict[str, str] = {}
+    for i in range(30):
+        day_dt = start_30d + timedelta(days=i)
+        day_key = day_dt.strftime("%Y-%m-%d")
+        date_counts_30d[day_key] = 0
+        date_labels_30d[day_key] = day_dt.strftime("%d %b")
+
+    try:
+        rides_30d_docs = [_doc_dict(d) for d in _stream(rides_coll.where("createdAt", ">=", start_30d))]
+    except Exception:
+        rides_30d_docs = list(today_docs)
+
+    for r in rides_30d_docs:
+        created_at = r.get("createdAt")
+        dt_val: Optional[datetime] = None
+        if isinstance(created_at, datetime):
+            dt_val = created_at.astimezone(timezone.utc) if created_at.tzinfo else created_at.replace(tzinfo=timezone.utc)
+        elif isinstance(created_at, str):
+            try:
+                dt_val = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            except Exception:
+                dt_val = None
+        if dt_val is not None:
+            d_key = dt_val.strftime("%Y-%m-%d")
+            if d_key in date_counts_30d:
+                date_counts_30d[d_key] += 1
+
+    ordered_keys_30d = sorted(date_counts_30d.keys())
+    ordered_keys_7d = ordered_keys_30d[-7:]
+    daily_7d: dict[str, int] = {date_labels_30d[k]: date_counts_30d[k] for k in ordered_keys_7d}
+    daily_30d: dict[str, int] = {date_labels_30d[k]: date_counts_30d[k] for k in ordered_keys_30d}
+
     return {
         "ok": True,
         "generatedAt": now.isoformat(),
@@ -615,7 +739,7 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             "total": active_users_total,
             "passengers": active_passenger_count,
             "drivers": active_online_drivers + busy_drivers,
-            "vsYesterdayPercent": 8.2,
+            "vsYesterdayPercent": active_users_delta_percent,
         },
         "attention": {
             "pendingDrivers": pending_drivers,
@@ -666,6 +790,8 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
         "recentRides": recent_rides,
         "rideActivity": {
             "hourly": hourly_activity,
+            "daily7d": daily_7d,
+            "daily30d": daily_30d,
         },
     }
 
@@ -696,8 +822,9 @@ def list_drivers(
         base = base.where("driverAvailability", "in", values)
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
 
-    items, next_cursor = _paginate(base, cursor, limit, "users")
-    items = _apply_search(items, q, ["name", "phone", "email", "vehicle_number", "vehicleNumber"])
+    items, next_cursor = _paginate_with_search(
+        base, cursor, limit, "users", q, ["name", "phone", "email", "vehicle_number", "vehicleNumber", "drivingLicenseNumber"]
+    )
     return {"ok": True, "drivers": [_sanitize_driver(i) for i in items], "nextCursor": next_cursor}
 
 
@@ -722,12 +849,65 @@ def _sanitize_driver(profile: dict[str, Any]) -> dict[str, Any]:
         "vehicleType": profile.get("vehicleType") or profile.get("vehicle_type"),
         "vehicleNumber": profile.get("vehicleNumber") or profile.get("vehicle_number"),
         "vehicleModel": profile.get("vehicleModel") or profile.get("vehicle_model"),
-        "drivingLicenseNumber": profile.get("drivingLicenseNumber"),
+        "drivingLicenseNumber": profile.get("drivingLicenseNumber") or profile.get("licenseNumber"),
+        "licensePhotoUrl": profile.get("licensePhotoUrl") or profile.get("drivingLicenseUrl"),
+        "rcPhotoUrl": profile.get("rcPhotoUrl") or profile.get("vehicleRcUrl"),
+        "aadhaarUrl": profile.get("aadhaarUrl") or profile.get("idProofUrl"),
+        "vehiclePhotoUrl": profile.get("vehiclePhotoUrl"),
+        "kycDocuments": profile.get("kycDocuments") or profile.get("documents") or {},
         "upiId": profile.get("upiId"),
         "gender": profile.get("gender") or "Others",
+        "rating": profile.get("rating") or profile.get("averageRating"),
         "lifetimeEarnings": profile.get("lifetime_earnings") or 0,
         "totalCompletedTrips": profile.get("total_completed_trips") or 0,
+        "adminNotes": profile.get("adminNotes") or [],
         "createdAt": profile.get("createdAt"),
+    }
+
+
+FEEDBACK_SCORE_MAP: dict[str, int] = {
+    "loved": 5,
+    "good": 4,
+    "decent": 3,
+    "poor": 1,
+}
+
+
+def _compute_driver_rating_summary(rides: list[dict[str, Any]], profile: dict[str, Any]) -> dict[str, Any]:
+    breakdown: dict[str, int] = {"loved": 0, "good": 0, "decent": 0, "poor": 0}
+    scores: list[float] = []
+    reasons: dict[str, int] = {}
+
+    for r in rides:
+        fb = r.get("feedback")
+        if isinstance(fb, dict) and fb.get("submitted"):
+            exp = str(fb.get("experience") or "").strip().lower()
+            if exp in breakdown:
+                breakdown[exp] += 1
+                scores.append(float(FEEDBACK_SCORE_MAP[exp]))
+            for reason in (fb.get("reasons") or []):
+                clean_r = str(reason).strip()
+                if clean_r:
+                    reasons[clean_r] = reasons.get(clean_r, 0) + 1
+        elif isinstance(r.get("driverRating") or r.get("rating"), (int, float)):
+            scores.append(float(r.get("driverRating") or r.get("rating")))
+
+    total_feedback = len(scores)
+    if total_feedback > 0:
+        avg_rating = round(sum(scores) / total_feedback, 2)
+    else:
+        prof_rating = profile.get("rating") or profile.get("averageRating")
+        avg_rating = round(float(prof_rating), 2) if isinstance(prof_rating, (int, float)) else None
+
+    top_reasons = [
+        {"reason": k, "count": v}
+        for k, v in sorted(reasons.items(), key=lambda x: x[1], reverse=True)[:5]
+    ]
+    return {
+        "averageRating": avg_rating,
+        "totalFeedbackCount": total_feedback,
+        "breakdown": breakdown,
+        "topReasons": top_reasons,
     }
 
 
@@ -741,16 +921,30 @@ def get_driver(uid: str, admin_user: dict[str, Any] = Depends(require_admin)) ->
     if profile.get("role") != "driver":
         raise ApiError("This account is not a driver.", 400)
 
-    recent_query = (
-        db.collection("rides")
-        .where("driver_id", "==", uid)
-        .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
-        .limit(20)
-    )
+    try:
+        recent_query = (
+            db.collection("rides")
+            .where("driver_id", "==", uid)
+            .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+            .limit(50)
+        )
+        all_driver_rides = [_doc_dict(d) for d in _stream(recent_query)]
+    except Exception:
+        try:
+            all_driver_rides = [_doc_dict(d) for d in _stream(db.collection("rides").where("driver_id", "==", uid).limit(50))]
+            all_driver_rides.sort(key=lambda r: str(r.get("createdAt") or ""), reverse=True)
+        except Exception:
+            all_driver_rides = []
+    rating_summary = _compute_driver_rating_summary(all_driver_rides, profile)
+    sanitized = _sanitize_driver(profile)
+    if sanitized.get("rating") is None and rating_summary.get("averageRating") is not None:
+        sanitized["rating"] = rating_summary["averageRating"]
+
     return {
         "ok": True,
-        "driver": _sanitize_driver(profile),
-        "recentRides": [_doc_dict(d) for d in _stream(recent_query)],
+        "driver": sanitized,
+        "ratingSummary": rating_summary,
+        "recentRides": all_driver_rides[:20],
     }
 
 
@@ -880,8 +1074,9 @@ def list_passengers(
         base = base.where("accountStatus", "==", status)
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
 
-    items, next_cursor = _paginate(base, cursor, limit, "users")
-    items = _apply_search(items, q, ["name", "phone", "email"])
+    items, next_cursor = _paginate_with_search(
+        base, cursor, limit, "users", q, ["name", "phone", "email"]
+    )
     return {"ok": True, "passengers": [_sanitize_passenger(i) for i in items], "nextCursor": next_cursor}
 
 
@@ -891,9 +1086,162 @@ def _sanitize_passenger(profile: dict[str, Any]) -> dict[str, Any]:
         "name": profile.get("name"),
         "phone": profile.get("phone"),
         "email": profile.get("email"),
+        "profilePhotoUrl": profile.get("profilePhotoUrl"),
         "gender": profile.get("gender") or "Others",
         "accountStatus": profile.get("accountStatus") or "active",
+        "restrictionReason": profile.get("restrictionReason"),
+        "blockingReason": profile.get("blockingReason"),
+        "adminNotes": profile.get("adminNotes") or [],
         "createdAt": profile.get("createdAt"),
+    }
+
+
+@router.get("/passengers/{uid}")
+def get_passenger(
+    uid: str,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    snap = db.collection("users").document(uid).get()
+    if not snap.exists:
+        raise ApiError("Passenger not found.", 404)
+    profile = _doc_dict(snap)
+    if profile.get("role") not in ("passenger", None):
+        raise ApiError("This account is not a passenger.", 400)
+
+    # 1. Recent rides & lifetime statistics
+    rides_docs: list[dict[str, Any]] = []
+    try:
+        rides_query = (
+            db.collection("rides")
+            .where("passenger_id", "==", uid)
+            .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+            .limit(50)
+        )
+        rides_docs = [_doc_dict(d) for d in _stream(rides_query)]
+    except Exception:
+        try:
+            rides_docs = [_doc_dict(d) for d in _stream(db.collection("rides").where("passenger_id", "==", uid).limit(50))]
+        except Exception:
+            rides_docs = []
+
+    rides_docs = _backfill_driver_names(rides_docs)
+    total_rides = len(rides_docs)
+    completed_rides = 0
+    cancelled_by_passenger = 0
+    cancelled_by_driver = 0
+    total_spent = 0.0
+
+    for r in rides_docs:
+        st = str(r.get("status") or "").lower()
+        if st == "completed":
+            completed_rides += 1
+            total_spent += float(r.get("fare") or 0)
+        elif st == "cancelled_by_passenger":
+            cancelled_by_passenger += 1
+        elif st == "cancelled_by_driver":
+            cancelled_by_driver += 1
+        elif st.startswith("cancel"):
+            cancelled_by_passenger += 1
+
+    # 2. Wallet balance & transactions
+    fallback_bal = round(float(profile.get("walletBalance") or 0.0), 2)
+    wallet_data: dict[str, Any] = {
+        "balance": fallback_bal,
+        "balancePaise": int(round(fallback_bal * 100)),
+        "lifetimeCredited": 0.0,
+        "lifetimeDebited": 0.0,
+        "transactions": [],
+        "recentTransactions": [],
+    }
+    try:
+        w_snap = db.collection("wallets").document(uid).get()
+        if w_snap.exists:
+            wd = _doc_dict(w_snap)
+            bal_paise = int(wd.get("balancePaise") or 0)
+            cred_paise = int(wd.get("lifetimeCreditPaise") or 0)
+            deb_paise = int(wd.get("lifetimeDebitPaise") or 0)
+            wallet_data["balancePaise"] = bal_paise
+            wallet_data["balance"] = round(bal_paise / 100.0, 2)
+            wallet_data["lifetimeCredited"] = round(cred_paise / 100.0, 2)
+            wallet_data["lifetimeDebited"] = round(deb_paise / 100.0, 2)
+    except Exception:
+        pass
+
+    raw_txs: list[dict[str, Any]] = []
+    try:
+        tx_query = (
+            db.collection("walletTransactions")
+            .where("userId", "==", uid)
+            .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+            .limit(15)
+        )
+        raw_txs = [_doc_dict(d) for d in _stream(tx_query)]
+    except Exception:
+        try:
+            raw_txs = [_doc_dict(d) for d in _stream(db.collection("walletTransactions").where("userId", "==", uid).limit(15))]
+            raw_txs.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
+        except Exception:
+            raw_txs = []
+
+    normalized_txs: list[dict[str, Any]] = []
+    for tx in raw_txs:
+        if tx.get("amount") is None and tx.get("amountPaise") is not None:
+            amt_inr = round(float(tx.get("amountPaise") or 0) / 100.0, 2)
+            if str(tx.get("direction") or "").lower() == "debit" and amt_inr > 0:
+                amt_inr = -amt_inr
+            tx["amount"] = amt_inr
+        normalized_txs.append(tx)
+
+    wallet_data["transactions"] = normalized_txs
+    wallet_data["recentTransactions"] = normalized_txs
+
+    # 3. Redeemed coupons
+    redeemed_coupons: list[dict[str, Any]] = []
+    try:
+        rc_docs = [_doc_dict(d) for d in _stream(db.collection("couponRedemptions").where("passengerId", "==", uid).limit(20))]
+        redeemed_coupons = rc_docs
+    except Exception:
+        redeemed_coupons = []
+
+    # 4. Associated SOS alerts / safety reports
+    safety_events: list[dict[str, Any]] = []
+    seen_safety_ids: set[str] = set()
+    for field_name in ("passenger_id", "reporter_id", "userId"):
+        try:
+            for s in [_doc_dict(d) for d in _stream(db.collection("sosAlerts").where(field_name, "==", uid).limit(10))]:
+                sid = str(s.get("id") or "")
+                if sid not in seen_safety_ids:
+                    seen_safety_ids.add(sid)
+                    s["eventType"] = "sos_alert"
+                    safety_events.append(s)
+        except Exception:
+            pass
+    for field_name in ("reporterId", "reporter_id", "passenger_id"):
+        try:
+            for rep in [_doc_dict(d) for d in _stream(db.collection("safetyReports").where(field_name, "==", uid).limit(10))]:
+                rid = str(rep.get("id") or "")
+                if rid not in seen_safety_ids:
+                    seen_safety_ids.add(rid)
+                    rep["eventType"] = "safety_report"
+                    safety_events.append(rep)
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "passenger": _sanitize_passenger(profile),
+        "rideStats": {
+            "totalRides": total_rides,
+            "completedRides": completed_rides,
+            "cancelledByPassenger": cancelled_by_passenger,
+            "cancelledByDriver": cancelled_by_driver,
+            "totalSpent": round(total_spent, 2),
+        },
+        "wallet": wallet_data,
+        "redeemedCoupons": redeemed_coupons,
+        "safetyEvents": safety_events,
+        "recentRides": rides_docs[:20],
     }
 
 
@@ -909,7 +1257,7 @@ def update_passenger(
     body: PassengerActionBody,
     admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
 ) -> dict[str, Any]:
-    valid = {"restrict", "unrestrict", "block", "unblock"}
+    valid = {"restrict", "unrestrict", "block", "unblock", "add_note"}
     if body.action not in valid:
         raise ApiError("Unknown passenger action.", 400)
 
@@ -920,14 +1268,36 @@ def update_passenger(
         raise ApiError("Passenger not found.", 404)
     before = _doc_dict(snap)
 
-    target_status = {
-        "restrict": "restricted",
-        "unrestrict": "active",
-        "block": "blocked",
-        "unblock": "active",
-    }[body.action]
+    updates: dict[str, Any] = {"updatedAt": fb_firestore.SERVER_TIMESTAMP}
+    if body.action == "add_note":
+        if not body.notes.strip():
+            raise ApiError("Notes cannot be empty.", 400)
+        existing_notes = before.get("adminNotes") or []
+        if not isinstance(existing_notes, list):
+            existing_notes = []
+        new_note = {
+            "byUid": admin_user.get("uid"),
+            "byEmail": admin_user.get("email"),
+            "text": body.notes.strip()[:500],
+            "at": now_utc().isoformat(),
+        }
+        updates["adminNotes"] = [new_note] + existing_notes
+    else:
+        target_status = {
+            "restrict": "restricted",
+            "unrestrict": "active",
+            "block": "blocked",
+            "unblock": "active",
+        }[body.action]
+        updates["accountStatus"] = target_status
+        if body.action == "restrict":
+            updates["restrictionReason"] = body.notes.strip() or None
+        elif body.action == "block":
+            updates["blockingReason"] = body.notes.strip() or None
+        elif body.action in ("unrestrict", "unblock"):
+            updates["restrictionReason"] = None
+            updates["blockingReason"] = None
 
-    updates = {"accountStatus": target_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}
     ref.set(updates, merge=True)
     write_audit_log(admin_user, f"passenger.{body.action}", "passenger", uid, before, updates, body.notes)
     return {"ok": True, "passenger": _sanitize_passenger(_doc_dict(ref.get()))}
@@ -1014,16 +1384,7 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
     except Exception:
         share_trips = []
 
-    user_profiles: dict[str, dict[str, Any]] = {}
-    for uid in user_ids:
-        if not uid:
-            continue
-        try:
-            snap = db.collection("users").document(uid).get()
-            if snap.exists:
-                user_profiles[uid] = snap.to_dict() or {}
-        except Exception:
-            pass
+    user_profiles: dict[str, dict[str, Any]] = _batch_get_users(db, user_ids)
 
     for r in rides_docs:
         d_id = r.get("driver_id")
@@ -1345,74 +1706,6 @@ def list_waiting_pools(
                 "ride_id": pr.get("id"),
             })
 
-    # Backfill passenger profiles
-    passengers_list = []
-    p_uids = [p.get("passenger_id") or p.get("id") for p in wpp_docs if (p.get("passenger_id") or p.get("id"))]
-    user_docs: dict[str, dict[str, Any]] = {}
-    for uid in p_uids:
-        try:
-            snap = db.collection("users").document(uid).get()
-            if snap.exists:
-                user_docs[uid] = snap.to_dict() or {}
-        except Exception:
-            pass
-
-    for p in wpp_docs:
-        pid = p.get("passenger_id") or p.get("id")
-        u = user_docs.get(pid, {})
-        p_name = u.get("name") or p.get("name") or "Passenger"
-        p_phone = u.get("phone") or p.get("phone") or ""
-
-        created = p.get("created_at") or p.get("req_time") or p.get("createdAt") or now_ts
-        if isinstance(created, (int, float)):
-            wait_sec = max(0, int(now_ts - created))
-            since_dt = datetime.fromtimestamp(created, tz=timezone.utc)
-        elif isinstance(created, datetime):
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-            wait_sec = max(0, int((now - created).total_seconds()))
-            since_dt = created
-        else:
-            wait_sec = 0
-            since_dt = now
-
-        wait_mins = max(1, wait_sec // 60)
-        since_time = since_dt.strftime("%I:%M %p").lstrip("0")
-
-        v_type = str(p.get("vehicle_type") or "auto").lower()
-        if p.get("wants_share") or v_type == "share":
-            type_label = "Share"
-        elif v_type == "bike":
-            type_label = "Bike"
-        else:
-            type_label = "Auto"
-
-        pickup_data = p.get("pickup") or {}
-        pickup_loc = pickup_data.get("name") or pickup_data.get("address") or "Pickup Location"
-
-        badge_color = "danger" if wait_mins >= 20 else ("warning" if wait_mins >= 5 else "success")
-        passengers_list.append({
-            "id": pid,
-            "passenger_id": pid,
-            "name": p_name,
-            "phone": p_phone,
-            "initials": _initials(p_name, "PA"),
-            "type": type_label,
-            "pickupLocation": pickup_loc,
-            "pickup_lat": pickup_data.get("lat"),
-            "pickup_lng": pickup_data.get("lng"),
-            "waitingSince": since_time,
-            "waitingSinceIso": since_dt.isoformat(),
-            "waitTimeMinutes": wait_mins,
-            "waitTimeText": f"{wait_mins} min",
-            "urgencyBadge": badge_color,
-            "state": p.get("state") or "WAITING",
-            "ride_id": p.get("ride_id"),
-        })
-
-    # Sort oldest waiting first by default
-    passengers_list.sort(key=lambda x: x["waitTimeMinutes"], reverse=True)
-
     # 2. Fetch Drivers in Driver Availability Pool (dispatchDAP) & Online Users
     dap_docs = [_doc_dict(d) for d in _stream(db.collection("dispatchDAP"))]
 
@@ -1444,16 +1737,80 @@ def list_waiting_pools(
                 "loc": od.get("lastLocation") or od.get("location") or {"lat": 23.8315, "lng": 91.2868},
             })
 
+    # Batch-fetch all user profiles (passengers + drivers) in one shot
+    p_uids = [p.get("passenger_id") or p.get("id") for p in wpp_docs if (p.get("passenger_id") or p.get("id"))]
+    d_uids = [d.get("driver_id") or d.get("id") for d in dap_docs if (d.get("driver_id") or d.get("id"))]
+    user_docs: dict[str, dict[str, Any]] = _batch_get_users(db, set(p_uids) | set(d_uids))
+
+    passengers_list = []
+    for p in wpp_docs:
+        pid = p.get("passenger_id") or p.get("id")
+        u = user_docs.get(pid, {})
+        p_name = u.get("name") or p.get("name") or "Passenger"
+        p_phone = u.get("phone") or p.get("phone") or ""
+
+        created = p.get("created_at") or p.get("req_time") or p.get("createdAt") or now_ts
+        if isinstance(created, (int, float)):
+            wait_sec = max(0, int(now_ts - created))
+            since_dt = datetime.fromtimestamp(created, tz=timezone.utc)
+        elif isinstance(created, datetime):
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            wait_sec = max(0, int((now - created).total_seconds()))
+            since_dt = created
+        else:
+            wait_sec = 0
+            since_dt = now
+
+        wait_mins = max(1, wait_sec // 60)
+        since_time = since_dt.strftime("%I:%M %p").lstrip("0")
+
+        v_type = str(p.get("vehicle_type") or "auto").lower()
+        if p.get("wants_share") or v_type == "share":
+            type_label = "Share"
+        elif v_type == "bike":
+            type_label = "Bike"
+        else:
+            type_label = "Auto"
+
+        pickup_data = p.get("pickup") or {}
+        drop_data = p.get("drop") or {}
+        pickup_loc = pickup_data.get("name") or pickup_data.get("address") or "Pickup Location"
+        drop_loc = drop_data.get("name") or drop_data.get("address") or "Drop Location"
+
+        badge_color = "danger" if wait_mins >= 20 else ("warning" if wait_mins >= 5 else "success")
+        passengers_list.append({
+            "id": pid,
+            "passenger_id": pid,
+            "name": p_name,
+            "phone": p_phone,
+            "initials": _initials(p_name, "PA"),
+            "type": type_label,
+            "vehicleType": v_type,
+            "wantsShare": bool(p.get("wants_share") or v_type == "share"),
+            "pickupLocation": pickup_loc,
+            "pickup_lat": pickup_data.get("lat"),
+            "pickup_lng": pickup_data.get("lng"),
+            "dropLocation": drop_loc,
+            "drop_lat": drop_data.get("lat"),
+            "drop_lng": drop_data.get("lng"),
+            "fare": float(p.get("fare") or 0.0),
+            "waitingSince": since_time,
+            "waitingSinceIso": since_dt.isoformat(),
+            "waitTimeMinutes": wait_mins,
+            "waitTimeText": f"{wait_mins} min",
+            "urgencyBadge": badge_color,
+            "state": p.get("state") or "WAITING",
+            "ride_id": p.get("ride_id"),
+        })
+
+    # Sort oldest waiting first by default
+    passengers_list.sort(key=lambda x: x["waitTimeMinutes"], reverse=True)
+
     drivers_list = []
     for d in dap_docs:
         did = d.get("driver_id") or d.get("id")
-        u_prof = user_docs.get(did)
-        if not u_prof:
-            try:
-                s = db.collection("users").document(did).get()
-                u_prof = s.to_dict() or {} if s.exists else {}
-            except Exception:
-                u_prof = {}
+        u_prof = user_docs.get(did, {})
 
         d_name = d.get("name") or u_prof.get("name") or "Driver"
         d_phone = d.get("phone") or u_prof.get("phone") or ""
@@ -1511,6 +1868,324 @@ def list_waiting_pools(
     }
 
 
+class ManualAssignBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    passengerId: Optional[str] = Field(default=None, max_length=128)
+    passenger_id: Optional[str] = Field(default=None, max_length=128)
+    driverId: Optional[str] = Field(default=None, max_length=128)
+    driver_id: Optional[str] = Field(default=None, max_length=128)
+    rideId: Optional[str] = Field(default=None, max_length=128)
+    ride_id: Optional[str] = Field(default=None, max_length=128)
+    notes: Optional[str] = Field(default="", max_length=500)
+
+
+WaitingPoolAssignBody = ManualAssignBody
+
+
+@router.post("/waiting-pools/assign")
+def assign_waiting_pool_passenger(
+    body: ManualAssignBody,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    now = now_utc()
+    now_ts = now.timestamp()
+    passenger_id = (body.passengerId or body.passenger_id or "").strip()
+    driver_id = (body.driverId or body.driver_id or "").strip()
+
+    if not passenger_id or not driver_id:
+        raise ApiError("Both passengerId and driverId are required.", 400)
+
+    # Fetch WPP entry if present
+    wpp_ref = db.collection("dispatchWPP").document(passenger_id)
+    wpp_snap = wpp_ref.get()
+    wpp_data = _doc_dict(wpp_snap) if wpp_snap.exists else {}
+
+    # Check if there is an existing pending/searching ride for this passenger
+    ride_id = (body.rideId or body.ride_id or wpp_data.get("ride_id") or "").strip()
+    ride_ref = None
+    ride_before: dict[str, Any] = {}
+    if ride_id:
+        candidate_ref = db.collection("rides").document(ride_id)
+        candidate_snap = candidate_ref.get()
+        if candidate_snap.exists:
+            ride_ref = candidate_ref
+            ride_before = _doc_dict(candidate_snap)
+
+    if ride_ref is None:
+        try:
+            pending_docs = list(
+                _stream(
+                    db.collection("rides")
+                    .where("passenger_id", "==", passenger_id)
+                    .where("status", "in", ["pending", "searching"])
+                    .limit(1)
+                )
+            )
+            if pending_docs:
+                ride_ref = pending_docs[0].reference
+                ride_before = _doc_dict(pending_docs[0])
+                ride_id = ride_before.get("id") or pending_docs[0].id
+        except Exception:
+            pass
+
+    if not wpp_snap.exists and ride_ref is None:
+        raise ApiError("Waiting passenger entry not found in pool or pending rides.", 404)
+
+    # Fetch driver & passenger user profiles
+    profiles = _batch_get_users(db, [passenger_id, driver_id])
+    drv_profile = profiles.get(driver_id, {})
+    dap_snap = db.collection("dispatchDAP").document(driver_id).get()
+    dap_data = _doc_dict(dap_snap) if dap_snap.exists else {}
+
+    if not drv_profile and not dap_data:
+        raise ApiError("Driver not found.", 404)
+
+    pax_profile = profiles.get(passenger_id, {})
+    d_name = drv_profile.get("name") or dap_data.get("name") or "Driver"
+    d_phone = drv_profile.get("phone") or dap_data.get("phone") or ""
+    v_num = (
+        drv_profile.get("vehicleNumber")
+        or drv_profile.get("vehicle_number")
+        or dap_data.get("vehicleNumber")
+        or dap_data.get("vehicle_number")
+        or ""
+    )
+    v_type = (
+        drv_profile.get("vehicleType")
+        or drv_profile.get("vehicle_type")
+        or dap_data.get("vehicleType")
+        or dap_data.get("vehicle_type")
+        or wpp_data.get("vehicle_type")
+        or ride_before.get("vehicle_type")
+        or "auto"
+    )
+    p_name = pax_profile.get("name") or wpp_data.get("name") or ride_before.get("passenger_name") or "Passenger"
+    p_phone = pax_profile.get("phone") or wpp_data.get("phone") or ride_before.get("passenger_phone") or ""
+
+    pickup = wpp_data.get("pickup") or {}
+    drop = wpp_data.get("drop") or {}
+    wants_share = bool(wpp_data.get("wants_share") or ride_before.get("rideType") == "share")
+
+    ride_updates: dict[str, Any] = {
+        "status": "accepted",
+        "driver_id": driver_id,
+        "driver_name": d_name,
+        "driver_phone": d_phone,
+        "vehicle_number": v_num,
+        "vehicle_type": str(v_type).lower(),
+        "passenger_id": passenger_id,
+        "passenger_name": p_name,
+        "passenger_phone": p_phone,
+        "assignedByAdmin": True,
+        "assignedByAdminUid": admin_user.get("uid"),
+        "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+
+    if ride_ref is not None:
+        ride_ref.set(ride_updates, merge=True)
+    else:
+        ride_ref = db.collection("rides").document()
+        ride_id = ride_ref.id
+        new_ride_doc = {
+            **ride_updates,
+            "rideType": "share" if wants_share else "single",
+            "pickup_name": pickup.get("name") or pickup.get("address") or "Pickup",
+            "pickup_lat": pickup.get("lat"),
+            "pickup_lng": pickup.get("lng"),
+            "drop_name": drop.get("name") or drop.get("address") or "Drop",
+            "drop_lat": drop.get("lat"),
+            "drop_lng": drop.get("lng"),
+            "fare": float(wpp_data.get("fare") or 0.0),
+            "createdAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        ride_ref.set(new_ride_doc)
+
+    # Remove passenger from dispatchWPP
+    if wpp_snap.exists:
+        try:
+            wpp_ref.delete()
+        except Exception:
+            pass
+
+    # Update driver state in dispatchDAP and driverPresence
+    if dap_snap.exists:
+        try:
+            db.collection("dispatchDAP").document(driver_id).set(
+                {"state": "BUSY", "updated_at": now_ts}, merge=True
+            )
+        except Exception:
+            pass
+    try:
+        db.collection("driverPresence").document(driver_id).set(
+            {"driverAvailability": "busy", "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True
+        )
+    except Exception:
+        pass
+
+    write_audit_log(
+        admin_user,
+        "dispatch.manual_assign",
+        "waiting_pool",
+        passenger_id,
+        wpp_data or ride_before,
+        {"driverId": driver_id, "rideId": ride_id, "status": "accepted"},
+        body.notes or f"Manually assigned driver {d_name} ({driver_id}) to passenger {p_name} ({passenger_id})",
+    )
+    return {
+        "ok": True,
+        "rideId": ride_id,
+        "passengerId": passenger_id,
+        "driverId": driver_id,
+        "driverName": d_name,
+        "passengerName": p_name,
+        "message": f"Driver {d_name} assigned to {p_name}.",
+    }
+
+
+@router.delete("/waiting-pools/passengers/{passenger_id}")
+def remove_waiting_pool_passenger(
+    passenger_id: str,
+    notes: Optional[str] = Query(default=""),
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    clean_pid = passenger_id.strip()
+    if not clean_pid:
+        raise ApiError("Invalid passenger_id.", 400)
+
+    wpp_ref = db.collection("dispatchWPP").document(clean_pid)
+    wpp_snap = wpp_ref.get()
+    before_data = _doc_dict(wpp_snap) if wpp_snap.exists else {}
+    removed_wpp = False
+    if wpp_snap.exists:
+        wpp_ref.delete()
+        removed_wpp = True
+
+    cancelled_rides: list[str] = []
+    try:
+        pending_docs = list(
+            _stream(
+                db.collection("rides")
+                .where("passenger_id", "==", clean_pid)
+                .where("status", "in", ["pending", "searching"])
+                .limit(10)
+            )
+        )
+        for pd in pending_docs:
+            pd.reference.set(
+                {
+                    "status": "cancelled_by_passenger",
+                    "cancellationReason": "Removed from waiting pool by administrator",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+            cancelled_rides.append(pd.id)
+    except Exception:
+        pass
+
+    if not removed_wpp and not cancelled_rides:
+        raise ApiError("Waiting passenger not found in pool.", 404)
+
+    write_audit_log(
+        admin_user,
+        "dispatch.remove_waiting_passenger",
+        "waiting_pool",
+        clean_pid,
+        before_data,
+        {"removedFromWpp": removed_wpp, "cancelledRides": cancelled_rides},
+        notes or "Removed from waiting pool by admin",
+    )
+    return {
+        "ok": True,
+        "passengerId": clean_pid,
+        "cancelledRides": cancelled_rides,
+        "message": "Passenger removed from waiting pool.",
+    }
+
+
+@router.get("/live-map")
+def get_live_fleet_map(
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    """Unified God-View live fleet & demand map data: online/busy drivers, waiting passengers, and active rides."""
+    pools_resp = list_waiting_pools(admin_user=admin_user)
+    live_resp = list_live_rides(admin_user=admin_user)
+
+    waiting_passengers = pools_resp.get("passengers") or []
+    idle_drivers = pools_resp.get("drivers") or []
+    active_hierarchy = live_resp.get("hierarchy") or []
+
+    drivers_by_id: dict[str, dict[str, Any]] = {}
+    for d in idle_drivers:
+        did = d.get("driver_id") or d.get("id")
+        if not did:
+            continue
+        drivers_by_id[did] = {
+            "id": did,
+            "name": d.get("name") or "Driver",
+            "phone": d.get("phone") or "",
+            "plate": d.get("plate") or "",
+            "vehicleType": str(d.get("vehicleType") or "Auto").lower(),
+            "status": "online",
+            "lat": d.get("lat"),
+            "lng": d.get("lng"),
+            "currentLocation": d.get("currentLocation") or "",
+            "idleTimeText": d.get("idleTimeText") or "",
+            "seatsFree": d.get("seatsFree") or 1,
+        }
+
+    # Overlay busy drivers from active rides
+    for h in active_hierarchy:
+        drv = h.get("driver") or {}
+        did = drv.get("id")
+        if not did:
+            continue
+        drv_loc = h.get("driverLocation") or {}
+        route = h.get("route") or {}
+        lat = drv_loc.get("lat") if isinstance(drv_loc, dict) else None
+        lng = drv_loc.get("lng") if isinstance(drv_loc, dict) else None
+        if lat is None or lng is None:
+            lat = route.get("pickup_lat")
+            lng = route.get("pickup_lng")
+        existing = drivers_by_id.get(did, {})
+        drivers_by_id[did] = {
+            "id": did,
+            "name": drv.get("name") or existing.get("name") or "Driver",
+            "phone": drv.get("phone") or existing.get("phone") or "",
+            "plate": drv.get("plate") or existing.get("plate") or "",
+            "vehicleType": str(h.get("vehicleType") or existing.get("vehicleType") or "auto").lower(),
+            "status": "busy",
+            "lat": lat if lat is not None else existing.get("lat"),
+            "lng": lng if lng is not None else existing.get("lng"),
+            "currentLocation": route.get("pickup") or existing.get("currentLocation") or "",
+            "activeRideId": h.get("id"),
+            "activeRideDisplayId": h.get("displayId"),
+            "seatsFree": max(0, int((h.get("passengers") or {}).get("capacity", 1)) - int((h.get("passengers") or {}).get("count", 1))),
+        }
+
+    all_drivers = list(drivers_by_id.values())
+    online_count = sum(1 for d in all_drivers if d.get("status") == "online")
+    busy_count = sum(1 for d in all_drivers if d.get("status") == "busy")
+
+    return {
+        "ok": True,
+        "drivers": all_drivers,
+        "waitingPassengers": waiting_passengers,
+        "activeRides": active_hierarchy,
+        "counts": {
+            "onlineDrivers": online_count,
+            "busyDrivers": busy_count,
+            "totalDrivers": len(all_drivers),
+            "waitingPassengers": len(waiting_passengers),
+            "activeRides": len(active_hierarchy),
+        },
+    }
+
+
 @router.get("/rides/history")
 def list_ride_history(
     admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
@@ -1546,9 +2221,18 @@ def list_ride_history(
         base = base.where("createdAt", ">=", _day_range_utc(dateFrom, "dateFrom"))
 
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
-    items, next_cursor = _paginate(base, cursor, limit, "rides")
-    items = _apply_search(items, q, ["driver_name", "pickup_name", "drop_name", "passenger_id", "driver_id"])
-    return {"ok": True, "rides": _backfill_driver_names(items), "nextCursor": next_cursor}
+    items, next_cursor = _paginate_with_search(
+        base,
+        cursor,
+        limit,
+        "rides",
+        q,
+        ["id", "driver_name", "passenger_name", "pickup_name", "drop_name", "passenger_id", "driver_id"],
+        pre_search_transform=_backfill_driver_names,
+    )
+    if not (q and q.strip()):
+        items = _backfill_driver_names(items)
+    return {"ok": True, "rides": items, "nextCursor": next_cursor}
 
 
 @router.get("/rides/{ride_id}")
@@ -1816,26 +2500,137 @@ def rides_daily_analytics(
     buckets: dict[str, dict[str, Any]] = {}
     for i in range(days):
         d = (start_bound + timedelta(days=i)).strftime("%Y-%m-%d")
-        buckets[d] = {"date": d, "rides": 0, "completed": 0, "cancelled": 0, "fare": 0.0}
+        buckets[d] = {"date": d, "rides": 0, "completed": 0, "cancelled": 0, "fare": 0.0, "distanceKm": 0.0}
+
+    cancel_by_passenger = 0
+    cancel_by_driver = 0
+    cancel_by_admin_or_system = 0
+    cancel_reasons: dict[str, int] = {}
+
+    vehicle_split: dict[str, int] = {"auto": 0, "bike": 0, "car": 0, "share": 0, "single": 0}
+    total_rides = 0
+    total_completed = 0
+    total_cancelled = 0
+    total_revenue = 0.0
+    total_distance_km = 0.0
 
     for data in docs:
         created = data.get("createdAt")
-        if not isinstance(created, datetime):
+        dt_val: Optional[datetime] = None
+        if isinstance(created, datetime):
+            dt_val = created.astimezone(timezone.utc) if created.tzinfo else created.replace(tzinfo=timezone.utc)
+        elif isinstance(created, (int, float)):
+            try:
+                dt_val = datetime.fromtimestamp(float(created), tz=timezone.utc)
+            except Exception:
+                dt_val = None
+        elif isinstance(created, str):
+            try:
+                dt_val = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            except Exception:
+                dt_val = None
+        if dt_val is None or dt_val < start_bound:
             continue
-        key = created.astimezone(timezone.utc).strftime("%Y-%m-%d")
-        bucket = buckets.setdefault(key, {"date": key, "rides": 0, "completed": 0, "cancelled": 0, "fare": 0.0})
+
+        key = dt_val.strftime("%Y-%m-%d")
+        bucket = buckets.setdefault(
+            key, {"date": key, "rides": 0, "completed": 0, "cancelled": 0, "fare": 0.0, "distanceKm": 0.0}
+        )
         bucket["rides"] += 1
-        status = str(data.get("status") or "")
+        total_rides += 1
+
+        v_type = str(data.get("vehicle_type") or data.get("vehicleType") or "auto").strip().lower()
+        if v_type in ("bike", "scooty", "two_wheeler"):
+            vehicle_split["bike"] += 1
+        elif v_type in ("car", "cab", "sedan", "suv"):
+            vehicle_split["car"] += 1
+        else:
+            vehicle_split["auto"] += 1
+
+        r_type = str(data.get("rideType") or "single").strip().lower()
+        if r_type == "share":
+            vehicle_split["share"] += 1
+        else:
+            vehicle_split["single"] += 1
+
+        status = str(data.get("status") or "").strip().lower()
         if status == "completed":
             bucket["completed"] += 1
-            bucket["fare"] += float(data.get("fare") or 0)
+            total_completed += 1
+            fare_val = float(data.get("fare") or 0)
+            dist_val = float(data.get("estimated_distance_km") or data.get("distance_km") or 0)
+            bucket["fare"] += fare_val
+            bucket["distanceKm"] += dist_val
+            total_revenue += fare_val
+            total_distance_km += dist_val
         elif status.startswith("cancelled"):
             bucket["cancelled"] += 1
+            total_cancelled += 1
+            reason_raw = str(data.get("cancellationReason") or data.get("cancelReason") or "").strip()
+            if "admin" in reason_raw.lower() or status == "cancelled_by_admin":
+                cancel_by_admin_or_system += 1
+            elif status == "cancelled_by_passenger":
+                cancel_by_passenger += 1
+            elif status == "cancelled_by_driver":
+                cancel_by_driver += 1
+            else:
+                cancel_by_admin_or_system += 1
+            if reason_raw:
+                cancel_reasons[reason_raw] = cancel_reasons.get(reason_raw, 0) + 1
 
     ordered = sorted(buckets.values(), key=lambda b: b["date"])
     for b in ordered:
         b["fare"] = round(b["fare"], 2)
-    return {"ok": True, "days": ordered}
+        b["distanceKm"] = round(b["distanceKm"], 2)
+
+    completion_rate = round((total_completed / total_rides * 100), 1) if total_rides > 0 else 0.0
+    cancellation_rate = round((total_cancelled / total_rides * 100), 1) if total_rides > 0 else 0.0
+    avg_fare = round(total_revenue / total_completed, 2) if total_completed > 0 else 0.0
+
+    top_cancel_reasons = [
+        {"reason": k, "count": v}
+        for k, v in sorted(cancel_reasons.items(), key=lambda x: x[1], reverse=True)[:6]
+    ]
+
+    return {
+        "ok": True,
+        "days": ordered,
+        "summary": {
+            "periodDays": days,
+            "totalRides": total_rides,
+            "completedRides": total_completed,
+            "cancelledRides": total_cancelled,
+            "completionRate": completion_rate,
+            "completionRatePercent": completion_rate,
+            "cancellationRate": cancellation_rate,
+            "cancellationRatePercent": cancellation_rate,
+            "totalFare": round(total_revenue, 2),
+            "totalRevenue": round(total_revenue, 2),
+            "avgFarePerCompletedRide": avg_fare,
+            "averageFare": avg_fare,
+            "totalDistanceKm": round(total_distance_km, 2),
+        },
+        "cancellationBreakdown": {
+            "byPassenger": cancel_by_passenger,
+            "byDriver": cancel_by_driver,
+            "byAdminOrSystem": cancel_by_admin_or_system,
+            "totalCancelled": total_cancelled,
+            "reasons": top_cancel_reasons,
+            "topReasons": top_cancel_reasons,
+        },
+        "vehicleSplit": {
+            **vehicle_split,
+            "byVehicle": {
+                "auto": vehicle_split["auto"],
+                "bike": vehicle_split["bike"],
+                "car": vehicle_split["car"],
+            },
+            "byRideType": {
+                "share": vehicle_split["share"],
+                "single": vehicle_split["single"],
+            },
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2132,4 +2927,238 @@ def get_admin_dispatch_stats(
     db = _db()
     from ..dispatch.invariants import check_dispatch_invariants
     return check_dispatch_invariants(db)
+
+
+# ---------------------------------------------------------------------------
+# Admin Broadcast & Targeted Push Notification Center
+# ---------------------------------------------------------------------------
+
+BROADCAST_TARGET_ALIASES = {
+    "all": "all",
+    "all_users": "all",
+    "drivers": "drivers",
+    "all_drivers": "drivers",
+    "passengers": "passengers",
+    "all_passengers": "passengers",
+    "online_drivers": "online_drivers",
+    "pending_drivers": "pending_drivers",
+    "overdue_drivers": "overdue_drivers",
+    "user": "user",
+    "specific_user": "user",
+}
+
+
+class BroadcastNotificationBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    target: str = Field(min_length=1, max_length=32)
+    targetUid: Optional[str] = Field(default=None, max_length=128)
+    category: Optional[str] = Field(default="announcement", max_length=60)
+    title: str = Field(min_length=1, max_length=120)
+    body: str = Field(min_length=1, max_length=500)
+    deepLink: Optional[str] = Field(default="/", max_length=250)
+    channelId: Optional[str] = Field(default="general", max_length=60)
+
+
+AdminBroadcastBody = BroadcastNotificationBody
+
+
+@router.get("/notifications/broadcasts")
+def list_notification_broadcasts(
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+    limit: int = Query(default=25),
+) -> dict[str, Any]:
+    limit = _clamp_limit(limit)
+    db = _db()
+    items: list[dict[str, Any]] = []
+    try:
+        query = (
+            db.collection("adminBroadcasts")
+            .order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        items = [_doc_dict(d) for d in _stream(query)]
+    except Exception:
+        try:
+            items = [_doc_dict(d) for d in _stream(db.collection("adminBroadcasts").limit(limit))]
+            items.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
+        except Exception:
+            items = []
+    return {"ok": True, "broadcasts": items}
+
+
+list_broadcast_notifications = list_notification_broadcasts
+
+
+@router.post("/notifications/broadcast")
+def send_notification_broadcast(
+    payload: BroadcastNotificationBody,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    raw_target = payload.target.strip().lower()
+    target = BROADCAST_TARGET_ALIASES.get(raw_target)
+    if not target:
+        raise ApiError(f"Invalid target '{payload.target}'.", 400)
+
+    title = payload.title.strip()
+    body_text = payload.body.strip()
+    if not title or not body_text:
+        raise ApiError("Notification title and body cannot be empty.", 400)
+
+    db = _db()
+    from ..core.notifications import (
+        NotificationEvent,
+        build_deep_link,
+        collect_tokens,
+        dispatch_push_notification,
+    )
+
+    user_docs: list[dict[str, Any]] = []
+    if target == "user":
+        target_uid = (payload.targetUid or "").strip()
+        if not target_uid:
+            raise ApiError("targetUid is required when target is 'user'.", 400)
+        snap = db.collection("users").document(target_uid).get()
+        if snap.exists:
+            user_docs.append(_doc_dict(snap))
+        else:
+            # Try matching by phone or email
+            by_phone = list(_stream(db.collection("users").where("phone", "==", target_uid).limit(5)))
+            by_email = list(_stream(db.collection("users").where("email", "==", target_uid).limit(5))) if not by_phone else []
+            for d in (by_phone or by_email):
+                user_docs.append(_doc_dict(d))
+        if not user_docs:
+            raise ApiError(f"Target user '{target_uid}' not found.", 404)
+    elif target == "drivers":
+        user_docs = [_doc_dict(d) for d in _stream(db.collection("users").where("role", "==", "driver").limit(1000))]
+    elif target == "online_drivers":
+        all_drv = [_doc_dict(d) for d in _stream(db.collection("users").where("role", "==", "driver").limit(1000))]
+        user_docs = [
+            d for d in all_drv
+            if str(d.get("driverAvailability") or "").strip().lower() in ("online", "searching", "busy")
+        ]
+    elif target == "pending_drivers":
+        all_drv = [_doc_dict(d) for d in _stream(db.collection("users").where("role", "==", "driver").limit(1000))]
+        user_docs = [
+            d for d in all_drv
+            if str(d.get("verificationStatus") or "pending_review").strip().lower() == "pending_review"
+        ]
+    elif target == "overdue_drivers":
+        overdue_driver_ids: set[str] = set()
+        try:
+            for p_snap in _stream(db.collection("driverPayments").where("status", "in", ["overdue", "pending_verification"]).limit(500)):
+                pd = _doc_dict(p_snap)
+                did = str(pd.get("driverId") or pd.get("driver_id") or "").strip()
+                if did:
+                    overdue_driver_ids.add(did)
+        except Exception:
+            pass
+        all_drv = [_doc_dict(d) for d in _stream(db.collection("users").where("role", "==", "driver").limit(1000))]
+        user_docs = [
+            d for d in all_drv
+            if (d.get("id") or d.get("uid")) in overdue_driver_ids
+            or bool(d.get("overdueFee"))
+            or str(d.get("feeStatus") or "").strip().lower() == "overdue"
+        ]
+    elif target == "passengers":
+        user_docs = [_doc_dict(d) for d in _stream(db.collection("users").where("role", "==", "passenger").limit(1000))]
+    else:  # "all"
+        user_docs = [_doc_dict(d) for d in _stream(db.collection("users").limit(1500))]
+
+    all_tokens: list[str] = []
+    seen_tokens: set[str] = set()
+    for u in user_docs:
+        for tok in collect_tokens(u):
+            if tok not in seen_tokens:
+                seen_tokens.add(tok)
+                all_tokens.append(tok)
+
+    deep_link = build_deep_link(payload.deepLink or "/")
+    channel_id = (payload.channelId or payload.category or "general").strip() or "general"
+
+    dispatch_res: dict[str, Any] = {"sent": 0, "failed": 0}
+    if all_tokens:
+        try:
+            dispatch_res = dispatch_push_notification(
+                tokens=all_tokens,
+                event_type=NotificationEvent.GENERAL_ALERT,
+                title=title,
+                body=body_text,
+                url=deep_link,
+                channel_id=channel_id,
+                tag=f"admin_broadcast_{int(now_utc().timestamp())}",
+                extra_data={"source": "admin_broadcast", "target": raw_target},
+                db=db,
+            )
+        except Exception as exc:
+            logger.warning("Broadcast push dispatch warning: %s", exc)
+
+    now_iso = now_utc().isoformat()
+    record = {
+        "target": raw_target,
+        "targetUid": (payload.targetUid or "").strip() or None,
+        "category": payload.category or "announcement",
+        "title": title,
+        "body": body_text,
+        "deepLink": deep_link,
+        "channelId": channel_id,
+        "recipientCount": len(user_docs),
+        "tokenCount": len(all_tokens),
+        "fcmDispatchedCount": len(all_tokens),
+        "sentCount": int(dispatch_res.get("sent") or 0),
+        "failedCount": int(dispatch_res.get("failed") or 0),
+        "sentByUid": admin_user.get("uid"),
+        "sentByEmail": admin_user.get("email"),
+        "createdAt": now_iso,
+    }
+    doc_ref = db.collection("adminBroadcasts").document()
+    record_with_id = {"id": doc_ref.id, **record}
+    try:
+        doc_ref.set({**record, "createdAt": fb_firestore.SERVER_TIMESTAMP})
+    except Exception:
+        pass
+
+    # Fan-out in-app notifications to userNotifications collection (capped to 500 to avoid oversized writes)
+    for u in user_docs[:500]:
+        uid_val = u.get("id") or u.get("uid")
+        if not uid_val:
+            continue
+        try:
+            db.collection("userNotifications").document().set(
+                {
+                    "userId": str(uid_val),
+                    "broadcastId": doc_ref.id,
+                    "title": title,
+                    "body": body_text,
+                    "category": payload.category or "announcement",
+                    "deepLink": deep_link,
+                    "channelId": channel_id,
+                    "read": False,
+                    "createdAt": fb_firestore.SERVER_TIMESTAMP,
+                }
+            )
+        except Exception:
+            pass
+
+    write_audit_log(
+        admin_user,
+        "notification.broadcast",
+        "adminBroadcast",
+        doc_ref.id,
+        {},
+        record,
+        f"Broadcast '{title}' to {raw_target} ({len(user_docs)} users, {len(all_tokens)} tokens)",
+    )
+    return {
+        "ok": True,
+        "broadcast": record_with_id,
+        "recipientCount": len(user_docs),
+        "tokenCount": len(all_tokens),
+        "sentCount": int(dispatch_res.get("sent") or 0),
+        "failedCount": int(dispatch_res.get("failed") or 0),
+    }
+
+
+send_admin_broadcast = send_notification_broadcast
+
+
 

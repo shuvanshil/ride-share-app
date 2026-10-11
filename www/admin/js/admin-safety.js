@@ -4,7 +4,7 @@ import { toast } from "./admin-toast.js";
 import { showReadOnlyDrawer } from "./admin-drawer.js";
 import { trackRideOnMap, stopTracking } from "./admin-live.js";
 import { db, auth } from "../../js/platform/firebase-init.js";
-import { collection, doc, getDoc, onSnapshot, orderBy, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { collection, doc, getDoc, limit, onSnapshot, orderBy, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -454,7 +454,7 @@ let firstSosSnapshot = true;
 export function startSosRealtimeAlerts() {
     if (sosListenerStarted) return;
     sosListenerStarted = true;
-    const q = query(collection(db, "sosAlerts"), where("status", "==", "open"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "sosAlerts"), where("status", "==", "open"), orderBy("createdAt", "desc"), limit(50));
     onSnapshot(
         q,
         (snap) => {
