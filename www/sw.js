@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.7.0-admin-v2";
+const CACHE_VERSION = "liphtup-v2.7.1-broadcast-fix";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
@@ -90,11 +90,9 @@ const APP_SHELL = [
 ].map((path) => new URL(path, BASE_URL).href);
 
 self.addEventListener("install", (event) => {
-    // Pre-cache each app-shell file independently. cache.addAll() is atomic and
-    // would abort the ENTIRE install (leaving the old service worker/cache in
-    // control indefinitely) if even a single URL failed to fetch. Caching each
-    // file on its own means one missing/renamed asset can't silently block the
-    // whole app from ever updating.
+    self.skipWaiting();
+    // Pre-cache each app-shell file independently in the background so one slow
+    // or missing asset never blocks serviceWorker.ready or push token registration.
     event.waitUntil(
         caches.open(CACHE_VERSION)
             .then((cache) => Promise.all(
@@ -102,7 +100,6 @@ self.addEventListener("install", (event) => {
                     console.warn("Service worker: could not pre-cache", url, error);
                 }))
             ))
-            .then(() => self.skipWaiting())
     );
 });
 
@@ -257,15 +254,18 @@ async function showRideNotification(payload = {}) {
         }
     }
 
-    const isRideRequestPush = data.type === "ride_request"
+    const isAdminBroadcast = data.source === "admin_broadcast" || Boolean(data.broadcastId);
+    const isRideRequestPush = !isAdminBroadcast && (
+        data.type === "ride_request"
         || data.type === "ride_offer"
         || data.type === "NEW_PASSENGER_AVAILABLE"
         || data.type === "ride_dispatch"
         || data.type === "pending_driver_available"
         || data.type === "share_ride"
         || data.type === "share_addon"
-        || (targetUrl && targetUrl.includes("/driver"))
-        || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger") || title.toLowerCase().includes("share ride") || title.toLowerCase().includes("ride match")));
+        || (targetUrl && targetUrl.includes("/driver-service"))
+        || (title && (title.toLowerCase().includes("ride request") || title.toLowerCase().includes("new passenger") || title.toLowerCase().includes("share ride") || title.toLowerCase().includes("ride match")))
+    );
 
     if (isRideRequestPush) {
         const role = await getStoredUserRole();
@@ -290,6 +290,26 @@ async function showRideNotification(payload = {}) {
             });
         } catch (e) {}
         return;
+    }
+
+    if (isAdminBroadcast) {
+        try {
+            const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+            clientList.forEach((client) => {
+                client.postMessage({
+                    type: "BROADCAST_NOTIFICATION",
+                    payload: {
+                        id: data.notificationId || "",
+                        broadcastId: data.broadcastId || "",
+                        eventId: data.eventId || "",
+                        title,
+                        body,
+                        deepLink: targetUrl,
+                        tag,
+                    },
+                });
+            });
+        } catch (e) {}
     }
 
     return self.registration.showNotification(title, {

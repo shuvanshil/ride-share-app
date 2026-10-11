@@ -2265,6 +2265,32 @@ def update_driver_location(
         raise ApiError("Could not update driver GPS location.", 503)
 
 
+def _merge_token_details(existing_details: Any, new_token: str, user_agent: Optional[str]) -> list[dict[str, Any]]:
+    clean_tok = str(new_token or "").strip()
+    filtered = [
+        d for d in (existing_details or [])
+        if isinstance(d, dict) and str(d.get("token") or "").strip() and str(d.get("token") or "").strip() != clean_tok
+    ]
+    if clean_tok:
+        filtered.append({
+            "token": clean_tok,
+            "userAgent": user_agent or "",
+            "updatedAt": datetime.now(timezone.utc),
+        })
+    return filtered[-5:]
+
+
+def _merge_push_tokens(existing_tokens: Any, new_token: str) -> list[str]:
+    clean_tok = str(new_token or "").strip()
+    filtered = [
+        t.strip() for t in (existing_tokens or [])
+        if isinstance(t, str) and t.strip() and t.strip() != clean_tok
+    ]
+    if clean_tok:
+        filtered.append(clean_tok)
+    return filtered[-5:]
+
+
 @router.post("/driver-push-token")
 def save_driver_push_token(
     body: DriverPushTokenBody,
@@ -2280,20 +2306,17 @@ def save_driver_push_token(
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can register driver push tokens.")
-        token_detail = {
-            "token": body.token,
-            "userAgent": body.userAgent,
-            "updatedAt": datetime.now(timezone.utc),
-        }
         notification_eligible_until = (
             datetime.now(timezone.utc) + timedelta(hours=DRIVER_NOTIFICATION_ELIGIBLE_HOURS)
             if str(profile.get("desiredAvailability") or profile.get("driverAvailability") or "").strip().lower() != "offline"
             else datetime.fromtimestamp(0, timezone.utc)
         )
+        merged_tokens = _merge_push_tokens(profile.get("pushTokens"), body.token)
+        merged_details = _merge_token_details(profile.get("pushTokenDetails"), body.token, body.userAgent)
         update = {
             "fcmToken": body.token,
-            "pushTokens": fb_firestore.ArrayUnion([body.token]),
-            "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
+            "pushTokens": merged_tokens if isinstance(profile.get("pushTokens"), list) else fb_firestore.ArrayUnion([body.token]),
+            "pushTokenDetails": merged_details,
             "notificationPermission": "granted",
             "notificationEligibleUntil": notification_eligible_until,
             "lastAppSeenAt": fb_firestore.SERVER_TIMESTAMP,
@@ -2309,11 +2332,12 @@ def save_driver_push_token(
 
 
 @router.post("/passenger-push-token")
+@router.post("/push-token")
 def save_passenger_push_token(
     body: DriverPushTokenBody,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
-    """Store a push token for the authenticated user/passenger's account."""
+    """Store a push token for the authenticated user's account (passenger or driver)."""
     uid = str(user.get("uid") or "").strip()
     if not uid:
         raise ApiError("Authenticated user identity is missing.", 401)
@@ -2321,23 +2345,35 @@ def save_passenger_push_token(
         raise ApiError("Push permission is not granted.", 400)
     try:
         db = fb_firestore.client(get_admin_app())
-        token_detail = {
-            "token": body.token,
-            "userAgent": body.userAgent,
-            "updatedAt": datetime.now(timezone.utc),
-        }
-        update = {
+        u_snap = db.collection("users").document(uid).get()
+        profile = (u_snap.to_dict() or {}) if getattr(u_snap, "exists", False) else {}
+        is_driver_account = str(profile.get("role") or "").strip().lower() == "driver"
+        is_approved_driver = is_driver_account and str(profile.get("verificationStatus") or "").strip().lower() == "approved"
+
+        merged_tokens = _merge_push_tokens(profile.get("pushTokens"), body.token)
+        merged_details = _merge_token_details(profile.get("pushTokenDetails"), body.token, body.userAgent)
+        update: dict[str, Any] = {
             "fcmToken": body.token,
-            "pushTokens": fb_firestore.ArrayUnion([body.token]),
-            "pushTokenDetails": fb_firestore.ArrayUnion([token_detail]),
+            "pushTokens": merged_tokens if isinstance(profile.get("pushTokens"), list) else fb_firestore.ArrayUnion([body.token]),
+            "pushTokenDetails": merged_details,
             "notificationPermission": "granted",
             "lastAppSeenAt": fb_firestore.SERVER_TIMESTAMP,
             "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
         }
         db.collection("users").document(uid).set(update, merge=True)
-        # Ensure driver presence does NOT dispatch ride requests to this token when active user is logged in as passenger
+
         driver_presence_ref = db.collection("driverPresence").document(uid)
-        if driver_presence_ref.get().exists:
+        if is_approved_driver:
+            driver_presence_ref.set({
+                "fcmToken": body.token,
+                "pushTokens": merged_tokens if isinstance(profile.get("pushTokens"), list) else fb_firestore.ArrayUnion([body.token]),
+                "pushTokenDetails": merged_details,
+                "notificationPermission": "granted",
+                "lastAppSeenAt": fb_firestore.SERVER_TIMESTAMP,
+                "pushUpdatedAt": fb_firestore.SERVER_TIMESTAMP,
+            }, merge=True)
+        elif not is_driver_account and driver_presence_ref.get().exists:
+            # Ensure driver presence does NOT dispatch ride requests to this token when active user is a passenger
             driver_presence_ref.set({
                 "driverAvailability": "offline",
                 "desiredAvailability": "offline",
@@ -2374,6 +2410,11 @@ def unregister_device_token(
             update_data: dict[str, Any] = {
                 "pushTokens": fb_firestore.ArrayRemove([clean_token]),
             }
+            if isinstance(u_data.get("pushTokenDetails"), list):
+                update_data["pushTokenDetails"] = [
+                    d for d in u_data["pushTokenDetails"]
+                    if isinstance(d, dict) and str(d.get("token") or "").strip() != clean_token
+                ]
             if u_data.get("fcmToken") == clean_token:
                 remaining = [t for t in (u_data.get("pushTokens") or []) if t != clean_token]
                 update_data["fcmToken"] = remaining[-1] if remaining else None
@@ -2386,6 +2427,11 @@ def unregister_device_token(
             dp_update: dict[str, Any] = {
                 "pushTokens": fb_firestore.ArrayRemove([clean_token]),
             }
+            if isinstance(dp_data.get("pushTokenDetails"), list):
+                dp_update["pushTokenDetails"] = [
+                    d for d in dp_data["pushTokenDetails"]
+                    if isinstance(d, dict) and str(d.get("token") or "").strip() != clean_token
+                ]
             if dp_data.get("fcmToken") == clean_token:
                 remaining = [t for t in (dp_data.get("pushTokens") or []) if t != clean_token]
                 dp_update["fcmToken"] = remaining[-1] if remaining else None
@@ -2394,6 +2440,147 @@ def unregister_device_token(
         return {"ok": True}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
+
+
+class AckNotificationsBody(BaseModel):
+    notificationIds: Optional[list[str]] = None
+    broadcastIds: Optional[list[str]] = None
+    markRead: bool = True
+
+
+@router.get("/notifications/pending")
+def get_pending_user_notifications(
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Fetch undelivered/unread notifications for the authenticated user (supports online & offline-to-online scheduled delivery)."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is required.", 401)
+    try:
+        db = fb_firestore.client(get_admin_app())
+        items: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        try:
+            snaps = db.collection("userNotifications").where("userId", "==", uid).limit(40).get()
+            for snap in snaps:
+                data = snap.to_dict() or {}
+                if data.get("delivered") is True or data.get("read") is True:
+                    continue
+                created_raw = data.get("createdAt")
+                if hasattr(created_raw, "isoformat"):
+                    created_str = created_raw.isoformat()
+                else:
+                    created_str = str(created_raw or "")
+                nid = snap.id
+                seen_ids.add(nid)
+                items.append({
+                    "id": nid,
+                    "broadcastId": data.get("broadcastId") or "",
+                    "title": data.get("title") or "LiphtUp Notification",
+                    "body": data.get("body") or "",
+                    "category": data.get("category") or "announcement",
+                    "deepLink": data.get("deepLink") or "/",
+                    "channelId": data.get("channelId") or "general",
+                    "createdAt": created_str,
+                })
+        except Exception:
+            pass
+
+        items.sort(key=lambda x: str(x.get("createdAt") or ""))
+        return {"ok": True, "notifications": items[:15]}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": True, "notifications": [], "warning": str(exc)}
+
+
+@router.post("/notifications/ack")
+def acknowledge_user_notifications(
+    body: AckNotificationsBody,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    """Acknowledge receipt/display of notifications on Web or App and update broadcast delivery counters."""
+    uid = str(user.get("uid") or "").strip()
+    if not uid:
+        raise ApiError("Authenticated user identity is required.", 401)
+
+    notif_ids = [str(x).strip() for x in (body.notificationIds or []) if str(x).strip()][:30]
+    bcast_ids = [str(x).strip() for x in (body.broadcastIds or []) if str(x).strip()][:30]
+    for b_id in bcast_ids:
+        composite = f"{b_id}_{uid}"
+        if composite not in notif_ids:
+            notif_ids.append(composite)
+
+    if not notif_ids and not bcast_ids:
+        return {"ok": True, "acknowledged": 0}
+
+    try:
+        db = fb_firestore.client(get_admin_app())
+        now_iso = datetime.now(timezone.utc).isoformat()
+        acked_count = 0
+        newly_delivered_broadcasts: set[str] = set()
+
+        for nid in notif_ids:
+            try:
+                n_ref = db.collection("userNotifications").document(nid)
+                n_snap = n_ref.get()
+                if not n_snap.exists:
+                    continue
+                n_data = n_snap.to_dict() or {}
+                if str(n_data.get("userId") or "").strip() != uid:
+                    continue
+                was_delivered = bool(n_data.get("delivered"))
+                was_push_sent = bool(n_data.get("pushSent"))
+                b_id = str(n_data.get("broadcastId") or "").strip()
+
+                update_fields: dict[str, Any] = {
+                    "delivered": True,
+                    "deliveredAt": now_iso,
+                    "status": "delivered",
+                }
+                if body.markRead:
+                    update_fields["read"] = True
+                    update_fields["readAt"] = now_iso
+                n_ref.set(update_fields, merge=True)
+                acked_count += 1
+                if b_id and (not was_delivered) and (not was_push_sent):
+                    newly_delivered_broadcasts.add(b_id)
+                elif b_id:
+                    newly_delivered_broadcasts.add(b_id)
+            except Exception:
+                pass
+
+        for b_id in newly_delivered_broadcasts:
+            try:
+                b_ref = db.collection("adminBroadcasts").document(b_id)
+                b_snap = b_ref.get()
+                if not b_snap.exists:
+                    continue
+                b_data = b_snap.to_dict() or {}
+                recip_total = max(1, int(b_data.get("recipientCount") or 1))
+                # Count how many userNotifications for this broadcast are now delivered or pushSent
+                delivered_snaps = db.collection("userNotifications").where("broadcastId", "==", b_id).limit(500).get()
+                delivered_users = sum(
+                    1 for s in delivered_snaps
+                    if bool((s.to_dict() or {}).get("delivered")) or bool((s.to_dict() or {}).get("pushSent"))
+                )
+                if delivered_users == 0:
+                    delivered_users = min(recip_total, int(b_data.get("deliveredCount") or 0) + 1)
+                new_sent = max(int(b_data.get("sentCount") or 0), delivered_users)
+                new_queued = max(0, recip_total - delivered_users)
+                b_ref.set({
+                    "deliveredCount": delivered_users,
+                    "sentCount": new_sent,
+                    "queuedCount": new_queued,
+                    "deliveryStatus": "delivered" if delivered_users >= recip_total else "partial_queued",
+                    "lastDeliveredAt": now_iso,
+                }, merge=True)
+            except Exception:
+                pass
+
+        return {"ok": True, "acknowledged": acked_count}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
 
 
 

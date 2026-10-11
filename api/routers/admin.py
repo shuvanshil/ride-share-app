@@ -111,7 +111,7 @@ def _paginate(base_query, cursor: Optional[str], limit: int, id_field_collection
     return items, next_cursor
 
 
-def _batch_get_users(db, uids: Any) -> dict[str, dict[str, Any]]:
+def _batch_get_dicts(db, collection_name: str, uids: Any) -> dict[str, dict[str, Any]]:
     clean_uids = [str(u).strip() for u in (uids or []) if u and str(u).strip()]
     unique_uids = list(dict.fromkeys(clean_uids))
     if not unique_uids:
@@ -120,7 +120,7 @@ def _batch_get_users(db, uids: Any) -> dict[str, dict[str, Any]]:
     if hasattr(db, "get_all"):
         for idx in range(0, len(unique_uids), 100):
             chunk = unique_uids[idx : idx + 100]
-            refs = [db.collection("users").document(uid) for uid in chunk]
+            refs = [db.collection(collection_name).document(uid) for uid in chunk]
             try:
                 for snap in db.get_all(refs):
                     if getattr(snap, "exists", False):
@@ -128,7 +128,7 @@ def _batch_get_users(db, uids: Any) -> dict[str, dict[str, Any]]:
             except Exception:
                 for uid in chunk:
                     try:
-                        snap = db.collection("users").document(uid).get()
+                        snap = db.collection(collection_name).document(uid).get()
                         if snap.exists:
                             result[uid] = snap.to_dict() or {}
                     except Exception:
@@ -136,12 +136,16 @@ def _batch_get_users(db, uids: Any) -> dict[str, dict[str, Any]]:
     else:
         for uid in unique_uids:
             try:
-                snap = db.collection("users").document(uid).get()
+                snap = db.collection(collection_name).document(uid).get()
                 if snap.exists:
                     result[uid] = snap.to_dict() or {}
             except Exception:
                 pass
     return result
+
+
+def _batch_get_users(db, uids: Any) -> dict[str, dict[str, Any]]:
+    return _batch_get_dicts(db, "users", uids)
 
 
 def _backfill_driver_names(rides: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -3010,6 +3014,7 @@ def send_notification_broadcast(
         build_deep_link,
         collect_tokens,
         dispatch_push_notification,
+        normalize_channel_id,
     )
 
     user_docs: list[dict[str, Any]] = []
@@ -3017,15 +3022,63 @@ def send_notification_broadcast(
         target_uid = (payload.targetUid or "").strip()
         if not target_uid:
             raise ApiError("targetUid is required when target is 'user'.", 400)
+
+        seen_uids: set[str] = set()
+
+        def _append_user(doc_d: Optional[dict[str, Any]]) -> None:
+            if not doc_d:
+                return
+            u_id = str(doc_d.get("id") or doc_d.get("uid") or "").strip()
+            if u_id and u_id not in seen_uids:
+                seen_uids.add(u_id)
+                user_docs.append(doc_d)
+
         snap = db.collection("users").document(target_uid).get()
         if snap.exists:
-            user_docs.append(_doc_dict(snap))
-        else:
-            # Try matching by phone or email
-            by_phone = list(_stream(db.collection("users").where("phone", "==", target_uid).limit(5)))
-            by_email = list(_stream(db.collection("users").where("email", "==", target_uid).limit(5))) if not by_phone else []
-            for d in (by_phone or by_email):
-                user_docs.append(_doc_dict(d))
+            _append_user(_doc_dict(snap))
+
+        if not user_docs:
+            digits = "".join(ch for ch in target_uid if ch.isdigit())
+            last10 = digits[-10:] if len(digits) >= 10 else ""
+            phone_candidates: list[str] = []
+            for cand in (target_uid, f"+91{last10}" if len(last10) == 10 else "", last10, f"+{digits}" if digits else ""):
+                if cand and cand not in phone_candidates:
+                    phone_candidates.append(cand)
+
+            # Check phoneLoginIndex first
+            for p_cand in phone_candidates:
+                try:
+                    idx_snap = db.collection("phoneLoginIndex").document(p_cand).get()
+                    if idx_snap.exists:
+                        idx_data = idx_snap.to_dict() or {}
+                        idx_uid = str(idx_data.get("uid") or "").strip()
+                        if idx_uid:
+                            u_snap = db.collection("users").document(idx_uid).get()
+                            if u_snap.exists:
+                                _append_user(_doc_dict(u_snap))
+                except Exception:
+                    pass
+
+            # Check users collection phone fields
+            for p_cand in phone_candidates:
+                for field_name in ("phone", "phone_number", "phoneNumber"):
+                    try:
+                        for d in _stream(db.collection("users").where(field_name, "==", p_cand).limit(5)):
+                            _append_user(_doc_dict(d))
+                    except Exception:
+                        pass
+                if user_docs:
+                    break
+
+            # Try matching by email (exact and lowercase)
+            if not user_docs:
+                for e_cand in list(dict.fromkeys([target_uid, target_uid.lower()])):
+                    try:
+                        for d in _stream(db.collection("users").where("email", "==", e_cand).limit(5)):
+                            _append_user(_doc_dict(d))
+                    except Exception:
+                        pass
+
         if not user_docs:
             raise ApiError(f"Target user '{target_uid}' not found.", 404)
     elif target == "drivers":
@@ -3064,18 +3117,45 @@ def send_notification_broadcast(
     else:  # "all"
         user_docs = [_doc_dict(d) for d in _stream(db.collection("users").limit(1500))]
 
+    recipient_uids = [str(u.get("id") or u.get("uid") or "").strip() for u in user_docs if (u.get("id") or u.get("uid"))]
+    driver_uids = [
+        str(u.get("id") or u.get("uid") or "").strip()
+        for u in user_docs
+        if (u.get("id") or u.get("uid")) and str(u.get("role") or "").strip().lower() == "driver"
+    ]
+    presence_map = _batch_get_dicts(db, "driverPresence", driver_uids) if driver_uids else {}
+
     all_tokens: list[str] = []
     seen_tokens: set[str] = set()
+    user_tokens_map: dict[str, list[str]] = {}
+
     for u in user_docs:
+        u_id = str(u.get("id") or u.get("uid") or "").strip()
+        u_toks: list[str] = []
         for tok in collect_tokens(u):
+            if tok not in u_toks:
+                u_toks.append(tok)
             if tok not in seen_tokens:
                 seen_tokens.add(tok)
                 all_tokens.append(tok)
+        if u_id and u_id in presence_map:
+            for tok in collect_tokens(presence_map[u_id]):
+                if tok not in u_toks:
+                    u_toks.append(tok)
+                if tok not in seen_tokens:
+                    seen_tokens.add(tok)
+                    all_tokens.append(tok)
+        if u_id:
+            user_tokens_map[u_id] = u_toks
 
     deep_link = build_deep_link(payload.deepLink or "/")
-    channel_id = (payload.channelId or payload.category or "general").strip() or "general"
+    raw_channel = (payload.channelId or payload.category or "general").strip() or "general"
+    normalized_channel = normalize_channel_id(raw_channel)
 
-    dispatch_res: dict[str, Any] = {"sent": 0, "failed": 0}
+    doc_ref = db.collection("adminBroadcasts").document()
+    broadcast_id = doc_ref.id
+
+    dispatch_res: dict[str, Any] = {"sent": 0, "failed": 0, "successful_tokens": [], "invalid_tokens_removed": 0}
     if all_tokens:
         try:
             dispatch_res = dispatch_push_notification(
@@ -3084,15 +3164,67 @@ def send_notification_broadcast(
                 title=title,
                 body=body_text,
                 url=deep_link,
-                channel_id=channel_id,
-                tag=f"admin_broadcast_{int(now_utc().timestamp())}",
-                extra_data={"source": "admin_broadcast", "target": raw_target},
+                channel_id=normalized_channel,
+                tag=f"admin_broadcast_{broadcast_id}",
+                extra_data={
+                    "source": "admin_broadcast",
+                    "target": raw_target,
+                    "broadcastId": broadcast_id,
+                    "category": payload.category or "announcement",
+                },
                 db=db,
+                target_uids=recipient_uids,
             )
         except Exception as exc:
             logger.warning("Broadcast push dispatch warning: %s", exc)
 
+    raw_sent = int(dispatch_res.get("sent") or 0)
+    raw_failed = int(dispatch_res.get("failed") or 0)
+    invalid_removed = int(dispatch_res.get("invalid_tokens_removed") or 0)
+    successful_tokens_set = set(dispatch_res.get("successful_tokens") or [])
+
+    push_delivered_users = 0
+    for u_id in recipient_uids:
+        u_toks = user_tokens_map.get(u_id, [])
+        if successful_tokens_set:
+            if set(u_toks) & successful_tokens_set:
+                push_delivered_users += 1
+        elif raw_sent > 0 and u_toks:
+            push_delivered_users += 1
+
+    queued_users = max(0, len(user_docs) - push_delivered_users)
     now_iso = now_utc().isoformat()
+
+    # Fan-out notifications to userNotifications collection so online and offline-to-online clients receive them reliably
+    for u in user_docs[:500]:
+        uid_val = str(u.get("id") or u.get("uid") or "").strip()
+        if not uid_val:
+            continue
+        u_toks = user_tokens_map.get(uid_val, [])
+        user_push_ok = bool(set(u_toks) & successful_tokens_set) if successful_tokens_set else (raw_sent > 0 and bool(u_toks))
+        notif_doc_id = f"{broadcast_id}_{uid_val}"
+        notif_payload = {
+            "userId": uid_val,
+            "broadcastId": broadcast_id,
+            "title": title,
+            "body": body_text,
+            "category": payload.category or "announcement",
+            "deepLink": deep_link,
+            "channelId": raw_channel,
+            "read": False,
+            "delivered": False,
+            "pushSent": user_push_ok,
+            "status": "push_sent" if user_push_ok else "scheduled_online",
+            "createdAt": now_iso,
+        }
+        try:
+            db.collection("userNotifications").document(notif_doc_id).set(notif_payload)
+        except Exception:
+            try:
+                db.collection("userNotifications").document().set(notif_payload)
+            except Exception:
+                pass
+
     record = {
         "target": raw_target,
         "targetUid": (payload.targetUid or "").strip() or None,
@@ -3100,61 +3232,48 @@ def send_notification_broadcast(
         "title": title,
         "body": body_text,
         "deepLink": deep_link,
-        "channelId": channel_id,
+        "channelId": raw_channel,
         "recipientCount": len(user_docs),
         "tokenCount": len(all_tokens),
         "fcmDispatchedCount": len(all_tokens),
-        "sentCount": int(dispatch_res.get("sent") or 0),
-        "failedCount": int(dispatch_res.get("failed") or 0),
+        "sentCount": raw_sent,
+        "failedCount": raw_failed,
+        "invalidTokensCleaned": invalid_removed,
+        "deliveredCount": push_delivered_users,
+        "queuedCount": queued_users,
+        "deliveryStatus": (
+            "delivered"
+            if (len(user_docs) > 0 and push_delivered_users >= len(user_docs))
+            else ("partial_queued" if push_delivered_users > 0 else "scheduled_online")
+        ),
         "sentByUid": admin_user.get("uid"),
         "sentByEmail": admin_user.get("email"),
         "createdAt": now_iso,
     }
-    doc_ref = db.collection("adminBroadcasts").document()
-    record_with_id = {"id": doc_ref.id, **record}
+    record_with_id = {"id": broadcast_id, **record}
     try:
-        doc_ref.set({**record, "createdAt": fb_firestore.SERVER_TIMESTAMP})
+        doc_ref.set({**record, "createdAt": fb_firestore.SERVER_TIMESTAMP, "createdAtIso": now_iso})
     except Exception:
         pass
-
-    # Fan-out in-app notifications to userNotifications collection (capped to 500 to avoid oversized writes)
-    for u in user_docs[:500]:
-        uid_val = u.get("id") or u.get("uid")
-        if not uid_val:
-            continue
-        try:
-            db.collection("userNotifications").document().set(
-                {
-                    "userId": str(uid_val),
-                    "broadcastId": doc_ref.id,
-                    "title": title,
-                    "body": body_text,
-                    "category": payload.category or "announcement",
-                    "deepLink": deep_link,
-                    "channelId": channel_id,
-                    "read": False,
-                    "createdAt": fb_firestore.SERVER_TIMESTAMP,
-                }
-            )
-        except Exception:
-            pass
 
     write_audit_log(
         admin_user,
         "notification.broadcast",
         "adminBroadcast",
-        doc_ref.id,
+        broadcast_id,
         {},
         record,
-        f"Broadcast '{title}' to {raw_target} ({len(user_docs)} users, {len(all_tokens)} tokens)",
+        f"Broadcast '{title}' to {raw_target} ({len(user_docs)} users, {raw_sent} push sent, {queued_users} scheduled for online delivery)",
     )
     return {
         "ok": True,
         "broadcast": record_with_id,
         "recipientCount": len(user_docs),
         "tokenCount": len(all_tokens),
-        "sentCount": int(dispatch_res.get("sent") or 0),
-        "failedCount": int(dispatch_res.get("failed") or 0),
+        "sentCount": raw_sent,
+        "failedCount": raw_failed,
+        "deliveredCount": push_delivered_users,
+        "queuedCount": queued_users,
     }
 
 

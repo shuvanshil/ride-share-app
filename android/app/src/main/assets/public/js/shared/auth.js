@@ -66,6 +66,7 @@ function getCachedProfile() {
 
 function cacheProfile(profile) {
     const { createdAt, cachedAt, ...cacheableProfile } = profile;
+    window.LIPHTUP_USER_ROLE = profile?.role || "passenger";
     if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
         window.LiphtUpNative.setUserRole(profile?.role || "");
     }
@@ -82,6 +83,7 @@ function cacheProfile(profile) {
 }
 
 function clearCachedProfile() {
+    window.LIPHTUP_USER_ROLE = "";
     try {
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
         localStorage.removeItem(PROFILE_CACHE_KEY);

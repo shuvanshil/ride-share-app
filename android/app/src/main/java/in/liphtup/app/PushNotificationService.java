@@ -91,12 +91,19 @@ public class PushNotificationService extends FirebaseMessagingService {
             rawTitle = remoteNotif.getTitle();
         }
 
-        boolean isRideRequestPush = "ride_request".equalsIgnoreCase(msgType)
+        boolean isAdminBroadcast = dataMap != null && (
+                "admin_broadcast".equalsIgnoreCase(dataMap.get("source"))
+                || (dataMap.get("broadcastId") != null && !dataMap.get("broadcastId").isEmpty())
+        );
+
+        boolean isRideRequestPush = !isAdminBroadcast && (
+                "ride_request".equalsIgnoreCase(msgType)
                 || "NEW_PASSENGER_AVAILABLE".equalsIgnoreCase(msgType)
                 || "ride_dispatch".equalsIgnoreCase(msgType)
                 || "pending_driver_available".equalsIgnoreCase(msgType)
-                || (rawUrl != null && rawUrl.contains("/driver"))
-                || (rawTitle != null && (rawTitle.toLowerCase().contains("ride request") || rawTitle.toLowerCase().contains("new passenger")));
+                || (rawUrl != null && rawUrl.contains("/driver-service"))
+                || (rawTitle != null && (rawTitle.toLowerCase().contains("ride request") || rawTitle.toLowerCase().contains("new passenger")))
+        );
 
         if (isRideRequestPush && isPassengerLoggedIn() && !isDriverLoggedIn()) {
             Log.d(TAG, "Suppressing driver ride request notification: Active user is logged in as a passenger. Current role: "
@@ -163,7 +170,15 @@ public class PushNotificationService extends FirebaseMessagingService {
             }
         }
         if (channelId == null || channelId.isEmpty()) {
+            channelId = isAdminBroadcast ? CHANNEL_DEFAULT : CHANNEL_RIDE_REQUESTS;
+        } else if ("ride_updates".equalsIgnoreCase(channelId) || "ride_requests".equalsIgnoreCase(channelId)) {
             channelId = CHANNEL_RIDE_REQUESTS;
+        } else if ("wallet".equalsIgnoreCase(channelId) || CHANNEL_WALLET.equalsIgnoreCase(channelId)) {
+            channelId = CHANNEL_WALLET;
+        } else if ("driver".equalsIgnoreCase(channelId) || CHANNEL_DRIVER.equalsIgnoreCase(channelId)) {
+            channelId = CHANNEL_DRIVER;
+        } else if (!CHANNEL_DEFAULT.equalsIgnoreCase(channelId)) {
+            channelId = CHANNEL_DEFAULT;
         }
 
         String tag = dataMap != null ? dataMap.get("tag") : null;

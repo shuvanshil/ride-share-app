@@ -205,3 +205,85 @@ def test_payment_notifications_deep_links_and_channels():
         assert msg3["data"]["type"] == "payment_verified"
 
 
+def test_cleanup_invalid_tokens_preserves_valid_fcm_and_cleans_details():
+    stored_user = {
+        "fcmToken": "valid_tok",
+        "pushTokens": ["valid_tok", "dead_tok_1", "dead_tok_2"],
+        "pushTokenDetails": [
+            {"token": "valid_tok", "platform": "web"},
+            {"token": "dead_tok_1", "platform": "web"},
+            {"token": "dead_tok_2", "platform": "android"},
+        ],
+    }
+    mock_ref = MagicMock()
+    user_snap = FakeDoc(exists=True, data=stored_user, doc_id="u_test")
+    user_snap.reference = mock_ref
+
+    mock_db = MagicMock()
+    mock_db.collection.return_value.document.return_value.get.return_value = user_snap
+
+    cleanup_invalid_tokens(mock_db, ["dead_tok_1", "dead_tok_2"], target_uids=["u_test"])
+    assert mock_ref.update.called
+    updates = mock_ref.update.call_args_list[0][0][0]
+    assert updates["pushTokens"] == ["valid_tok"]
+    assert updates["pushTokenDetails"] == [{"token": "valid_tok", "platform": "web"}]
+    assert "fcmToken" not in updates  # valid fcmToken must NOT be deleted
+
+
+def test_pending_and_ack_notifications_inbox():
+    from api.core.auth import current_user
+    app.dependency_overrides[current_user] = lambda: {"uid": "u_online_1"}
+
+    notif_doc_data = {
+        "id": "bc1_u_online_1",
+        "broadcastId": "bc1",
+        "userId": "u_online_1",
+        "title": "Hello God",
+        "body": "How are you?",
+        "category": "announcement",
+        "deepLink": "https://liphtup.in/services",
+        "channelId": "default",
+        "createdAt": "2026-10-11T16:08:28+00:00",
+        "read": False,
+        "delivered": False,
+    }
+    notif_snap = FakeDoc(exists=True, data=notif_doc_data, doc_id="bc1_u_online_1")
+    bc_snap = FakeDoc(
+        exists=True,
+        data={"recipientCount": 1, "sentCount": 0, "deliveredCount": 0, "queuedCount": 1},
+        doc_id="bc1",
+    )
+
+    mock_db = MagicMock()
+    mock_query = MagicMock()
+    mock_query.where.return_value.limit.return_value.get.return_value = [notif_snap]
+    mock_db.collection.return_value = mock_query
+    mock_query.document.side_effect = lambda doc_id: (
+        MagicMock(get=MagicMock(return_value=notif_snap), set=MagicMock())
+        if doc_id == "bc1_u_online_1"
+        else MagicMock(get=MagicMock(return_value=bc_snap), set=MagicMock())
+    )
+
+    try:
+        with patch("api.routers.rides.fb_firestore.client", return_value=mock_db), \
+             patch("api.routers.rides.get_admin_app", return_value=MagicMock()):
+            res = client.get("/api/rides/notifications/pending", headers={"Authorization": "Bearer valid"})
+            assert res.status_code == 200
+            body = res.json()
+            assert body["ok"] is True
+            assert len(body["notifications"]) == 1
+            assert body["notifications"][0]["title"] == "Hello God"
+
+            ack_res = client.post(
+                "/api/rides/notifications/ack",
+                json={"notificationIds": ["bc1_u_online_1"], "markRead": True},
+                headers={"Authorization": "Bearer valid"},
+            )
+            assert ack_res.status_code == 200
+            assert ack_res.json()["acknowledged"] == 1
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+
+

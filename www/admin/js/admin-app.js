@@ -3331,10 +3331,26 @@ function initNotificationsEvents() {
                     title,
                     body,
                 });
-                toast(`Broadcast sent to ${res.broadcast?.recipientCount ?? res.recipientCount ?? 0} recipient(s).`);
+                const bInfo = res.broadcast || res;
+                const recCount = bInfo.recipientCount ?? 0;
+                const delivCount = bInfo.deliveredCount ?? bInfo.sentCount ?? 0;
+                const qCount = bInfo.queuedCount ?? Math.max(0, recCount - delivCount);
+                if (delivCount > 0 && qCount === 0) {
+                    toast(`Broadcast delivered to ${delivCount} recipient(s).`);
+                } else if (delivCount > 0 && qCount > 0) {
+                    toast(`Delivered to ${delivCount} online user(s); scheduled for ${qCount} user(s) when online.`);
+                } else {
+                    toast(`Broadcast scheduled for ${recCount} recipient(s) — will deliver immediately when online.`);
+                }
                 if ($("broadcast-title-input")) $("broadcast-title-input").value = "";
                 if ($("broadcast-body-input")) $("broadcast-body-input").value = "";
                 await loadNotificationsCenter();
+                setTimeout(() => {
+                    if (currentSection === "notifications") loadNotificationsCenter();
+                }, 3500);
+                setTimeout(() => {
+                    if (currentSection === "notifications") loadNotificationsCenter();
+                }, 8500);
             } catch (err) {
                 toast(err.message, "error");
             }
@@ -3357,9 +3373,26 @@ async function loadNotificationsCenter() {
         tbody.innerHTML = broadcasts
             .map((b) => {
                 const targetLabel = String(b.target || "all").replace(/_/g, " ");
+                const recipientCount = b.recipientCount ?? 0;
                 const sentCount = b.sentCount ?? 0;
-                const failedCount = b.failedCount ?? 0;
-                const tokenCount = b.tokenCount ?? b.fcmDispatchedCount ?? 0;
+                const deliveredCount = Math.max(b.deliveredCount ?? 0, sentCount > 0 ? Math.min(recipientCount, sentCount) : 0);
+                const queuedCount = b.queuedCount !== undefined ? b.queuedCount : Math.max(0, recipientCount - deliveredCount);
+                let deliveryBadge = "";
+                if (recipientCount === 0) {
+                    deliveryBadge = `<span class="badge bg-secondary-lt text-secondary">No recipients</span>`;
+                } else if (deliveredCount >= recipientCount) {
+                    deliveryBadge = `<span class="badge bg-green-lt text-green"><i class="ti ti-check me-1"></i>${deliveredCount}/${recipientCount} Delivered</span>`;
+                } else if (deliveredCount > 0) {
+                    deliveryBadge = `
+                        <span class="badge bg-green-lt text-green me-1"><i class="ti ti-check me-1"></i>${deliveredCount} Delivered</span>
+                        <span class="badge bg-azure-lt text-azure"><i class="ti ti-clock me-1"></i>${queuedCount} Scheduled (Online)</span>
+                    `;
+                } else {
+                    deliveryBadge = `<span class="badge bg-azure-lt text-azure" title="Queued in inbox — delivers automatically when recipient is online on Web or App"><i class="ti ti-clock-play me-1"></i>Scheduled (${queuedCount} pending online)</span>`;
+                }
+                const pushDetail = sentCount > 0
+                    ? `<div class="text-secondary small mt-1">${sentCount} instant push sent</div>`
+                    : `<div class="text-secondary small mt-1">Auto-delivers via Web/App inbox</div>`;
                 return `
                     <tr>
                         <td>
@@ -3368,11 +3401,14 @@ async function loadNotificationsCenter() {
                         </td>
                         <td>
                             <span class="badge bg-blue-lt text-blue text-uppercase">${escapeHtml(targetLabel)}</span>
-                            ${b.targetUid ? `<div class="text-secondary small font-monospace mt-1">${escapeHtml(b.targetUid.slice(0, 14))}</div>` : ""}
+                            ${b.targetInput || b.targetUid ? `<div class="text-secondary small font-monospace mt-1">${escapeHtml(String(b.targetInput || b.targetUid).slice(0, 18))}</div>` : ""}
                         </td>
                         <td>
-                            <span class="fw-semibold text-dark">${b.recipientCount ?? 0} users</span>
-                            <div class="text-secondary small">${tokenCount} push (${sentCount} sent${failedCount ? `, ${failedCount} failed` : ""})</div>
+                            <div class="d-flex align-items-center flex-wrap gap-1">
+                                <span class="fw-semibold text-dark me-1">${recipientCount} ${recipientCount === 1 ? "user" : "users"}</span>
+                                ${deliveryBadge}
+                            </div>
+                            ${pushDetail}
                         </td>
                         <td class="text-secondary small">${escapeHtml(b.sentByEmail || "Admin")}</td>
                         <td class="text-secondary small">${formatTimestamp(b.createdAt)}</td>

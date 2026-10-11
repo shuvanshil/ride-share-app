@@ -45,5 +45,14 @@ export const db = initializeFirestore(app, {
 export const storage = getStorage(app);
 export { ref, uploadBytesResumable, getDownloadURL, listAll };
 
+if (typeof window !== "undefined" && !window.location.pathname.startsWith("/admin")) {
+    import("./notifications.js").then(({ initUserNotificationInbox }) => {
+        if (typeof initUserNotificationInbox === "function") {
+            initUserNotificationInbox();
+        }
+    }).catch(() => {});
+}
+
 console.log("Firebase services initialized successfully.");
+
 
