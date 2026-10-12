@@ -568,11 +568,12 @@ def test_waiting_pool_manual_assign_remove_and_live_map(mock_db_fn, mock_audit) 
 
     admin_user = {"uid": "admin_1", "email": "admin@liphtup.in", "admin": True, "adminRole": "admin"}
 
-    # Check Live Map before assignment
-    map_res = admin.get_live_fleet_map(admin_user=admin_user)
-    assert map_res["ok"] is True
-    assert len(map_res["waitingPassengers"]) == 1
-    assert len(map_res["drivers"]) == 1
+    # Verify unused /live-map endpoint is removed and waiting pools endpoint works
+    assert not hasattr(admin, "get_live_fleet_map")
+    pools_res = admin.list_waiting_pools(admin_user=admin_user)
+    assert pools_res["ok"] is True
+    assert len(pools_res["passengers"]) == 1
+    assert len(pools_res["drivers"]) == 1
 
     # Assign driver to waiting passenger
     assign_res = admin.assign_waiting_pool_passenger(
@@ -681,3 +682,418 @@ def test_analytics_breakdown_and_broadcast_notifications(mock_db_fn, mock_audit)
     assert len(hist_res["broadcasts"]) == 3
 
 
+@patch("api.routers.admin.write_audit_log")
+@patch("api.routers.admin._db")
+def test_safety_sos_and_report_enrichment_and_deletion(mock_db_fn, mock_audit) -> None:
+    from api.core.errors import ApiError
+    db = MockFirestoreClient()
+    mock_db_fn.return_value = db
+
+    db.collection("users").document("pax_sos_1").set({
+        "name": "Rina Debbarma",
+        "phone": "+91 94360 11111",
+        "email": "rina@example.com",
+        "role": "passenger",
+    })
+    db.collection("users").document("drv_sos_1").set({
+        "name": "Bikramjit Saha",
+        "phone": "+91 94360 22222",
+        "role": "driver",
+        "vehicleType": "auto",
+        "vehicleNumber": "TR01AA7788",
+        "vehicleModel": "Bajaj RE",
+    })
+    db.collection("emergencyContacts").document("pax_sos_1").set({
+        "contacts": [{"name": "Suman Debbarma", "phone": "+91 94360 99999", "relation": "Brother"}],
+    })
+    db.collection("rides").document("ride_sos_1").set({
+        "id": "ride_sos_1",
+        "passenger_id": "pax_sos_1",
+        "driver_id": "drv_sos_1",
+        "status": "started",
+        "pin_verified": True,
+        "fare": 85,
+        "pickup_name": "Ujjayanta Palace",
+        "drop_name": "GB Hospital",
+        "pickup_lat": 23.8330,
+        "pickup_lng": 91.2820,
+        "drop_lat": 23.8570,
+        "drop_lng": 91.2910,
+        "driver_lat": 23.8410,
+        "driver_lng": 91.2850,
+    })
+
+    # Seed an open SOS alert with minimal fields (to verify enrichment from ride + users + emergencyContacts)
+    db.collection("sosAlerts").document("sos_open_1").set({
+        "ride_id": "ride_sos_1",
+        "reporter_id": "pax_sos_1",
+        "status": "open",
+        "createdAt": 1700005000.0,
+    })
+    # Seed a resolved SOS alert
+    db.collection("sosAlerts").document("sos_resolved_1").set({
+        "ride_id": "ride_sos_1",
+        "reporter_id": "pax_sos_1",
+        "status": "resolved",
+        "createdAt": 1700004000.0,
+    })
+
+    # Seed an open safety report and a resolved safety report
+    db.collection("safetyReports").document("rep_open_1").set({
+        "ride_id": "ride_sos_1",
+        "reporter_id": "pax_sos_1",
+        "category": "rash_driving",
+        "details": "Driver was speeding near palace gate.",
+        "status": "open",
+        "createdAt": 1700005500.0,
+    })
+    db.collection("safetyReports").document("rep_resolved_1").set({
+        "ride_id": "ride_sos_1",
+        "reporter_id": "pax_sos_1",
+        "category": "route_deviation",
+        "details": "Took longer road.",
+        "status": "resolved",
+        "createdAt": 1700003500.0,
+    })
+
+    admin_user = {"uid": "admin_1", "email": "admin@liphtup.in", "admin": True, "adminRole": "admin"}
+
+    # Verify SOS detail enrichment
+    sos_detail = admin.get_sos_alert("sos_open_1", admin_user=admin_user)
+    assert sos_detail["ok"] is True
+    alert = sos_detail["alert"]
+    assert alert["passenger_name"] == "Rina Debbarma"
+    assert alert["driver_name"] == "Bikramjit Saha"
+    assert alert["vehicle_number"] == "TR01AA7788"
+    assert alert["pickup_name"] == "Ujjayanta Palace"
+    assert alert["drop_name"] == "GB Hospital"
+    assert len(alert["emergency_contacts"]) == 1
+    assert alert["location_snapshot"]["pickup_lat"] == 23.8330
+    assert alert["location_snapshot"]["drop_lat"] == 23.8570
+
+    # Verify Safety Report detail enrichment
+    rep_detail = admin.get_safety_report("rep_open_1", admin_user=admin_user)
+    assert rep_detail["ok"] is True
+    report = rep_detail["report"]
+    assert report["reporter_name"] == "Rina Debbarma"
+    assert report["driver_name"] == "Bikramjit Saha"
+    assert report["vehicle_number"] == "TR01AA7788"
+
+    # Attempt to delete an OPEN SOS alert -> must fail with 400
+    with pytest.raises(ApiError) as exc_info:
+        admin.delete_sos_alert("sos_open_1", admin_user=admin_user)
+    assert exc_info.value.status_code == 400
+
+    # Attempt to delete an OPEN safety report -> must fail with 400
+    with pytest.raises(ApiError) as exc_info:
+        admin.delete_safety_report("rep_open_1", admin_user=admin_user)
+    assert exc_info.value.status_code == 400
+
+    # Bulk delete mixing open and resolved -> deletes only resolved, skips open
+    bulk_sos = admin.bulk_delete_sos_alerts(
+        admin.BulkSafetyDeleteBody(ids=["sos_open_1", "sos_resolved_1"]),
+        admin_user=admin_user,
+    )
+    assert bulk_sos["deletedCount"] == 1
+    assert "sos_open_1" in bulk_sos["skippedOpenIds"]
+    assert db.collection("sosAlerts").document("sos_open_1").get().exists
+    assert not db.collection("sosAlerts").document("sos_resolved_1").get().exists
+
+    # Individual delete of resolved safety report succeeds
+    del_rep = admin.delete_safety_report("rep_resolved_1", admin_user=admin_user)
+    assert del_rep["ok"] is True
+    assert not db.collection("safetyReports").document("rep_resolved_1").get().exists
+
+    # End-to-end test of rides.trigger_ride_sos and rides.submit_safety_report snapshot capture
+    from api.routers import rides as rides_router
+    with patch("api.routers.rides.fb_firestore.client", return_value=db), patch("api.routers.rides.get_admin_app"):
+        sos_created = rides_router.trigger_ride_sos(
+            "ride_sos_1",
+            rides_router.SosBody(lat=23.8425, lng=91.2865, note="Need immediate help"),
+            user={"uid": "pax_sos_1"},
+        )
+        assert sos_created["ok"] is True
+        created_sos_detail = admin.get_sos_alert(sos_created["alertId"], admin_user=admin_user)
+        assert created_sos_detail["alert"]["location_snapshot"]["incident_lat"] == 23.8425
+        assert created_sos_detail["alert"]["location_snapshot"]["captured_at"]
+
+        rep_created = rides_router.submit_safety_report(
+            rides_router.SafetyReportBody(rideId="ride_sos_1", category="unsafe_driving", description="Ran a red light"),
+            user={"uid": "pax_sos_1"},
+        )
+        assert rep_created["ok"] is True
+        created_rep_detail = admin.get_safety_report(rep_created["reportId"], admin_user=admin_user)
+        assert created_rep_detail["report"]["location_snapshot"]["captured_at"]
+        assert created_rep_detail["report"]["driver_name"] == "Bikramjit Saha"
+
+
+@patch("api.routers.admin.write_audit_log")
+@patch("api.routers.admin._db")
+def test_broadcast_deletion_ride_history_backfill_and_activity_feed(mock_db_fn, mock_audit) -> None:
+    db = MockFirestoreClient()
+    mock_db_fn.return_value = db
+
+    admin_user = {"uid": "admin_1", "email": "admin@liphtup.in", "admin": True, "adminRole": "admin"}
+
+    # 1. Broadcast individual and bulk deletion
+    db.collection("adminBroadcasts").document("bc_1").set({"title": "T1", "body": "B1", "createdAt": 1700001000.0})
+    db.collection("adminBroadcasts").document("bc_2").set({"title": "T2", "body": "B2", "createdAt": 1700002000.0})
+    db.collection("adminBroadcasts").document("bc_3").set({"title": "T3", "body": "B3", "createdAt": 1700003000.0})
+
+    del_one = admin.delete_notification_broadcast("bc_1", admin_user=admin_user)
+    assert del_one["ok"] is True
+    assert not db.collection("adminBroadcasts").document("bc_1").get().exists
+
+    del_bulk = admin.bulk_delete_notification_broadcasts(
+        admin.BulkBroadcastDeleteBody(ids=["bc_2", "bc_3"]),
+        admin_user=admin_user,
+    )
+    assert del_bulk["deletedCount"] == 2
+    assert not db.collection("adminBroadcasts").document("bc_2").get().exists
+
+    # 2. Ride history backfill (resolving passenger name & shareTrip driver) + 10-ride limit on drawers
+    db.collection("users").document("pax_hist_1").set({
+        "name": "Kabir Deb",
+        "phone": "+91 98620 12345",
+        "role": "passenger",
+    })
+    db.collection("users").document("drv_hist_1").set({
+        "name": "Manik Sarkar",
+        "phone": "+91 98620 54321",
+        "role": "driver",
+        "vehicleType": "auto",
+        "vehicleNumber": "TR01X5555",
+    })
+    db.collection("shareTrips").document("st_hist_1").set({
+        "id": "st_hist_1",
+        "driverId": "drv_hist_1",
+        "driverName": "Manik Sarkar",
+    })
+
+    # Create 14 rides for pax_hist_1 and drv_hist_1
+    for i in range(14):
+        db.collection("rides").document(f"ride_hist_{i}").set({
+            "id": f"ride_hist_{i}",
+            "passenger_id": "pax_hist_1",
+            "parentTripId": "st_hist_1" if i == 0 else None,
+            "driver_id": None if i == 0 else "drv_hist_1",
+            "status": "completed",
+            "pickup_name": "Stop A",
+            "drop_name": "Stop B",
+            "fare": 50 + i,
+            "createdAt": 1700010000.0 + i * 60,
+        })
+
+    hist = admin.list_ride_history(
+        status="all",
+        vehicleType=None,
+        rideType=None,
+        hasFeedback=None,
+        dateFrom=None,
+        dateTo=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        admin_user=admin_user,
+    )
+    assert hist["ok"] is True
+    share_child = next(r for r in hist["rides"] if r["id"] == "ride_hist_0")
+    assert share_child["passenger_name"] == "Kabir Deb"
+    assert share_child["driver_id"] == "drv_hist_1"
+    assert share_child["driver_name"] == "Manik Sarkar"
+
+    # Verify 10-ride limit on driver and passenger drawers
+    drv_drawer = admin.get_driver("drv_hist_1", admin_user=admin_user)
+    assert len(drv_drawer["recentRides"]) == 10
+    pax_drawer = admin.get_passenger("pax_hist_1", admin_user=admin_user)
+    assert len(pax_drawer["recentRides"]) == 10
+
+    # 3. Verify expanded activity feed chronological order & categories
+    db.collection("coupons").document("WELCOME50").set({
+        "code": "WELCOME50",
+        "amount": 50,
+        "createdAt": 1700020000.0,
+    })
+    db.collection("driverPayments").document("pay_1").set({
+        "driverId": "drv_hist_1",
+        "driverName": "Manik Sarkar",
+        "amount": 300,
+        "status": "verified",
+        "createdAt": 1700030000.0,
+    })
+    feed_res = admin.get_activity_feed(limit=25, category=None, admin_user=admin_user)
+    assert feed_res["ok"] is True
+    items = feed_res["activities"]
+    assert len(items) >= 3
+    # Verify strictly non-increasing timestampMs order
+    timestamps = [it["timestampMs"] for it in items]
+    assert timestamps == sorted(timestamps, reverse=True)
+    categories = {it["category"] for it in items}
+    assert "ride" in categories
+    assert "coupon" in categories
+    assert "payment" in categories
+
+
+@patch("api.routers.admin._db")
+def test_backfill_driver_and_passenger_names_rejects_raw_uids(mock_db_fn) -> None:
+    db = MockFirestoreClient()
+    mock_db_fn.return_value = db
+
+    db.collection("users").document("pax_uid_1").set({
+        "name": "Ananya Roy",
+        "phone": "9888877777",
+        "role": "passenger",
+    })
+    db.collection("users").document("drv_uid_1").set({
+        "name": "Bikramjit Das",
+        "phone": "9777766666",
+        "vehicleType": "auto",
+        "vehicleNumber": "TR01AB1234",
+        "role": "driver",
+    })
+
+    rides = [
+        {
+            "id": "r_uid_as_name",
+            "passenger_id": "pax_uid_1",
+            "passenger_name": "pax_uid_1",  # Raw UID stored as name
+            "assignedDriverId": "drv_uid_1",
+            "driver_name": "drv_uid_1",     # Raw UID stored as name
+        },
+        {
+            "id": "r_missing_user_doc",
+            "passenger_id": "pax_missing_99",
+            "passenger_name": "pax_missing_99",
+            "driver": {"id": "drv_missing_99", "name": "drv_missing_99"},
+        },
+    ]
+
+    enriched = admin._backfill_driver_names(rides)
+    assert enriched[0]["passenger_name"] == "Ananya Roy"
+    assert enriched[0]["driver_name"] == "Bikramjit Das"
+    assert enriched[0]["driver_assignment_status"] == "assigned"
+
+    # When user doc doesn't exist and stored name was just the raw UID, fallback must be used
+    assert enriched[1]["passenger_name"] == "Passenger details unavailable"
+    assert enriched[1]["driver_name"] == "Driver details unavailable"
+    assert enriched[1]["driver_assignment_status"] == "unavailable"
+
+    # Also verify _build_live_hierarchy preserves rawStatus, pin_verified, isShareTripDoc and strips raw UIDs
+    db.collection("shareTrips").document("st_uid_test").set({
+        "id": "st_uid_test",
+        "status": "to_pickup",
+        "driverId": "drv_uid_1",
+        "driverName": "drv_uid_1",  # Raw UID stored on shareTrip
+    })
+    hierarchy, _ = admin._build_live_hierarchy(db, [
+        {
+            "id": "r_pre_pickup_1",
+            "status": "accepted",
+            "rideType": "single",
+            "passenger_id": "pax_uid_1",
+            "passenger_name": "pax_uid_1",
+            "driver_id": "drv_uid_1",
+            "driver_name": "drv_uid_1",
+            "createdAt": 1700000000.0,
+        },
+        {
+            "id": "r_share_child_pre",
+            "parentTripId": "st_uid_test",
+            "status": "accepted",
+            "rideType": "share",
+            "passenger_id": "pax_uid_1",
+            "passenger_name": "pax_uid_1",
+            "driver_id": "drv_uid_1",
+            "driver_name": "drv_uid_1",
+            "createdAt": 1700000000.0,
+        },
+    ])
+    single_h = next(h for h in hierarchy if h["id"] == "r_pre_pickup_1")
+    assert single_h["isShareTripDoc"] is False
+    assert single_h["rawStatus"] == "accepted"
+    assert single_h["pin_verified"] is False
+    assert single_h["driver"]["name"] == "Bikramjit Das"
+    assert single_h["childRides"][0]["passenger"]["name"] == "Ananya Roy"
+
+    share_h = next(h for h in hierarchy if h["id"] == "st_uid_test")
+    assert share_h["isShareTripDoc"] is True
+    assert share_h["rawStatus"] == "to_pickup"
+    assert share_h["pin_verified"] is False
+    assert share_h["driver"]["name"] == "Bikramjit Das"
+
+    # Also verify _enrich_safety_records strips raw UIDs from passenger_name, driver_name, and reporter_name
+    safety_enriched = admin._enrich_safety_records(db, [{
+        "id": "sos_uid_1",
+        "reporter_id": "pax_uid_1",
+        "reporter_name": "pax_uid_1",
+        "reporter_role": "passenger",
+        "passenger_id": "pax_uid_1",
+        "passenger_name": "pax_uid_1",
+        "driver_id": "drv_uid_1",
+        "driver_name": "drv_uid_1",
+        "status": "open",
+    }], kind="sos")
+    assert safety_enriched[0]["passenger_name"] == "Ananya Roy"
+    assert safety_enriched[0]["driver_name"] == "Bikramjit Das"
+    assert safety_enriched[0]["reporter_name"] == "Ananya Roy"
+
+
+@patch("api.routers.admin.write_audit_log")
+@patch("api.routers.admin._db")
+def test_failure_report_delete_requires_resolved_status(mock_db_fn, mock_audit) -> None:
+    import pytest
+    ApiError = admin.ApiError
+
+    db = MockFirestoreClient()
+    mock_db_fn.return_value = db
+
+    db.collection("failureReports").document("fail_open_1").set({
+        "failureId": "fail_open_1",
+        "status": "open",
+        "severity": "HIGH",
+        "service": "dispatch",
+    })
+    db.collection("failureReports").document("fail_resolved_1").set({
+        "failureId": "fail_resolved_1",
+        "status": "resolved",
+        "severity": "MEDIUM",
+        "service": "rides",
+    })
+
+    admin_user = {"uid": "admin_1", "email": "admin@liphtup.in", "admin": True, "adminRole": "admin"}
+
+    # Single delete on open report must fail with 400
+    with pytest.raises(ApiError) as exc_info:
+        admin.delete_failure_report("fail_open_1", admin_user=admin_user)
+    assert exc_info.value.status_code == 400
+    assert db.collection("failureReports").document("fail_open_1").get().exists
+
+    # Bulk delete with only open reports must fail with 400
+    with pytest.raises(ApiError) as bulk_exc:
+        admin.bulk_failure_action(
+            admin.BulkFailureActionBody(action="delete", failureIds=["fail_open_1"]),
+            admin_user=admin_user,
+        )
+    assert bulk_exc.value.status_code == 400
+    assert db.collection("failureReports").document("fail_open_1").get().exists
+
+    # Bulk delete with mixed open + resolved deletes only resolved and skips open
+    mixed_res = admin.bulk_failure_action(
+        admin.BulkFailureActionBody(action="delete", failureIds=["fail_open_1", "fail_resolved_1"]),
+        admin_user=admin_user,
+    )
+    assert mixed_res["ok"] is True
+    assert mixed_res["count"] == 1
+    assert mixed_res["skippedOpenIds"] == ["fail_open_1"]
+    assert db.collection("failureReports").document("fail_open_1").get().exists
+    assert not db.collection("failureReports").document("fail_resolved_1").get().exists
+
+    # After resolving fail_open_1, single delete succeeds
+    admin.update_failure_report(
+        "fail_open_1",
+        admin.FailureActionBody(action="resolve"),
+        admin_user=admin_user,
+    )
+    del_res = admin.delete_failure_report("fail_open_1", admin_user=admin_user)
+    assert del_res["ok"] is True
+    assert not db.collection("failureReports").document("fail_open_1").get().exists

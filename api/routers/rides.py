@@ -3523,13 +3523,24 @@ def trigger_ride_sos(
 
         p_uid = ride.get("passenger_id") or ride.get("passengerId")
         d_uid = ride.get("driver_id") or ride.get("driverId")
+        parent_trip_id = ride.get("parentTripId")
+        parent_trip: dict[str, Any] = {}
+        if parent_trip_id and not d_uid:
+            try:
+                pt_snap = db.collection("shareTrips").document(str(parent_trip_id)).get()
+                if pt_snap.exists:
+                    parent_trip = pt_snap.to_dict() or {}
+                    d_uid = parent_trip.get("driverId") or parent_trip.get("driver_id")
+            except Exception:
+                parent_trip = {}
+
         if uid == p_uid:
             role = "passenger"
             reporter_name = ride.get("passenger_name") or "Passenger"
             reporter_phone = ride.get("passenger_phone") or ""
         elif uid == d_uid:
             role = "driver"
-            reporter_name = ride.get("driver_name") or "Driver"
+            reporter_name = ride.get("driver_name") or parent_trip.get("driverName") or "Driver"
             reporter_phone = ride.get("driver_phone") or ""
         else:
             raise ApiError("Only ride participants can raise an SOS for this ride.", 403)
@@ -3538,20 +3549,73 @@ def trigger_ride_sos(
         if body.lat is not None and body.lng is not None:
             location = {"lat": _coordinate(body.lat, -90, 90), "lng": _coordinate(body.lng, -180, 180)}
 
+        drv_loc = ride.get("driverLocation") or parent_trip.get("driverLocation") or {}
+        if not isinstance(drv_loc, dict):
+            drv_loc = {}
+        pax_loc = ride.get("passengerLocation") or {}
+        if not isinstance(pax_loc, dict):
+            pax_loc = {}
+
+        driver_lat = drv_loc.get("lat") if drv_loc.get("lat") is not None else ride.get("driver_lat")
+        driver_lng = drv_loc.get("lng") if drv_loc.get("lng") is not None else ride.get("driver_lng")
+        passenger_lat = pax_loc.get("lat") if pax_loc.get("lat") is not None else ride.get("passenger_lat")
+        passenger_lng = pax_loc.get("lng") if pax_loc.get("lng") is not None else ride.get("passenger_lng")
+
+        if location:
+            if role == "driver" and (driver_lat is None or driver_lng is None):
+                driver_lat, driver_lng = location["lat"], location["lng"]
+            elif role == "passenger" and (passenger_lat is None or passenger_lng is None):
+                passenger_lat, passenger_lng = location["lat"], location["lng"]
+
+        ride_status = str(ride.get("status") or "")
+        pin_verified = bool(
+            ride.get("pinVerifiedAt")
+            or ride.get("startedAt")
+            or ride_status.lower() in ("started", "en_route", "in_progress", "completed")
+        )
+        location_snapshot = {
+            "incident_lat": location["lat"] if location else (driver_lat if driver_lat is not None else passenger_lat),
+            "incident_lng": location["lng"] if location else (driver_lng if driver_lng is not None else passenger_lng),
+            "driver_lat": driver_lat,
+            "driver_lng": driver_lng,
+            "passenger_lat": passenger_lat if passenger_lat is not None else ride.get("pickup_lat"),
+            "passenger_lng": passenger_lng if passenger_lng is not None else ride.get("pickup_lng"),
+            "pickup_lat": ride.get("pickup_lat"),
+            "pickup_lng": ride.get("pickup_lng"),
+            "drop_lat": ride.get("drop_lat"),
+            "drop_lng": ride.get("drop_lng"),
+            "ride_status": ride_status,
+            "pin_verified": pin_verified,
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+        }
+
         alert_ref = db.collection("sosAlerts").document()
         alert_ref.set({
             "ride_id": clean_ride_id,
+            "parent_trip_id": parent_trip_id or None,
             "reporter_id": uid,
             "reporter_role": role,
             "reporter_name": str(reporter_name)[:80],
             "reporter_phone": str(reporter_phone)[:40],
+            "passenger_id": p_uid or None,
+            "passenger_name": ride.get("passenger_name") or "",
+            "passenger_phone": ride.get("passenger_phone") or "",
+            "driver_id": d_uid or None,
+            "driver_name": ride.get("driver_name") or parent_trip.get("driverName") or "",
+            "driver_phone": ride.get("driver_phone") or "",
+            "vehicle_type": ride.get("vehicle_type") or ride.get("vehicleType") or "",
+            "vehicle_number": ride.get("vehicle_number") or ride.get("vehicleNumber") or "",
+            "ride_status": ride_status,
+            "pin_verified": pin_verified,
             "location": location,
+            "location_snapshot": location_snapshot,
             "note": body.note.strip(),
             "pickup_name": ride.get("pickup_name") or "",
             "drop_name": ride.get("drop_name") or "",
-            "passenger_name": ride.get("passenger_name") or "",
-            "driver_name": ride.get("driver_name") or "",
-            "vehicle_number": ride.get("vehicle_number") or "",
+            "pickup_lat": ride.get("pickup_lat"),
+            "pickup_lng": ride.get("pickup_lng"),
+            "drop_lat": ride.get("drop_lat"),
+            "drop_lng": ride.get("drop_lng"),
             "status": "open",
             "createdAt": fb_firestore.SERVER_TIMESTAMP,
         })
@@ -3605,15 +3669,69 @@ def submit_safety_report(
             if not ride_doc.exists:
                 raise ApiError("Ride not found.", 404)
             ride = ride_doc.to_dict() or {}
-            if uid not in {ride.get("passenger_id"), ride.get("driver_id")}:
+            p_uid = ride.get("passenger_id") or ride.get("passengerId")
+            d_uid = ride.get("driver_id") or ride.get("driverId")
+            parent_trip_id = ride.get("parentTripId")
+            parent_trip: dict[str, Any] = {}
+            if parent_trip_id and not d_uid:
+                try:
+                    pt_snap = db.collection("shareTrips").document(str(parent_trip_id)).get()
+                    if pt_snap.exists:
+                        parent_trip = pt_snap.to_dict() or {}
+                        d_uid = parent_trip.get("driverId") or parent_trip.get("driver_id")
+                except Exception:
+                    parent_trip = {}
+            if uid not in {p_uid, d_uid}:
                 raise ApiError("You can only report a ride you were part of.", 403)
+            drv_loc = ride.get("driverLocation") or parent_trip.get("driverLocation") or {}
+            if not isinstance(drv_loc, dict):
+                drv_loc = {}
+            pax_loc = ride.get("passengerLocation") or {}
+            if not isinstance(pax_loc, dict):
+                pax_loc = {}
+            driver_lat = drv_loc.get("lat") if drv_loc.get("lat") is not None else ride.get("driver_lat")
+            driver_lng = drv_loc.get("lng") if drv_loc.get("lng") is not None else ride.get("driver_lng")
+            passenger_lat = pax_loc.get("lat") if pax_loc.get("lat") is not None else ride.get("passenger_lat")
+            passenger_lng = pax_loc.get("lng") if pax_loc.get("lng") is not None else ride.get("passenger_lng")
+            ride_status = str(ride.get("status") or "")
+            pin_verified = bool(
+                ride.get("pinVerifiedAt")
+                or ride.get("startedAt")
+                or ride_status.lower() in ("started", "en_route", "in_progress", "completed")
+            )
             ride_snapshot = {
+                "parent_trip_id": parent_trip_id or None,
                 "pickup_name": ride.get("pickup_name") or "",
                 "drop_name": ride.get("drop_name") or "",
-                "passenger_id": ride.get("passenger_id"),
+                "pickup_lat": ride.get("pickup_lat"),
+                "pickup_lng": ride.get("pickup_lng"),
+                "drop_lat": ride.get("drop_lat"),
+                "drop_lng": ride.get("drop_lng"),
+                "passenger_id": p_uid,
                 "passenger_name": ride.get("passenger_name") or "",
-                "driver_id": ride.get("driver_id"),
-                "driver_name": ride.get("driver_name") or "",
+                "passenger_phone": ride.get("passenger_phone") or "",
+                "driver_id": d_uid,
+                "driver_name": ride.get("driver_name") or parent_trip.get("driverName") or "",
+                "driver_phone": ride.get("driver_phone") or "",
+                "vehicle_type": ride.get("vehicle_type") or ride.get("vehicleType") or "",
+                "vehicle_number": ride.get("vehicle_number") or ride.get("vehicleNumber") or "",
+                "ride_status": ride_status,
+                "pin_verified": pin_verified,
+                "location_snapshot": {
+                    "incident_lat": driver_lat if driver_lat is not None else (passenger_lat if passenger_lat is not None else ride.get("pickup_lat")),
+                    "incident_lng": driver_lng if driver_lng is not None else (passenger_lng if passenger_lng is not None else ride.get("pickup_lng")),
+                    "driver_lat": driver_lat,
+                    "driver_lng": driver_lng,
+                    "passenger_lat": passenger_lat if passenger_lat is not None else ride.get("pickup_lat"),
+                    "passenger_lng": passenger_lng if passenger_lng is not None else ride.get("pickup_lng"),
+                    "pickup_lat": ride.get("pickup_lat"),
+                    "pickup_lng": ride.get("pickup_lng"),
+                    "drop_lat": ride.get("drop_lat"),
+                    "drop_lng": ride.get("drop_lng"),
+                    "ride_status": ride_status,
+                    "pin_verified": pin_verified,
+                    "captured_at": datetime.now(timezone.utc).isoformat(),
+                },
             }
 
         report_ref = db.collection("safetyReports").document()

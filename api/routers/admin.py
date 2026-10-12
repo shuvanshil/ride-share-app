@@ -148,24 +148,218 @@ def _batch_get_users(db, uids: Any) -> dict[str, dict[str, Any]]:
     return _batch_get_dicts(db, "users", uids)
 
 
+def _to_utc_ms(val: Any) -> Optional[int]:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        dt = val.astimezone(timezone.utc) if val.tzinfo else val.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+    if isinstance(val, (int, float)):
+        fval = float(val)
+        if fval <= 0:
+            return None
+        if fval > 1e11:
+            return int(fval)
+        return int(fval * 1000)
+    if hasattr(val, "timestamp") and callable(getattr(val, "timestamp")):
+        try:
+            return int(float(val.timestamp()) * 1000)
+        except Exception:
+            pass
+    if isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        try:
+            fval = float(s)
+            if fval > 1e11:
+                return int(fval)
+            if fval > 0:
+                return int(fval * 1000)
+        except Exception:
+            pass
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return int(dt.timestamp() * 1000)
+        except Exception:
+            return None
+    return None
+
+
+def _to_utc_iso(val: Any, fallback_dt: Optional[datetime] = None) -> str:
+    ms = _to_utc_ms(val)
+    if ms is not None:
+        return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).isoformat()
+    fb = fallback_dt or now_utc()
+    return fb.isoformat()
+
+
 def _backfill_driver_names(rides: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    missing_ids = {
-        r.get("driver_id")
-        for r in rides
-        if r.get("driver_id") and not str(r.get("driver_name") or "").strip()
-    }
-    if not missing_ids:
+    if not rides:
         return rides
     db = _db()
-    user_map = _batch_get_users(db, missing_ids)
-    names: dict[str, str] = {}
-    for uid, data in user_map.items():
-        if data.get("name"):
-            names[uid] = str(data["name"])[:80]
+    parent_trip_ids = {
+        str(r.get("parentTripId") or "").strip()
+        for r in rides
+        if r.get("parentTripId")
+        and not (
+            r.get("driver_id")
+            or r.get("driverId")
+            or r.get("assignedDriverId")
+            or r.get("assigned_driver_id")
+            or (isinstance(r.get("driver"), dict) and (r["driver"].get("id") or r["driver"].get("uid")))
+        )
+    }
+    parent_trips_map = _batch_get_dicts(db, "shareTrips", parent_trip_ids) if parent_trip_ids else {}
+
+    user_ids: set[str] = set()
     for r in rides:
-        driver_id = r.get("driver_id")
-        if driver_id and not str(r.get("driver_name") or "").strip():
-            r["driver_name"] = names.get(driver_id) or "Driver"
+        drv_obj = r.get("driver") if isinstance(r.get("driver"), dict) else {}
+        pax_obj = r.get("passenger") if isinstance(r.get("passenger"), dict) else {}
+
+        d_id = str(
+            r.get("driver_id")
+            or r.get("driverId")
+            or r.get("assignedDriverId")
+            or r.get("assigned_driver_id")
+            or drv_obj.get("id")
+            or drv_obj.get("uid")
+            or ""
+        ).strip()
+        if not d_id and r.get("parentTripId"):
+            pt = parent_trips_map.get(str(r.get("parentTripId")).strip()) or {}
+            pt_drv = pt.get("driver") if isinstance(pt.get("driver"), dict) else {}
+            d_id = str(
+                pt.get("driverId")
+                or pt.get("driver_id")
+                or pt.get("assignedDriverId")
+                or pt_drv.get("id")
+                or ""
+            ).strip()
+            if d_id:
+                r["driver_id"] = d_id
+            pt_d_name = pt.get("driverName") or pt.get("driver_name") or pt_drv.get("name")
+            if not r.get("driver_name") and pt_d_name:
+                r["driver_name"] = str(pt_d_name)[:80]
+        elif d_id and not r.get("driver_id"):
+            r["driver_id"] = d_id
+
+        p_id = str(
+            r.get("passenger_id")
+            or r.get("passengerId")
+            or r.get("userId")
+            or r.get("user_id")
+            or pax_obj.get("id")
+            or pax_obj.get("uid")
+            or ""
+        ).strip()
+        if p_id and not r.get("passenger_id"):
+            r["passenger_id"] = p_id
+
+        if d_id:
+            user_ids.add(d_id)
+        if p_id:
+            user_ids.add(p_id)
+
+    user_map = _batch_get_users(db, user_ids) if user_ids else {}
+
+    invalid_driver_names = {
+        "driver",
+        "unassigned",
+        "unassigned driver",
+        "driver details unavailable",
+        "unknown",
+        "n/a",
+        "--",
+        "—",
+    }
+    invalid_pax_names = {
+        "passenger",
+        "passenger details unavailable",
+        "unknown",
+        "n/a",
+        "--",
+        "—",
+    }
+
+    for r in rides:
+        drv_obj = r.get("driver") if isinstance(r.get("driver"), dict) else {}
+        pax_obj = r.get("passenger") if isinstance(r.get("passenger"), dict) else {}
+
+        driver_id = str(r.get("driver_id") or r.get("driverId") or "").strip()
+        existing_d_name = str(r.get("driver_name") or r.get("driverName") or drv_obj.get("name") or "").strip()
+        if existing_d_name == driver_id or existing_d_name.lower() in invalid_driver_names:
+            existing_d_name = ""
+
+        if driver_id:
+            u_drv = user_map.get(driver_id) or {}
+            u_drv_name = str(u_drv.get("name") or u_drv.get("displayName") or u_drv.get("fullName") or "").strip()
+            if u_drv_name == driver_id or u_drv_name.lower() in invalid_driver_names:
+                u_drv_name = ""
+            resolved_d_name = existing_d_name or u_drv_name
+            if resolved_d_name:
+                r["driver_name"] = resolved_d_name[:80]
+                r["driver_assignment_status"] = "assigned"
+            else:
+                r["driver_name"] = "Driver details unavailable"
+                r["driver_assignment_status"] = "unavailable"
+            drv_phone = r.get("driver_phone") or r.get("driverPhone") or drv_obj.get("phone") or u_drv.get("phone")
+            if not r.get("driver_phone") and drv_phone:
+                r["driver_phone"] = str(drv_phone)[:40]
+            veh_num = (
+                r.get("vehicle_number")
+                or r.get("vehicleNumber")
+                or drv_obj.get("plate")
+                or u_drv.get("vehicleNumber")
+                or u_drv.get("vehicle_number")
+            )
+            if not r.get("vehicle_number") and veh_num:
+                r["vehicle_number"] = str(veh_num)[:40]
+            veh_type = (
+                r.get("vehicle_type")
+                or r.get("vehicleType")
+                or drv_obj.get("vehicleType")
+                or u_drv.get("vehicleType")
+                or u_drv.get("vehicle_type")
+            )
+            if not r.get("vehicle_type") and veh_type:
+                r["vehicle_type"] = str(veh_type)[:30]
+        else:
+            if existing_d_name:
+                r["driver_name"] = existing_d_name[:80]
+                r["driver_assignment_status"] = "assigned"
+            else:
+                r["driver_name"] = None
+                r["driver_assignment_status"] = "unassigned"
+
+        passenger_id = str(r.get("passenger_id") or r.get("passengerId") or r.get("userId") or r.get("user_id") or "").strip()
+        existing_p_name = str(r.get("passenger_name") or r.get("passengerName") or pax_obj.get("name") or "").strip()
+        if existing_p_name == passenger_id or existing_p_name.lower() in invalid_pax_names:
+            existing_p_name = ""
+
+        if passenger_id:
+            u_pax = user_map.get(passenger_id) or {}
+            u_pax_name = str(u_pax.get("name") or u_pax.get("displayName") or u_pax.get("fullName") or "").strip()
+            if u_pax_name == passenger_id or u_pax_name.lower() in invalid_pax_names:
+                u_pax_name = ""
+            pax_phone = str(
+                r.get("passenger_phone")
+                or r.get("passengerPhone")
+                or pax_obj.get("phone")
+                or u_pax.get("phone")
+                or ""
+            ).strip()
+            resolved_p_name = existing_p_name or u_pax_name or pax_phone
+            r["passenger_name"] = resolved_p_name[:80] if resolved_p_name else "Passenger details unavailable"
+            if not r.get("passenger_phone") and pax_phone:
+                r["passenger_phone"] = pax_phone[:40]
+        else:
+            r["passenger_name"] = existing_p_name[:80] if existing_p_name else "Passenger details unavailable"
+
     return rides
 
 
@@ -371,8 +565,458 @@ def revoke_permission_role(target_uid: str, admin_user: dict[str, Any] = Depends
 
 
 # ---------------------------------------------------------------------------
-# Dashboard Overview
+# Dashboard Overview & Unified Activity Feed
 # ---------------------------------------------------------------------------
+
+def _collect_activity_feed(db, limit: int = 30) -> list[dict[str, Any]]:
+    now = now_utc()
+    fallback_ms = int(now.timestamp() * 1000)
+    raw_events: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    def _add_event(
+        ev_id: str,
+        ev_type: str,
+        category: str,
+        text: str,
+        raw_ts: Any,
+        color: str = "primary",
+        icon: str = "ti-activity",
+        target_type: Optional[str] = None,
+        target_id: Optional[str] = None,
+        section: str = "dashboard",
+    ) -> None:
+        if not ev_id or ev_id in seen_ids:
+            return
+        ms = _to_utc_ms(raw_ts)
+        if ms is None:
+            ms = fallback_ms
+        iso_str = datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc).isoformat()
+        seen_ids.add(ev_id)
+        raw_events.append({
+            "id": ev_id,
+            "type": ev_type,
+            "category": category,
+            "text": text,
+            "at": iso_str,
+            "timestampMs": ms,
+            "color": color,
+            "icon": icon,
+            "targetType": target_type,
+            "targetId": str(target_id) if target_id else None,
+            "section": section,
+        })
+
+    # 1. Recent Drivers (registrations + approvals)
+    try:
+        drv_q = db.collection("users").where("role", "==", "driver").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(12)
+        drv_docs = [_doc_dict(d) for d in _stream(drv_q)]
+    except Exception:
+        try:
+            drv_docs = [_doc_dict(d) for d in _stream(db.collection("users").where("role", "==", "driver").limit(12))]
+        except Exception:
+            drv_docs = []
+
+    for u in drv_docs:
+        uid = str(u.get("id") or u.get("uid") or "").strip()
+        name = u.get("name") or u.get("phone") or "Driver"
+        if u.get("createdAt"):
+            _add_event(
+                ev_id=f"drv_reg_{uid}",
+                ev_type="driver_registered",
+                category="driver",
+                text=f"New driver registered: {name}",
+                raw_ts=u.get("createdAt"),
+                color="primary",
+                icon="ti-steering-wheel",
+                target_type="driver",
+                target_id=uid,
+                section="drivers",
+            )
+        if str(u.get("verificationStatus") or "").lower() == "approved" and (u.get("approvedAt") or u.get("updatedAt")):
+            _add_event(
+                ev_id=f"drv_app_{uid}",
+                ev_type="driver_approved",
+                category="driver",
+                text=f"Driver approved: {name}",
+                raw_ts=u.get("approvedAt") or u.get("updatedAt"),
+                color="success",
+                icon="ti-user-check",
+                target_type="driver",
+                target_id=uid,
+                section="drivers",
+            )
+
+    # 2. Recent Passengers (registrations)
+    try:
+        pax_q = db.collection("users").where("role", "==", "passenger").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(12)
+        pax_docs = [_doc_dict(d) for d in _stream(pax_q)]
+    except Exception:
+        try:
+            pax_docs = [_doc_dict(d) for d in _stream(db.collection("users").where("role", "==", "passenger").limit(12))]
+        except Exception:
+            pax_docs = []
+
+    for u in pax_docs:
+        uid = str(u.get("id") or u.get("uid") or "").strip()
+        name = u.get("name") or u.get("phone") or "Passenger"
+        if u.get("createdAt"):
+            _add_event(
+                ev_id=f"pax_reg_{uid}",
+                ev_type="passenger_registered",
+                category="passenger",
+                text=f"New passenger registered: {name}",
+                raw_ts=u.get("createdAt"),
+                color="primary",
+                icon="ti-user-plus",
+                target_type="passenger",
+                target_id=uid,
+                section="passengers",
+            )
+
+    # 3. Rides (requests, driver assignments, completions, cancellations)
+    try:
+        rides_q = db.collection("rides").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(20)
+        recent_r_docs = _backfill_driver_names([_doc_dict(d) for d in _stream(rides_q)])
+    except Exception:
+        try:
+            recent_r_docs = _backfill_driver_names([_doc_dict(d) for d in _stream(db.collection("rides").limit(20))])
+        except Exception:
+            recent_r_docs = []
+
+    for r in recent_r_docs:
+        r_id = str(r.get("id") or "").strip()
+        short_id = f"#LP{r_id[-5:].upper()}" if len(r_id) >= 5 else f"#{r_id}"
+        st = str(r.get("status") or r.get("final_status") or "").lower()
+        pax_name = r.get("passenger_name") if r.get("passenger_name") and r.get("passenger_name") != "Passenger details unavailable" else ""
+        drv_name = r.get("driver_name") if r.get("driver_name") and r.get("driver_name") != "Driver details unavailable" else ""
+
+        if st == "completed":
+            fare = r.get("fare")
+            fare_txt = f" (₹{fare})" if fare else ""
+            _add_event(
+                ev_id=f"ride_comp_{r_id}",
+                ev_type="ride_completed",
+                category="ride",
+                text=f"Ride {short_id} completed{fare_txt}" + (f" • {pax_name}" if pax_name else ""),
+                raw_ts=r.get("completedAt") or r.get("updatedAt") or r.get("createdAt"),
+                color="success",
+                icon="ti-circle-check",
+                target_type="ride",
+                target_id=r_id,
+                section="ride-history",
+            )
+        elif st.startswith("cancel") or r.get("cancelled") or r.get("is_cancelled"):
+            _add_event(
+                ev_id=f"ride_canc_{r_id}",
+                ev_type="ride_cancelled",
+                category="ride",
+                text=f"Ride {short_id} cancelled" + (f" ({pax_name})" if pax_name else ""),
+                raw_ts=r.get("cancelledAt") or r.get("finalStatusAt") or r.get("updatedAt") or r.get("createdAt"),
+                color="danger",
+                icon="ti-circle-x",
+                target_type="ride",
+                target_id=r_id,
+                section="ride-history",
+            )
+        elif st in ("accepted", "arrived", "started", "en_route", "in_progress"):
+            _add_event(
+                ev_id=f"ride_assign_{r_id}",
+                ev_type="ride_assigned",
+                category="ride",
+                text=f"Ride {short_id} assigned to {drv_name or 'driver'}",
+                raw_ts=r.get("startedAt") or r.get("acceptedAt") or r.get("updatedAt") or r.get("createdAt"),
+                color="info",
+                icon="ti-car",
+                target_type="ride",
+                target_id=r_id,
+                section="live-rides",
+            )
+        elif st in ("pending", "searching", "requested"):
+            _add_event(
+                ev_id=f"ride_req_{r_id}",
+                ev_type="ride_requested",
+                category="ride",
+                text=f"New ride request {short_id}" + (f" by {pax_name}" if pax_name else ""),
+                raw_ts=r.get("createdAt") or r.get("updatedAt"),
+                color="primary",
+                icon="ti-map-pin",
+                target_type="ride",
+                target_id=r_id,
+                section="live-rides",
+            )
+
+    # 4. SOS Alerts
+    try:
+        sos_q = db.collection("sosAlerts").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(12)
+        sos_docs = [_doc_dict(d) for d in _stream(sos_q)]
+    except Exception:
+        try:
+            sos_docs = [_doc_dict(d) for d in _stream(db.collection("sosAlerts").limit(12))]
+        except Exception:
+            sos_docs = []
+
+    for s in sos_docs:
+        sid = str(s.get("id") or "").strip()
+        ride_ref = s.get("ride_id") or s.get("rideId") or ""
+        user_lbl = s.get("reporter_name") or s.get("passenger_name") or s.get("userName") or s.get("passengerName") or "Participant"
+        alert_label = f"Ride #{str(ride_ref)[-5:].upper()}" if ride_ref else user_lbl
+        _add_event(
+            ev_id=f"sos_trig_{sid}",
+            ev_type="sos_alert",
+            category="safety",
+            text=f"SOS alert triggered: {alert_label} ({user_lbl})",
+            raw_ts=s.get("createdAt") or s.get("triggeredAt"),
+            color="danger",
+            icon="ti-alert-triangle",
+            target_type="sos",
+            target_id=sid,
+            section="safety",
+        )
+        if str(s.get("status") or "").lower() == "resolved" and s.get("resolvedAt"):
+            _add_event(
+                ev_id=f"sos_res_{sid}",
+                ev_type="sos_resolved",
+                category="safety",
+                text=f"SOS alert resolved: {alert_label}",
+                raw_ts=s.get("resolvedAt") or s.get("updatedAt"),
+                color="success",
+                icon="ti-shield-check",
+                target_type="sos",
+                target_id=sid,
+                section="safety",
+            )
+
+    # 5. Safety Reports
+    try:
+        rep_q = db.collection("safetyReports").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(12)
+        rep_docs = [_doc_dict(d) for d in _stream(rep_q)]
+    except Exception:
+        try:
+            rep_docs = [_doc_dict(d) for d in _stream(db.collection("safetyReports").limit(12))]
+        except Exception:
+            rep_docs = []
+
+    for rep in rep_docs:
+        rid = str(rep.get("id") or "").strip()
+        cat = str(rep.get("category") or "incident").replace("_", " ").title()
+        reporter = rep.get("reporter_name") or rep.get("passenger_name") or "User"
+        _add_event(
+            ev_id=f"rep_sub_{rid}",
+            ev_type="safety_report",
+            category="safety",
+            text=f"Safety report ({cat}) submitted by {reporter}",
+            raw_ts=rep.get("createdAt"),
+            color="warning",
+            icon="ti-report",
+            target_type="safety_report",
+            target_id=rid,
+            section="safety",
+        )
+
+    # 6. Driver Weekly Payments (submitted / approved / declined)
+    try:
+        pmt_q = db.collection("driverPayments").order_by("submittedAt", direction=fb_firestore.Query.DESCENDING).limit(12)
+        pmt_docs = [_doc_dict(d) for d in _stream(pmt_q)]
+    except Exception:
+        try:
+            pmt_docs = [_doc_dict(d) for d in _stream(db.collection("driverPayments").limit(12))]
+        except Exception:
+            pmt_docs = []
+
+    for p in pmt_docs:
+        pid = str(p.get("id") or "").strip()
+        p_status = str(p.get("status") or "").lower()
+        drv_name = p.get("driverName") or p.get("name") or "Driver"
+        amt = p.get("amount") or 0
+        if p_status in ("approved", "verified"):
+            _add_event(
+                ev_id=f"pmt_app_{pid}",
+                ev_type="payment_completed",
+                category="payment",
+                text=f"{drv_name} weekly payment approved (₹{amt})",
+                raw_ts=p.get("verifiedAt") or p.get("updatedAt") or p.get("submittedAt") or p.get("createdAt"),
+                color="success",
+                icon="ti-receipt",
+                target_type="payment",
+                target_id=pid,
+                section="payments",
+            )
+        elif p_status in ("declined", "rejected"):
+            _add_event(
+                ev_id=f"pmt_dec_{pid}",
+                ev_type="payment_declined",
+                category="payment",
+                text=f"{drv_name} weekly payment declined (₹{amt})",
+                raw_ts=p.get("verifiedAt") or p.get("updatedAt") or p.get("submittedAt") or p.get("createdAt"),
+                color="danger",
+                icon="ti-receipt-off",
+                target_type="payment",
+                target_id=pid,
+                section="payments",
+            )
+        elif p_status in ("submitted", "pending_verification", "pending"):
+            _add_event(
+                ev_id=f"pmt_sub_{pid}",
+                ev_type="payment_submitted",
+                category="payment",
+                text=f"{drv_name} submitted weekly fee payment (₹{amt})",
+                raw_ts=p.get("submittedAt") or p.get("createdAt"),
+                color="warning",
+                icon="ti-clock-dollar",
+                target_type="payment",
+                target_id=pid,
+                section="payments",
+            )
+
+    # 7. Wallet Credits Granted
+    try:
+        wtx_q = db.collection("walletTransactions").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(12)
+        wtx_docs = [_doc_dict(d) for d in _stream(wtx_q)]
+    except Exception:
+        try:
+            wtx_docs = [_doc_dict(d) for d in _stream(db.collection("walletTransactions").limit(12))]
+        except Exception:
+            wtx_docs = []
+
+    for tx in wtx_docs:
+        tx_id = str(tx.get("id") or "").strip()
+        tx_type = str(tx.get("type") or "").upper()
+        direction = str(tx.get("direction") or "").lower()
+        if "CREDIT" in tx_type or direction == "credit":
+            amt = tx.get("amount")
+            if amt is None and tx.get("amountPaise") is not None:
+                amt = round(float(tx.get("amountPaise") or 0) / 100.0, 2)
+            amt_val = amt if amt is not None else 0
+            u_id = tx.get("userId") or tx.get("passengerId") or ""
+            _add_event(
+                ev_id=f"wtx_cred_{tx_id}",
+                ev_type="wallet_credit",
+                category="wallet",
+                text=f"Wallet credit of ₹{amt_val} granted" + (f" to user {str(u_id)[:8]}" if u_id else ""),
+                raw_ts=tx.get("createdAt"),
+                color="success",
+                icon="ti-wallet",
+                target_type="passenger" if u_id else "wallet",
+                target_id=u_id or tx_id,
+                section="wallet-payments",
+            )
+
+    # 8. Coupons Created
+    try:
+        cpn_q = db.collection("coupons").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(10)
+        cpn_docs = [_doc_dict(d) for d in _stream(cpn_q)]
+    except Exception:
+        try:
+            cpn_docs = [_doc_dict(d) for d in _stream(db.collection("coupons").limit(10))]
+        except Exception:
+            cpn_docs = []
+
+    for c in cpn_docs:
+        cid = str(c.get("id") or c.get("code") or "").strip()
+        code = str(c.get("code") or cid).upper()
+        if c.get("createdAt"):
+            _add_event(
+                ev_id=f"cpn_create_{cid}",
+                ev_type="coupon_created",
+                category="coupon",
+                text=f"Promotional coupon {code} created",
+                raw_ts=c.get("createdAt"),
+                color="purple",
+                icon="ti-ticket",
+                target_type="coupon",
+                target_id=cid,
+                section="coupons",
+            )
+
+    # 9. Admin & Manager Role Assignments + Key Admin Audit Events
+    try:
+        role_docs = [_doc_dict(d) for d in _stream(db.collection("adminRoles").limit(10))]
+    except Exception:
+        role_docs = []
+
+    for ar in role_docs:
+        ar_uid = str(ar.get("id") or ar.get("uid") or "").strip()
+        role_lbl = str(ar.get("role") or "admin").replace("_", " ").title()
+        email_lbl = ar.get("email") or ar.get("name") or ar_uid
+        ts_val = ar.get("assignedAt") or ar.get("updatedAt") or ar.get("createdAt")
+        if ts_val:
+            _add_event(
+                ev_id=f"role_assign_{ar_uid}",
+                ev_type="role_assigned",
+                category="admin",
+                text=f"{role_lbl} role assigned to {email_lbl}",
+                raw_ts=ts_val,
+                color="purple",
+                icon="ti-shield-lock",
+                target_type="permission",
+                target_id=ar_uid,
+                section="permissions",
+            )
+
+    try:
+        audit_q = db.collection("auditLogs").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(12)
+        audit_docs = [_doc_dict(d) for d in _stream(audit_q)]
+    except Exception:
+        try:
+            audit_docs = [_doc_dict(d) for d in _stream(db.collection("auditLogs").limit(12))]
+        except Exception:
+            audit_docs = []
+
+    for al in audit_docs:
+        al_id = str(al.get("id") or "").strip()
+        act = str(al.get("action") or "").strip()
+        target_id = str(al.get("targetId") or "").strip()
+        actor = al.get("adminEmail") or "Admin"
+        notes = str(al.get("notes") or "").strip()
+        if not act:
+            continue
+        if act == "notification.broadcast":
+            _add_event(
+                ev_id=f"audit_{al_id}",
+                ev_type="broadcast_sent",
+                category="admin",
+                text=notes or f"Push broadcast sent by {actor}",
+                raw_ts=al.get("createdAt"),
+                color="info",
+                icon="ti-speakerphone",
+                target_type="notification",
+                target_id=target_id,
+                section="notifications",
+            )
+        elif act.startswith("permissions."):
+            _add_event(
+                ev_id=f"audit_{al_id}",
+                ev_type="role_assigned",
+                category="admin",
+                text=notes or f"Permission updated by {actor}",
+                raw_ts=al.get("createdAt"),
+                color="purple",
+                icon="ti-shield-lock",
+                target_type="permission",
+                target_id=target_id,
+                section="permissions",
+            )
+
+    # Strictly sort all events in descending chronological order by UTC epoch ms
+    raw_events.sort(key=lambda x: int(x.get("timestampMs") or 0), reverse=True)
+    return raw_events[: max(1, min(limit, 100))]
+
+
+@router.get("/activity-feed")
+def get_activity_feed(
+    admin_user: dict[str, Any] = Depends(require_admin),
+    limit: int = Query(default=30),
+    category: Optional[str] = Query(default=None),
+) -> dict[str, Any]:
+    db = _db()
+    activities = _collect_activity_feed(db, limit=max(1, min(limit, 100)))
+    if category and category.lower() != "all":
+        cat_lower = category.lower()
+        activities = [a for a in activities if str(a.get("category") or "").lower().startswith(cat_lower.rstrip("s"))]
+    return {"ok": True, "activities": activities, "items": activities}
+
+
 
 @router.get("/overview")
 def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
@@ -509,157 +1153,7 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     recent_rides_docs = [_doc_dict(d) for d in _stream(recent_rides_query)]
     recent_rides = _backfill_driver_names(recent_rides_docs)
 
-    # Collect real recent activity events across 6 distinct categories
-    all_activities: list[dict[str, Any]] = []
-
-    # 1. New Driver Registrations
-    recent_drivers_query = users_coll.where("role", "==", "driver").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
-    for u in [_doc_dict(d) for d in _stream(recent_drivers_query)]:
-        name = u.get("name") or u.get("phone") or "Driver"
-        t = u.get("createdAt")
-        t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-        all_activities.append({
-            "text": f"New driver registered: {name}",
-            "color": "primary",
-            "type": "driver_registered",
-            "at": t_iso,
-        })
-
-    # 2. New Passenger Registrations
-    recent_passengers_query = users_coll.where("role", "==", "passenger").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
-    for u in [_doc_dict(d) for d in _stream(recent_passengers_query)]:
-        name = u.get("name") or u.get("phone") or "Passenger"
-        t = u.get("createdAt")
-        t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-        all_activities.append({
-            "text": f"New passenger registered: {name}",
-            "color": "primary",
-            "type": "passenger_registered",
-            "at": t_iso,
-        })
-
-    # 3. Ride Completed
-    try:
-        completed_rides_query = rides_coll.where("status", "==", "completed").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
-        for r in [_doc_dict(d) for d in _stream(completed_rides_query)]:
-            r_id = str(r.get("id") or "")
-            short_id = f"#LP{r_id[-5:].upper()}" if len(r_id) >= 5 else f"#{r_id}"
-            t = r.get("completedAt") or r.get("updatedAt") or r.get("createdAt")
-            t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-            fare = r.get("fare")
-            fare_txt = f" (₹{fare})" if fare else ""
-            all_activities.append({
-                "text": f"Ride {short_id} completed{fare_txt}",
-                "color": "success",
-                "type": "ride_completed",
-                "at": t_iso,
-            })
-    except Exception:
-        pass
-
-    # 4. Ride Cancelled
-    try:
-        cancelled_rides_query = rides_coll.order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(30)
-        c_count = 0
-        for r in [_doc_dict(d) for d in _stream(cancelled_rides_query)]:
-            st = str(r.get("status") or r.get("final_status") or r.get("trip_status") or "").lower()
-            if st.startswith("cancel") or r.get("cancelled") or r.get("is_cancelled"):
-                r_id = str(r.get("id") or "")
-                short_id = f"#LP{r_id[-5:].upper()}" if len(r_id) >= 5 else f"#{r_id}"
-                t = r.get("cancelledAt") or r.get("finalStatusAt") or r.get("updatedAt") or r.get("createdAt")
-                t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-                all_activities.append({
-                    "text": f"Ride {short_id} cancelled",
-                    "color": "danger",
-                    "type": "ride_cancelled",
-                    "at": t_iso,
-                })
-                c_count += 1
-                if c_count >= 15:
-                    break
-    except Exception:
-        pass
-
-    # 5. Driver Weekly Payment Completed
-    try:
-        recent_pmts_query = (
-            db.collection("driverPayments")
-            .where("status", "==", "approved")
-            .order_by("submittedAt", direction=fb_firestore.Query.DESCENDING)
-            .limit(15)
-        )
-        for p in [_doc_dict(d) for d in _stream(recent_pmts_query)]:
-            t = p.get("verifiedAt") or p.get("updatedAt") or p.get("submittedAt") or p.get("createdAt")
-            t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-            drv_name = p.get("driverName") or p.get("name") or "Driver"
-            amt = p.get("amount") or 0
-            all_activities.append({
-                "text": f"{drv_name} completed weekly payment (₹{amt})",
-                "color": "success",
-                "type": "payment_completed",
-                "at": t_iso,
-            })
-    except Exception:
-        try:
-            for p in [_doc_dict(d) for d in _stream(db.collection("driverPayments").order_by("submittedAt", direction=fb_firestore.Query.DESCENDING).limit(20))]:
-                if p.get("status") == "approved":
-                    t = p.get("verifiedAt") or p.get("updatedAt") or p.get("submittedAt") or p.get("createdAt")
-                    t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-                    drv_name = p.get("driverName") or p.get("name") or "Driver"
-                    amt = p.get("amount") or 0
-                    all_activities.append({
-                        "text": f"{drv_name} completed weekly payment (₹{amt})",
-                        "color": "success",
-                        "type": "payment_completed",
-                        "at": t_iso,
-                    })
-        except Exception:
-            pass
-
-    # 6. SOS Alerts
-    try:
-        recent_sos_query = db.collection("sosAlerts").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(15)
-        for s in [_doc_dict(d) for d in _stream(recent_sos_query)]:
-            t = s.get("createdAt") or s.get("triggeredAt")
-            t_iso = t.isoformat() if isinstance(t, datetime) else (str(t) if t else now.isoformat())
-            ride_ref = s.get("rideId") or s.get("ride_id") or ""
-            user_lbl = s.get("userName") or s.get("passengerName") or s.get("phone") or "Passenger"
-            alert_label = f"Ride #{str(ride_ref)[-5:].upper()}" if ride_ref else user_lbl
-            all_activities.append({
-                "text": f"New SOS alert: {alert_label}",
-                "color": "danger",
-                "type": "sos_alert",
-                "at": t_iso,
-            })
-    except Exception:
-        pass
-
-    # Sort all candidates by timestamp descending
-    all_activities.sort(key=lambda x: str(x.get("at") or ""), reverse=True)
-
-    # Diversity limiter: max 10 per activity type, feed limit up to 25
-    type_counts: dict[str, int] = {}
-    diverse_activities: list[dict[str, Any]] = []
-    overflow_activities: list[dict[str, Any]] = []
-
-    for act in all_activities:
-        act_type = act.get("type", "other")
-        count = type_counts.get(act_type, 0)
-        if count < 10:
-            diverse_activities.append(act)
-            type_counts[act_type] = count + 1
-            if len(diverse_activities) >= 25:
-                break
-        else:
-            overflow_activities.append(act)
-
-    if len(diverse_activities) < 25 and overflow_activities:
-        for act in overflow_activities:
-            diverse_activities.append(act)
-            if len(diverse_activities) >= 25:
-                break
-
-    recent_activity = diverse_activities[:25]
+    recent_activity = _collect_activity_feed(db, limit=30)
 
     # Hourly ride activity breakdown for today
     hourly_activity: dict[str, int] = {"6 AM": 0, "9 AM": 0, "12 PM": 0, "3 PM": 0, "6 PM": 0, "9 PM": 0}
@@ -939,6 +1433,8 @@ def get_driver(uid: str, admin_user: dict[str, Any] = Depends(require_admin)) ->
             all_driver_rides.sort(key=lambda r: str(r.get("createdAt") or ""), reverse=True)
         except Exception:
             all_driver_rides = []
+    all_driver_rides.sort(key=lambda r: _to_utc_ms(r.get("createdAt") or r.get("updatedAt")) or 0, reverse=True)
+    all_driver_rides = _backfill_driver_names(all_driver_rides)
     rating_summary = _compute_driver_rating_summary(all_driver_rides, profile)
     sanitized = _sanitize_driver(profile)
     if sanitized.get("rating") is None and rating_summary.get("averageRating") is not None:
@@ -948,7 +1444,7 @@ def get_driver(uid: str, admin_user: dict[str, Any] = Depends(require_admin)) ->
         "ok": True,
         "driver": sanitized,
         "ratingSummary": rating_summary,
-        "recentRides": all_driver_rides[:20],
+        "recentRides": all_driver_rides[:10],
     }
 
 
@@ -1232,6 +1728,7 @@ def get_passenger(
         except Exception:
             pass
 
+    rides_docs.sort(key=lambda r: _to_utc_ms(r.get("createdAt") or r.get("updatedAt")) or 0, reverse=True)
     return {
         "ok": True,
         "passenger": _sanitize_passenger(profile),
@@ -1245,7 +1742,7 @@ def get_passenger(
         "wallet": wallet_data,
         "redeemedCoupons": redeemed_coupons,
         "safetyEvents": safety_events,
-        "recentRides": rides_docs[:20],
+        "recentRides": rides_docs[:10],
     }
 
 
@@ -1394,7 +1891,7 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
         d_id = r.get("driver_id")
         if d_id and d_id in user_profiles:
             u = user_profiles[d_id]
-            if not r.get("driver_name"):
+            if not r.get("driver_name") or r.get("driver_name") == d_id:
                 r["driver_name"] = u.get("name") or "Driver"
             if not r.get("driver_phone"):
                 r["driver_phone"] = u.get("phone") or ""
@@ -1405,7 +1902,7 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
         p_id = r.get("passenger_id")
         if p_id and p_id in user_profiles:
             u = user_profiles[p_id]
-            if not r.get("passenger_name"):
+            if not r.get("passenger_name") or r.get("passenger_name") == p_id:
                 r["passenger_name"] = u.get("name") or "Passenger"
             if not r.get("passenger_phone"):
                 r["passenger_phone"] = u.get("phone") or ""
@@ -1431,7 +1928,10 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
         child_rides = share_grouped_rides.get(st_id, [])
         d_id = st_data.get("driverId") or st_data.get("driver_id") or (child_rides[0].get("driver_id") if child_rides else None)
         d_profile = user_profiles.get(d_id, {}) if d_id else {}
-        d_name = st_data.get("driverName") or (child_rides[0].get("driver_name") if child_rides else None) or d_profile.get("name") or "Driver"
+        st_d_name = st_data.get("driverName")
+        if st_d_name == d_id:
+            st_d_name = None
+        d_name = st_d_name or (child_rides[0].get("driver_name") if child_rides else None) or d_profile.get("name") or "Driver"
         d_phone = d_profile.get("phone") or (child_rides[0].get("driver_phone") if child_rides else "")
         v_num = d_profile.get("vehicleNumber") or d_profile.get("vehicle_number") or (child_rides[0].get("vehicle_number") if child_rides else "TR 01 AB 1234")
         v_type = (child_rides[0].get("vehicle_type") if child_rides else None) or d_profile.get("vehicleType") or "auto"
@@ -1458,6 +1958,13 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
             c_time, c_elapsed = _format_time_and_elapsed(cr.get("createdAt") or st_created)
             p_name = cr.get("passenger_name") or "Passenger"
             p_phone = cr.get("passenger_phone") or ""
+            c_raw_status = str(cr.get("status") or "").strip().lower()
+            c_pin_verified = bool(
+                cr.get("pin_verified")
+                or cr.get("pinVerified")
+                or cr.get("pinVerifiedAt")
+                or c_raw_status in ("started", "in_progress", "en_route", "completed")
+            )
             child_items.append({
                 "id": cr["id"],
                 "displayId": c_display_id,
@@ -1489,16 +1996,28 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
                 },
                 "status": "On Trip" if cr.get("status") in ACTIVE_RIDE_STATUSES else (cr.get("status") or "On Trip"),
                 "rawStatus": cr.get("status"),
+                "pin_verified": c_pin_verified,
                 "startedAt": c_time,
                 "elapsedText": c_elapsed,
                 "driverLocation": cr.get("driverLocation") or drv_loc,
             })
 
         parent_status = "Finding Riders" if joined_count < max_seats and st_data.get("status") == "pending" else "On Trip"
+        parent_raw_status = (
+            st_data.get("status")
+            or (child_rides[0].get("status") if child_rides else None)
+            or ("pending" if parent_status == "Finding Riders" else "en_route")
+        )
+        parent_pin_verified = any(ci.get("pin_verified") for ci in child_items) or str(parent_raw_status).lower() in (
+            "started",
+            "in_progress",
+            "en_route",
+        )
         hierarchy.append({
             "id": st_id,
             "displayId": parent_display_id,
             "isParent": True,
+            "isShareTripDoc": True,
             "rideType": "share",
             "vehicleType": v_type,
             "description": f"Share Ride • {max_seats} passengers ({joined_count}/{max_seats} joined)",
@@ -1524,6 +2043,8 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
                 "drop_lng": drop_lng,
             },
             "status": parent_status,
+            "rawStatus": parent_raw_status,
+            "pin_verified": parent_pin_verified,
             "startedAt": time_str,
             "elapsedText": elapsed_str,
             "childRides": child_items,
@@ -1549,6 +2070,13 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
         pickup_name = sr.get("pickup_name") or "Pickup"
         drop_name = sr.get("drop_name") or "Drop"
         time_str, elapsed_str = _format_time_and_elapsed(sr.get("createdAt") or sr.get("updatedAt"))
+        sr_raw_status = str(sr.get("status") or "").strip().lower()
+        sr_pin_verified = bool(
+            sr.get("pin_verified")
+            or sr.get("pinVerified")
+            or sr.get("pinVerifiedAt")
+            or sr_raw_status in ("started", "in_progress", "en_route", "completed")
+        )
 
         c_display_id = f"{parent_display_id}-1"
         child_item = {
@@ -1582,6 +2110,7 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
             },
             "status": "On Trip" if sr.get("status") in ACTIVE_RIDE_STATUSES else (sr.get("status") or "On Trip"),
             "rawStatus": sr.get("status"),
+            "pin_verified": sr_pin_verified,
             "startedAt": time_str,
             "elapsedText": elapsed_str,
             "driverLocation": sr.get("driverLocation"),
@@ -1591,6 +2120,7 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
             "id": sr["id"],
             "displayId": parent_display_id,
             "isParent": True,
+            "isShareTripDoc": False,
             "rideType": "share" if is_share else "single",
             "vehicleType": v_type,
             "description": f"{v_label} • {max_seats} passenger{'s' if max_seats > 1 else ''}",
@@ -1616,6 +2146,8 @@ def _build_live_hierarchy(db, rides_docs: list[dict[str, Any]]) -> tuple[list[di
                 "drop_lng": sr.get("drop_lng"),
             },
             "status": "On Trip" if sr.get("status") in ACTIVE_RIDE_STATUSES else (sr.get("status") or "On Trip"),
+            "rawStatus": sr.get("status"),
+            "pin_verified": sr_pin_verified,
             "startedAt": time_str,
             "elapsedText": elapsed_str,
             "childRides": [child_item],
@@ -2111,85 +2643,6 @@ def remove_waiting_pool_passenger(
     }
 
 
-@router.get("/live-map")
-def get_live_fleet_map(
-    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
-) -> dict[str, Any]:
-    """Unified God-View live fleet & demand map data: online/busy drivers, waiting passengers, and active rides."""
-    pools_resp = list_waiting_pools(admin_user=admin_user)
-    live_resp = list_live_rides(admin_user=admin_user)
-
-    waiting_passengers = pools_resp.get("passengers") or []
-    idle_drivers = pools_resp.get("drivers") or []
-    active_hierarchy = live_resp.get("hierarchy") or []
-
-    drivers_by_id: dict[str, dict[str, Any]] = {}
-    for d in idle_drivers:
-        did = d.get("driver_id") or d.get("id")
-        if not did:
-            continue
-        drivers_by_id[did] = {
-            "id": did,
-            "name": d.get("name") or "Driver",
-            "phone": d.get("phone") or "",
-            "plate": d.get("plate") or "",
-            "vehicleType": str(d.get("vehicleType") or "Auto").lower(),
-            "status": "online",
-            "lat": d.get("lat"),
-            "lng": d.get("lng"),
-            "currentLocation": d.get("currentLocation") or "",
-            "idleTimeText": d.get("idleTimeText") or "",
-            "seatsFree": d.get("seatsFree") or 1,
-        }
-
-    # Overlay busy drivers from active rides
-    for h in active_hierarchy:
-        drv = h.get("driver") or {}
-        did = drv.get("id")
-        if not did:
-            continue
-        drv_loc = h.get("driverLocation") or {}
-        route = h.get("route") or {}
-        lat = drv_loc.get("lat") if isinstance(drv_loc, dict) else None
-        lng = drv_loc.get("lng") if isinstance(drv_loc, dict) else None
-        if lat is None or lng is None:
-            lat = route.get("pickup_lat")
-            lng = route.get("pickup_lng")
-        existing = drivers_by_id.get(did, {})
-        drivers_by_id[did] = {
-            "id": did,
-            "name": drv.get("name") or existing.get("name") or "Driver",
-            "phone": drv.get("phone") or existing.get("phone") or "",
-            "plate": drv.get("plate") or existing.get("plate") or "",
-            "vehicleType": str(h.get("vehicleType") or existing.get("vehicleType") or "auto").lower(),
-            "status": "busy",
-            "lat": lat if lat is not None else existing.get("lat"),
-            "lng": lng if lng is not None else existing.get("lng"),
-            "currentLocation": route.get("pickup") or existing.get("currentLocation") or "",
-            "activeRideId": h.get("id"),
-            "activeRideDisplayId": h.get("displayId"),
-            "seatsFree": max(0, int((h.get("passengers") or {}).get("capacity", 1)) - int((h.get("passengers") or {}).get("count", 1))),
-        }
-
-    all_drivers = list(drivers_by_id.values())
-    online_count = sum(1 for d in all_drivers if d.get("status") == "online")
-    busy_count = sum(1 for d in all_drivers if d.get("status") == "busy")
-
-    return {
-        "ok": True,
-        "drivers": all_drivers,
-        "waitingPassengers": waiting_passengers,
-        "activeRides": active_hierarchy,
-        "counts": {
-            "onlineDrivers": online_count,
-            "busyDrivers": busy_count,
-            "totalDrivers": len(all_drivers),
-            "waitingPassengers": len(waiting_passengers),
-            "activeRides": len(active_hierarchy),
-        },
-    }
-
-
 @router.get("/rides/history")
 def list_ride_history(
     admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
@@ -2242,31 +2695,86 @@ def list_ride_history(
 @router.get("/rides/{ride_id}")
 def get_admin_ride(
     ride_id: str,
-    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+    admin_user: dict[str, Any] = Depends(require_admin),
 ) -> dict[str, Any]:
     db = _db()
     ref = db.collection("rides").document(ride_id)
     snap = ref.get()
     if not snap.exists:
-        raise ApiError("Ride not found.", 404)
-    ride = _doc_dict(snap)
+        st_snap = db.collection("shareTrips").document(ride_id).get()
+        if not st_snap.exists:
+            raise ApiError("Ride not found.", 404)
+        st_data = _doc_dict(st_snap)
+        child_docs = [_doc_dict(d) for d in _stream(db.collection("rides").where("parentTripId", "==", ride_id))]
+        child_docs = _backfill_driver_names(child_docs)
+        first_child = child_docs[0] if child_docs else {}
+        ride = {
+            "id": ride_id,
+            "rideType": "share",
+            "isParentShareTrip": True,
+            "parentTripId": ride_id,
+            "status": st_data.get("status") or first_child.get("status") or "active",
+            "driver_id": st_data.get("driverId") or st_data.get("driver_id") or first_child.get("driver_id"),
+            "driver_name": st_data.get("driverName") or first_child.get("driver_name"),
+            "driver_phone": first_child.get("driver_phone"),
+            "vehicle_type": st_data.get("vehicleType") or first_child.get("vehicle_type") or "auto",
+            "vehicle_number": first_child.get("vehicle_number"),
+            "passenger_id": first_child.get("passenger_id"),
+            "passenger_name": first_child.get("passenger_name") or f"{len(child_docs)} Share Passengers",
+            "passenger_phone": first_child.get("passenger_phone"),
+            "pickup_name": st_data.get("pickup_name") or first_child.get("pickup_name"),
+            "drop_name": st_data.get("drop_name") or first_child.get("drop_name"),
+            "pickup_lat": st_data.get("pickup_lat") or first_child.get("pickup_lat"),
+            "pickup_lng": st_data.get("pickup_lng") or first_child.get("pickup_lng"),
+            "drop_lat": st_data.get("drop_lat") or first_child.get("drop_lat"),
+            "drop_lng": st_data.get("drop_lng") or first_child.get("drop_lng"),
+            "driverLocation": st_data.get("driverLocation") or first_child.get("driverLocation"),
+            "fare": sum(float(c.get("fare") or 0) for c in child_docs),
+            "createdAt": st_data.get("createdAt") or first_child.get("createdAt"),
+            "updatedAt": st_data.get("updatedAt") or first_child.get("updatedAt"),
+            "adminNotes": st_data.get("adminNotes") or [],
+        }
+        ride = _backfill_driver_names([ride])[0]
+        sibling_rides = [
+            {
+                "rideId": c.get("id"),
+                "passenger_id": c.get("passenger_id"),
+                "passenger_name": c.get("passenger_name") or "Passenger details unavailable",
+                "passenger_phone": c.get("passenger_phone") or "",
+                "seatOrder": c.get("seatOrder") or (idx + 1),
+                "status": c.get("status"),
+                "fare": c.get("fare"),
+                "pickup_name": c.get("pickup_name"),
+                "drop_name": c.get("drop_name"),
+            }
+            for idx, c in enumerate(child_docs)
+        ]
+        ride["siblingChildRides"] = sibling_rides
+        return {"ok": True, "ride": ride, "siblingChildRides": sibling_rides}
+
+    ride = _backfill_driver_names([_doc_dict(snap)])[0]
     sibling_rides = []
     parent_trip_id = ride.get("parentTripId")
     if parent_trip_id:
         try:
-            s_docs = db.collection("rides").where("parentTripId", "==", parent_trip_id).stream()
-            for s in s_docs:
-                if s.id != ride_id:
-                    s_data = s.to_dict() or {}
-                    sibling_rides.append({
-                        "rideId": s.id,
-                        "passenger_name": s_data.get("passenger_name") or "Passenger",
-                        "seatOrder": s_data.get("seatOrder") or 1,
-                        "status": s_data.get("status"),
-                        "fare": s_data.get("fare"),
-                        "pickup_name": s_data.get("pickup_name"),
-                        "drop_name": s_data.get("drop_name"),
-                    })
+            raw_siblings = [
+                _doc_dict(s)
+                for s in _stream(db.collection("rides").where("parentTripId", "==", parent_trip_id))
+                if s.id != ride_id
+            ]
+            raw_siblings = _backfill_driver_names(raw_siblings)
+            for s_data in raw_siblings:
+                sibling_rides.append({
+                    "rideId": s_data.get("id"),
+                    "passenger_id": s_data.get("passenger_id"),
+                    "passenger_name": s_data.get("passenger_name") or "Passenger details unavailable",
+                    "passenger_phone": s_data.get("passenger_phone") or "",
+                    "seatOrder": s_data.get("seatOrder") or 1,
+                    "status": s_data.get("status"),
+                    "fare": s_data.get("fare"),
+                    "pickup_name": s_data.get("pickup_name"),
+                    "drop_name": s_data.get("drop_name"),
+                })
         except Exception:
             pass
     ride["siblingChildRides"] = sibling_rides
@@ -2664,8 +3172,333 @@ def list_audit_logs(
 SAFETY_STATUS_GROUPS: dict[str, Optional[list[str]]] = {
     "all": None,
     "open": ["open"],
-    "resolved": ["resolved", "dismissed"],
+    "resolved": ["resolved", "dismissed", "closed"],
 }
+
+
+class BulkSafetyDeleteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ids: Optional[list[str]] = Field(default=None, max_length=100)
+    alertIds: Optional[list[str]] = Field(default=None, max_length=100)
+    reportIds: Optional[list[str]] = Field(default=None, max_length=100)
+
+
+def _enrich_safety_records(db, records: list[dict[str, Any]], kind: str = "sos") -> list[dict[str, Any]]:
+    if not records:
+        return records
+
+    ride_ids: set[str] = set()
+    for rec in records:
+        r_id = str(rec.get("ride_id") or rec.get("rideId") or "").strip()
+        if r_id:
+            ride_ids.add(r_id)
+
+    rides_map = _batch_get_dicts(db, "rides", ride_ids) if ride_ids else {}
+
+    parent_trip_ids: set[str] = set()
+    for rec in records:
+        pt_id = str(rec.get("parent_trip_id") or rec.get("parentTripId") or "").strip()
+        if pt_id:
+            parent_trip_ids.add(pt_id)
+    for r_data in rides_map.values():
+        pt_id = str(r_data.get("parentTripId") or "").strip()
+        if pt_id:
+            parent_trip_ids.add(pt_id)
+
+    share_trips_map = _batch_get_dicts(db, "shareTrips", parent_trip_ids) if parent_trip_ids else {}
+
+    user_ids: set[str] = set()
+    for rec in records:
+        r_id = str(rec.get("ride_id") or rec.get("rideId") or "").strip()
+        r_data = rides_map.get(r_id) or {}
+        pt_id = str(rec.get("parent_trip_id") or rec.get("parentTripId") or r_data.get("parentTripId") or "").strip()
+        pt_data = share_trips_map.get(pt_id) or {}
+
+        for cand in (
+            rec.get("reporter_id"),
+            rec.get("reporterId"),
+            rec.get("userId"),
+            rec.get("user_id"),
+            rec.get("passenger_id"),
+            rec.get("passengerId"),
+            rec.get("driver_id"),
+            rec.get("driverId"),
+            r_data.get("passenger_id"),
+            r_data.get("passengerId"),
+            r_data.get("driver_id"),
+            r_data.get("driverId"),
+            pt_data.get("driverId"),
+            pt_data.get("driver_id"),
+        ):
+            c_str = str(cand or "").strip()
+            if c_str:
+                user_ids.add(c_str)
+
+    users_map = _batch_get_users(db, user_ids) if user_ids else {}
+    emergency_docs_map = _batch_get_dicts(db, "emergencyContacts", user_ids) if user_ids else {}
+
+    enriched: list[dict[str, Any]] = []
+    for rec in records:
+        item = dict(rec)
+        r_id = str(item.get("ride_id") or item.get("rideId") or "").strip()
+        r_data = dict(rides_map.get(r_id) or {})
+        pt_id = str(item.get("parent_trip_id") or item.get("parentTripId") or r_data.get("parentTripId") or "").strip()
+        pt_data = dict(share_trips_map.get(pt_id) or {})
+
+        reporter_id = str(
+            item.get("reporter_id")
+            or item.get("reporterId")
+            or item.get("userId")
+            or item.get("user_id")
+            or ""
+        ).strip()
+        reporter_profile = users_map.get(reporter_id) or {}
+        reporter_role = str(
+            item.get("reporter_role")
+            or item.get("reporterRole")
+            or reporter_profile.get("role")
+            or ""
+        ).strip().lower()
+
+        passenger_id = str(
+            item.get("passenger_id")
+            or item.get("passengerId")
+            or r_data.get("passenger_id")
+            or r_data.get("passengerId")
+            or (reporter_id if reporter_role == "passenger" else "")
+            or (reporter_id if not r_id and reporter_role != "driver" else "")
+        ).strip()
+        driver_id = str(
+            item.get("driver_id")
+            or item.get("driverId")
+            or r_data.get("driver_id")
+            or r_data.get("driverId")
+            or pt_data.get("driverId")
+            or pt_data.get("driver_id")
+            or (reporter_id if reporter_role == "driver" else "")
+        ).strip()
+
+        pax_profile = users_map.get(passenger_id) or {}
+        drv_profile = users_map.get(driver_id) or {}
+
+        pax_name = (
+            str(item.get("passenger_name") or item.get("passengerName") or "").strip()
+            or str(r_data.get("passenger_name") or r_data.get("passengerName") or "").strip()
+            or str(pax_profile.get("name") or "").strip()
+            or (str(item.get("reporter_name") or "").strip() if reporter_role == "passenger" else "")
+        )
+        if pax_name == passenger_id or pax_name.lower() in ("passenger", "passenger details unavailable", "n/a", "--"):
+            pax_name = str(pax_profile.get("name") or "").strip() or pax_name
+
+        pax_phone = (
+            str(item.get("passenger_phone") or item.get("passengerPhone") or "").strip()
+            or str(r_data.get("passenger_phone") or r_data.get("passengerPhone") or "").strip()
+            or str(pax_profile.get("phone") or pax_profile.get("phoneNumber") or "").strip()
+            or (str(item.get("reporter_phone") or item.get("phone") or "").strip() if reporter_role == "passenger" else "")
+        )
+
+        drv_name = (
+            str(item.get("driver_name") or item.get("driverName") or "").strip()
+            or str(r_data.get("driver_name") or r_data.get("driverName") or "").strip()
+            or str(pt_data.get("driverName") or "").strip()
+            or str(drv_profile.get("name") or "").strip()
+            or (str(item.get("reporter_name") or "").strip() if reporter_role == "driver" else "")
+        )
+        if drv_name == driver_id or drv_name.lower() in ("driver", "driver details unavailable", "unassigned", "n/a", "--"):
+            drv_name = str(drv_profile.get("name") or "").strip() or drv_name
+
+        drv_phone = (
+            str(item.get("driver_phone") or item.get("driverPhone") or "").strip()
+            or str(r_data.get("driver_phone") or r_data.get("driverPhone") or "").strip()
+            or str(drv_profile.get("phone") or drv_profile.get("phoneNumber") or "").strip()
+            or (str(item.get("reporter_phone") or "").strip() if reporter_role == "driver" else "")
+        )
+
+        veh_number = (
+            str(item.get("vehicle_number") or item.get("vehicleNumber") or "").strip()
+            or str(r_data.get("vehicle_number") or r_data.get("vehicleNumber") or "").strip()
+            or str(drv_profile.get("vehicleNumber") or drv_profile.get("vehicle_number") or "").strip()
+        )
+        veh_type = (
+            str(item.get("vehicle_type") or item.get("vehicleType") or "").strip()
+            or str(r_data.get("vehicle_type") or r_data.get("vehicleType") or "").strip()
+            or str(pt_data.get("vehicleType") or "").strip()
+            or str(drv_profile.get("vehicleType") or drv_profile.get("vehicle_type") or "").strip()
+        )
+        veh_model = (
+            str(r_data.get("vehicle_model") or r_data.get("vehicleModel") or "").strip()
+            or str(drv_profile.get("vehicleModel") or drv_profile.get("vehicle_model") or "").strip()
+        )
+
+        raw_rep_name = str(item.get("reporter_name") or item.get("reporterName") or "").strip()
+        if raw_rep_name == reporter_id:
+            raw_rep_name = ""
+        reporter_name = (
+            raw_rep_name
+            or str(reporter_profile.get("name") or "").strip()
+            or (pax_name if reporter_role == "passenger" else (drv_name if reporter_role == "driver" else ""))
+        )
+        reporter_phone = (
+            str(item.get("reporter_phone") or item.get("reporterPhone") or "").strip()
+            or str(reporter_profile.get("phone") or reporter_profile.get("phoneNumber") or "").strip()
+            or (pax_phone if reporter_role == "passenger" else (drv_phone if reporter_role == "driver" else ""))
+        )
+
+        # Emergency contacts lookup (check passenger and reporter)
+        emergency_contacts: list[dict[str, Any]] = []
+        for ec_uid in dict.fromkeys([passenger_id, reporter_id]):
+            if not ec_uid:
+                continue
+            ec_doc = emergency_docs_map.get(ec_uid) or {}
+            raw_list = ec_doc.get("contacts") or (users_map.get(ec_uid) or {}).get("emergencyContacts") or []
+            if isinstance(raw_list, list):
+                for c in raw_list:
+                    if isinstance(c, dict) and (c.get("name") or c.get("phone")):
+                        emergency_contacts.append({
+                            "name": str(c.get("name") or "Emergency Contact"),
+                            "phone": str(c.get("phone") or c.get("phoneNumber") or ""),
+                            "relationship": str(c.get("relationship") or c.get("relation") or ""),
+                        })
+            u_ec_phone = (users_map.get(ec_uid) or {}).get("emergencyPhone") or (users_map.get(ec_uid) or {}).get("emergency_contact")
+            if u_ec_phone and not emergency_contacts:
+                emergency_contacts.append({
+                    "name": "Primary Emergency Contact",
+                    "phone": str(u_ec_phone),
+                    "relationship": "",
+                })
+
+        pickup_name = (
+            str(item.get("pickup_name") or item.get("pickupName") or item.get("pickup_location") or "").strip()
+            or str(r_data.get("pickup_name") or r_data.get("pickupName") or r_data.get("pickup_display_address") or r_data.get("pickup_location") or "").strip()
+            or str(pt_data.get("pickup_name") or "").strip()
+        )
+        drop_name = (
+            str(item.get("drop_name") or item.get("dropName") or item.get("drop_location") or "").strip()
+            or str(r_data.get("drop_name") or r_data.get("dropName") or r_data.get("drop_display_address") or r_data.get("drop_location") or "").strip()
+            or str(pt_data.get("drop_name") or "").strip()
+        )
+
+        snap_obj = item.get("location_snapshot") or item.get("locationSnapshot") or {}
+        if not isinstance(snap_obj, dict):
+            snap_obj = {}
+
+        loc_obj = item.get("location") or {}
+        if not isinstance(loc_obj, dict):
+            loc_obj = {}
+
+        r_drv_loc = r_data.get("driverLocation") or pt_data.get("driverLocation") or {}
+        if not isinstance(r_drv_loc, dict):
+            r_drv_loc = {}
+        r_pax_loc = r_data.get("passengerLocation") or {}
+        if not isinstance(r_pax_loc, dict):
+            r_pax_loc = {}
+
+        pickup_lat = (
+            snap_obj.get("pickup_lat")
+            if snap_obj.get("pickup_lat") is not None
+            else (item.get("pickup_lat") if item.get("pickup_lat") is not None else (r_data.get("pickup_lat") if r_data.get("pickup_lat") is not None else pt_data.get("pickup_lat")))
+        )
+        pickup_lng = (
+            snap_obj.get("pickup_lng")
+            if snap_obj.get("pickup_lng") is not None
+            else (item.get("pickup_lng") if item.get("pickup_lng") is not None else (r_data.get("pickup_lng") if r_data.get("pickup_lng") is not None else pt_data.get("pickup_lng")))
+        )
+        drop_lat = (
+            snap_obj.get("drop_lat")
+            if snap_obj.get("drop_lat") is not None
+            else (item.get("drop_lat") if item.get("drop_lat") is not None else (r_data.get("drop_lat") if r_data.get("drop_lat") is not None else pt_data.get("drop_lat")))
+        )
+        drop_lng = (
+            snap_obj.get("drop_lng")
+            if snap_obj.get("drop_lng") is not None
+            else (item.get("drop_lng") if item.get("drop_lng") is not None else (r_data.get("drop_lng") if r_data.get("drop_lng") is not None else pt_data.get("drop_lng")))
+        )
+
+        inc_lat = (
+            loc_obj.get("lat")
+            if loc_obj.get("lat") is not None
+            else (item.get("lat") if item.get("lat") is not None else snap_obj.get("incident_lat"))
+        )
+        inc_lng = (
+            loc_obj.get("lng")
+            if loc_obj.get("lng") is not None
+            else (item.get("lng") if item.get("lng") is not None else snap_obj.get("incident_lng"))
+        )
+
+        drv_lat = snap_obj.get("driver_lat") if snap_obj.get("driver_lat") is not None else r_drv_loc.get("lat")
+        drv_lng = snap_obj.get("driver_lng") if snap_obj.get("driver_lng") is not None else r_drv_loc.get("lng")
+        if (drv_lat is None or drv_lng is None) and reporter_role == "driver" and inc_lat is not None and inc_lng is not None:
+            drv_lat, drv_lng = inc_lat, inc_lng
+
+        pax_lat = snap_obj.get("passenger_lat") if snap_obj.get("passenger_lat") is not None else r_pax_loc.get("lat")
+        pax_lng = snap_obj.get("passenger_lng") if snap_obj.get("passenger_lng") is not None else r_pax_loc.get("lng")
+        if (pax_lat is None or pax_lng is None) and reporter_role == "passenger" and inc_lat is not None and inc_lng is not None:
+            pax_lat, pax_lng = inc_lat, inc_lng
+        if pax_lat is None or pax_lng is None:
+            pax_lat, pax_lng = pickup_lat, pickup_lng
+
+        ride_status = str(item.get("ride_status") or snap_obj.get("ride_status") or r_data.get("status") or pt_data.get("status") or "").strip()
+        pin_verified = bool(
+            item.get("pin_verified")
+            or snap_obj.get("pin_verified")
+            or r_data.get("pinVerifiedAt")
+            or r_data.get("startedAt")
+            or ride_status.lower() in ("started", "en_route", "in_progress", "completed")
+        )
+
+        location_snapshot = {
+            "incident_lat": inc_lat if inc_lat is not None else (drv_lat if drv_lat is not None else pickup_lat),
+            "incident_lng": inc_lng if inc_lng is not None else (drv_lng if drv_lng is not None else pickup_lng),
+            "driver_lat": drv_lat,
+            "driver_lng": drv_lng,
+            "passenger_lat": pax_lat,
+            "passenger_lng": pax_lng,
+            "pickup_lat": pickup_lat,
+            "pickup_lng": pickup_lng,
+            "drop_lat": drop_lat,
+            "drop_lng": drop_lng,
+            "ride_status": ride_status,
+            "pin_verified": pin_verified,
+            "vehicle_type": veh_type or "auto",
+            "captured_at": snap_obj.get("captured_at") or _to_utc_iso(item.get("createdAt")),
+        }
+
+        item.update({
+            "ride_id": r_id or None,
+            "rideId": r_id or None,
+            "parent_trip_id": pt_id or None,
+            "ride_status": ride_status or None,
+            "ride_type": str(r_data.get("rideType") or ("share" if pt_id else "single")),
+            "fare": r_data.get("fare"),
+            "pin_verified": pin_verified,
+            "reporter_id": reporter_id or None,
+            "reporter_role": reporter_role or "unknown",
+            "reporter_name": reporter_name or None,
+            "reporter_phone": reporter_phone or None,
+            "passenger_id": passenger_id or None,
+            "passenger_name": pax_name or None,
+            "passenger_phone": pax_phone or None,
+            "passenger_email": pax_profile.get("email") or None,
+            "driver_id": driver_id or None,
+            "driver_name": drv_name or None,
+            "driver_phone": drv_phone or None,
+            "driver_email": drv_profile.get("email") or None,
+            "vehicle_number": veh_number or None,
+            "vehicle_type": veh_type or None,
+            "vehicle_model": veh_model or None,
+            "pickup_name": pickup_name or None,
+            "drop_name": drop_name or None,
+            "pickup_lat": pickup_lat,
+            "pickup_lng": pickup_lng,
+            "drop_lat": drop_lat,
+            "drop_lng": drop_lng,
+            "emergency_contacts": emergency_contacts,
+            "location_snapshot": location_snapshot,
+            "ride": r_data if r_data else None,
+        })
+        enriched.append(item)
+
+    return enriched
 
 
 @router.get("/safety/sos-alerts")
@@ -2676,13 +3509,28 @@ def list_sos_alerts(
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
     limit = _clamp_limit(limit)
-    base = _db().collection("sosAlerts")
+    db = _db()
+    base = db.collection("sosAlerts")
     values = SAFETY_STATUS_GROUPS.get(status, ["open"]) if status else None
     if values:
         base = base.where("status", "in", values)
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
     items, next_cursor = _paginate(base, cursor, limit, "sosAlerts")
+    items = _enrich_safety_records(db, items, kind="sos")
     return {"ok": True, "alerts": items, "nextCursor": next_cursor}
+
+
+@router.get("/safety/sos-alerts/{alert_id}")
+def get_sos_alert(
+    alert_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _db()
+    snap = db.collection("sosAlerts").document(alert_id).get()
+    if not snap.exists:
+        raise ApiError("SOS alert not found.", 404)
+    enriched = _enrich_safety_records(db, [_doc_dict(snap)], kind="sos")[0]
+    return {"ok": True, "alert": enriched}
 
 
 class SafetyActionBody(BaseModel):
@@ -2716,14 +3564,81 @@ def update_sos_alert(
     }
     ref.set(updates, merge=True)
     if body.action == "resolve":
-        ride_id = before.get("ride_id")
+        ride_id = before.get("ride_id") or before.get("rideId")
         if ride_id:
             db.collection("rides").document(ride_id).set(
                 {"sos_active": False, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True
             )
 
     write_audit_log(admin_user, f"sos_alert.{body.action}", "sos_alert", alert_id, before, updates, body.notes)
-    return {"ok": True, "alert": _doc_dict(ref.get())}
+    enriched = _enrich_safety_records(db, [_doc_dict(ref.get())], kind="sos")[0]
+    return {"ok": True, "alert": enriched}
+
+
+@router.delete("/safety/sos-alerts/{alert_id}")
+def delete_sos_alert(
+    alert_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _db()
+    ref = db.collection("sosAlerts").document(alert_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("SOS alert not found.", 404)
+    before = _doc_dict(snap)
+    st = str(before.get("status") or "open").strip().lower()
+    if st not in {"resolved", "dismissed", "closed"}:
+        raise ApiError("Active or open SOS alerts cannot be deleted. Please resolve the incident first.", 400)
+
+    ref.delete()
+    write_audit_log(admin_user, "sos_alert.delete", "sos_alert", alert_id, before, {}, "Resolved SOS alert deleted by admin")
+    return {"ok": True, "deletedId": alert_id}
+
+
+@router.post("/safety/sos-alerts/bulk-delete")
+def bulk_delete_sos_alerts(
+    body: BulkSafetyDeleteBody,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    raw_ids = body.alertIds or body.ids or []
+    clean_ids = [str(i).strip()[:160] for i in raw_ids if str(i).strip()]
+    if not clean_ids:
+        raise ApiError("No SOS alert IDs provided for deletion.", 400)
+
+    db = _db()
+    batch = db.batch()
+    deleted_ids: list[str] = []
+    blocked_open_ids: list[str] = []
+
+    for aid in dict.fromkeys(clean_ids):
+        ref = db.collection("sosAlerts").document(aid)
+        snap = ref.get()
+        if not snap.exists:
+            continue
+        data = _doc_dict(snap)
+        st = str(data.get("status") or "open").strip().lower()
+        if st not in {"resolved", "dismissed", "closed"}:
+            blocked_open_ids.append(aid)
+            continue
+        batch.delete(ref)
+        deleted_ids.append(aid)
+
+    if blocked_open_ids and not deleted_ids:
+        raise ApiError("Active or open SOS alerts cannot be deleted. Only resolved or closed incidents may be deleted.", 400)
+
+    if deleted_ids:
+        batch.commit()
+        write_audit_log(
+            admin_user,
+            "sos_alert.bulk_delete",
+            "sos_alert",
+            "bulk",
+            {},
+            {"deletedIds": deleted_ids, "skippedOpenIds": blocked_open_ids},
+            f"Bulk deleted {len(deleted_ids)} resolved SOS alerts",
+        )
+
+    return {"ok": True, "deletedCount": len(deleted_ids), "deletedIds": deleted_ids, "skippedOpenIds": blocked_open_ids}
 
 
 @router.get("/safety/reports")
@@ -2734,13 +3649,28 @@ def list_safety_reports(
     limit: int = Query(default=DEFAULT_PAGE_SIZE),
 ) -> dict[str, Any]:
     limit = _clamp_limit(limit)
-    base = _db().collection("safetyReports")
+    db = _db()
+    base = db.collection("safetyReports")
     values = SAFETY_STATUS_GROUPS.get(status, ["open"]) if status else None
     if values:
         base = base.where("status", "in", values)
     base = base.order_by("createdAt", direction=fb_firestore.Query.DESCENDING)
     items, next_cursor = _paginate(base, cursor, limit, "safetyReports")
+    items = _enrich_safety_records(db, items, kind="report")
     return {"ok": True, "reports": items, "nextCursor": next_cursor}
+
+
+@router.get("/safety/reports/{report_id}")
+def get_safety_report(
+    report_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _db()
+    snap = db.collection("safetyReports").document(report_id).get()
+    if not snap.exists:
+        raise ApiError("Safety report not found.", 404)
+    enriched = _enrich_safety_records(db, [_doc_dict(snap)], kind="report")[0]
+    return {"ok": True, "report": enriched}
 
 
 @router.patch("/safety/reports/{report_id}")
@@ -2769,7 +3699,74 @@ def update_safety_report(
     ref.set(updates, merge=True)
 
     write_audit_log(admin_user, f"safety_report.{body.action}", "safety_report", report_id, before, updates, body.notes)
-    return {"ok": True, "report": _doc_dict(ref.get())}
+    enriched = _enrich_safety_records(db, [_doc_dict(ref.get())], kind="report")[0]
+    return {"ok": True, "report": enriched}
+
+
+@router.delete("/safety/reports/{report_id}")
+def delete_safety_report(
+    report_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    db = _db()
+    ref = db.collection("safetyReports").document(report_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Safety report not found.", 404)
+    before = _doc_dict(snap)
+    st = str(before.get("status") or "open").strip().lower()
+    if st not in {"resolved", "dismissed", "closed"}:
+        raise ApiError("Open safety reports cannot be deleted. Please resolve or dismiss the report first.", 400)
+
+    ref.delete()
+    write_audit_log(admin_user, "safety_report.delete", "safety_report", report_id, before, {}, "Resolved safety report deleted by admin")
+    return {"ok": True, "deletedId": report_id}
+
+
+@router.post("/safety/reports/bulk-delete")
+def bulk_delete_safety_reports(
+    body: BulkSafetyDeleteBody,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    raw_ids = body.reportIds or body.ids or []
+    clean_ids = [str(i).strip()[:160] for i in raw_ids if str(i).strip()]
+    if not clean_ids:
+        raise ApiError("No safety report IDs provided for deletion.", 400)
+
+    db = _db()
+    batch = db.batch()
+    deleted_ids: list[str] = []
+    blocked_open_ids: list[str] = []
+
+    for rid in dict.fromkeys(clean_ids):
+        ref = db.collection("safetyReports").document(rid)
+        snap = ref.get()
+        if not snap.exists:
+            continue
+        data = _doc_dict(snap)
+        st = str(data.get("status") or "open").strip().lower()
+        if st not in {"resolved", "dismissed", "closed"}:
+            blocked_open_ids.append(rid)
+            continue
+        batch.delete(ref)
+        deleted_ids.append(rid)
+
+    if blocked_open_ids and not deleted_ids:
+        raise ApiError("Open safety reports cannot be deleted. Only resolved, dismissed, or closed reports may be deleted.", 400)
+
+    if deleted_ids:
+        batch.commit()
+        write_audit_log(
+            admin_user,
+            "safety_report.bulk_delete",
+            "safety_report",
+            "bulk",
+            {},
+            {"deletedIds": deleted_ids, "skippedOpenIds": blocked_open_ids},
+            f"Bulk deleted {len(deleted_ids)} resolved safety reports",
+        )
+
+    return {"ok": True, "deletedCount": len(deleted_ids), "deletedIds": deleted_ids, "skippedOpenIds": blocked_open_ids}
 
 
 # ---------------------------------------------------------------------------
@@ -2870,6 +3867,9 @@ def delete_failure_report(
     if not snap.exists:
         raise ApiError("Failure report not found.", 404)
     before = _doc_dict(snap)
+    status_val = str(before.get("status") or "open").strip().lower()
+    if status_val != "resolved":
+        raise ApiError("Cannot delete an open or unresolved failure report. Resolve it first.", 400)
 
     ref.delete()
     write_audit_log(admin_user, "failure_report.delete", "failure_report", failure_id, before, {}, "Report deleted by admin")
@@ -2886,6 +3886,7 @@ def bulk_failure_action(
     db = _db()
     batch = db.batch()
     updated_count = 0
+    skipped_open_ids: list[str] = []
 
     for fid in body.failureIds:
         clean_id = str(fid).strip()[:160]
@@ -2893,6 +3894,13 @@ def bulk_failure_action(
             continue
         ref = db.collection("failureReports").document(clean_id)
         if body.action == "delete":
+            snap = ref.get()
+            if not snap.exists:
+                continue
+            doc_data = _doc_dict(snap)
+            if str(doc_data.get("status") or "open").strip().lower() != "resolved":
+                skipped_open_ids.append(clean_id)
+                continue
             batch.delete(ref)
         else:
             new_status = "resolved" if body.action == "resolve" else "open"
@@ -2908,6 +3916,9 @@ def bulk_failure_action(
             )
         updated_count += 1
 
+    if body.action == "delete" and updated_count == 0 and skipped_open_ids:
+        raise ApiError("Cannot delete open or unresolved failure reports. Resolve them first.", 400)
+
     if updated_count > 0:
         batch.commit()
 
@@ -2917,10 +3928,10 @@ def bulk_failure_action(
         "failure_report",
         "bulk",
         {},
-        {"count": updated_count, "action": body.action},
+        {"count": updated_count, "action": body.action, "skippedOpenIds": skipped_open_ids},
         f"Bulk {body.action} performed on {updated_count} reports",
     )
-    return {"ok": True, "count": updated_count, "action": body.action}
+    return {"ok": True, "count": updated_count, "action": body.action, "skippedOpenIds": skipped_open_ids}
 
 
 @router.get("/dispatch-stats")
@@ -3278,6 +4289,73 @@ def send_notification_broadcast(
 
 
 send_admin_broadcast = send_notification_broadcast
+
+
+class BulkBroadcastDeleteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    broadcastIds: Optional[list[str]] = Field(default=None, max_length=100)
+    ids: Optional[list[str]] = Field(default=None, max_length=100)
+
+
+@router.delete("/notifications/broadcasts/{broadcast_id}")
+def delete_notification_broadcast(
+    broadcast_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    clean_id = str(broadcast_id or "").strip()[:160]
+    if not clean_id:
+        raise ApiError("Broadcast ID is required.", 400)
+    db = _db()
+    ref = db.collection("adminBroadcasts").document(clean_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Broadcast record not found.", 404)
+    before = _doc_dict(snap)
+    ref.delete()
+    write_audit_log(
+        admin_user,
+        "notification.broadcast_delete",
+        "adminBroadcast",
+        clean_id,
+        before,
+        {},
+        f"Deleted broadcast history record '{before.get('title') or clean_id}'",
+    )
+    return {"ok": True, "deletedId": clean_id}
+
+
+@router.post("/notifications/broadcasts/bulk-delete")
+def bulk_delete_notification_broadcasts(
+    body: BulkBroadcastDeleteBody,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    raw_ids = body.broadcastIds or body.ids or []
+    clean_ids = [str(i).strip()[:160] for i in raw_ids if str(i).strip()]
+    if not clean_ids:
+        raise ApiError("No broadcast IDs provided for deletion.", 400)
+    db = _db()
+    batch = db.batch()
+    deleted_ids: list[str] = []
+    for bid in dict.fromkeys(clean_ids):
+        ref = db.collection("adminBroadcasts").document(bid)
+        snap = ref.get()
+        if not snap.exists:
+            continue
+        batch.delete(ref)
+        deleted_ids.append(bid)
+    if deleted_ids:
+        batch.commit()
+        write_audit_log(
+            admin_user,
+            "notification.broadcast_bulk_delete",
+            "adminBroadcast",
+            "bulk",
+            {},
+            {"deletedIds": deleted_ids},
+            f"Bulk deleted {len(deleted_ids)} broadcast history records",
+        )
+    return {"ok": True, "deletedCount": len(deleted_ids), "deletedIds": deleted_ids}
+
 
 
 

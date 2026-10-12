@@ -1,10 +1,10 @@
-import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken, beginAdminBusy } from "./admin-api.js?v=2.7.0";
+import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken, beginAdminBusy, clearAdminCache } from "./admin-api.js?v=2.7.0";
 import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js?v=2.7.0";
 import { DataTable } from "./data-table.js?v=2.7.0";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js?v=2.7.0";
-import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderGodViewMap } from "./admin-live.js?v=2.7.0";
+import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderRideMap } from "./admin-live.js?v=2.7.0";
 import { toast } from "./admin-toast.js?v=2.7.0";
-import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js?v=2.7.0";
+import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts, openSosDetailDrawer, openReportDetailDrawer } from "./admin-safety.js?v=2.7.0";
 import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.7.0";
 import { loadPermissions, initPermissionsModal } from "./admin-permissions.js?v=2.7.0";
 import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js?v=2.7.0";
@@ -20,6 +20,8 @@ const shell = $("admin-shell");
 let currentAdminRole = "admin"; // "super_admin", "admin", or "manager"
 let currentSection = "dashboard";
 let isAdminAuthenticated = false;
+let isIntentionalLogout = false;
+let isLoggingIn = false;
 let liveRidesTimer = null;
 const cursors = { drivers: null, history: null, passengers: null, audit: null };
 let driversTable = null;
@@ -177,7 +179,6 @@ async function withButtonSpinner(btn, actionFn, loadingText = "Processing...") {
 function checkMobileDevice() {
     const modal = $("modal-mobile-warning");
     if (!modal) return;
-    // Allow access if Desktop mode is enabled on mobile or desktop viewport (window.innerWidth >= 900)
     const isDesktopMode = window.innerWidth >= 900;
     if (!isDesktopMode) {
         modal.classList.remove("d-none");
@@ -190,17 +191,37 @@ function checkMobileDevice() {
 
 window.addEventListener("resize", checkMobileDevice);
 
+async function performIntentionalAdminLogout() {
+    isIntentionalLogout = true;
+    sessionStorage.setItem("liphtup_admin_intentional_logout", "1");
+    isAdminAuthenticated = false;
+    pendingInitialRoute = { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
+    clearInterval(liveRidesTimer);
+    stopLiveFeed();
+    stopTracking();
+    closeDrawer(true);
+    clearAdminCache();
+    loadedSections.clear();
+    sessionStorage.removeItem("admin_session_active");
+    localStorage.removeItem("admin_session_active");
+    sessionStorage.removeItem("liphtup_user_profile");
+    sessionStorage.removeItem("super_admin_notice_dismissed");
+    window.history.replaceState(null, "", "/admin");
+    document.title = "Sign In · LiphtUp Admin Console";
+    showOnly(loginScreen);
+    try {
+        await logoutAdmin().catch(() => null);
+    } finally {
+        isIntentionalLogout = false;
+        sessionStorage.removeItem("liphtup_admin_intentional_logout");
+    }
+}
+
 $("btn-mobile-logout")?.addEventListener("click", async (e) => {
     await withButtonSpinner(e.currentTarget, async () => {
-        isAdminAuthenticated = false;
-        sessionStorage.removeItem("admin_session_active");
-        localStorage.removeItem("admin_session_active");
-        sessionStorage.removeItem("liphtup_user_profile");
-        await logoutAdmin().catch(() => null);
-        window.history.replaceState(null, "", "/admin");
-        showOnly(loginScreen);
         $("modal-mobile-warning")?.classList.add("d-none");
         if ($("modal-mobile-warning")) $("modal-mobile-warning").style.display = "none";
+        await performIntentionalAdminLogout();
     }, "Signing out...");
 });
 
@@ -240,18 +261,12 @@ $("btn-super-admin-ignore")?.addEventListener("click", () => {
 
 $("btn-super-admin-logout")?.addEventListener("click", async (e) => {
     await withButtonSpinner(e.currentTarget, async () => {
-        isAdminAuthenticated = false;
-        sessionStorage.removeItem("admin_session_active");
-        localStorage.removeItem("admin_session_active");
-        sessionStorage.removeItem("liphtup_user_profile");
         const modal = $("modal-super-admin-notice");
         if (modal) {
             modal.classList.add("d-none");
             modal.style.display = "none";
         }
-        await logoutAdmin().catch(() => null);
-        window.history.replaceState(null, "", "/admin");
-        showOnly(loginScreen);
+        await performIntentionalAdminLogout();
     }, "Signing out...");
 });
 
@@ -268,18 +283,9 @@ function showOnly(el) {
     }
 }
 
-function showUnauthenticatedSubpageNotice(routeInfo) {
-    const notice = $("admin-unauth-subpage-notice");
-    const noticeText = $("admin-unauth-subpage-notice-text");
-    if (!notice || !noticeText) return;
-    if (routeInfo && !routeInfo.isRoot) {
-        noticeText.innerHTML = `<strong>Restricted Page (<code>/admin/${escapeHtml(routeInfo.rawSlug)}</code>):</strong> Direct access to admin sub-pages without an active Admin session is blocked. Please sign in with an authorized Admin account to continue.`;
-        notice.classList.remove("d-none");
-        notice.classList.add("d-flex");
-    } else {
-        notice.classList.add("d-none");
-        notice.classList.remove("d-flex");
-    }
+function redirectToAccessDeniedPage() {
+    if (window.location.pathname.startsWith("/admin-access-denied")) return;
+    window.location.replace("/admin-access-denied/");
 }
 
 function showDeniedSubpageNotice(routeInfo, reasonMsg) {
@@ -401,10 +407,10 @@ function resolveInitialAuthorizedSection() {
 
 async function bootstrapAuthenticatedShell(result) {
     isAdminAuthenticated = true;
+    isIntentionalLogout = false;
     sessionStorage.setItem("admin_session_active", "true");
     localStorage.setItem("admin_session_active", "true");
     applyRolePermissions(result.role, result);
-    $("admin-unauth-subpage-notice")?.classList.add("d-none");
     showOnly(shell);
 
     const targetSection = resolveInitialAuthorizedSection();
@@ -433,6 +439,8 @@ async function bootstrapAuthenticatedShell(result) {
 }
 
 watchAdminAuth(async (user) => {
+    if (isLoggingIn) return;
+
     const currentReq = parseRequestedAdminRoute();
     if (!currentReq.isRoot) {
         pendingInitialRoute = currentReq;
@@ -446,7 +454,25 @@ watchAdminAuth(async (user) => {
     if (!user || !adminSessionActive) {
         isAdminAuthenticated = false;
         stopLiveFeed();
-        showUnauthenticatedSubpageNotice(pendingInitialRoute);
+        // If this was an intentional logout by the admin, go directly to /admin login page without showing any access-restricted page
+        const wasIntentionalLogout =
+            isIntentionalLogout || sessionStorage.getItem("liphtup_admin_intentional_logout") === "1";
+        if (wasIntentionalLogout) {
+            isIntentionalLogout = false;
+            sessionStorage.removeItem("liphtup_admin_intentional_logout");
+            pendingInitialRoute = { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
+            if (window.location.pathname !== "/admin" && window.location.pathname !== "/admin/") {
+                window.history.replaceState(null, "", "/admin");
+            }
+            document.title = "Sign In · LiphtUp Admin Console";
+            showOnly(loginScreen);
+            return;
+        }
+        // Unauthenticated direct access to any protected admin subpage -> redirect to dedicated /admin-access-denied/ page
+        if (!currentReq.isRoot || (pendingInitialRoute && !pendingInitialRoute.isRoot)) {
+            redirectToAccessDeniedPage();
+            return;
+        }
         if (window.location.pathname !== "/admin" && window.location.pathname !== "/admin/") {
             window.history.replaceState(null, "", "/admin");
         }
@@ -463,7 +489,13 @@ watchAdminAuth(async (user) => {
         sessionStorage.removeItem("admin_session_active");
         localStorage.removeItem("admin_session_active");
         stopLiveFeed();
+        isIntentionalLogout = true;
         await logoutAdmin().catch(() => null);
+        isIntentionalLogout = false;
+        if (!currentReq.isRoot || (pendingInitialRoute && !pendingInitialRoute.isRoot)) {
+            redirectToAccessDeniedPage();
+            return;
+        }
         showDeniedSubpageNotice(pendingInitialRoute, "This account does not have admin privileges for LiphtUp.");
         if (window.location.pathname !== "/admin" && window.location.pathname !== "/admin/") {
             window.history.replaceState(null, "", "/admin");
@@ -486,6 +518,7 @@ async function handleAdminLogin() {
             errorEl.classList.remove("d-none");
             return;
         }
+        isLoggingIn = true;
         try {
             // Auto logout any previous passenger, driver, or active session to prevent role clashes
             sessionStorage.removeItem("liphtup_user_profile");
@@ -499,12 +532,16 @@ async function handleAdminLogin() {
             localStorage.setItem("admin_session_active", "true");
             await refreshAdminToken();
             const result = await adminGet("/verify", {}, { showBusy: true, busyLabel: "Verifying admin permissions..." });
+            isLoggingIn = false;
             await bootstrapAuthenticatedShell(result);
         } catch (error) {
+            isLoggingIn = false;
             isAdminAuthenticated = false;
             sessionStorage.removeItem("admin_session_active");
             localStorage.removeItem("admin_session_active");
+            isIntentionalLogout = true;
             await logoutAdmin().catch(() => null);
+            isIntentionalLogout = false;
             errorTextEl.textContent = error?.message?.includes?.("Admin access required")
                 ? "This account does not have admin privileges."
                 : "Sign in failed. Check your email and password.";
@@ -529,46 +566,143 @@ $("admin-denied-back-btn")?.addEventListener("click", () => {
 });
 $("admin-logout-btn")?.addEventListener("click", async (e) => {
     await withButtonSpinner(e.currentTarget, async () => {
-        isAdminAuthenticated = false;
-        clearInterval(liveRidesTimer);
-        stopLiveFeed();
-        loadedSections.clear();
-        sessionStorage.removeItem("admin_session_active");
-        localStorage.removeItem("admin_session_active");
-        sessionStorage.removeItem("liphtup_user_profile");
-        sessionStorage.removeItem("super_admin_notice_dismissed");
-        await logoutAdmin();
-        window.history.replaceState(null, "", "/admin");
-        document.title = "Sign In · LiphtUp Admin Console";
-        showOnly(loginScreen);
+        await performIntentionalAdminLogout();
     }, "Logging out...");
 });
 
 // ---------------------------------------------------------------------
-// Live feed panel & Recent Activity Widget
+// Live feed panel & Recent Activity Widget (Modification 9)
 // ---------------------------------------------------------------------
 
-function onFeedEvent(event) {
+function getActivityCategoryMeta(item) {
+    const cat = String(item?.category || "").toLowerCase();
+    const type = String(item?.type || "").toLowerCase();
+    if (cat === "safety" || type.includes("sos") || type.includes("safety")) {
+        return { icon: "ti-shield-exclamation", bg: "bg-red-lt text-red", dot: "danger" };
+    }
+    if (cat === "payment" || type.includes("payment")) {
+        return { icon: "ti-credit-card", bg: "bg-teal-lt text-teal", dot: "ok" };
+    }
+    if (cat === "wallet" || type.includes("wallet") || type.includes("credit")) {
+        return { icon: "ti-wallet", bg: "bg-green-lt text-green", dot: "ok" };
+    }
+    if (cat === "coupon" || type.includes("coupon")) {
+        return { icon: "ti-ticket", bg: "bg-purple-lt text-purple", dot: "primary" };
+    }
+    if (cat === "user" || type.includes("driver_") || type.includes("passenger") || type.includes("registered")) {
+        return { icon: "ti-user-check", bg: "bg-azure-lt text-azure", dot: "primary" };
+    }
+    if (cat === "notification" || type.includes("broadcast")) {
+        return { icon: "ti-speakerphone", bg: "bg-indigo-lt text-indigo", dot: "primary" };
+    }
+    if (cat === "admin" || type.includes("role")) {
+        return { icon: "ti-user-shield", bg: "bg-purple-lt text-purple", dot: "primary" };
+    }
+    if (type.includes("cancelled")) {
+        return { icon: "ti-car-off", bg: "bg-red-lt text-red", dot: "danger" };
+    }
+    if (type.includes("completed")) {
+        return { icon: "ti-circle-check", bg: "bg-green-lt text-green", dot: "ok" };
+    }
+    return { icon: "ti-car", bg: "bg-blue-lt text-blue", dot: "primary" };
+}
+
+function getActivityEpochMs(item) {
+    if (typeof item?.timestampMs === "number" && Number.isFinite(item.timestampMs) && item.timestampMs > 0) {
+        return item.timestampMs;
+    }
+    const raw = item?.at || item?.createdAt;
+    if (!raw) return 0;
+    if (typeof raw === "number") return raw > 1e11 ? raw : raw * 1000;
+    const parsed = new Date(raw).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortActivitiesDescending(items) {
+    return [...(items || [])].sort((a, b) => getActivityEpochMs(b) - getActivityEpochMs(a));
+}
+
+function handleActivityItemClick(item) {
+    if (!item) return;
+    const tType = String(item.targetType || "").toLowerCase();
+    const tId = item.targetId || "";
+    if (tType === "ride" && tId && currentAdminRole !== "manager") {
+        openRideDrawer({ id: tId });
+        return;
+    }
+    if (tType === "driver" && tId) {
+        openDriverDrawer(tId);
+        return;
+    }
+    if (tType === "passenger" && tId && currentAdminRole !== "manager") {
+        openPassengerDrawer(tId);
+        return;
+    }
+    if (tType === "sos" && tId) {
+        openSosDetailDrawer(tId);
+        return;
+    }
+    if (tType === "safety_report" && tId) {
+        openReportDetailDrawer(tId);
+        return;
+    }
+    if (item.section && isSectionAllowed(item.section)) {
+        goToSection(item.section);
+    }
+}
+
+function renderActivityFeedPanelList() {
     const list = $("admin-feed-list");
-    if (list) {
-        if (list.querySelector(".spinner-border") || list.querySelector(".text-muted")) list.innerHTML = "";
-        const item = document.createElement("div");
-        item.className = "admin-feed-item";
-        item.innerHTML = `<span class="admin-feed-dot admin-feed-dot-${eventColor(event.type)}"></span>
-            <span>${escapeHtml(event.text)}</span>
-            <span class="admin-feed-time">${new Date(event.at || Date.now()).toLocaleTimeString()}</span>`;
-        list.prepend(item);
-        while (list.children.length > 25) list.lastChild.remove();
+    if (!list) return;
+    const sorted = sortActivitiesDescending(recentActivityItems).slice(0, 30);
+    if (!sorted.length) {
+        list.innerHTML = `<div class="text-center text-secondary small py-4">No recent activity logged yet.</div>`;
+        return;
+    }
+    list.innerHTML = sorted
+        .map((act, idx) => {
+            const meta = getActivityCategoryMeta(act);
+            const exactTime = formatTimestamp(act.at || act.timestampMs);
+            const relTime = formatTimeAgo(act.timestampMs || act.at);
+            return `
+                <div class="admin-feed-item is-clickable" data-feed-idx="${idx}" title="${escapeAttr(exactTime || relTime)}">
+                    <span class="activity-cat-icon ${meta.bg}"><i class="ti ${meta.icon}"></i></span>
+                    <div class="flex-fill min-w-0">
+                        <div class="text-dark fw-medium small">${escapeHtml(act.text)}</div>
+                        <div class="text-secondary" style="font-size: 0.72rem;">${escapeHtml(relTime)}</div>
+                    </div>
+                </div>
+            `;
+        })
+        .join("");
+
+    list.querySelectorAll("[data-feed-idx]").forEach((el) => {
+        el.addEventListener("click", () => {
+            const act = sorted[Number(el.dataset.feedIdx)];
+            if (act) handleActivityItemClick(act);
+        });
+    });
+}
+
+function onFeedEvent(event) {
+    const nowMs = getActivityEpochMs(event) || Date.now();
+    const enrichedEvent = {
+        ...event,
+        at: event.at || new Date(nowMs).toISOString(),
+        timestampMs: nowMs,
+        color: eventColor(event.type) === "ok" ? "success" : (eventColor(event.type) === "danger" ? "danger" : "primary"),
+    };
+
+    // Deduplicate if same text & timestamp within 2 seconds
+    const isDuplicate = recentActivityItems.some(
+        (existing) => existing.text === enrichedEvent.text && Math.abs(getActivityEpochMs(existing) - nowMs) < 2000
+    );
+    if (!isDuplicate) {
+        recentActivityItems.unshift(enrichedEvent);
+        recentActivityItems = sortActivitiesDescending(recentActivityItems).slice(0, 35);
     }
 
-    // Mirror to dashboard Recent Activity feed
-    recentActivityItems.unshift({
-        text: event.text,
-        color: eventColor(event.type) === "ok" ? "success" : (eventColor(event.type) === "danger" ? "danger" : "warning"),
-        at: event.at || Date.now(),
-        timeStr: "just now"
-    });
-    if (recentActivityItems.length > 25) recentActivityItems.pop();
+    renderActivityFeedPanelList();
     renderRecentActivityWidget();
 
     if ($("admin-feed-panel")?.classList.contains("is-open")) return;
@@ -584,7 +718,7 @@ function eventColor(type) {
     if (!type) return "primary";
     if (type.startsWith("driver_offline") || type.includes("suspended") || type.includes("blocked")) return "warn";
     if (type.includes("cancelled") || type.includes("sos")) return "danger";
-    if (type.includes("completed")) return "ok";
+    if (type.includes("completed") || type.includes("approved") || type.includes("credit")) return "ok";
     return "primary";
 }
 
@@ -645,9 +779,7 @@ function setSubpageLoadingState(section, isLoading) {
 
 async function activateAdminSection(name, { updateUrl = true, replaceUrl = false, forceReload = false } = {}) {
     if (!isAdminAuthenticated) {
-        pendingInitialRoute = { isRoot: false, section: name, rawSlug: SECTION_TO_SLUG[name] || name, isKnown: true };
-        showUnauthenticatedSubpageNotice(pendingInitialRoute);
-        showOnly(loginScreen);
+        redirectToAccessDeniedPage();
         return;
     }
 
@@ -693,7 +825,6 @@ document.querySelectorAll(".admin-nav-item").forEach((btn) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (typeof e.button === "number" && e.button !== 0)) return;
         e.preventDefault();
         const targetSection = btn.dataset.section;
-        // If clicking the already-active section, force a fresh reload with spinner
         const isSameSection = currentSection === targetSection;
         activateAdminSection(targetSection, { updateUrl: true, replaceUrl: false, forceReload: isSameSection });
     });
@@ -702,9 +833,9 @@ document.querySelectorAll(".admin-nav-item").forEach((btn) => {
 window.addEventListener("popstate", () => {
     const routeInfo = parseRequestedAdminRoute(window.location.pathname);
     if (!isAdminAuthenticated) {
-        showUnauthenticatedSubpageNotice(routeInfo);
         if (!routeInfo.isRoot) {
-            window.history.replaceState(null, "", "/admin");
+            redirectToAccessDeniedPage();
+            return;
         }
         showOnly(loginScreen);
         return;
@@ -991,24 +1122,96 @@ function renderDriverAvailabilityDonut(online = 0, busy = 0, offline = 0) {
     });
 }
 
+function formatRidePassengerCell(r) {
+    const paxId = String(r?.passenger_id || r?.passengerId || r?.userId || r?.user_id || r?.passenger?.id || "").trim();
+    let rawName = String(r?.passenger_name || r?.passengerName || r?.passenger?.name || "").trim();
+    const rawPhone = String(r?.passenger_phone || r?.passengerPhone || r?.passenger?.phone || "").trim();
+    const invalidNames = new Set(["passenger details unavailable", "unknown", "passenger", "n/a", "--", "—"]);
+    if (rawName && (rawName === paxId || rawName === rawPhone || invalidNames.has(rawName.toLowerCase()))) {
+        rawName = "";
+    }
+    const uidSecondary = paxId
+        ? `<div class="text-secondary font-monospace" style="font-size:0.7rem;">UID: ${escapeHtml(paxId.slice(0, 12))}</div>`
+        : "";
+    if (rawName) {
+        return `<div>
+            <div class="fw-semibold text-dark">${escapeHtml(rawName)}</div>
+            ${rawPhone ? `<div class="text-secondary small">${escapeHtml(rawPhone)}</div>` : uidSecondary}
+        </div>`;
+    }
+    if (rawPhone) {
+        return `<div>
+            <div class="fw-semibold text-dark">${escapeHtml(rawPhone)}</div>
+            <div class="text-muted small fst-italic">Passenger details unavailable</div>
+            ${uidSecondary}
+        </div>`;
+    }
+    return `<div>
+        <div class="text-muted fst-italic">Passenger details unavailable</div>
+        ${uidSecondary}
+    </div>`;
+}
+
+function formatRideDriverCell(r) {
+    const driverId = String(r?.driver_id || r?.driverId || r?.assignedDriverId || r?.assigned_driver_id || r?.driver?.id || "").trim();
+    let rawName = String(r?.driver_name || r?.driverName || r?.driver?.name || "").trim();
+    const assignStatus = String(r?.driver_assignment_status || "").toLowerCase();
+    const vehicleType = String(r?.vehicle_type || r?.vehicleType || r?.driver?.vehicleType || "").trim().toUpperCase();
+    const vehicleNumber = String(r?.vehicle_number || r?.vehicleNumber || r?.driver?.plate || "").trim();
+    const vehicleInfo = [vehicleType, vehicleNumber].filter(Boolean).join(" • ");
+    const invalidDriverNames = new Set(["unassigned", "unassigned driver", "driver details unavailable", "unknown", "driver", "n/a", "--", "—"]);
+    if (rawName && (rawName === driverId || invalidDriverNames.has(rawName.toLowerCase()))) {
+        rawName = "";
+    }
+
+    if (rawName) {
+        return `<div>
+            <div class="fw-semibold text-dark">${escapeHtml(rawName)}</div>
+            ${vehicleInfo ? `<div class="text-secondary small">${escapeHtml(vehicleInfo)}</div>` : ""}
+        </div>`;
+    }
+    if (driverId || assignStatus === "unavailable" || String(r?.driver_name || "") === "Driver details unavailable") {
+        return `<div>
+            <div class="text-muted fst-italic">Driver details unavailable</div>
+            ${vehicleInfo ? `<div class="text-secondary small">${escapeHtml(vehicleInfo)}</div>` : ""}
+        </div>`;
+    }
+    return `<span class="badge bg-secondary-lt text-secondary">Unassigned</span>`;
+}
+
 function renderRecentActivityWidget() {
     const list = $("dashboard-recent-activity-list");
     if (!list) return;
 
-    if (!recentActivityItems || recentActivityItems.length === 0) {
+    const sorted = sortActivitiesDescending(recentActivityItems).slice(0, 8);
+    if (sorted.length === 0) {
         list.innerHTML = `<div class="text-center text-secondary small py-4">No recent activity logged yet today.</div>`;
         return;
     }
 
-    list.innerHTML = recentActivityItems.slice(0, 7).map((item) => `
-        <div class="recent-act-item">
-            <div class="d-flex align-items-center gap-2 overflow-hidden">
-                <span class="status-dot status-dot-animated bg-${item.color || 'primary'} flex-shrink-0"></span>
-                <span class="recent-act-title text-truncate">${escapeHtml(item.text)}</span>
-            </div>
-            <span class="recent-act-time">${escapeHtml(item.timeStr || formatTimeAgo(item.at))}</span>
-        </div>
-    `).join("");
+    list.innerHTML = sorted
+        .map((item, idx) => {
+            const meta = getActivityCategoryMeta(item);
+            const exactTime = formatTimestamp(item.at || item.timestampMs);
+            const relTime = formatTimeAgo(item.timestampMs || item.at);
+            return `
+                <div class="recent-act-item is-clickable" data-recent-act-idx="${idx}" title="${escapeAttr(exactTime || relTime)}">
+                    <div class="d-flex align-items-center gap-2 overflow-hidden">
+                        <span class="activity-cat-icon ${meta.bg}"><i class="ti ${meta.icon}"></i></span>
+                        <span class="recent-act-title text-truncate">${escapeHtml(item.text)}</span>
+                    </div>
+                    <span class="recent-act-time">${escapeHtml(relTime)}</span>
+                </div>
+            `;
+        })
+        .join("");
+
+    list.querySelectorAll("[data-recent-act-idx]").forEach((el) => {
+        el.addEventListener("click", () => {
+            const item = sorted[Number(el.dataset.recentActIdx)];
+            if (item) handleActivityItemClick(item);
+        });
+    });
 }
 
 function renderRecentRidesTable(rides = []) {
@@ -1022,8 +1225,8 @@ function renderRecentRidesTable(rides = []) {
 
     tbody.innerHTML = rides.slice(0, 6).map((r) => {
         const idShort = `#LP${String(r.id || "").slice(-5).toUpperCase()}`;
-        const passengerName = escapeHtml(r.passenger_name || r.passengerName || "Passenger");
-        const driverName = escapeHtml(r.driver_name || r.driverName || "—");
+        const passengerCell = formatRidePassengerCell(r);
+        const driverCell = formatRideDriverCell(r);
         const fare = `₹${r.fare || 0}`;
         const distance = `${r.estimated_distance_km || r.distance_km || 0} km`;
         const timeAgo = formatTimeAgo(r.createdAt || r.updatedAt);
@@ -1041,28 +1244,35 @@ function renderRecentRidesTable(rides = []) {
         }
 
         return `
-            <tr class="dt-clickable-row" data-recent-ride-id="${escapeHtml(r.id)}">
+            <tr class="admin-clickable-row" tabindex="0" role="button" data-recent-ride-id="${escapeHtml(r.id)}">
                 <td class="fw-bold text-dark">${idShort}</td>
-                <td>${passengerName}</td>
-                <td>${driverName}</td>
+                <td>${passengerCell}</td>
+                <td>${driverCell}</td>
                 <td class="fw-bold text-dark">${fare}</td>
                 <td>${distance}</td>
                 <td>${statusBadge}</td>
                 <td class="text-secondary small">${timeAgo}</td>
-                <td>
-                    <button class="btn btn-ghost-secondary btn-icon btn-sm rounded-circle" type="button" title="View details">
-                        <i class="ti ti-dots-vertical"></i>
-                    </button>
+                <td class="text-end dt-row-chevron-cell">
+                    <span class="dt-row-action-indicator" title="View ride details">
+                        <i class="ti ti-chevron-right"></i>
+                    </span>
                 </td>
             </tr>
         `;
     }).join("");
 
     tbody.querySelectorAll("[data-recent-ride-id]").forEach((tr) => {
-        tr.addEventListener("click", () => {
+        const openRow = () => {
             const rideId = tr.dataset.recentRideId;
-            const found = rides.find(r => r.id === rideId);
+            const found = rides.find((r) => r.id === rideId);
             if (found) openRideDrawer(found);
+        };
+        tr.addEventListener("click", openRow);
+        tr.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openRow();
+            }
         });
     });
 }
@@ -1406,22 +1616,13 @@ async function loadDashboard() {
             };
         }
 
-        // 5. Recent Activity Feed - use real data from server API (up to 25 items)
-        const incomingActivities = Array.isArray(data.recentActivity) ? data.recentActivity : (Array.isArray(data.activities) ? data.activities : []);
-        recentActivityItems = incomingActivities.slice(0, 25);
+        // 5. Recent Activity Feed - use real data from server API (sorted strictly descending by UTC timestamp)
+        const incomingActivities = Array.isArray(data.recentActivity)
+            ? data.recentActivity
+            : (Array.isArray(data.activities) ? data.activities : []);
+        recentActivityItems = sortActivitiesDescending(incomingActivities).slice(0, 35);
         renderRecentActivityWidget();
-
-        // Populate Activity feed offcanvas panel
-        const feedList = $("admin-feed-list");
-        if (feedList && recentActivityItems.length > 0) {
-            feedList.innerHTML = recentActivityItems.map(act => `
-                <div class="admin-feed-item">
-                    <span class="admin-feed-dot admin-feed-dot-${eventColor(act.type || '')}"></span>
-                    <span>${escapeHtml(act.text)}</span>
-                    <span class="admin-feed-time">${formatTimeAgo(act.at)}</span>
-                </div>
-            `).join("");
-        }
+        renderActivityFeedPanelList();
 
         if ($("btn-recent-act-view-all")) {
             $("btn-recent-act-view-all").onclick = () => {
@@ -1718,7 +1919,7 @@ function renderKycDocumentsSection(d) {
     }
     const availableDocs = docItems.filter((item) => item.url);
     const docsLinksHtml = availableDocs.length
-        ? `<div class="d-flex flex-wrap gap-2 mt-2">${availableDocs
+        ? `<div class="d-flex flex-wrap gap-2 mt-1">${availableDocs
               .map(
                   (doc) => `<a href="${escapeAttr(doc.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">
                       <i class="ti ti-file-certificate me-1"></i>${escapeHtml(doc.label)}
@@ -1728,15 +1929,36 @@ function renderKycDocumentsSection(d) {
         : `<div class="text-secondary small py-1">No uploaded document URLs on file.</div>`;
 
     return `
-        <h4 class="admin-drawer-subsection">KYC &amp; Vehicle Verification</h4>
-        ${detailRow("Driving License #", d.drivingLicenseNumber || "Not provided")}
-        ${detailRow("Vehicle Type & Model", `${(d.vehicleType || "auto").toUpperCase()} — ${d.vehicleModel || "Not specified"}`)}
-        ${detailRow("Registration Plate", d.vehicleNumber || "Not provided")}
-        ${detailRow("UPI ID", d.upiId || "Not provided")}
-        <div class="admin-detail-row flex-column align-items-start">
-            <span class="text-secondary small">Uploaded Verification Documents</span>
-            ${docsLinksHtml}
-        </div>
+        <details class="admin-collapsible mb-3" open>
+            <summary class="admin-collapsible-summary">
+                <span><i class="ti ti-id-badge-2 me-2 text-primary"></i>KYC &amp; Vehicle Verification</span>
+                <i class="ti ti-chevron-down admin-collapsible-chevron"></i>
+            </summary>
+            <div class="admin-collapsible-body">
+                <div class="admin-detail-grid p-0">
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">Driving License #</span>
+                        <strong class="admin-detail-value">${escapeHtml(d.drivingLicenseNumber || "Not recorded")}</strong>
+                    </div>
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">Vehicle Type &amp; Model</span>
+                        <strong class="admin-detail-value">${escapeHtml((d.vehicleType || "auto").toUpperCase())} &mdash; ${escapeHtml(d.vehicleModel || "Not specified")}</strong>
+                    </div>
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">Registration Plate</span>
+                        <strong class="admin-detail-value">${escapeHtml(d.vehicleNumber || "Not recorded")}</strong>
+                    </div>
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">UPI ID</span>
+                        <span class="admin-detail-value">${escapeHtml(d.upiId || "Not recorded")}</span>
+                    </div>
+                    <div class="admin-detail-cell admin-detail-cell-full">
+                        <span class="admin-detail-label">Uploaded Verification Documents</span>
+                        ${docsLinksHtml}
+                    </div>
+                </div>
+            </div>
+        </details>
     `;
 }
 
@@ -1744,63 +1966,114 @@ async function openDriverDrawer(uid) {
     showReadOnlyDrawer("Driver Profile", `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading profile...</div></div>`);
     try {
         const data = await adminGet(`/drivers/${uid}`);
-        const d = data.driver;
+        const d = data.driver || {};
         const ratingSummary = data.ratingSummary || d.ratingSummary;
-        const recentRidesHtml = data.recentRides.length
-            ? `<div class="card border-0 shadow-xs mb-2"><div class="table-responsive"><table class="table table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Fare</th><th>Status</th></tr></thead><tbody>${data.recentRides
-                  .map((r) => `<tr><td>${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}</td><td>Rs ${r.fare || 0}</td><td>${statusChip(r.status)}</td></tr>`)
-                  .join("")}</tbody></table></div></div>`
-            : `<p class="text-secondary text-center py-3">No rides yet.</p>`;
+        const recentRides = Array.isArray(data.recentRides) ? data.recentRides.slice(0, 10) : [];
+        const recentRidesHtml = recentRides.length
+            ? `<div class="table-responsive"><table class="table table-sm table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Fare</th><th>Status</th><th></th></tr></thead><tbody>${recentRides
+                  .map((r, idx) => `<tr class="admin-clickable-row" tabindex="0" data-driver-ride-idx="${idx}"><td>${escapeHtml(r.pickup_name || "Pickup")} \u2192 ${escapeHtml(r.drop_name || "Drop")}</td><td>₹${r.fare || 0}</td><td>${statusChip(r.status)}</td><td class="text-end dt-row-chevron-cell"><span class="dt-row-action-indicator"><i class="ti ti-chevron-right"></i></span></td></tr>`)
+                  .join("")}</tbody></table></div>`
+            : `<p class="text-secondary text-center py-3 m-0">No rides recorded yet.</p>`;
+
+        const availStr = String(d.driverAvailability || "offline").toLowerCase();
+        const availBadge = availStr === "online"
+            ? `<span class="badge bg-success-lt text-success"><i class="ti ti-point-filled me-1"></i>Online</span>`
+            : availStr === "busy"
+            ? `<span class="badge bg-info-lt text-info"><i class="ti ti-steering-wheel me-1"></i>Busy</span>`
+            : `<span class="badge bg-secondary-lt text-secondary">Offline</span>`;
 
         const summary = `
-            <div class="admin-drawer-photo-row">
-                ${d.profilePhotoUrl ? `<img src="${escapeAttr(d.profilePhotoUrl)}" class="admin-drawer-photo" alt="">` : `<div class="admin-drawer-photo admin-drawer-photo-placeholder d-flex align-items-center justify-content-center text-secondary"><i class="ti ti-user fs-2"></i></div>`}
-                <div>
-                    <div class="admin-drawer-name">${escapeHtml(d.name || "Unnamed")}</div>
-                    <div class="admin-drawer-sub">Driver ID: ${escapeHtml(d.uid)}</div>
+            <!-- Header Summary Card -->
+            <div class="admin-detail-header-card mb-3">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <div class="d-flex align-items-center gap-3">
+                        ${d.profilePhotoUrl
+                            ? `<img src="${escapeAttr(d.profilePhotoUrl)}" class="admin-drawer-photo" alt="">`
+                            : `<div class="admin-drawer-photo admin-drawer-photo-placeholder d-flex align-items-center justify-content-center text-secondary"><i class="ti ti-user fs-2"></i></div>`}
+                        <div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="admin-drawer-name">${escapeHtml(d.name || "Unnamed Driver")}</span>
+                                ${statusChip(d.verificationStatus)}
+                                ${availBadge}
+                            </div>
+                            <div class="admin-drawer-sub mt-1">Driver UID: <code>${escapeHtml(d.uid || uid)}</code></div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-1">
+                        ${d.verificationStatus === "pending_review" ? `
+                            ${actionBtn("approve", '<i class="ti ti-check me-1"></i>Approve', "btn-success")}
+                            ${actionBtn("reject", '<i class="ti ti-x me-1"></i>Reject', "btn-danger")}
+                        ` : ""}
+                        ${d.verificationStatus === "approved" ? `
+                            ${actionBtn("suspend", '<i class="ti ti-pause me-1"></i>Suspend', "btn-warning")}
+                            ${actionBtn("block", '<i class="ti ti-ban me-1"></i>Block', "btn-danger")}
+                        ` : ""}
+                        ${d.verificationStatus === "suspended" ? `
+                            ${actionBtn("unsuspend", '<i class="ti ti-play me-1"></i>Unsuspend (Restore)', "btn-success")}
+                        ` : ""}
+                        ${d.verificationStatus === "blocked" ? `
+                            ${actionBtn("unblock", '<i class="ti ti-lock-open me-1"></i>Unblock (Restore)', "btn-success")}
+                        ` : ""}
+                    </div>
                 </div>
-            </div>
-            ${detailRow("Status", statusChip(d.verificationStatus))}
-            ${d.rejectionReason ? detailRow("Rejection Reason", `<span class="text-danger fw-bold">${escapeHtml(d.rejectionReason)}</span>`) : ""}
-            ${d.suspensionReason ? detailRow("Suspension Reason", `<span class="text-warning fw-bold">${escapeHtml(d.suspensionReason)}</span>`) : ""}
-            ${d.blockingReason ? detailRow("Blocking Reason", `<span class="text-danger fw-bold">${escapeHtml(d.blockingReason)}</span>`) : ""}
-            ${detailRow("Online status", escapeHtml(d.driverAvailability || "offline"))}
-            ${detailRow("Passenger Rating", renderDriverRatingHtml(ratingSummary))}
-            ${detailRow("Earnings balance", `Lifetime: Rs ${d.lifetimeEarnings || 0}`)}
-            ${detailRow("Completed trips", d.totalCompletedTrips || 0)}
-            ${d.approvedAt ? detailRow("Approved Date", formatTimestamp(d.approvedAt)) : ""}
-            ${d.rejectedAt ? detailRow("Rejected Date", formatTimestamp(d.rejectedAt)) : ""}
-            ${d.suspendedAt ? detailRow("Suspended Date", formatTimestamp(d.suspendedAt)) : ""}
-            ${d.blockedAt ? detailRow("Blocked Date", formatTimestamp(d.blockedAt)) : ""}
-            ${d.reappliedAt ? detailRow("Re-applied Date", formatTimestamp(d.reappliedAt)) : ""}
-            ${renderKycDocumentsSection(d)}
-            <div class="d-flex flex-wrap gap-1 mt-3">
-                ${d.verificationStatus === "pending_review" ? `
-                    ${actionBtn("approve", '<i class="ti ti-check me-1"></i>Approve', "btn-success")}
-                    ${actionBtn("reject", '<i class="ti ti-x me-1"></i>Reject', "btn-danger")}
-                ` : ""}
-                ${d.verificationStatus === "approved" ? `
-                    ${actionBtn("suspend", '<i class="ti ti-pause me-1"></i>Suspend', "btn-warning")}
-                    ${actionBtn("block", '<i class="ti ti-ban me-1"></i>Block', "btn-danger")}
-                ` : ""}
-                ${d.verificationStatus === "suspended" ? `
-                    ${actionBtn("unsuspend", '<i class="ti ti-play me-1"></i>Unsuspend (Restore)', "btn-success")}
-                ` : ""}
-                ${d.verificationStatus === "blocked" ? `
-                    ${actionBtn("unblock", '<i class="ti ti-lock-open me-1"></i>Unblock (Restore)', "btn-success")}
-                ` : ""}
                 ${d.verificationStatus === "rejected" ? `
-                    <div class="alert alert-danger py-2 px-3 mt-1 mb-1 small w-100">
-                        <i class="ti ti-alert-circle me-1"></i>Application rejected. Awaiting driver re-application.
+                    <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small">
+                        <i class="ti ti-alert-circle me-1"></i>Application rejected: <strong>${escapeHtml(d.rejectionReason || "Requirements not met")}</strong>
                     </div>
                 ` : ""}
+                ${d.suspensionReason ? `<div class="alert alert-warning py-2 px-3 mt-2 mb-0 small"><strong>Suspension Reason:</strong> ${escapeHtml(d.suspensionReason)}</div>` : ""}
+                ${d.blockingReason ? `<div class="alert alert-danger py-2 px-3 mt-2 mb-0 small"><strong>Blocking Reason:</strong> ${escapeHtml(d.blockingReason)}</div>` : ""}
             </div>
-            <h4 class="admin-drawer-subsection">Recent Rides</h4>
-            ${recentRidesHtml}
-            <h4 class="admin-drawer-subsection">Edit Profile Details</h4>
+
+            <!-- Driver Overview & Performance Card -->
+            <div class="admin-detail-card mb-3">
+                <div class="admin-detail-card-header">
+                    <i class="ti ti-chart-bar text-primary me-2"></i>
+                    <span>Contact, Earnings &amp; Performance</span>
+                </div>
+                <div class="admin-detail-grid">
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">Phone Number</span>
+                        <strong class="admin-detail-value">${escapeHtml(d.phone || "Not recorded")}</strong>
+                    </div>
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">Email Address</span>
+                        <span class="admin-detail-value">${escapeHtml(d.email || "Not recorded")}</span>
+                    </div>
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">Lifetime Earnings</span>
+                        <strong class="admin-detail-value text-success">₹${escapeHtml(d.lifetimeEarnings || 0)}</strong>
+                    </div>
+                    <div class="admin-detail-cell">
+                        <span class="admin-detail-label">Completed Trips</span>
+                        <strong class="admin-detail-value">${escapeHtml(d.totalCompletedTrips || 0)}</strong>
+                    </div>
+                    <div class="admin-detail-cell admin-detail-cell-full">
+                        <span class="admin-detail-label">Passenger Rating Summary</span>
+                        <div class="admin-detail-value mt-1">${renderDriverRatingHtml(ratingSummary)}</div>
+                    </div>
+                    ${d.approvedAt ? `<div class="admin-detail-cell"><span class="admin-detail-label">Approved Date</span><span class="admin-detail-value">${escapeHtml(formatTimestamp(d.approvedAt))}</span></div>` : ""}
+                    ${d.reappliedAt ? `<div class="admin-detail-cell"><span class="admin-detail-label">Re-applied Date</span><span class="admin-detail-value">${escapeHtml(formatTimestamp(d.reappliedAt))}</span></div>` : ""}
+                </div>
+            </div>
+
+            ${renderKycDocumentsSection(d)}
+
+            <!-- Collapsible Recent Rides (Limited to latest 10) -->
+            <details class="admin-collapsible mb-3" open>
+                <summary class="admin-collapsible-summary">
+                    <span><i class="ti ti-history me-2 text-secondary"></i>Recent Rides (Latest ${recentRides.length} of max 10)</span>
+                    <i class="ti ti-chevron-down admin-collapsible-chevron"></i>
+                </summary>
+                <div class="admin-collapsible-body p-0">
+                    ${recentRidesHtml}
+                </div>
+            </details>
+
+            <h4 class="admin-drawer-subsection"><i class="ti ti-edit me-1"></i>Edit Driver Details</h4>
         `;
 
-        showFormDrawer(d.name || "Driver", {
+        showFormDrawer(d.name || "Driver Profile", {
             extraHtml: summary,
             fields: [
                 { key: "name", label: "Name", required: true },
@@ -1828,6 +2101,20 @@ async function openDriverDrawer(uid) {
                 toast("Driver profile updated.");
                 loadDrivers(true);
             },
+        });
+
+        document.querySelectorAll("#admin-drawer-body [data-driver-ride-idx]").forEach((tr) => {
+            const openRow = () => {
+                const r = recentRides[Number(tr.dataset.driverRideIdx)];
+                if (r) openRideDrawer(r);
+            };
+            tr.addEventListener("click", openRow);
+            tr.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openRow();
+                }
+            });
         });
 
         document.querySelectorAll("#admin-drawer-body [data-action]").forEach((btn) => {
@@ -1918,7 +2205,7 @@ async function openDriverDrawer(uid) {
 }
 
 // ---------------------------------------------------------------------
-// Live rides + waiting pools + God View Map + Dispatch Diagnostics
+// Live rides + waiting pools + Dispatch Diagnostics (Modification 2)
 // ---------------------------------------------------------------------
 
 let liveEventsInitialized = false;
@@ -1927,7 +2214,6 @@ let liveSearchQuery = "";
 let liveRidesHierarchy = [];
 let liveCounts = { all: 0, single: 0, share: 0, child: 0 };
 let waitingPoolsData = { passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } };
-let liveFleetMapData = { drivers: [], waitingPassengers: [], activeRides: [], counts: {} };
 let latestDispatchStats = null;
 const expandedParentIds = new Set();
 
@@ -1971,21 +2257,6 @@ function initLiveRidesEvents() {
     // Dispatch diagnostics buttons
     $("btn-open-dispatch-drawer")?.addEventListener("click", () => openDispatchDiagnosticsDrawer());
     $("live-dispatch-diagnostics-btn")?.addEventListener("click", () => openDispatchDiagnosticsDrawer());
-
-    // God View Map layer checkboxes and vehicle selector
-    [
-        "god-map-filter-online",
-        "god-map-filter-busy",
-        "god-map-filter-waiting",
-        "god-map-filter-rides",
-        "god-map-vehicle-filter",
-        "god-map-filter-drivers",
-        "god-map-filter-passengers",
-    ].forEach((id) => {
-        $(id)?.addEventListener("change", () => {
-            if (currentLiveTab === "live-map") renderLiveFleetMapView();
-        });
-    });
 
     // Waiting pools filters
     $("wpp-type-filter")?.addEventListener("change", renderWaitingPoolsView);
@@ -2100,17 +2371,15 @@ async function loadLiveRides() {
         tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-secondary"><span class="spinner-border spinner-border-sm text-primary me-2"></span>Loading live rides &amp; pools...</td></tr>`;
     }
     try {
-        const [liveRes, poolsRes, mapRes, diagRes] = await Promise.all([
+        const [liveRes, poolsRes, diagRes] = await Promise.all([
             adminGet("/rides/live"),
             adminGet("/waiting-pools").catch(() => ({ ok: true, passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } })),
-            adminGet("/live-map").catch(() => ({ ok: true, drivers: [], waitingPassengers: [], activeRides: [], counts: {} })),
             adminGet("/dispatch-stats", {}, { cacheable: false }).catch(() => null),
         ]);
 
         liveRidesHierarchy = liveRes?.hierarchy || [];
         liveCounts = liveRes?.counts || { all: 0, single: 0, share: 0, child: 0 };
         waitingPoolsData = poolsRes || { passengers: [], drivers: [], counts: { passengers: 0, drivers: 0, total: 0 } };
-        liveFleetMapData = mapRes || { drivers: [], waitingPassengers: [], activeRides: [], counts: {} };
         if (diagRes) {
             latestDispatchStats = diagRes;
             renderDispatchDiagnosticsBanner(diagRes);
@@ -2128,18 +2397,12 @@ async function loadLiveRides() {
             $("live-rides-last-updated").textContent = `Last updated: ${timeStr}`;
         }
 
-        const totalMapEntities =
-            (liveFleetMapData.drivers?.length || 0) +
-            (liveFleetMapData.waitingPassengers?.length || 0) +
-            (liveFleetMapData.activeRides?.length || 0);
-
         // Update tab pill counts
         if ($("tab-count-all")) $("tab-count-all").textContent = liveCounts.all ?? liveRidesHierarchy.length;
         if ($("tab-count-single")) $("tab-count-single").textContent = liveCounts.single ?? 0;
         if ($("tab-count-share")) $("tab-count-share").textContent = liveCounts.share ?? 0;
         if ($("tab-count-child")) $("tab-count-child").textContent = liveCounts.child ?? 0;
         if ($("tab-count-waiting")) $("tab-count-waiting").textContent = waitingPoolsData.counts?.total ?? ((waitingPoolsData.passengers?.length || 0) + (waitingPoolsData.drivers?.length || 0));
-        if ($("tab-count-map")) $("tab-count-map").textContent = totalMapEntities;
 
         renderLiveSectionViews();
     } catch (error) {
@@ -2154,55 +2417,14 @@ async function loadLiveRides() {
 
 function renderLiveSectionViews() {
     const isPools = currentLiveTab === "waiting-pools";
-    const isMap = currentLiveTab === "live-map";
-    $("live-rides-table-view")?.classList.toggle("d-none", isPools || isMap);
+    $("live-rides-table-view")?.classList.toggle("d-none", isPools);
     $("waiting-pools-view")?.classList.toggle("d-none", !isPools);
-    $("live-fleet-map-view")?.classList.toggle("d-none", !isMap);
 
-    if (isMap) {
-        renderLiveFleetMapView();
-    } else if (isPools) {
+    if (isPools) {
         renderWaitingPoolsView();
     } else {
         renderHierarchyTableView();
     }
-}
-
-function renderLiveFleetMapView() {
-    const container = $("god-view-map-canvas");
-    if (!container) return;
-
-    const drivers = liveFleetMapData.drivers || [];
-    const waiting = liveFleetMapData.waitingPassengers || [];
-    const rides = liveFleetMapData.activeRides || [];
-
-    const availCount = drivers.filter((d) => d.status !== "busy").length;
-    const busyCount = drivers.filter((d) => d.status === "busy").length;
-
-    if ($("god-map-count-online")) $("god-map-count-online").textContent = availCount;
-    if ($("god-map-count-avail")) $("god-map-count-avail").textContent = availCount;
-    if ($("god-map-count-busy")) $("god-map-count-busy").textContent = busyCount;
-    if ($("god-map-count-waiting")) $("god-map-count-waiting").textContent = waiting.length;
-    if ($("god-map-count-rides")) $("god-map-count-rides").textContent = rides.length;
-
-    const showOnlineEl = $("god-map-filter-online") || $("god-map-filter-drivers");
-    const showBusyEl = $("god-map-filter-busy") || $("god-map-filter-drivers");
-    const showWaitingEl = $("god-map-filter-waiting") || $("god-map-filter-passengers");
-    const showRidesEl = $("god-map-filter-rides");
-
-    const filters = {
-        showOnlineDrivers: showOnlineEl ? showOnlineEl.checked : true,
-        showBusyDrivers: showBusyEl ? showBusyEl.checked : true,
-        showWaitingPassengers: showWaitingEl ? showWaitingEl.checked : true,
-        showActiveRides: showRidesEl ? showRidesEl.checked : true,
-        vehicleType: $("god-map-vehicle-filter")?.value || "all",
-    };
-
-    renderGodViewMap(container, liveFleetMapData, filters, {
-        onAssignPassenger: (pax) => openAssignDriverModal(pax),
-        onSelectDriver: (drv) => openDriverDrawer(drv.driver_id || drv.id),
-        onSelectRide: (ride) => openRideDrawer(ride),
-    });
 }
 
 function getAvatarColor(name = "") {
@@ -2857,9 +3079,9 @@ function ensureHistoryTable() {
             loadHistory(true);
         },
         columns: [
-            { key: "driver_name", label: "Driver", sortable: true, render: (r) => escapeHtml(r.driver_name || "Unassigned") },
-            { key: "passenger_id", label: "Passenger", sortable: false, render: (r) => (r.passenger_id || "").slice(0, 8) },
-            { key: "route", label: "Route", render: (r) => `${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}` },
+            { key: "driver_name", label: "Driver", sortable: true, render: (r) => formatRideDriverCell(r) },
+            { key: "passenger_name", label: "Passenger", sortable: true, render: (r) => formatRidePassengerCell(r) },
+            { key: "route", label: "Route", render: (r) => `${escapeHtml(r.pickup_name || r.pickupName || "Not recorded")} \u2192 ${escapeHtml(r.drop_name || r.dropName || "Not recorded")}` },
             { key: "rideType", label: "Type", sortable: true, render: (r) => r.rideType === "share" ? `<span class="badge bg-teal-lt text-teal">Share</span>` : `<span class="badge bg-secondary-lt text-secondary">Normal</span>` },
             { key: "fare", label: "Fare", sortable: true, render: (r) => `Rs ${r.fare || 0}` },
             { key: "feedback", label: "Feedback", sortable: false, render: (r) => r.feedback?.submitted ? `<span class="badge bg-success-lt text-success"><i class="ti ti-check me-1"></i>Feedback</span>` : `<span class="text-secondary">&mdash;</span>` },
@@ -2947,7 +3169,7 @@ async function openRideDrawer(ride) {
     const timeline = [
         ["Requested", r.createdAt],
         ["Accepted", r.acceptedAt],
-        ["Started", r.startedAt || r.pinVerifiedAt],
+        ["Started / PIN Verified", r.startedAt || r.pinVerifiedAt],
         ["Completed", r.completedAt],
         ["Cancelled", r.cancelledAt],
     ].filter(([, ts]) => ts);
@@ -2967,9 +3189,18 @@ async function openRideDrawer(ride) {
             .map(x => x.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()))
             .join(", ");
         feedbackHtml = `
-            <h4 class="admin-drawer-subsection text-success">Passenger Feedback</h4>
-            ${detailRow("Experience", expLabel)}
-            ${detailRow("Passenger mentioned", escapeHtml(reasonsList || "None selected"))}
+            <details class="admin-collapsible" open>
+                <summary>
+                    <span><i class="ti ti-message-star me-1 text-success"></i>Passenger Feedback</span>
+                    <span class="badge bg-success-lt text-success">${escapeHtml(expLabel)}</span>
+                </summary>
+                <div class="admin-collapsible-body">
+                    <div class="admin-detail-grid">
+                        <div class="admin-detail-field"><div class="admin-detail-label">Experience</div><div class="admin-detail-value">${escapeHtml(expLabel)}</div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Highlights / Reasons</div><div class="admin-detail-value">${escapeHtml(reasonsList || "None selected")}</div></div>
+                    </div>
+                </div>
+            </details>
         `;
     }
 
@@ -2979,7 +3210,7 @@ async function openRideDrawer(ride) {
         if (siblingChildRides.length) {
             siblingsHtml = `
                 <div class="table-responsive mt-2">
-                    <table class="table table-sm table-vcenter card-table table-bordered">
+                    <table class="table table-sm table-vcenter card-table table-bordered m-0">
                         <thead>
                             <tr>
                                 <th>Ride ID</th>
@@ -2998,7 +3229,7 @@ async function openRideDrawer(ride) {
                                     <td>${idLabel} ${isCurrent ? '(This)' : ''}</td>
                                     <td>${statusChip(s?.status)}</td>
                                     <td>${s?.seatsBooked || 1}</td>
-                                    <td>Rs ${s?.fare || 0}</td>
+                                    <td>₹${s?.fare || 0}</td>
                                 </tr>
                                 `;
                             }).join("")}
@@ -3011,58 +3242,179 @@ async function openRideDrawer(ride) {
         }
 
         shareHtml = `
-            <h4 class="admin-drawer-subsection text-teal">Share Ride Details</h4>
-            ${detailRow("Ride Type", '<span class="badge bg-teal-lt text-teal">Share Auto</span>')}
-            ${detailRow("Parent Trip ID", escapeHtml(r.parentTripId || "None"))}
-            ${detailRow("Seats Booked", r.seatsBooked || 1)}
-            <div class="admin-detail-row flex-column align-items-start gap-1">
-                <span class="fw-medium">Sibling Child Rides:</span>
-                ${siblingsHtml}
-            </div>
+            <details class="admin-collapsible">
+                <summary>
+                    <span><i class="ti ti-users-group me-1 text-teal"></i>Share Auto Trip Details</span>
+                    <span class="badge bg-teal-lt text-teal">${r.seatsBooked || 1} seat(s)</span>
+                </summary>
+                <div class="admin-collapsible-body">
+                    <div class="admin-detail-grid mb-2">
+                        <div class="admin-detail-field"><div class="admin-detail-label">Ride Type</div><div class="admin-detail-value"><span class="badge bg-teal-lt text-teal">Share Auto</span></div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Parent Trip ID</div><div class="admin-detail-value font-monospace small">${escapeHtml(r.parentTripId || "Not applicable")}</div></div>
+                    </div>
+                    <div class="fw-medium small mb-1">Sibling Child Rides:</div>
+                    ${siblingsHtml}
+                </div>
+            </details>
         `;
     }
 
+    const paxId = String(r.passenger_id || r.passengerId || r.userId || r.user_id || r.passenger?.id || "").trim();
+    const rawPaxName = String(r.passenger_name || r.passengerName || r.passenger?.name || "").trim();
+    const passengerPhone = String(r.passenger_phone || r.passengerPhone || r.passenger?.phone || "").trim();
+    const passengerName =
+        rawPaxName &&
+        rawPaxName !== paxId &&
+        rawPaxName !== passengerPhone &&
+        !["passenger details unavailable", "unknown", "passenger", "n/a", "--", "—"].includes(rawPaxName.toLowerCase())
+            ? rawPaxName
+            : "";
+    const drvId = String(r.driver_id || r.driverId || r.assignedDriverId || r.assigned_driver_id || r.driver?.id || "").trim();
+    const rawDrvName = String(r.driver_name || r.driverName || r.driver?.name || "").trim();
+    const driverPhone = String(r.driver_phone || r.driverPhone || r.driver?.phone || "").trim();
+    const driverName =
+        rawDrvName &&
+        rawDrvName !== drvId &&
+        rawDrvName !== driverPhone &&
+        !["unassigned", "unassigned driver", "driver details unavailable", "unknown", "driver", "n/a", "--", "—"].includes(rawDrvName.toLowerCase())
+            ? rawDrvName
+            : "";
+    const driverAssignFallback =
+        drvId || String(r.driver_assignment_status || "").toLowerCase() === "unavailable" || rawDrvName === "Driver details unavailable"
+            ? `<span class="text-muted fst-italic">Driver details unavailable</span>`
+            : `<span class="badge bg-secondary-lt text-secondary">Unassigned</span>`;
+
     const html = `
-        ${feedbackHtml}
+        <div class="admin-detail-header-card">
+            <div class="admin-drawer-photo admin-drawer-photo-placeholder d-flex align-items-center justify-content-center text-primary">
+                <i class="ti ti-route fs-2"></i>
+            </div>
+            <div class="flex-fill">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div class="admin-drawer-name">Ride #${escapeHtml(String(r.id || "").slice(0, 10))}</div>
+                    <div class="d-flex gap-1 align-items-center">
+                        ${r.rideType === "share" ? `<span class="badge bg-teal-lt text-teal">Share Auto</span>` : `<span class="badge bg-blue-lt text-blue">${escapeHtml(String(r.vehicleType || r.vehicle_type || "Ride").toUpperCase())}</span>`}
+                        ${statusChip(r.status)}
+                    </div>
+                </div>
+                <div class="admin-drawer-sub font-monospace mt-1">ID: ${escapeHtml(r.id || "")} &bull; ${formatTimestamp(r.createdAt)}</div>
+            </div>
+        </div>
+
+        <div class="admin-detail-card">
+            <div class="admin-detail-card-header">
+                <span><i class="ti ti-users me-1"></i>Participants</span>
+            </div>
+            <div class="admin-detail-card-body">
+                <div class="admin-detail-grid">
+                    <div class="admin-detail-field">
+                        <div class="admin-detail-label">Passenger</div>
+                        <div class="admin-detail-value">${passengerName ? escapeHtml(passengerName) : `<span class="text-muted fst-italic">Passenger details unavailable</span>`}</div>
+                        ${passengerPhone ? `<div class="text-secondary small">${escapeHtml(passengerPhone)}</div>` : ""}
+                        ${paxId ? `<div class="text-secondary font-monospace" style="font-size:0.7rem;">UID: ${escapeHtml(paxId.slice(0, 14))}</div>` : ""}
+                    </div>
+                    <div class="admin-detail-field">
+                        <div class="admin-detail-label">Assigned Driver</div>
+                        <div class="admin-detail-value">${driverName ? escapeHtml(driverName) : driverAssignFallback}</div>
+                        ${driverPhone ? `<div class="text-secondary small">${escapeHtml(driverPhone)}</div>` : ""}
+                        ${r.vehicle_number || r.vehicleNumber ? `<div class="text-secondary small font-monospace">${escapeHtml(r.vehicle_number || r.vehicleNumber)}</div>` : ""}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-detail-card">
+            <div class="admin-detail-card-header">
+                <span><i class="ti ti-map-pins me-1"></i>Route &amp; Fare Summary</span>
+                <span class="fw-bold text-primary">₹${r.fare || 0}${r.fareAdjustedByAdmin ? " (Adjusted)" : ""}</span>
+            </div>
+            <div class="admin-detail-card-body">
+                <div class="admin-detail-grid">
+                    <div class="admin-detail-field">
+                        <div class="admin-detail-label">Pickup Location</div>
+                        <div class="admin-detail-value">${escapeHtml(r.pickup_name || r.pickupName || "Not recorded")}</div>
+                    </div>
+                    <div class="admin-detail-field">
+                        <div class="admin-detail-label">Destination</div>
+                        <div class="admin-detail-value">${escapeHtml(r.drop_name || r.dropName || "Not recorded")}</div>
+                    </div>
+                    <div class="admin-detail-field">
+                        <div class="admin-detail-label">Payment Status</div>
+                        <div class="admin-detail-value">${escapeHtml(r.payment_status || r.paymentStatus || "pending")}</div>
+                    </div>
+                    <div class="admin-detail-field">
+                        <div class="admin-detail-label">Cancellation Reason</div>
+                        <div class="admin-detail-value">${escapeHtml(r.cancellationReason || (r.status === "cancelled" ? "Not recorded" : "Not applicable"))}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-detail-card">
+            <div class="admin-detail-card-header">
+                <span><i class="ti ti-map-2 me-1"></i>Route Map</span>
+                <span class="badge bg-blue-lt text-blue">Road Route</span>
+            </div>
+            <div class="admin-detail-card-body">
+                <div id="ride-drawer-map" class="rounded border" style="height: 230px; width: 100%; background: #f8fafc;"></div>
+                <div id="ride-drawer-map-readout" class="mt-2"></div>
+            </div>
+        </div>
+
+        <details class="admin-collapsible" open>
+            <summary>
+                <span><i class="ti ti-clock me-1"></i>Ride Timeline (${timeline.length})</span>
+                <i class="ti ti-chevron-down text-secondary"></i>
+            </summary>
+            <div class="admin-collapsible-body">
+                ${timeline.length ? timeline.map(([label, ts]) => detailRow(label, formatTimestamp(ts))).join("") : `<p class="text-secondary text-center py-2 m-0">No timestamps recorded.</p>`}
+            </div>
+        </details>
+
         ${shareHtml}
+        ${feedbackHtml}
 
-        <h4 class="admin-drawer-subsection">Timeline</h4>
-        ${timeline.length ? timeline.map(([label, ts]) => detailRow(label, formatTimestamp(ts))).join("") : `<p class="text-secondary text-center py-2">No timestamps recorded.</p>`}
+        <details class="admin-collapsible">
+            <summary>
+                <span><i class="ti ti-currency-rupee me-1"></i>Adjust Fare</span>
+                <i class="ti ti-chevron-down text-secondary"></i>
+            </summary>
+            <div class="admin-collapsible-body">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">₹</span>
+                    <input type="number" min="0" id="ride-fare-input" class="form-control" value="${r.fare || 0}">
+                    <button id="ride-fare-save" class="btn btn-primary" type="button">Update Fare</button>
+                </div>
+            </div>
+        </details>
 
-        <h4 class="admin-drawer-subsection">Route</h4>
-        ${detailRow("Pickup", r.pickup_name || r.pickupName || "")}
-        ${detailRow("Drop", r.drop_name || r.dropName || "")}
-
-        <h4 class="admin-drawer-subsection">Fare &amp; Payment</h4>
-        ${detailRow("Fare", `Rs ${r.fare || 0}${r.fareAdjustedByAdmin ? " (admin-adjusted)" : ""}`)}
-        ${detailRow("Payment status", r.payment_status || "pending")}
-
-        <h4 class="admin-drawer-subsection">People</h4>
-        ${detailRow("Driver", r.driver_name || "Unassigned")}
-        ${detailRow("Passenger", (r.passenger_id || "").slice(0, 10))}
-
-        <h4 class="admin-drawer-subsection">Status &amp; Cancellation</h4>
-        ${detailRow("Status", r.status)}
-        ${detailRow("Cancellation reason", r.cancellationReason || "Not recorded")}
-
-        <h4 class="admin-drawer-subsection">Adjust Fare</h4>
-        <div class="input-group mb-3">
-            <span class="input-group-text">₹</span>
-            <input type="number" min="0" id="ride-fare-input" class="form-control" value="${r.fare || 0}">
-            <button id="ride-fare-save" class="btn btn-outline-secondary" type="button">Save</button>
-        </div>
-
-        <h4 class="admin-drawer-subsection">Admin Notes</h4>
-        <div class="admin-notes-list mb-3">
-            ${notes.length ? notes.map((n) => `<div class="admin-note"><div>${escapeHtml(n.text)}</div><div class="admin-note-meta">${escapeHtml(n.byEmail || "")} \u00b7 ${formatTimestamp(n.at)}</div></div>`).join("") : `<p class="text-secondary text-center py-2">No notes yet.</p>`}
-        </div>
-        <div class="input-group mb-3">
-            <input type="text" id="ride-note-input" class="form-control" placeholder="Add an internal note...">
-            <button id="ride-note-save" class="btn btn-outline-secondary" type="button">Add Note</button>
-        </div>
+        <details class="admin-collapsible" ${notes.length ? "open" : ""}>
+            <summary>
+                <span><i class="ti ti-notes me-1"></i>Admin Notes (${notes.length})</span>
+                <i class="ti ti-chevron-down text-secondary"></i>
+            </summary>
+            <div class="admin-collapsible-body">
+                <div class="admin-notes-list mb-2">
+                    ${notes.length ? notes.map((n) => `<div class="admin-note"><div>${escapeHtml(n.text)}</div><div class="admin-note-meta">${escapeHtml(n.byEmail || "")} \u00b7 ${formatTimestamp(n.at)}</div></div>`).join("") : `<p class="text-secondary small text-center py-2 m-0">No internal notes recorded.</p>`}
+                </div>
+                <div class="input-group input-group-sm">
+                    <input type="text" id="ride-note-input" class="form-control" placeholder="Add an internal note...">
+                    <button id="ride-note-save" class="btn btn-outline-secondary" type="button">Add Note</button>
+                </div>
+            </div>
+        </details>
     `;
 
-    showReadOnlyDrawer("Ride Details", html);
+    const { bodyEl } = showReadOnlyDrawer("Ride Details", html);
+
+    const mapEl = bodyEl.querySelector("#ride-drawer-map");
+    const mapReadoutEl = bodyEl.querySelector("#ride-drawer-map-readout");
+    if (mapEl) {
+        renderRideMap(mapEl, r, {
+            isSnapshot: ["completed", "cancelled"].includes(String(r.status || "").toLowerCase()),
+            readoutEl: mapReadoutEl,
+        });
+    }
 
     const saveFareBtn = document.getElementById("ride-fare-save");
     saveFareBtn?.addEventListener("click", async () => {
@@ -3217,20 +3569,25 @@ async function openPassengerDrawer(uid) {
         const p = data.passenger || {};
         const stats = data.rideStats || {};
         const wallet = data.wallet || {};
-        const recentRides = data.recentRides || [];
+        const recentRides = (data.recentRides || []).slice(0, 10);
         const redeemedCoupons = data.redeemedCoupons || [];
         const safetyEvents = data.safetyEvents || [];
         const notes = Array.isArray(p.adminNotes) ? p.adminNotes : [];
 
         const recentRidesHtml = recentRides.length
-            ? `<div class="card border-0 shadow-xs mb-2"><div class="table-responsive"><table class="table table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Fare</th><th>Status</th></tr></thead><tbody>${recentRides
-                  .slice(0, 8)
+            ? `<div class="table-responsive"><table class="table table-sm table-vcenter card-table table-striped table-hover m-0"><thead><tr><th>Route</th><th>Driver</th><th>Fare</th><th>Status</th><th class="w-1"></th></tr></thead><tbody>${recentRides
                   .map(
                       (r) =>
-                          `<tr><td>${escapeHtml(r.pickup_name || "")} \u2192 ${escapeHtml(r.drop_name || "")}</td><td>₹${r.fare || 0}</td><td>${statusChip(r.status)}</td></tr>`
+                          `<tr class="admin-clickable-row" tabindex="0" role="button" data-drawer-ride-id="${escapeAttr(r.id || "")}">
+                              <td class="small">${escapeHtml(r.pickup_name || r.pickupName || "Not recorded")} \u2192 ${escapeHtml(r.drop_name || r.dropName || "Not recorded")}</td>
+                              <td class="small">${formatRideDriverCell(r)}</td>
+                              <td class="small">₹${r.fare || 0}</td>
+                              <td>${statusChip(r.status)}</td>
+                              <td class="text-end text-muted pe-2"><i class="ti ti-chevron-right admin-row-chevron"></i></td>
+                          </tr>`
                   )
-                  .join("")}</tbody></table></div></div>`
-            : `<p class="text-secondary text-center py-2">No rides recorded yet.</p>`;
+                  .join("")}</tbody></table></div>`
+            : `<p class="text-secondary text-center py-2 m-0">No rides recorded yet.</p>`;
 
         const walletTxns = Array.isArray(wallet.recentTransactions)
             ? wallet.recentTransactions
@@ -3259,37 +3616,38 @@ async function openPassengerDrawer(uid) {
             : `<p class="text-secondary small mb-2">No recent wallet transactions.</p>`;
 
         const couponsHtml = redeemedCoupons.length
-            ? `<div class="d-flex flex-wrap gap-1 mb-2">${redeemedCoupons
+            ? `<div class="d-flex flex-wrap gap-1 mb-1">${redeemedCoupons
                   .map((c) => `<span class="badge bg-purple-lt text-purple">${escapeHtml(c.code || c.couponCode || c.id)} (₹${c.amount || c.discountAmount || 0})</span>`)
                   .join("")}</div>`
-            : `<p class="text-secondary small mb-2">No redeemed coupons.</p>`;
+            : `<p class="text-secondary small mb-0">No redeemed coupons.</p>`;
 
         const safetyHtml = safetyEvents.length
-            ? `<div class="list-group list-group-flush border rounded mb-2">${safetyEvents
+            ? `<div class="list-group list-group-flush border rounded">${safetyEvents
                   .map(
-                      (ev) => `<div class="list-group-item py-2">
-                          <span class="badge bg-danger-lt text-danger me-1">${escapeHtml(ev.eventType || "SOS")}</span>
-                          <span class="small">${escapeHtml(ev.status || "open")} &bull; ${formatTimestamp(ev.createdAt)}</span>
+                      (ev) => `<div class="list-group-item py-2 d-flex justify-content-between align-items-center">
+                          <div>
+                              <span class="badge bg-danger-lt text-danger me-1">${escapeHtml(ev.eventType || "SOS")}</span>
+                              <span class="small">${escapeHtml(ev.category || ev.reason || "Incident")}</span>
+                          </div>
+                          <span class="small text-secondary">${escapeHtml(ev.status || "open")} &bull; ${formatTimestamp(ev.createdAt)}</span>
                       </div>`
                   )
                   .join("")}</div>`
-            : `<p class="text-secondary small mb-2">No SOS or safety incidents recorded.</p>`;
+            : `<p class="text-secondary small m-0">No SOS or safety incidents recorded.</p>`;
 
         const html = `
-            <div class="admin-drawer-photo-row">
+            <div class="admin-detail-header-card">
                 ${p.profilePhotoUrl ? `<img src="${escapeAttr(p.profilePhotoUrl)}" class="admin-drawer-photo" alt="">` : `<div class="admin-drawer-photo admin-drawer-photo-placeholder d-flex align-items-center justify-content-center text-secondary"><i class="ti ti-user fs-2"></i></div>`}
-                <div>
-                    <div class="admin-drawer-name">${escapeHtml(p.name || "Unnamed Passenger")}</div>
-                    <div class="admin-drawer-sub">UID: ${escapeHtml(p.uid || uid)}</div>
+                <div class="flex-fill">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <div class="admin-drawer-name">${escapeHtml(p.name || "Unnamed Passenger")}</div>
+                        <div>${statusChip(p.accountStatus || "active")}</div>
+                    </div>
+                    <div class="admin-drawer-sub font-monospace mt-1">UID: ${escapeHtml(p.uid || uid)}</div>
                 </div>
             </div>
 
-            ${detailRow("Account Status", statusChip(p.accountStatus || "active"))}
-            ${detailRow("Phone", p.phone || "—")}
-            ${detailRow("Email", p.email || "—")}
-            ${detailRow("Joined", formatTimestamp(p.createdAt) || "—")}
-
-            <div class="d-flex flex-wrap gap-1 mt-3">
+            <div class="d-flex flex-wrap gap-1 mb-3">
                 ${actionBtn("restrict", '<i class="ti ti-alert-circle me-1"></i>Restrict', "btn-warning")}
                 ${actionBtn("unrestrict", '<i class="ti ti-check me-1"></i>Unrestrict', "btn-outline-success")}
                 ${actionBtn("block", '<i class="ti ti-ban me-1"></i>Block', "btn-danger")}
@@ -3299,7 +3657,7 @@ async function openPassengerDrawer(uid) {
                 </button>
             </div>
 
-            <div id="passenger-drawer-grant-credit-box" class="card bg-teal-lt border-teal p-2 mt-2 d-none">
+            <div id="passenger-drawer-grant-credit-box" class="card bg-teal-lt border-teal p-2 mb-3 d-none">
                 <div class="fw-bold small text-dark mb-2"><i class="ti ti-coin me-1"></i>Grant Promotional / Refund Credit</div>
                 <div class="row g-2 mb-2">
                     <div class="col-5">
@@ -3320,36 +3678,100 @@ async function openPassengerDrawer(uid) {
                 </div>
             </div>
 
-            <h4 class="admin-drawer-subsection">Ride Statistics</h4>
-            ${detailRow("Total Rides", stats.totalRides ?? 0)}
-            ${detailRow("Completed Rides", stats.completedRides ?? 0)}
-            ${detailRow("Cancelled by Passenger", stats.cancelledByPassenger ?? 0)}
-            ${detailRow("Cancelled by Driver", stats.cancelledByDriver ?? 0)}
-            ${detailRow("Total Spent", `₹${stats.totalSpent ?? 0}`)}
-
-            <h4 class="admin-drawer-subsection">Wallet &amp; Coupons</h4>
-            ${detailRow("Current Wallet Balance", `<span class="fw-bold text-success">₹${wallet.balance ?? p.walletBalance ?? 0}</span>`)}
-            ${txnsHtml}
-            <div class="fw-medium small mb-1">Redeemed Coupons:</div>
-            ${couponsHtml}
-
-            <h4 class="admin-drawer-subsection">Safety &amp; SOS History</h4>
-            ${safetyHtml}
-
-            <h4 class="admin-drawer-subsection">Recent Rides</h4>
-            ${recentRidesHtml}
-
-            <h4 class="admin-drawer-subsection">Admin Notes</h4>
-            <div class="admin-notes-list mb-3">
-                ${notes.length ? notes.map((n) => `<div class="admin-note"><div>${escapeHtml(n.text)}</div><div class="admin-note-meta">${escapeHtml(n.byEmail || "")} \u00b7 ${formatTimestamp(n.at)}</div></div>`).join("") : `<p class="text-secondary text-center py-2">No notes yet.</p>`}
+            <div class="admin-detail-card">
+                <div class="admin-detail-card-header">
+                    <span><i class="ti ti-address-book me-1"></i>Contact &amp; Account Info</span>
+                </div>
+                <div class="admin-detail-card-body">
+                    <div class="admin-detail-grid">
+                        <div class="admin-detail-field"><div class="admin-detail-label">Phone</div><div class="admin-detail-value">${escapeHtml(p.phone || "Not recorded")}</div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Email</div><div class="admin-detail-value">${escapeHtml(p.email || "Not recorded")}</div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Joined</div><div class="admin-detail-value">${formatTimestamp(p.createdAt) || "Not recorded"}</div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Wallet Balance</div><div class="admin-detail-value fw-bold text-success">₹${wallet.balance ?? p.walletBalance ?? 0}</div></div>
+                    </div>
+                </div>
             </div>
-            <div class="input-group mb-3">
-                <input type="text" id="passenger-note-input" class="form-control" placeholder="Add an internal note...">
-                <button id="passenger-note-save" class="btn btn-outline-secondary" type="button">Add Note</button>
+
+            <div class="admin-detail-card">
+                <div class="admin-detail-card-header">
+                    <span><i class="ti ti-chart-bar me-1"></i>Ride Statistics</span>
+                    <span class="badge bg-blue-lt text-blue">₹${stats.totalSpent ?? 0} spent</span>
+                </div>
+                <div class="admin-detail-card-body">
+                    <div class="admin-detail-grid">
+                        <div class="admin-detail-field"><div class="admin-detail-label">Total Rides</div><div class="admin-detail-value fw-bold">${stats.totalRides ?? 0}</div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Completed Rides</div><div class="admin-detail-value text-success fw-bold">${stats.completedRides ?? 0}</div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Cancelled by Passenger</div><div class="admin-detail-value">${stats.cancelledByPassenger ?? 0}</div></div>
+                        <div class="admin-detail-field"><div class="admin-detail-label">Cancelled by Driver</div><div class="admin-detail-value">${stats.cancelledByDriver ?? 0}</div></div>
+                    </div>
+                </div>
             </div>
+
+            <details class="admin-collapsible" open>
+                <summary>
+                    <span><i class="ti ti-history me-1"></i>Recent Rides (Latest ${recentRides.length} of max 10)</span>
+                    <i class="ti ti-chevron-down text-secondary"></i>
+                </summary>
+                <div class="admin-collapsible-body p-0">
+                    ${recentRidesHtml}
+                </div>
+            </details>
+
+            <details class="admin-collapsible">
+                <summary>
+                    <span><i class="ti ti-wallet me-1"></i>Wallet Activity &amp; Coupons</span>
+                    <i class="ti ti-chevron-down text-secondary"></i>
+                </summary>
+                <div class="admin-collapsible-body">
+                    ${txnsHtml}
+                    <div class="fw-medium small mb-1">Redeemed Coupons:</div>
+                    ${couponsHtml}
+                </div>
+            </details>
+
+            <details class="admin-collapsible" ${safetyEvents.length ? "open" : ""}>
+                <summary>
+                    <span><i class="ti ti-shield-exclamation me-1"></i>Safety &amp; SOS History (${safetyEvents.length})</span>
+                    <i class="ti ti-chevron-down text-secondary"></i>
+                </summary>
+                <div class="admin-collapsible-body">
+                    ${safetyHtml}
+                </div>
+            </details>
+
+            <details class="admin-collapsible" ${notes.length ? "open" : ""}>
+                <summary>
+                    <span><i class="ti ti-notes me-1"></i>Admin Notes (${notes.length})</span>
+                    <i class="ti ti-chevron-down text-secondary"></i>
+                </summary>
+                <div class="admin-collapsible-body">
+                    <div class="admin-notes-list mb-2">
+                        ${notes.length ? notes.map((n) => `<div class="admin-note"><div>${escapeHtml(n.text)}</div><div class="admin-note-meta">${escapeHtml(n.byEmail || "")} \u00b7 ${formatTimestamp(n.at)}</div></div>`).join("") : `<p class="text-secondary small text-center py-2 m-0">No internal notes recorded.</p>`}
+                    </div>
+                    <div class="input-group input-group-sm">
+                        <input type="text" id="passenger-note-input" class="form-control" placeholder="Add an internal note...">
+                        <button id="passenger-note-save" class="btn btn-outline-secondary" type="button">Add Note</button>
+                    </div>
+                </div>
+            </details>
         `;
 
         const { bodyEl } = showReadOnlyDrawer(p.name || "Passenger Profile", html);
+
+        bodyEl.querySelectorAll("[data-drawer-ride-id]").forEach((row) => {
+            const activate = () => {
+                const rId = row.dataset.drawerRideId;
+                const matched = recentRides.find((x) => x.id === rId);
+                if (matched) openRideDrawer(matched);
+            };
+            row.addEventListener("click", activate);
+            row.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    activate();
+                }
+            });
+        });
 
         bodyEl.querySelectorAll("[data-action]").forEach((btn) => {
             btn.addEventListener("click", async () => {
@@ -3595,6 +4017,25 @@ async function loadAnalytics(days = currentAnalyticsDays) {
 // ---------------------------------------------------------------------
 
 let notificationsEventsInitialized = false;
+let selectedBroadcastIds = new Set();
+let cachedBroadcastRows = [];
+
+function updateBroadcastBulkBar() {
+    const countBadge = $("broadcast-selected-count");
+    const deleteBtn = $("broadcast-bulk-delete-btn");
+    const selectAll = $("broadcast-select-all");
+    const count = selectedBroadcastIds.size;
+    if (countBadge) {
+        countBadge.textContent = `${count} selected`;
+        countBadge.classList.toggle("d-none", count === 0);
+    }
+    if (deleteBtn) {
+        deleteBtn.classList.toggle("d-none", count === 0);
+    }
+    if (selectAll) {
+        selectAll.checked = cachedBroadcastRows.length > 0 && cachedBroadcastRows.every((b) => selectedBroadcastIds.has(b.id));
+    }
+}
 
 function initNotificationsEvents() {
     if (notificationsEventsInitialized) return;
@@ -3612,6 +4053,42 @@ function initNotificationsEvents() {
     });
     $("btn-refresh-broadcasts")?.addEventListener("click", (e) => {
         withButtonSpinner(e.currentTarget, () => loadNotificationsCenter());
+    });
+
+    $("broadcast-select-all")?.addEventListener("change", (e) => {
+        const checked = e.target.checked;
+        cachedBroadcastRows.forEach((b) => {
+            if (checked) selectedBroadcastIds.add(b.id);
+            else selectedBroadcastIds.delete(b.id);
+        });
+        document.querySelectorAll("[data-select-broadcast]").forEach((cb) => {
+            cb.checked = checked;
+        });
+        updateBroadcastBulkBar();
+    });
+
+    $("broadcast-bulk-delete-btn")?.addEventListener("click", async (e) => {
+        const ids = Array.from(selectedBroadcastIds);
+        if (!ids.length) return;
+        const confirmed = await showTablerConfirm(
+            `Permanently delete ${ids.length} selected broadcast history record(s)? This cannot be undone.`,
+            {
+                title: "Delete Selected Broadcasts",
+                confirmText: `Delete (${ids.length})`,
+                variant: "danger",
+            }
+        );
+        if (!confirmed) return;
+        await withButtonSpinner(e.currentTarget, async () => {
+            try {
+                const res = await adminPost("/notifications/broadcasts/bulk-delete", { ids });
+                ids.forEach((id) => selectedBroadcastIds.delete(id));
+                toast(`Deleted ${res.deletedCount || ids.length} broadcast record(s).`);
+                await loadNotificationsCenter();
+            } catch (err) {
+                toast(err.message, "error");
+            }
+        });
     });
 
     const form = $("form-admin-broadcast");
@@ -3686,12 +4163,19 @@ async function loadNotificationsCenter() {
     initNotificationsEvents();
     const tbody = $("admin-broadcast-history-tbody") || $("broadcast-history-tbody");
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-secondary small"><span class="spinner-border spinner-border-sm me-2"></span>Loading broadcast history...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary small"><span class="spinner-border spinner-border-sm me-2"></span>Loading broadcast history...</td></tr>`;
     try {
         const data = await adminGet("/notifications/broadcasts", { limit: 30 }, { cacheable: false });
         const broadcasts = data.broadcasts || [];
+        cachedBroadcastRows = broadcasts;
+        const validIds = new Set(broadcasts.map((b) => b.id));
+        for (const id of Array.from(selectedBroadcastIds)) {
+            if (!validIds.has(id)) selectedBroadcastIds.delete(id);
+        }
+        updateBroadcastBulkBar();
+
         if (broadcasts.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-secondary small">No broadcasts dispatched yet.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary small">No broadcasts dispatched yet.</td></tr>`;
             return;
         }
         tbody.innerHTML = broadcasts
@@ -3717,8 +4201,12 @@ async function loadNotificationsCenter() {
                 const pushDetail = sentCount > 0
                     ? `<div class="text-secondary small mt-1">${sentCount} instant push sent</div>`
                     : `<div class="text-secondary small mt-1">Auto-delivers via Web/App inbox</div>`;
+                const isSelected = selectedBroadcastIds.has(b.id);
                 return `
                     <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input m-0 align-middle" data-select-broadcast="${escapeAttr(b.id)}" ${isSelected ? "checked" : ""} aria-label="Select broadcast">
+                        </td>
                         <td>
                             <div class="fw-bold text-dark">${escapeHtml(b.title || "")}</div>
                             <div class="text-secondary small text-truncate" style="max-width: 280px;">${escapeHtml(b.body || "")}</div>
@@ -3736,12 +4224,51 @@ async function loadNotificationsCenter() {
                         </td>
                         <td class="text-secondary small">${escapeHtml(b.sentByEmail || "Admin")}</td>
                         <td class="text-secondary small">${formatTimestamp(b.createdAt)}</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-ghost-danger" data-delete-broadcast="${escapeAttr(b.id)}" title="Delete broadcast record">
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        </td>
                     </tr>
                 `;
             })
             .join("");
+
+        tbody.querySelectorAll("[data-select-broadcast]").forEach((cb) => {
+            cb.addEventListener("change", () => {
+                const id = cb.dataset.selectBroadcast;
+                if (cb.checked) selectedBroadcastIds.add(id);
+                else selectedBroadcastIds.delete(id);
+                updateBroadcastBulkBar();
+            });
+        });
+
+        tbody.querySelectorAll("[data-delete-broadcast]").forEach((btn) => {
+            btn.addEventListener("click", async () => {
+                const id = btn.dataset.deleteBroadcast;
+                const confirmed = await showTablerConfirm(
+                    "Permanently delete this broadcast history record? This action cannot be undone.",
+                    {
+                        title: "Delete Broadcast Record",
+                        confirmText: "Delete",
+                        variant: "danger",
+                    }
+                );
+                if (!confirmed) return;
+                await withButtonSpinner(btn, async () => {
+                    try {
+                        await adminDelete(`/notifications/broadcasts/${encodeURIComponent(id)}`);
+                        selectedBroadcastIds.delete(id);
+                        toast("Broadcast record deleted.");
+                        await loadNotificationsCenter();
+                    } catch (err) {
+                        toast(err.message, "error");
+                    }
+                });
+            });
+        });
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-danger small">${escapeHtml(error.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-danger small">${escapeHtml(error.message)}</td></tr>`;
     }
 }
 

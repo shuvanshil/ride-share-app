@@ -231,10 +231,13 @@ def test_bulk_failure_actions(mock_db_fn) -> None:
     assert db.collection("failureReports").document("fail_bulk_2").get().to_dict()["status"] == "resolved"
     assert db.collection("failureReports").document("fail_bulk_3").get().to_dict()["status"] == "open"
 
-    # Bulk delete
+    # Bulk delete skips open report (fail_bulk_3) and deletes resolved ones (fail_bulk_1, fail_bulk_2)
     bulk_del_body = admin.BulkFailureActionBody(action="delete", failureIds=["fail_bulk_1", "fail_bulk_2", "fail_bulk_3"])
     del_res = admin.bulk_failure_action(body=bulk_del_body, admin_user=admin_user)
     assert del_res["ok"] is True
-    assert del_res["count"] == 3
+    assert del_res["count"] == 2
+    assert del_res["skippedOpenIds"] == ["fail_bulk_3"]
     assert not db.collection("failureReports").document("fail_bulk_1").get().exists
-    assert not db.collection("failureReports").document("fail_bulk_3").get().exists
+    assert not db.collection("failureReports").document("fail_bulk_2").get().exists
+    assert db.collection("failureReports").document("fail_bulk_3").get().exists
+

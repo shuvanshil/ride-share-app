@@ -168,7 +168,13 @@ function updateBulkBar() {
     const bar = $("reports-bulk-bar");
     const countEl = $("reports-bulk-selected-count");
     const selectAllCheckbox = $("reports-select-all");
+    const deleteBtn = $("reports-bulk-delete-btn");
     const count = reportsState.selectedIds.size;
+
+    const resolvedSelectedCount = Array.from(reportsState.selectedIds).filter((id) => {
+        const r = reportsState.reports.find((item) => (item.failureId || item.id) === id);
+        return r && String(r.status || "open").toLowerCase() === "resolved";
+    }).length;
 
     if (bar && countEl) {
         if (count > 0) {
@@ -177,6 +183,14 @@ function updateBulkBar() {
         } else {
             bar.classList.add("d-none");
         }
+    }
+
+    if (deleteBtn) {
+        deleteBtn.disabled = resolvedSelectedCount === 0;
+        deleteBtn.title =
+            resolvedSelectedCount === 0
+                ? "Only resolved failure reports can be deleted"
+                : `Delete ${resolvedSelectedCount} resolved report(s)`;
     }
 
     if (selectAllCheckbox) {
@@ -293,7 +307,7 @@ function renderReportsTable() {
                                     <i class="ti ti-check"></i>
                                 </button>`
                         }
-                        <button type="button" class="btn btn-outline-danger btn-sm btn-icon report-delete-btn" data-id="${fid}" title="Delete Record">
+                        <button type="button" class="btn btn-outline-danger btn-sm btn-icon report-delete-btn" data-id="${fid}" title="${isResolved ? "Delete Record" : "Resolve issue before deleting"}" ${isResolved ? "" : "disabled"}>
                             <i class="ti ti-trash"></i>
                         </button>
                     </div>
@@ -438,6 +452,12 @@ function openReportDetail(failureId) {
         }
     }
 
+    const deleteBtn = $("report-detail-delete-btn");
+    if (deleteBtn) {
+        deleteBtn.disabled = !isResolved;
+        deleteBtn.title = isResolved ? "Delete Record" : "Resolve issue before deleting";
+    }
+
     const modal = $("admin-report-detail-modal");
     if (modal) {
         modal.classList.remove("d-none");
@@ -479,11 +499,19 @@ async function reopenSingleReport(failureId, btn) {
 }
 
 async function deleteSingleReport(failureId, btn) {
+    const report = reportsState.reports.find((r) => (r.failureId || r.id) === failureId);
+    if (report && String(report.status || "open").toLowerCase() !== "resolved") {
+        toast("Cannot delete an open or unresolved failure report. Resolve it first.", "warning");
+        return;
+    }
+
     const confirmed = await showTablerConfirm(
-        "Delete Failure Report",
         "Are you sure you want to permanently delete this failure report record from the database?",
-        "Delete Report",
-        true
+        {
+            title: "Delete Failure Report",
+            confirmText: "Delete Report",
+            variant: "danger",
+        }
     );
     if (!confirmed) return;
 
@@ -521,11 +549,18 @@ async function handleModalResolve() {
 async function handleModalDelete() {
     if (!reportsState.currentReport) return;
     const fid = reportsState.currentReport.failureId || reportsState.currentReport.id;
+    if (String(reportsState.currentReport.status || "open").toLowerCase() !== "resolved") {
+        toast("Cannot delete an open or unresolved failure report. Resolve it first.", "warning");
+        return;
+    }
+
     const confirmed = await showTablerConfirm(
-        "Delete Failure Report",
         "Are you sure you want to permanently delete this failure report record from the database?",
-        "Delete Report",
-        true
+        {
+            title: "Delete Failure Report",
+            confirmText: "Delete Report",
+            variant: "danger",
+        }
     );
     if (!confirmed) return;
 
@@ -564,20 +599,39 @@ async function handleBulkDelete() {
     const ids = Array.from(reportsState.selectedIds);
     if (ids.length === 0) return;
 
-    const confirmed = await showTablerConfirm(
-        `Delete ${ids.length} Failure Reports`,
-        `Are you sure you want to permanently delete ${ids.length} selected failure reports from the database? This action cannot be undone.`,
-        `Delete ${ids.length} Reports`,
-        true
-    );
+    const resolvedIds = ids.filter((id) => {
+        const r = reportsState.reports.find((item) => (item.failureId || item.id) === id);
+        return r && String(r.status || "open").toLowerCase() === "resolved";
+    });
+    const unresolvedCount = ids.length - resolvedIds.length;
+    if (resolvedIds.length === 0) {
+        toast("Only resolved failure reports can be deleted. Resolve selected open reports first.", "warning");
+        return;
+    }
+
+    const confirmMsg =
+        unresolvedCount > 0
+            ? `Are you sure you want to permanently delete ${resolvedIds.length} resolved failure report(s)? (${unresolvedCount} open report(s) will be skipped until resolved.)`
+            : `Are you sure you want to permanently delete ${resolvedIds.length} selected failure report(s) from the database? This action cannot be undone.`;
+
+    const confirmed = await showTablerConfirm(confirmMsg, {
+        title: `Delete ${resolvedIds.length} Failure Report${resolvedIds.length === 1 ? "" : "s"}`,
+        confirmText: `Delete ${resolvedIds.length} Report${resolvedIds.length === 1 ? "" : "s"}`,
+        variant: "danger",
+    });
     if (!confirmed) return;
 
     const btn = $("reports-bulk-delete-btn");
     await withButtonSpinner(btn, async () => {
         try {
-            await adminPost("/failures/bulk", { action: "delete", failureIds: ids });
-            toast(`Successfully deleted ${ids.length} selected report(s).`, "success");
-            reportsState.selectedIds.clear();
+            await adminPost("/failures/bulk", { action: "delete", failureIds: resolvedIds });
+            toast(
+                unresolvedCount > 0
+                    ? `Deleted ${resolvedIds.length} resolved report(s); skipped ${unresolvedCount} open report(s).`
+                    : `Successfully deleted ${resolvedIds.length} selected report(s).`,
+                "success"
+            );
+            resolvedIds.forEach((id) => reportsState.selectedIds.delete(id));
             await loadAdminReports();
         } catch (err) {
             toast(`Failed to delete selected reports: ${err.message}`, "error");

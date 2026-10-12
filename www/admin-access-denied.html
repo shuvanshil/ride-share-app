@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#206bc4">
+    <title>Access Restricted · LiphtUp Admin Portal</title>
+    <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+    <meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/css/tabler.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+    <style>
+        body {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: radial-gradient(circle at top right, #eff6ff 0%, #f8fafc 45%, #f1f5f9 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 1.5rem;
+            color: #1e293b;
+        }
+        .access-restricted-card {
+            max-width: 560px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+            padding: 2.5rem 2.25rem;
+        }
+        .access-restricted-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: #fef2f2;
+            color: #dc2626;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
+            margin-bottom: 1.25rem;
+        }
+        .access-restricted-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0 0 1.25rem 0;
+            letter-spacing: -0.02em;
+        }
+        .access-restricted-body p {
+            font-size: 0.95rem;
+            line-height: 1.65;
+            color: #334155;
+            margin: 0 0 1rem 0;
+        }
+        .access-restricted-signature {
+            font-size: 0.95rem;
+            color: #0f172a;
+            margin: 1.25rem 0 1.75rem 0;
+        }
+        .access-restricted-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.75rem 1.25rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <main class="access-restricted-card" role="main" aria-labelledby="access-restricted-heading">
+        <div class="access-restricted-icon" aria-hidden="true">
+            <i class="ti ti-shield-lock"></i>
+        </div>
+        <h3 id="access-restricted-heading" class="access-restricted-title">Access Restricted</h3>
+        <div class="access-restricted-body">
+            <p>The page you are trying to access is restricted to authorized administrators of LiphtUp. Access is granted only to individuals with the necessary administrative permissions, which can be requested from the LiphtUp Developers Team.</p>
+            <p>If you are an administrator and are seeing this message, your session may have expired, or you may have been logged out. Please log in again to restore your access.</p>
+            <p>If the issue persists after logging in, please contact the LiphtUp Developers Team for assistance.</p>
+            <p class="access-restricted-signature"><strong>— LiphtUp Developers Team</strong></p>
+        </div>
+        <a href="/admin" class="btn btn-primary access-restricted-btn" id="btn-return-admin-login">
+            <i class="ti ti-login"></i>
+            <span>Go to Admin Login</span>
+        </a>
+    </main>
+</body>
+</html>

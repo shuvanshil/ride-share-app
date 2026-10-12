@@ -85,12 +85,6 @@
             </div>
             <div class="card card-md shadow-sm border-0">
                 <div class="card-body">
-                    <div id="admin-unauth-subpage-notice" class="alert alert-warning d-none align-items-start mb-3" role="alert">
-                        <i class="ti ti-lock alert-icon me-2 fs-2 flex-shrink-0 mt-1 text-warning"></i>
-                        <div class="small" id="admin-unauth-subpage-notice-text">
-                            <strong>Restricted Page:</strong> Direct access to admin sub-pages requires an authenticated Admin session with valid permissions. Please sign in below.
-                        </div>
-                    </div>
                     <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
                         <i class="ti ti-info-circle alert-icon me-2 fs-2 flex-shrink-0 mt-1"></i>
                         <div class="small">
@@ -783,9 +777,6 @@
                             <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="waiting-pools">
                                 <i class="ti ti-clock me-1"></i> Waiting Pools <span class="badge bg-secondary-lt ms-1" id="tab-count-waiting">0</span>
                             </button>
-                            <button type="button" class="btn btn-pill live-tab-pill" data-live-tab="live-map">
-                                <i class="ti ti-map-2 me-1"></i> Live Map <span class="badge bg-secondary-lt ms-1" id="tab-count-map">0</span>
-                            </button>
                         </div>
 
                         <!-- View 1: Hierarchical Rides Table (for All, Single, Share, Child) -->
@@ -925,52 +916,11 @@
                                         <div class="alert alert-info d-flex align-items-center gap-2 m-3 mb-2 p-2 border-0" style="background-color: #eff6ff; border-radius: 6px;">
                                             <i class="ti ti-info-circle text-primary fs-3 flex-shrink-0"></i>
                                             <div class="small text-secondary" style="font-size: 0.78rem; line-height: 1.4;">
-                                                Drivers in this pool are online and available, but not yet assigned to any ride. Use <strong>Assign Driver</strong> in the Passenger Pool or Live Map to manually override dispatch.
+                                                Drivers in this pool are online and available, but not yet assigned to any ride. Use <strong>Assign Driver</strong> in the Passenger Pool to manually override dispatch.
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <!-- View 3: Live Fleet & Demand Map ("God View") -->
-                        <div id="live-fleet-map-view" class="card border-0 shadow-xs d-none">
-                            <div class="card-header border-bottom py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2 bg-white">
-                                <div class="d-flex align-items-center gap-3 flex-wrap">
-                                    <span class="fw-bold text-dark d-flex align-items-center gap-1">
-                                        <i class="ti ti-map-pin text-primary"></i> Live Fleet &amp; Demand Map
-                                    </span>
-                                    <label class="form-check form-check-inline m-0 small">
-                                        <input class="form-check-input" type="checkbox" id="god-map-filter-online" checked>
-                                        <span class="form-check-label"><span class="badge bg-green p-1 rounded-circle me-1"></span>Online Drivers (<span id="god-map-count-online">0</span>)</span>
-                                    </label>
-                                    <label class="form-check form-check-inline m-0 small">
-                                        <input class="form-check-input" type="checkbox" id="god-map-filter-busy" checked>
-                                        <span class="form-check-label"><span class="badge bg-blue p-1 rounded-circle me-1"></span>On-Trip Drivers (<span id="god-map-count-busy">0</span>)</span>
-                                    </label>
-                                    <label class="form-check form-check-inline m-0 small">
-                                        <input class="form-check-input" type="checkbox" id="god-map-filter-waiting" checked>
-                                        <span class="form-check-label"><span class="badge bg-amber p-1 rounded-circle me-1"></span>Waiting Passengers (<span id="god-map-count-waiting">0</span>)</span>
-                                    </label>
-                                    <label class="form-check form-check-inline m-0 small">
-                                        <input class="form-check-input" type="checkbox" id="god-map-filter-rides" checked>
-                                        <span class="form-check-label">Active Routes (<span id="god-map-count-rides">0</span>)</span>
-                                    </label>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <select id="god-map-vehicle-filter" class="form-select form-select-sm w-auto">
-                                        <option value="all" selected>All Vehicles</option>
-                                        <option value="auto">Auto</option>
-                                        <option value="bike">Bike</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="card-body p-0">
-                                <div id="god-view-map-canvas" style="min-height: 450px; width: 100%;"></div>
-                            </div>
-                            <div class="card-footer bg-light py-2 px-3 small text-secondary d-flex justify-content-between flex-wrap gap-2">
-                                <span><i class="ti ti-click me-1 text-primary"></i>Click any marker on the map to inspect details or manually assign a waiting passenger to an available driver.</span>
-                                <span id="god-map-mode-label">Coordinate Map Active</span>
                             </div>
                         </div>
                     </section>
@@ -1008,25 +958,49 @@
                             </div>
                             <div class="card-body p-3">
                                 <div id="safety-sos-panel" class="mb-3">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <label class="form-label mb-0 small text-secondary">Filter SOS Status:</label>
-                                        <select id="safety-sos-status-filter" class="form-select form-select-sm w-auto">
-                                            <option value="open" selected>Open</option>
-                                            <option value="resolved">Resolved</option>
-                                            <option value="all">All</option>
-                                        </select>
+                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="form-label mb-0 small text-secondary" for="safety-sos-status-filter">Filter SOS Status:</label>
+                                            <select id="safety-sos-status-filter" class="form-select form-select-sm w-auto">
+                                                <option value="open" selected>Open</option>
+                                                <option value="resolved">Resolved</option>
+                                                <option value="all">All</option>
+                                            </select>
+                                        </div>
+                                        <div id="safety-sos-bulk-bar" class="d-flex align-items-center gap-2 d-none">
+                                            <label class="form-check m-0 d-flex align-items-center gap-1 small">
+                                                <input type="checkbox" id="safety-sos-select-all" class="form-check-input m-0">
+                                                <span class="form-check-label fw-medium">Select All Resolved</span>
+                                            </label>
+                                            <span id="safety-sos-selected-count" class="badge bg-secondary-lt text-dark">0 selected</span>
+                                            <button type="button" id="safety-sos-bulk-delete-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" disabled>
+                                                <i class="ti ti-trash"></i> Delete Selected
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div id="safety-sos-list" class="row row-cards"></div>
 
                                 <div id="safety-reports-panel" class="mb-3 d-none">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <label class="form-label mb-0 small text-secondary">Filter Reports Status:</label>
-                                        <select id="safety-reports-status-filter" class="form-select form-select-sm w-auto">
-                                            <option value="open" selected>Open</option>
-                                            <option value="resolved">Resolved</option>
-                                            <option value="all">All</option>
-                                        </select>
+                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <label class="form-label mb-0 small text-secondary" for="safety-reports-status-filter">Filter Reports Status:</label>
+                                            <select id="safety-reports-status-filter" class="form-select form-select-sm w-auto">
+                                                <option value="open" selected>Open</option>
+                                                <option value="resolved">Resolved</option>
+                                                <option value="all">All</option>
+                                            </select>
+                                        </div>
+                                        <div id="safety-reports-bulk-bar" class="d-flex align-items-center gap-2 d-none">
+                                            <label class="form-check m-0 d-flex align-items-center gap-1 small">
+                                                <input type="checkbox" id="safety-reports-select-all" class="form-check-input m-0">
+                                                <span class="form-check-label fw-medium">Select All Resolved</span>
+                                            </label>
+                                            <span id="safety-reports-selected-count" class="badge bg-secondary-lt text-dark">0 selected</span>
+                                            <button type="button" id="safety-reports-bulk-delete-btn" class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" disabled>
+                                                <i class="ti ti-trash"></i> Delete Selected
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div id="safety-reports-list" class="row row-cards d-none"></div>
@@ -1366,28 +1340,38 @@
                             <!-- Right: Broadcast History -->
                             <div class="col-lg-7">
                                 <div class="card shadow-xs border-0 h-100">
-                                    <div class="card-header d-flex align-items-center justify-content-between">
+                                    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                                         <h3 class="card-title fw-bold m-0">
                                             <i class="ti ti-history me-2 text-secondary"></i>Recent Broadcast History
                                         </h3>
-                                        <button type="button" id="broadcast-history-refresh-btn" class="btn btn-outline-secondary btn-sm">
-                                            <i class="ti ti-refresh me-1"></i>Refresh
-                                        </button>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <span id="broadcast-selected-count" class="badge bg-secondary-lt text-dark d-none">0 selected</span>
+                                            <button type="button" id="broadcast-bulk-delete-btn" class="btn btn-outline-danger btn-sm d-none align-items-center gap-1">
+                                                <i class="ti ti-trash"></i>Delete Selected
+                                            </button>
+                                            <button type="button" id="broadcast-history-refresh-btn" class="btn btn-outline-secondary btn-sm">
+                                                <i class="ti ti-refresh me-1"></i>Refresh
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="table-responsive">
                                         <table class="table table-vcenter card-table table-striped m-0">
                                             <thead>
                                                 <tr>
+                                                    <th class="w-1">
+                                                        <input type="checkbox" id="broadcast-select-all" class="form-check-input m-0 align-middle" aria-label="Select all broadcasts">
+                                                    </th>
                                                     <th>Title &amp; Message</th>
                                                     <th>Audience</th>
                                                     <th>Delivery</th>
                                                     <th>Sent By</th>
                                                     <th>Sent At</th>
+                                                    <th class="w-1 text-end">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="admin-broadcast-history-tbody">
                                                 <tr>
-                                                    <td colspan="5" class="text-center py-4 text-secondary small">No broadcasts sent yet.</td>
+                                                    <td colspan="7" class="text-center py-4 text-secondary small">No broadcasts sent yet.</td>
                                                 </tr>
                                             </tbody>
                                         </table>

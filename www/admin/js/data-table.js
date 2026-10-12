@@ -59,7 +59,7 @@ export class DataTable {
 
     setLoading(loading = true) {
         if (!loading) return;
-        const colspan = this.columns.length + (this.bulkActions.length ? 1 : 0);
+        const colspan = this.columns.length + (this.bulkActions.length ? 1 : 0) + (this.onRowClick ? 1 : 0);
         this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center py-5">
             <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
             <div class="text-secondary small">Loading data...</div>
@@ -195,7 +195,7 @@ export class DataTable {
 
     _renderHead() {
         const bulkTh = this.bulkActions.length
-            ? `<th class="w-1"><input type="checkbox" class="form-check-input" id="dt-select-all"></th>`
+            ? `<th class="w-1"><input type="checkbox" class="form-check-input" id="dt-select-all" aria-label="Select all rows"></th>`
             : "";
         const ths = this.columns
             .map(
@@ -206,7 +206,10 @@ export class DataTable {
                 </th>`
             )
             .join("");
-        this.thead.innerHTML = `<tr>${bulkTh}${ths}</tr>`;
+        const actionIndicatorTh = this.onRowClick
+            ? `<th class="w-1 text-end text-secondary" aria-label="Row details"><span class="visually-hidden">Details</span></th>`
+            : "";
+        this.thead.innerHTML = `<tr>${bulkTh}${ths}${actionIndicatorTh}</tr>`;
 
         if (this.bulkActions.length) {
             this.thead.querySelector("#dt-select-all").addEventListener("change", (e) => {
@@ -273,7 +276,7 @@ export class DataTable {
         this.sentinel.classList.add("d-none");
         const visible = this._visibleRows();
         if (visible.length === 0) {
-            const colspan = this.columns.length + (this.bulkActions.length ? 1 : 0);
+            const colspan = this.columns.length + (this.bulkActions.length ? 1 : 0) + (this.onRowClick ? 1 : 0);
             this.tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-secondary py-5">
                 <i class="ti ti-inbox text-muted mb-2" style="font-size: 2.5rem; display: block;"></i>
                 No matching rows found.
@@ -284,19 +287,38 @@ export class DataTable {
                     const id = this.getRowId(row);
                     const checked = this.selected.has(id);
                     const bulkTd = this.bulkActions.length
-                        ? `<td class="w-1"><input type="checkbox" class="form-check-input" data-row-select="${id}" ${checked ? "checked" : ""}></td>`
+                        ? `<td class="w-1"><input type="checkbox" class="form-check-input" data-row-select="${id}" ${checked ? "checked" : ""} aria-label="Select row"></td>`
                         : "";
                     const tds = this.columns
                         .map((c) => `<td data-col="${c.key}">${c.render ? c.render(row) : escapeHtml(row[c.key])}</td>`)
                         .join("");
-                    return `<tr data-row-id="${id}">${bulkTd}${tds}</tr>`;
+                    const chevronTd = this.onRowClick
+                        ? `<td class="w-1 text-end dt-row-chevron-cell"><span class="dt-row-action-indicator" title="View details"><i class="ti ti-chevron-right"></i></span></td>`
+                        : "";
+                    const rowAttrs = this.onRowClick
+                        ? `class="admin-clickable-row" tabindex="0" role="button" aria-label="View details"`
+                        : "";
+                    return `<tr data-row-id="${id}" ${rowAttrs}>${bulkTd}${tds}${chevronTd}</tr>`;
                 })
                 .join("");
 
             if (this.onRowClick) {
-                this.tbody.querySelectorAll("tr").forEach((tr) => {
+                const isInteractiveTarget = (target) => {
+                    if (!target || typeof target.closest !== "function") return false;
+                    return Boolean(
+                        target.closest("input, button, a, select, textarea, label, [data-no-row-click]")
+                    );
+                };
+                this.tbody.querySelectorAll("tr.admin-clickable-row").forEach((tr) => {
                     tr.addEventListener("click", (e) => {
-                        if (e.target.matches("input[type=checkbox]")) return;
+                        if (isInteractiveTarget(e.target)) return;
+                        const row = this.rows.find((r) => this.getRowId(r) === tr.dataset.rowId);
+                        if (row) this.onRowClick(row);
+                    });
+                    tr.addEventListener("keydown", (e) => {
+                        if (e.key !== "Enter" && e.key !== " ") return;
+                        if (isInteractiveTarget(e.target) && e.target !== tr) return;
+                        e.preventDefault();
                         const row = this.rows.find((r) => this.getRowId(r) === tr.dataset.rowId);
                         if (row) this.onRowClick(row);
                     });
