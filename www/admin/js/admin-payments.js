@@ -1,4 +1,4 @@
-import { adminGet, adminPost, adminDelete } from './admin-api.js?v=2.5.1';
+import { adminGet, adminPost, adminDelete } from './admin-api.js?v=2.6.0';
 import { toast as showToast } from './admin-toast.js?v=2.5.1';
 import { showTablerConfirm } from './admin-confirm.js?v=2.5.1';
 import { storage, ref, getDownloadURL, listAll } from '../../js/platform/firebase-init.js';

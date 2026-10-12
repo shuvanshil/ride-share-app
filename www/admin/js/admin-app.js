@@ -1,22 +1,25 @@
-import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken } from "./admin-api.js?v=2.5.1";
+import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken, beginAdminBusy } from "./admin-api.js?v=2.6.0";
 import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js?v=2.5.1";
-import { DataTable } from "./data-table.js?v=2.5.1";
-import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js?v=2.5.1";
+import { DataTable } from "./data-table.js?v=2.6.0";
+import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js?v=2.6.0";
 import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderGodViewMap } from "./admin-live.js?v=2.5.1";
 import { toast } from "./admin-toast.js?v=2.5.1";
-import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js?v=2.5.1";
-import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.5.1";
-import { loadPermissions, initPermissionsModal } from "./admin-permissions.js?v=2.5.1";
-import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js?v=2.5.1";
-import { initAdminReports, loadAdminReports } from "./admin-reports.js?v=2.5.1";
+import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js?v=2.6.0";
+import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.6.0";
+import { loadPermissions, initPermissionsModal } from "./admin-permissions.js?v=2.6.0";
+import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js?v=2.6.0";
+import { initAdminReports, loadAdminReports } from "./admin-reports.js?v=2.6.0";
 
 const $ = (id) => document.getElementById(id);
 
+const authGateScreen = $("admin-auth-gate-screen");
 const loginScreen = $("admin-login-screen");
 const deniedScreen = $("admin-denied-screen");
 const shell = $("admin-shell");
 
 let currentAdminRole = "admin"; // "super_admin", "admin", or "manager"
+let currentSection = "dashboard";
+let isAdminAuthenticated = false;
 let liveRidesTimer = null;
 const cursors = { drivers: null, history: null, passengers: null, audit: null };
 let driversTable = null;
@@ -30,6 +33,114 @@ let feedUnreadCount = 0;
 let feedStarted = false;
 let liveErrorShown = false;
 
+// ---------------------------------------------------------------------
+// Multi-Page URL Routing Configuration (/admin/<subpage>)
+// ---------------------------------------------------------------------
+
+const SECTION_TO_SLUG = {
+    "dashboard": "dashboard",
+    "live-rides": "liverides",
+    "drivers": "drivers",
+    "passengers": "passengers",
+    "payments": "feepayment",
+    "wallet-payments": "walletpayments",
+    "ride-history": "ridehistory",
+    "coupons": "coupons",
+    "safety": "safety",
+    "reports": "reports",
+    "analytics": "analytics",
+    "notifications": "notifications",
+    "audit-log": "auditlog",
+    "permissions": "permissions",
+};
+
+const SLUG_TO_SECTION = {
+    "dashboard": "dashboard",
+    "overview": "dashboard",
+    "liverides": "live-rides",
+    "live-rides": "live-rides",
+    "live": "live-rides",
+    "drivers": "drivers",
+    "driver": "drivers",
+    "passengers": "passengers",
+    "passenger": "passengers",
+    "feepayment": "payments",
+    "feepayments": "payments",
+    "fee-payment": "payments",
+    "fee-payments": "payments",
+    "payments": "payments",
+    "walletpayments": "wallet-payments",
+    "wallet-payments": "wallet-payments",
+    "walletpayment": "wallet-payments",
+    "wallet": "wallet-payments",
+    "ridehistory": "ride-history",
+    "ride-history": "ride-history",
+    "history": "ride-history",
+    "coupons": "coupons",
+    "coupon": "coupons",
+    "safety": "safety",
+    "sos": "safety",
+    "reports": "reports",
+    "report": "reports",
+    "analytics": "analytics",
+    "notifications": "notifications",
+    "notification": "notifications",
+    "auditlog": "audit-log",
+    "audit-log": "audit-log",
+    "audit": "audit-log",
+    "permissions": "permissions",
+    "permission": "permissions",
+};
+
+const SECTION_TITLES = {
+    "dashboard": "Dashboard",
+    "live-rides": "Live Rides",
+    "drivers": "Drivers",
+    "passengers": "Passengers",
+    "payments": "Fee Payments",
+    "wallet-payments": "Wallet Payments",
+    "ride-history": "Ride History",
+    "coupons": "Promotional Coupons",
+    "safety": "Safety & SOS",
+    "reports": "System Reports",
+    "analytics": "Analytics",
+    "notifications": "Notifications Center",
+    "audit-log": "Audit Log",
+    "permissions": "Admin Permissions",
+};
+
+function parseRequestedAdminRoute(pathname = window.location.pathname) {
+    const clean = String(pathname || "")
+        .replace(/\/+$/, "")
+        .replace(/\.html$/i, "");
+    if (!clean || clean === "/admin" || clean === "/admin/index") {
+        return { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
+    }
+    const match = clean.match(/^\/admin\/([^/?#]+)/i);
+    if (!match) {
+        return { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
+    }
+    const rawSlug = decodeURIComponent(match[1]).trim();
+    const lookup = rawSlug.toLowerCase();
+    if (lookup === "index") {
+        return { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
+    }
+    const mapped = SLUG_TO_SECTION[lookup];
+    return {
+        isRoot: false,
+        section: mapped || "dashboard",
+        rawSlug,
+        isKnown: Boolean(mapped),
+    };
+}
+
+function getCanonicalAdminPath(section) {
+    const slug = SECTION_TO_SLUG[section] || "dashboard";
+    return `/admin/${slug}`;
+}
+
+let pendingInitialRoute = parseRequestedAdminRoute();
+
 // Dashboard state
 let rideActivityChartInstance = null;
 let driverDonutChartInstance = null;
@@ -41,16 +152,21 @@ let recentActivityItems = [];
 window.addEventListener("error", (e) => toast(`Something went wrong: ${e.message}`, "error"));
 window.addEventListener("unhandledrejection", (e) => toast(`Something went wrong: ${e.reason?.message || e.reason}`, "error"));
 
-async function withButtonSpinner(btn, actionFn) {
+async function withButtonSpinner(btn, actionFn, loadingText = "Processing...") {
     if (!btn) return actionFn();
     const originalHtml = btn.innerHTML;
+    const originalDisabled = btn.disabled;
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing...`;
+    btn.innerHTML = loadingText
+        ? `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>${loadingText}`
+        : `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
     try {
         return await actionFn();
     } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
+        if (btn.isConnected) {
+            btn.disabled = originalDisabled;
+            btn.innerHTML = originalHtml;
+        }
     }
 }
 
@@ -74,13 +190,17 @@ function checkMobileDevice() {
 
 window.addEventListener("resize", checkMobileDevice);
 
-$("btn-mobile-logout")?.addEventListener("click", async () => {
-    sessionStorage.removeItem("admin_session_active");
-    sessionStorage.removeItem("liphtup_user_profile");
-    await logoutAdmin().catch(() => null);
-    showOnly(loginScreen);
-    $("modal-mobile-warning")?.classList.add("d-none");
-    if ($("modal-mobile-warning")) $("modal-mobile-warning").style.display = "none";
+$("btn-mobile-logout")?.addEventListener("click", async (e) => {
+    await withButtonSpinner(e.currentTarget, async () => {
+        isAdminAuthenticated = false;
+        sessionStorage.removeItem("admin_session_active");
+        sessionStorage.removeItem("liphtup_user_profile");
+        await logoutAdmin().catch(() => null);
+        window.history.replaceState(null, "", "/admin");
+        showOnly(loginScreen);
+        $("modal-mobile-warning")?.classList.add("d-none");
+        if ($("modal-mobile-warning")) $("modal-mobile-warning").style.display = "none";
+    }, "Signing out...");
 });
 
 // ---------------------------------------------------------------------
@@ -117,16 +237,20 @@ $("btn-super-admin-ignore")?.addEventListener("click", () => {
     }
 });
 
-$("btn-super-admin-logout")?.addEventListener("click", async () => {
-    sessionStorage.removeItem("admin_session_active");
-    sessionStorage.removeItem("liphtup_user_profile");
-    const modal = $("modal-super-admin-notice");
-    if (modal) {
-        modal.classList.add("d-none");
-        modal.style.display = "none";
-    }
-    await logoutAdmin().catch(() => null);
-    showOnly(loginScreen);
+$("btn-super-admin-logout")?.addEventListener("click", async (e) => {
+    await withButtonSpinner(e.currentTarget, async () => {
+        isAdminAuthenticated = false;
+        sessionStorage.removeItem("admin_session_active");
+        sessionStorage.removeItem("liphtup_user_profile");
+        const modal = $("modal-super-admin-notice");
+        if (modal) {
+            modal.classList.add("d-none");
+            modal.style.display = "none";
+        }
+        await logoutAdmin().catch(() => null);
+        window.history.replaceState(null, "", "/admin");
+        showOnly(loginScreen);
+    }, "Signing out...");
 });
 
 // ---------------------------------------------------------------------
@@ -134,13 +258,55 @@ $("btn-super-admin-logout")?.addEventListener("click", async () => {
 // ---------------------------------------------------------------------
 
 function showOnly(el) {
-    [loginScreen, deniedScreen, shell].forEach((node) => {
-        node.classList.toggle("d-none", node !== el);
+    [authGateScreen, loginScreen, deniedScreen, shell].forEach((node) => {
+        if (node) node.classList.toggle("d-none", node !== el);
     });
     if (el === shell) {
         checkMobileDevice();
     }
 }
+
+function showUnauthenticatedSubpageNotice(routeInfo) {
+    const notice = $("admin-unauth-subpage-notice");
+    const noticeText = $("admin-unauth-subpage-notice-text");
+    if (!notice || !noticeText) return;
+    if (routeInfo && !routeInfo.isRoot) {
+        noticeText.innerHTML = `<strong>Restricted Page (<code>/admin/${escapeHtml(routeInfo.rawSlug)}</code>):</strong> Direct access to admin sub-pages without an active Admin session is blocked. Please sign in with an authorized Admin account to continue.`;
+        notice.classList.remove("d-none");
+        notice.classList.add("d-flex");
+    } else {
+        notice.classList.add("d-none");
+        notice.classList.remove("d-flex");
+    }
+}
+
+function showDeniedSubpageNotice(routeInfo, reasonMsg) {
+    const reasonEl = $("admin-denied-reason-text");
+    const subNotice = $("admin-denied-subpage-notice");
+    if (reasonEl && reasonMsg) {
+        reasonEl.textContent = reasonMsg;
+    }
+    if (subNotice) {
+        if (routeInfo && !routeInfo.isRoot) {
+            subNotice.innerHTML = `<i class="ti ti-alert-octagon me-1"></i><strong>Blocked URL:</strong> <code>/admin/${escapeHtml(routeInfo.rawSlug)}</code> — You do not have permission to view this page. Zero admin data was loaded.`;
+            subNotice.classList.remove("d-none");
+        } else {
+            subNotice.classList.add("d-none");
+        }
+    }
+}
+
+function showSectionRoleDeniedBanner(message) {
+    const banner = $("admin-section-denied-banner");
+    const textEl = $("admin-section-denied-banner-text");
+    if (!banner || !textEl) return;
+    textEl.textContent = message;
+    banner.classList.remove("d-none");
+}
+
+$("admin-section-denied-banner-close")?.addEventListener("click", () => {
+    $("admin-section-denied-banner")?.classList.add("d-none");
+});
 
 function applyRolePermissions(role, userDetails = {}) {
     currentAdminRole = String(role || "admin").toLowerCase();
@@ -198,6 +364,7 @@ function applyRolePermissions(role, userDetails = {}) {
 }
 
 function isSectionAllowed(section) {
+    if (!SECTION_TO_SLUG[section]) return false;
     if (currentAdminRole === "super_admin") return true;
     if (currentAdminRole === "admin") {
         return section !== "permissions";
@@ -209,48 +376,89 @@ function isSectionAllowed(section) {
     return false;
 }
 
-function resetToDashboard() {
-    document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === "dashboard"));
-    document.querySelectorAll(".admin-section").forEach((s) => s.classList.toggle("d-none", s.id !== "section-dashboard"));
+function resolveInitialAuthorizedSection() {
+    const req = pendingInitialRoute || parseRequestedAdminRoute();
+    pendingInitialRoute = null;
+
+    if (!req.isKnown) {
+        const msg = `Sub-page "/admin/${req.rawSlug}" does not exist. Redirected to Dashboard.`;
+        toast(msg, "warning");
+        showSectionRoleDeniedBanner(msg);
+        return "dashboard";
+    }
+
+    if (!isSectionAllowed(req.section)) {
+        const msg = `Access Restricted: Your ${currentAdminRole.toUpperCase()} role is not authorized to access "/admin/${req.rawSlug || SECTION_TO_SLUG[req.section]}". Redirected to Dashboard.`;
+        toast(msg, "error");
+        showSectionRoleDeniedBanner(msg);
+        return "dashboard";
+    }
+
+    return req.section || "dashboard";
+}
+
+async function bootstrapAuthenticatedShell(result) {
+    isAdminAuthenticated = true;
+    applyRolePermissions(result.role, result);
+    $("admin-unauth-subpage-notice")?.classList.add("d-none");
+    showOnly(shell);
+
+    const targetSection = resolveInitialAuthorizedSection();
+    initAdminPayments();
+    initAdminWalletCredit();
+    initLiveRidesEvents();
+    initAdminCoupons();
+    initAdminReports();
+    initPermissionsModal();
+    initNotificationsEvents();
+    initAnalyticsEvents();
+    refreshSafetyBadge();
+    startSosRealtimeAlerts();
+
+    await activateAdminSection(targetSection, { updateUrl: true, replaceUrl: true, forceReload: true });
+
+    if (!feedStarted) {
+        feedStarted = true;
+        await refreshAdminToken();
+        startLiveFeed(onFeedEvent, (message) => {
+            if (liveErrorShown) return;
+            liveErrorShown = true;
+            toast(message, "error");
+        });
+    }
 }
 
 watchAdminAuth(async (user) => {
+    const currentReq = parseRequestedAdminRoute();
+    if (!currentReq.isRoot) {
+        pendingInitialRoute = currentReq;
+    }
     const adminSessionActive = sessionStorage.getItem("admin_session_active") === "true";
     if (!user || !adminSessionActive) {
+        isAdminAuthenticated = false;
         stopLiveFeed();
+        showUnauthenticatedSubpageNotice(pendingInitialRoute);
+        if (window.location.pathname !== "/admin" && window.location.pathname !== "/admin/") {
+            window.history.replaceState(null, "", "/admin");
+        }
+        document.title = "Sign In · LiphtUp Admin Console";
         showOnly(loginScreen);
         return;
     }
+    showOnly(authGateScreen);
     try {
-        const result = await adminGet("/verify");
-        applyRolePermissions(result.role, result);
-        
-        showOnly(shell);
-        resetToDashboard();
-        loadSection("dashboard");
-        refreshSafetyBadge();
-        initAdminPayments();
-        initAdminWalletCredit();
-        initLiveRidesEvents();
-        initAdminCoupons();
-        initAdminReports();
-        initPermissionsModal();
-        initNotificationsEvents();
-        initAnalyticsEvents();
-        startSosRealtimeAlerts();
-        if (!feedStarted) {
-            feedStarted = true;
-            await refreshAdminToken();
-            startLiveFeed(onFeedEvent, (message) => {
-                if (liveErrorShown) return;
-                liveErrorShown = true;
-                toast(message, "error");
-            });
-        }
+        const result = await adminGet("/verify", {}, { showBusy: true, busyLabel: "Verifying admin permissions..." });
+        await bootstrapAuthenticatedShell(result);
     } catch (error) {
+        isAdminAuthenticated = false;
         sessionStorage.removeItem("admin_session_active");
         stopLiveFeed();
-        await logoutAdmin();
+        await logoutAdmin().catch(() => null);
+        showDeniedSubpageNotice(pendingInitialRoute, "This account does not have admin privileges for LiphtUp.");
+        if (window.location.pathname !== "/admin" && window.location.pathname !== "/admin/") {
+            window.history.replaceState(null, "", "/admin");
+        }
+        document.title = "Access Denied · LiphtUp Admin Console";
         showOnly(deniedScreen);
     }
 });
@@ -278,30 +486,10 @@ async function handleAdminLogin() {
             await loginAdmin(email, password);
             sessionStorage.setItem("admin_session_active", "true");
             await refreshAdminToken();
-            const result = await adminGet("/verify");
-            applyRolePermissions(result.role, result);
-            showOnly(shell);
-            resetToDashboard();
-            loadSection("dashboard");
-            refreshSafetyBadge();
-            initAdminPayments();
-            initAdminWalletCredit();
-            initLiveRidesEvents();
-            initAdminCoupons();
-            initAdminReports();
-            initPermissionsModal();
-            initNotificationsEvents();
-            initAnalyticsEvents();
-            startSosRealtimeAlerts();
-            if (!feedStarted) {
-                feedStarted = true;
-                startLiveFeed(onFeedEvent, (message) => {
-                    if (liveErrorShown) return;
-                    liveErrorShown = true;
-                    toast(message, "error");
-                });
-            }
+            const result = await adminGet("/verify", {}, { showBusy: true, busyLabel: "Verifying admin permissions..." });
+            await bootstrapAuthenticatedShell(result);
         } catch (error) {
+            isAdminAuthenticated = false;
             sessionStorage.removeItem("admin_session_active");
             await logoutAdmin().catch(() => null);
             errorTextEl.textContent = error?.message?.includes?.("Admin access required")
@@ -309,7 +497,7 @@ async function handleAdminLogin() {
                 : "Sign in failed. Check your email and password.";
             errorEl.classList.remove("d-none");
         }
-    });
+    }, "Signing in...");
 }
 
 $("admin-login-btn")?.addEventListener("click", handleAdminLogin);
@@ -322,16 +510,23 @@ $("admin-email")?.addEventListener("keydown", (e) => {
 
 $("admin-denied-back-btn")?.addEventListener("click", () => {
     sessionStorage.removeItem("admin_session_active");
+    window.history.replaceState(null, "", "/admin");
     showOnly(loginScreen);
 });
-$("admin-logout-btn")?.addEventListener("click", async () => {
-    clearInterval(liveRidesTimer);
-    stopLiveFeed();
-    sessionStorage.removeItem("admin_session_active");
-    sessionStorage.removeItem("liphtup_user_profile");
-    sessionStorage.removeItem("super_admin_notice_dismissed");
-    await logoutAdmin();
-    showOnly(loginScreen);
+$("admin-logout-btn")?.addEventListener("click", async (e) => {
+    await withButtonSpinner(e.currentTarget, async () => {
+        isAdminAuthenticated = false;
+        clearInterval(liveRidesTimer);
+        stopLiveFeed();
+        loadedSections.clear();
+        sessionStorage.removeItem("admin_session_active");
+        sessionStorage.removeItem("liphtup_user_profile");
+        sessionStorage.removeItem("super_admin_notice_dismissed");
+        await logoutAdmin();
+        window.history.replaceState(null, "", "/admin");
+        document.title = "Sign In · LiphtUp Admin Console";
+        showOnly(loginScreen);
+    }, "Logging out...");
 });
 
 // ---------------------------------------------------------------------
@@ -401,27 +596,108 @@ $("admin-sidebar-collapse-btn")?.addEventListener("click", () => {
 });
 
 // ---------------------------------------------------------------------
-// Sidebar navigation & toggle
+// Sidebar navigation, Multi-Page URL Router & Sub-Page Loading Spinners
 // ---------------------------------------------------------------------
+
+const loadedSections = new Set();
+
+function setSubpageLoadingState(section, isLoading) {
+    const loaderEl = $("admin-subpage-loader");
+    const loaderTextEl = $("admin-subpage-loader-text");
+    const title = SECTION_TITLES[section] || "Section";
+    if (loaderEl) {
+        if (isLoading) {
+            if (loaderTextEl) loaderTextEl.textContent = `Loading ${title}...`;
+            loaderEl.classList.remove("d-none");
+        } else {
+            loaderEl.classList.add("d-none");
+        }
+    }
+
+    const navBtn = document.querySelector(`.admin-nav-item[data-section="${section}"]`);
+    if (navBtn) {
+        const existingSpinner = navBtn.querySelector(".admin-nav-inline-spinner");
+        if (isLoading && !existingSpinner) {
+            const sp = document.createElement("span");
+            sp.className = "spinner-border spinner-border-sm text-primary ms-auto admin-nav-inline-spinner";
+            sp.setAttribute("role", "status");
+            navBtn.appendChild(sp);
+        } else if (!isLoading && existingSpinner) {
+            existingSpinner.remove();
+        }
+    }
+}
+
+async function activateAdminSection(name, { updateUrl = true, replaceUrl = false, forceReload = false } = {}) {
+    if (!isAdminAuthenticated) {
+        pendingInitialRoute = { isRoot: false, section: name, rawSlug: SECTION_TO_SLUG[name] || name, isKnown: true };
+        showUnauthenticatedSubpageNotice(pendingInitialRoute);
+        showOnly(loginScreen);
+        return;
+    }
+
+    if (!isSectionAllowed(name)) {
+        const msg = `Access Denied: Your ${currentAdminRole.toUpperCase()} role cannot access /admin/${SECTION_TO_SLUG[name] || name}.`;
+        toast(msg, "error");
+        showSectionRoleDeniedBanner(msg);
+        name = "dashboard";
+        replaceUrl = true;
+    } else {
+        $("admin-section-denied-banner")?.classList.add("d-none");
+    }
+
+    currentSection = name;
+    const pageTitle = SECTION_TITLES[name] || "Dashboard";
+    document.title = `${pageTitle} · LiphtUp Admin Console`;
+
+    const canonicalPath = getCanonicalAdminPath(name);
+    if (updateUrl && window.location.pathname !== canonicalPath) {
+        if (replaceUrl) {
+            window.history.replaceState({ section: name }, "", canonicalPath);
+        } else {
+            window.history.pushState({ section: name }, "", canonicalPath);
+        }
+    }
+
+    document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === name));
+    document.querySelectorAll(".admin-section").forEach((s) => s.classList.toggle("d-none", s.id !== `section-${name}`));
+
+    if (window.innerWidth < 992) {
+        $("admin-sidebar")?.classList.remove("is-open");
+    }
+
+    if (forceReload) {
+        loadedSections.delete(name);
+    }
+
+    await loadSection(name);
+}
 
 document.querySelectorAll(".admin-nav-item").forEach((btn) => {
     btn.addEventListener("click", () => {
         const targetSection = btn.dataset.section;
-
-        if (!isSectionAllowed(targetSection)) {
-            toast(`Access Denied: Your ${currentAdminRole.toUpperCase()} role cannot access this section.`, "error");
-            return;
-        }
-
-        document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        document.querySelectorAll(".admin-section").forEach((s) => s.classList.add("d-none"));
-        $(`section-${targetSection}`).classList.remove("d-none");
-        if (window.innerWidth < 992) {
-            $("admin-sidebar").classList.remove("is-open");
-        }
-        loadSection(targetSection);
+        // If clicking the already-active section, force a fresh reload with spinner
+        const isSameSection = currentSection === targetSection;
+        activateAdminSection(targetSection, { updateUrl: true, replaceUrl: false, forceReload: isSameSection });
     });
+});
+
+window.addEventListener("popstate", () => {
+    const routeInfo = parseRequestedAdminRoute(window.location.pathname);
+    if (!isAdminAuthenticated) {
+        showUnauthenticatedSubpageNotice(routeInfo);
+        if (!routeInfo.isRoot) {
+            window.history.replaceState(null, "", "/admin");
+        }
+        showOnly(loginScreen);
+        return;
+    }
+    if (!routeInfo.isKnown) {
+        toast(`Unknown admin page "/admin/${routeInfo.rawSlug}". Redirecting to Dashboard.`, "warning");
+        activateAdminSection("dashboard", { updateUrl: true, replaceUrl: true, forceReload: false });
+        return;
+    }
+    activateAdminSection(routeInfo.section, { updateUrl: false, replaceUrl: false, forceReload: false });
 });
 
 $("admin-sidebar-toggle")?.addEventListener("click", () => {
@@ -433,58 +709,65 @@ $("admin-sidebar-toggle")?.addEventListener("click", () => {
     }
 });
 
-const loadedSections = new Set();
-
-function loadSection(name) {
+async function loadSection(name) {
     clearInterval(liveRidesTimer);
 
     if (!isSectionAllowed(name)) {
         toast(`Access Denied: Your ${currentAdminRole.toUpperCase()} role cannot access this section.`, "error");
-        goToSection("dashboard");
-        return;
+        return activateAdminSection("dashboard", { updateUrl: true, replaceUrl: true });
     }
+
+    const title = SECTION_TITLES[name] || "Section";
 
     if (name === "live-rides") {
         initLiveRidesEvents();
-        loadLiveRides();
+        setSubpageLoadingState(name, true);
+        const doneBusy = beginAdminBusy(`Loading ${title}...`);
+        try {
+            await loadLiveRides();
+        } finally {
+            doneBusy();
+            setSubpageLoadingState(name, false);
+        }
         liveRidesTimer = setInterval(loadLiveRides, 60000);
         return;
     }
+
     if (loadedSections.has(name)) return;
     loadedSections.add(name);
-    if (name === "dashboard") loadDashboard();
-    if (name === "drivers") loadDrivers(true);
-    if (name === "payments") loadAdminPayments();
-    if (name === "wallet-payments") {
-        initAdminWalletCredit();
-        loadAdminPassengerWallets();
+
+    setSubpageLoadingState(name, true);
+    const doneBusy = beginAdminBusy(`Loading ${title}...`);
+    try {
+        if (name === "dashboard") await loadDashboard();
+        else if (name === "drivers") await loadDrivers(true);
+        else if (name === "payments") await loadAdminPayments();
+        else if (name === "wallet-payments") {
+            initAdminWalletCredit();
+            await loadAdminPassengerWallets();
+        }
+        else if (name === "coupons") await loadAdminCoupons();
+        else if (name === "safety") await loadSafety();
+        else if (name === "ride-history") await loadHistory(true);
+        else if (name === "passengers") await loadPassengers(true);
+        else if (name === "analytics") await loadAnalytics();
+        else if (name === "audit-log") await loadAuditLog(true);
+        else if (name === "permissions") await loadPermissions();
+        else if (name === "reports") await loadAdminReports(true);
+        else if (name === "notifications") await loadNotificationsCenter();
+    } finally {
+        doneBusy();
+        setSubpageLoadingState(name, false);
     }
-    if (name === "coupons") loadAdminCoupons();
-    if (name === "safety") loadSafety();
-    if (name === "ride-history") loadHistory(true);
-    if (name === "passengers") loadPassengers(true);
-    if (name === "analytics") loadAnalytics();
-    if (name === "audit-log") loadAuditLog(true);
-    if (name === "permissions") loadPermissions();
-    if (name === "reports") loadAdminReports(true);
-    if (name === "notifications") loadNotificationsCenter();
 }
 
 function goToSection(name, filters = {}) {
-    if (!isSectionAllowed(name)) {
-        toast(`Access Denied: Your ${currentAdminRole.toUpperCase()} role cannot access this section.`, "error");
-        name = "dashboard";
-    }
-
     Object.entries(filters).forEach(([id, value]) => {
         const el = $(id);
         if (el) el.value = value;
     });
-    document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === name));
-    document.querySelectorAll(".admin-section").forEach((s) => s.classList.toggle("d-none", s.id !== `section-${name}`));
-    loadedSections.delete(name);
-    loadSection(name);
     closeDrawer(true);
+    activateAdminSection(name, { updateUrl: true, replaceUrl: false, forceReload: true });
 }
 
 $("driver-status-filter")?.addEventListener("change", () => loadDrivers(true));
@@ -493,10 +776,10 @@ $("passenger-status-filter")?.addEventListener("change", () => loadPassengers(tr
     $(id)?.addEventListener("change", () => loadHistory(true))
 );
 $("history-day-filter")?.addEventListener("change", () => loadHistory(true));
-$("history-clear-date")?.addEventListener("click", () => {
+$("history-clear-date")?.addEventListener("click", (e) => {
     $("history-month-filter").value = "";
     $("history-day-filter").value = "";
-    loadHistory(true);
+    withButtonSpinner(e.currentTarget, () => loadHistory(true), "Clearing...");
 });
 $("drivers-pending-chip")?.addEventListener("click", () => {
     $("driver-status-filter").value = "pending_review";
@@ -1796,6 +2079,9 @@ async function openDispatchDiagnosticsDrawer() {
 async function loadLiveRides() {
     const tbody = $("live-rides-hierarchy-tbody");
     const legacyList = $("live-rides-list");
+    if (tbody && liveRidesHierarchy.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-secondary"><span class="spinner-border spinner-border-sm text-primary me-2"></span>Loading live rides &amp; pools...</td></tr>`;
+    }
     try {
         const [liveRes, poolsRes, mapRes, diagRes] = await Promise.all([
             adminGet("/rides/live"),
@@ -2202,16 +2488,19 @@ function renderHierarchyTableView() {
             });
             if (!confirmed) return;
 
-            try {
-                await adminPatch(`/rides/${rideId}`, {
-                    action: "cancel",
-                    cancel_all_children: isParent,
-                });
-                toast(`${displayId} has been cancelled.`);
-                await loadLiveRides();
-            } catch (err) {
-                toast(err.message, "error");
-            }
+            const dropdownToggleBtn = btn.closest(".dropdown")?.querySelector(".dropdown-toggle-clean") || btn;
+            await withButtonSpinner(dropdownToggleBtn, async () => {
+                try {
+                    await adminPatch(`/rides/${rideId}`, {
+                        action: "cancel",
+                        cancel_all_children: isParent,
+                    });
+                    toast(`${displayId} has been cancelled.`);
+                    await loadLiveRides();
+                } catch (err) {
+                    toast(err.message, "error");
+                }
+            });
         });
     });
 
@@ -2298,7 +2587,7 @@ function openAssignDriverModal(passenger) {
     });
 }
 
-async function removeWaitingPassenger(passenger) {
+async function removeWaitingPassenger(passenger, triggerBtn = null) {
     const paxId = passenger.id || passenger.passenger_id;
     const paxName = passenger.name || paxId;
     const confirmed = await showTablerConfirm(
@@ -2310,13 +2599,15 @@ async function removeWaitingPassenger(passenger) {
         }
     );
     if (!confirmed) return;
-    try {
-        await adminDelete(`/waiting-pools/passengers/${encodeURIComponent(paxId)}`);
-        toast(`${paxName} removed from waiting pool.`);
-        await loadLiveRides();
-    } catch (err) {
-        toast(err.message, "error");
-    }
+    await withButtonSpinner(triggerBtn, async () => {
+        try {
+            await adminDelete(`/waiting-pools/passengers/${encodeURIComponent(paxId)}`);
+            toast(`${paxName} removed from waiting pool.`);
+            await loadLiveRides();
+        } catch (err) {
+            toast(err.message, "error");
+        }
+    });
 }
 
 function renderWaitingPoolsView() {
@@ -2420,7 +2711,7 @@ function renderWaitingPoolsView() {
             wppTbody.querySelectorAll(".wpp-remove-btn").forEach((btn) => {
                 btn.addEventListener("click", () => {
                     const p = passengers[Number(btn.dataset.wppIdx)];
-                    if (p) removeWaitingPassenger(p);
+                    if (p) removeWaitingPassenger(p, btn);
                 });
             });
         }
@@ -2621,6 +2912,10 @@ async function loadHistory(reset) {
 }
 
 async function openRideDrawer(ride) {
+    showReadOnlyDrawer(
+        "Ride Details",
+        `<div class="text-center py-5"><div class="spinner-border text-primary mb-2" role="status"></div><div class="text-secondary small">Loading ride details...</div></div>`
+    );
     let fullRide = ride;
     let siblingChildRides = [];
     try {
@@ -2871,13 +3166,21 @@ async function loadPassengers(reset) {
                     select.value = "";
                     return;
                 }
+                select.disabled = true;
+                const spinnerEl = document.createElement("span");
+                spinnerEl.className = "spinner-border spinner-border-sm text-primary ms-2 align-middle";
+                spinnerEl.setAttribute("role", "status");
+                select.insertAdjacentElement("afterend", spinnerEl);
                 try {
                     await adminPatch(`/passengers/${uid}`, { action });
                     toast("Passenger updated.");
-                    loadPassengers(true);
+                    await loadPassengers(true);
                 } catch (error) {
                     toast(error.message, "error");
                     select.value = "";
+                } finally {
+                    select.disabled = false;
+                    spinnerEl.remove();
                 }
             });
         });
@@ -3121,14 +3424,14 @@ function initAnalyticsEvents() {
     if (analyticsEventsInitialized) return;
     analyticsEventsInitialized = true;
     document.querySelectorAll(".analytics-period-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", async () => {
             document.querySelectorAll(".analytics-period-btn").forEach((b) => {
                 b.className = "btn btn-sm btn-outline-secondary analytics-period-btn";
             });
             btn.className = "btn btn-sm btn-primary active analytics-period-btn";
             const days = Number(btn.dataset.days || 14);
             currentAnalyticsDays = days;
-            loadAnalytics(days);
+            await withButtonSpinner(btn, () => loadAnalytics(days));
         });
     });
 }
@@ -3287,8 +3590,12 @@ function initNotificationsEvents() {
         uidWrap?.classList.toggle("d-none", !isSpecific);
     });
 
-    $("broadcast-history-refresh-btn")?.addEventListener("click", () => loadNotificationsCenter());
-    $("btn-refresh-broadcasts")?.addEventListener("click", () => loadNotificationsCenter());
+    $("broadcast-history-refresh-btn")?.addEventListener("click", (e) => {
+        withButtonSpinner(e.currentTarget, () => loadNotificationsCenter());
+    });
+    $("btn-refresh-broadcasts")?.addEventListener("click", (e) => {
+        withButtonSpinner(e.currentTarget, () => loadNotificationsCenter());
+    });
 
     const form = $("form-admin-broadcast");
     form?.addEventListener("submit", async (e) => {
@@ -3466,6 +3773,7 @@ async function loadAuditLog(reset) {
     if (reset) cursors.audit = null;
     const roleFilter = $("audit-role-filter")?.value || "";
     const table = ensureAuditTable();
+    if (reset) table.setLoading(true);
     try {
         const data = await adminGet("/audit-logs", { role: roleFilter, cursor: reset ? null : cursors.audit });
         cursors.audit = data.nextCursor;

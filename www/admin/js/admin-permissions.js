@@ -1,4 +1,4 @@
-import { adminGet, adminPost, adminDelete } from "./admin-api.js?v=2.5.1";
+import { adminGet, adminPost, adminDelete } from "./admin-api.js?v=2.6.0";
 import { showTablerConfirm } from "./admin-confirm.js?v=2.5.1";
 import { toast } from "./admin-toast.js?v=2.5.1";
 
@@ -135,13 +135,21 @@ function renderPermissionsTable(roles) {
                 return;
             }
 
+            select.disabled = true;
+            const spinnerEl = document.createElement("span");
+            spinnerEl.className = "spinner-border spinner-border-sm text-primary";
+            spinnerEl.setAttribute("role", "status");
+            select.parentElement?.insertBefore(spinnerEl, select);
             try {
                 await adminPost("/permissions/assign", { uid, role: newRole });
                 toast(`User role updated to ${newRole.toUpperCase()}.`);
-                loadPermissions();
+                await loadPermissions();
             } catch (error) {
                 toast(error.message, "error");
                 select.value = currentRole;
+            } finally {
+                spinnerEl.remove();
+                if (select.isConnected) select.disabled = false;
             }
         });
     });

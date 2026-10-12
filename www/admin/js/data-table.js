@@ -332,9 +332,20 @@ export class DataTable {
                 .map((a, i) => `<button type="button" class="btn btn-outline-secondary btn-sm" data-bulk="${i}">${a.label}</button>`)
                 .join("");
         this.bulkBar.querySelectorAll("[data-bulk]").forEach((btn) => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", async () => {
                 const action = this.bulkActions[Number(btn.dataset.bulk)];
-                action.onClick(this.getSelectedIds());
+                const origHtml = btn.innerHTML;
+                const allBtns = this.bulkBar.querySelectorAll("button");
+                allBtns.forEach((b) => (b.disabled = true));
+                btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>${action.label}...`;
+                try {
+                    await action.onClick(this.getSelectedIds(), btn);
+                } finally {
+                    if (btn.isConnected) {
+                        btn.innerHTML = origHtml;
+                        allBtns.forEach((b) => (b.disabled = false));
+                    }
+                }
             });
         });
     }

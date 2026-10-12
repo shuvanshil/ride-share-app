@@ -8,8 +8,9 @@
     <meta name="theme-color" content="#206bc4">
     <title>LiphtUp Admin Console</title>
 
-    <!-- This page must never be indexed or linked from the public site. -->
-    <meta name="robots" content="noindex,nofollow">
+    <!-- This page and all /admin/* sub-pages must never be indexed or linked from the public site. -->
+    <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+    <meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
 
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,12 +23,34 @@
     
     <!-- Shared brand styles & Admin custom overrides -->
     <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="/admin/css/admin.css?v=2.3.1">
+    <link rel="stylesheet" href="/admin/css/admin.css?v=2.6.0">
 </head>
 <body class="antialiased">
 
+    <!-- Global Top Progress Bar & Operation Busy Indicator -->
+    <div id="admin-top-loading-bar" class="admin-top-loading-bar" aria-hidden="true"></div>
+    <div id="admin-global-busy-indicator" class="admin-global-busy-pill" role="status" aria-live="polite">
+        <progress aria-label="Loading" class="loading-spinner loading-spinner-sm"></progress>
+        <span id="admin-global-busy-text">Processing action...</span>
+    </div>
+
+    <!-- ============ AUTH VERIFICATION GATE SCREEN ============ -->
+    <main id="admin-auth-gate-screen" class="page page-center admin-login-screen">
+        <div class="container container-tight py-4">
+            <div class="card card-md text-center shadow-sm border-0">
+                <div class="card-body py-5">
+                    <div class="mb-3">
+                        <progress aria-label="Verifying admin access" class="loading-spinner loading-spinner-lg"></progress>
+                    </div>
+                    <h2 class="h3 fw-bold mb-1">Verifying Admin Access</h2>
+                    <p class="text-secondary small mb-0" id="admin-auth-gate-subtext">Checking authentication &amp; security permissions...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
     <!-- ============ LOGIN SCREEN ============ -->
-    <main id="admin-login-screen" class="page page-center admin-login-screen">
+    <main id="admin-login-screen" class="page page-center admin-login-screen d-none">
         <div class="container container-tight py-4">
             <div class="text-center mb-4">
                 <div class="d-inline-block bg-white p-2 rounded-3 shadow-xs mb-2">
@@ -38,6 +61,12 @@
             </div>
             <div class="card card-md shadow-sm border-0">
                 <div class="card-body">
+                    <div id="admin-unauth-subpage-notice" class="alert alert-warning d-none align-items-start mb-3" role="alert">
+                        <i class="ti ti-lock alert-icon me-2 fs-2 flex-shrink-0 mt-1 text-warning"></i>
+                        <div class="small" id="admin-unauth-subpage-notice-text">
+                            <strong>Restricted Page:</strong> Direct access to admin sub-pages requires an authenticated Admin session with valid permissions. Please sign in below.
+                        </div>
+                    </div>
                     <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
                         <i class="ti ti-info-circle alert-icon me-2 fs-2 flex-shrink-0 mt-1"></i>
                         <div class="small">
@@ -75,8 +104,9 @@
                         <i class="ti ti-shield-x" style="font-size: 3.5rem;"></i>
                     </div>
                     <h1 class="h2 fw-bold">Access Denied</h1>
-                    <p class="text-secondary">This account does not have admin privileges for LiphtUp.</p>
-                    <button id="admin-denied-back-btn" class="btn btn-primary w-100 mt-3" type="button">
+                    <p class="text-secondary mb-2" id="admin-denied-reason-text">This account does not have admin privileges for LiphtUp.</p>
+                    <div id="admin-denied-subpage-notice" class="alert alert-danger text-start small mb-3 d-none" role="alert"></div>
+                    <button id="admin-denied-back-btn" class="btn btn-primary w-100 mt-2" type="button">
                         <i class="ti ti-arrow-left me-2"></i>Back to sign in
                     </button>
                 </div>
@@ -248,6 +278,23 @@
             <!-- Main Body Content -->
             <main class="admin-content page-wrapper p-3 p-md-4">
                 <div class="container-fluid">
+
+                    <!-- Sub-page / Section Loading Indicator -->
+                    <div id="admin-subpage-loader" class="admin-subpage-loader d-none" role="status" aria-live="polite">
+                        <progress aria-label="Loading page data" class="loading-spinner loading-spinner-sm"></progress>
+                        <span id="admin-subpage-loader-text">Loading section data...</span>
+                    </div>
+
+                    <!-- Role Permission Restriction Notice Banner -->
+                    <div id="admin-section-denied-banner" class="alert alert-danger alert-dismissible d-none mb-3 shadow-xs" role="alert">
+                        <div class="d-flex align-items-center">
+                            <i class="ti ti-shield-lock alert-icon me-2 fs-2 text-danger"></i>
+                            <div class="small" id="admin-section-denied-banner-text">
+                                Access Restricted: Your account role does not have permission to view that section.
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close" id="admin-section-denied-banner-close" aria-label="Close"></button>
+                    </div>
 
                     <!-- Dashboard -->
                     <section id="section-dashboard" class="admin-section">
@@ -2527,6 +2574,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tabler/core@latest/dist/js/tabler.min.js"></script>
-    <script type="module" src="/admin/js/admin-app.js?v=2.5.2"></script>
+    <script type="module" src="/admin/js/admin-app.js?v=2.6.0"></script>
 </body>
 </html>

@@ -58,7 +58,29 @@ async function handleResponse(response) {
 const cache = new Map(); // url -> {data, at}
 const CACHE_TTL_MS = 15000;
 
-export async function adminGet(path, params = {}, { cacheable = false } = {}) {
+let activeBusyCount = 0;
+
+export function beginAdminBusy(label = "Processing action...") {
+    activeBusyCount += 1;
+    const topBar = document.getElementById("admin-top-loading-bar");
+    const pill = document.getElementById("admin-global-busy-indicator");
+    const textEl = document.getElementById("admin-global-busy-text");
+    if (textEl && label) textEl.textContent = label;
+    topBar?.classList.add("is-active");
+    pill?.classList.add("is-active");
+    let ended = false;
+    return () => {
+        if (ended) return;
+        ended = true;
+        activeBusyCount = Math.max(0, activeBusyCount - 1);
+        if (activeBusyCount === 0) {
+            topBar?.classList.remove("is-active");
+            pill?.classList.remove("is-active");
+        }
+    };
+}
+
+export async function adminGet(path, params = {}, { cacheable = false, showBusy = false, busyLabel = "Loading data..." } = {}) {
     const query = new URLSearchParams(
         Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
     ).toString();
@@ -69,75 +91,95 @@ export async function adminGet(path, params = {}, { cacheable = false } = {}) {
         if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.data;
     }
 
-    let response;
+    const doneBusy = showBusy ? beginAdminBusy(busyLabel) : null;
     try {
-        response = await fetch(url, { headers: await authHeader() });
-    } catch (networkError) {
-        // One retry on a transient network hiccup before surfacing the error.
-        response = await fetch(url, { headers: await authHeader() });
+        let response;
+        try {
+            response = await fetch(url, { headers: await authHeader() });
+        } catch (networkError) {
+            // One retry on a transient network hiccup before surfacing the error.
+            response = await fetch(url, { headers: await authHeader() });
+        }
+        if (response.status === 401 || response.status === 403) {
+            // Could be a stale cached token missing a just-granted admin claim --
+            // force a refresh and try exactly once more before giving up.
+            response = await fetch(url, { headers: await authHeader(true) });
+        }
+        const data = await handleResponse(response);
+        if (cacheable) cache.set(url, { data, at: Date.now() });
+        return data;
+    } finally {
+        if (doneBusy) doneBusy();
     }
-    if (response.status === 401 || response.status === 403) {
-        // Could be a stale cached token missing a just-granted admin claim --
-        // force a refresh and try exactly once more before giving up.
-        response = await fetch(url, { headers: await authHeader(true) });
-    }
-    const data = await handleResponse(response);
-    if (cacheable) cache.set(url, { data, at: Date.now() });
-    return data;
 }
 
 export function clearAdminCache() {
     cache.clear();
 }
 
-export async function adminPatch(path, body) {
-    let response = await fetch(`/api/admin${path}`, {
-        method: "PATCH",
-        headers: { ...(await authHeader()), "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    if (response.status === 401 || response.status === 403) {
-        response = await fetch(`/api/admin${path}`, {
+export async function adminPatch(path, body, { busyLabel = "Updating record..." } = {}) {
+    const doneBusy = beginAdminBusy(busyLabel);
+    try {
+        let response = await fetch(`/api/admin${path}`, {
             method: "PATCH",
-            headers: { ...(await authHeader(true)), "Content-Type": "application/json" },
+            headers: { ...(await authHeader()), "Content-Type": "application/json" },
             body: JSON.stringify(body),
         });
+        if (response.status === 401 || response.status === 403) {
+            response = await fetch(`/api/admin${path}`, {
+                method: "PATCH",
+                headers: { ...(await authHeader(true)), "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+        }
+        const data = await handleResponse(response);
+        clearAdminCache(); // any write can affect dashboard/list caches
+        return data;
+    } finally {
+        doneBusy();
     }
-    const data = await handleResponse(response);
-    clearAdminCache(); // any write can affect dashboard/list caches
-    return data;
 }
 
-export async function adminPost(path, body = {}) {
-    let response = await fetch(`/api/admin${path}`, {
-        method: "POST",
-        headers: { ...(await authHeader()), "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    if (response.status === 401 || response.status === 403) {
-        response = await fetch(`/api/admin${path}`, {
+export async function adminPost(path, body = {}, { busyLabel = "Processing action..." } = {}) {
+    const doneBusy = beginAdminBusy(busyLabel);
+    try {
+        let response = await fetch(`/api/admin${path}`, {
             method: "POST",
-            headers: { ...(await authHeader(true)), "Content-Type": "application/json" },
+            headers: { ...(await authHeader()), "Content-Type": "application/json" },
             body: JSON.stringify(body),
         });
+        if (response.status === 401 || response.status === 403) {
+            response = await fetch(`/api/admin${path}`, {
+                method: "POST",
+                headers: { ...(await authHeader(true)), "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+        }
+        const data = await handleResponse(response);
+        clearAdminCache();
+        return data;
+    } finally {
+        doneBusy();
     }
-    const data = await handleResponse(response);
-    clearAdminCache();
-    return data;
 }
 
-export async function adminDelete(path) {
-    let response = await fetch(`/api/admin${path}`, {
-        method: "DELETE",
-        headers: await authHeader(),
-    });
-    if (response.status === 401 || response.status === 403) {
-        response = await fetch(`/api/admin${path}`, {
+export async function adminDelete(path, { busyLabel = "Removing record..." } = {}) {
+    const doneBusy = beginAdminBusy(busyLabel);
+    try {
+        let response = await fetch(`/api/admin${path}`, {
             method: "DELETE",
-            headers: await authHeader(true),
+            headers: await authHeader(),
         });
+        if (response.status === 401 || response.status === 403) {
+            response = await fetch(`/api/admin${path}`, {
+                method: "DELETE",
+                headers: await authHeader(true),
+            });
+        }
+        const data = await handleResponse(response);
+        clearAdminCache();
+        return data;
+    } finally {
+        doneBusy();
     }
-    const data = await handleResponse(response);
-    clearAdminCache();
-    return data;
 }

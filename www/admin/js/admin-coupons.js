@@ -1,4 +1,4 @@
-import { adminGet, adminPost, adminPatch, adminDelete } from "./admin-api.js?v=2.5.1";
+import { adminGet, adminPost, adminPatch, adminDelete } from "./admin-api.js?v=2.6.0";
 import { showTablerConfirm } from "./admin-confirm.js?v=2.5.1";
 import { toast } from "./admin-toast.js?v=2.5.1";
 
@@ -9,6 +9,24 @@ let editingCouponId = null;
 let currentRestrictedPassengers = new Map(); // uid -> display label
 
 let couponsInitialized = false;
+
+async function withButtonSpinner(btn, actionFn, loadingText = "Processing...") {
+    if (!btn) return actionFn();
+    const origHtml = btn.innerHTML;
+    const origDisabled = btn.disabled;
+    btn.disabled = true;
+    btn.innerHTML = loadingText
+        ? `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>${loadingText}`
+        : `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+    try {
+        return await actionFn();
+    } finally {
+        if (btn.isConnected) {
+            btn.disabled = origDisabled;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
 
 export function initAdminCoupons() {
     if (couponsInitialized) return;
@@ -27,7 +45,7 @@ export function initAdminCoupons() {
     if (openBtn) {
         openBtn.onclick = (e) => {
             e.preventDefault();
-            openCreateCouponModal();
+            openCreateCouponModal(null, openBtn);
         };
     }
     const closeBtn = document.getElementById("btn-close-create-coupon");
@@ -95,6 +113,17 @@ function setCouponFilter(filter) {
 
 export async function loadAdminCoupons() {
     initAdminCoupons();
+    const tbody = document.getElementById("admin-coupons-table-body");
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center py-5 text-secondary">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="small">Loading promotional coupons...</div>
+                </td>
+            </tr>
+        `;
+    }
     try {
         const res = await adminGet("/coupons");
         if (!res || !res.ok) {
@@ -247,40 +276,42 @@ function renderCouponsTable() {
 
     // Attach row button handlers
     tbody.querySelectorAll(".btn-toggle-status").forEach(btn => {
-        btn.addEventListener("click", () => handleToggleStatus(btn.dataset.id, btn.dataset.status));
+        btn.addEventListener("click", () => handleToggleStatus(btn.dataset.id, btn.dataset.status, btn));
     });
 
     tbody.querySelectorAll(".btn-edit-coupon").forEach(btn => {
         btn.addEventListener("click", () => {
             const coupon = cachedCoupons.find(c => c.couponId === btn.dataset.id);
-            if (coupon) openCreateCouponModal(coupon);
+            if (coupon) openCreateCouponModal(coupon, btn);
         });
     });
 
     tbody.querySelectorAll(".btn-delete-coupon").forEach(btn => {
-        btn.addEventListener("click", () => handleDeleteCoupon(btn.dataset.id, btn.dataset.code));
+        btn.addEventListener("click", () => handleDeleteCoupon(btn.dataset.id, btn.dataset.code, btn));
     });
 
     tbody.querySelectorAll(".btn-view-redemptions").forEach(btn => {
-        btn.addEventListener("click", () => openRedemptionsModal(btn.dataset.id, btn.dataset.code));
+        btn.addEventListener("click", () => openRedemptionsModal(btn.dataset.id, btn.dataset.code, btn));
     });
 }
 
-async function handleToggleStatus(couponId, currentStatus) {
+async function handleToggleStatus(couponId, currentStatus, btn) {
     const isActivating = currentStatus !== "active";
     const endpoint = isActivating ? `/coupons/${couponId}/activate` : `/coupons/${couponId}/deactivate`;
-    try {
-        const res = await adminPost(endpoint, {});
-        if (!res || (!res.ok && !res.success)) throw new Error(res?.error || "Failed to update coupon status");
-        toast(isActivating ? "Coupon activated successfully" : "Coupon deactivated", "success");
-        await loadAdminCoupons();
-    } catch (err) {
-        console.error("Status toggle error:", err);
-        toast(err.message || "Failed to update status", "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminPost(endpoint, {});
+            if (!res || (!res.ok && !res.success)) throw new Error(res?.error || "Failed to update coupon status");
+            toast(isActivating ? "Coupon activated successfully" : "Coupon deactivated", "success");
+            await loadAdminCoupons();
+        } catch (err) {
+            console.error("Status toggle error:", err);
+            toast(err.message || "Failed to update status", "error");
+        }
+    }, isActivating ? "Activating..." : "Deactivating...");
 }
 
-async function handleDeleteCoupon(couponId, code) {
+async function handleDeleteCoupon(couponId, code, btn) {
     const confirmed = await showTablerConfirm({
         title: `Archive Coupon ${code}?`,
         message: `Are you sure you want to archive coupon <strong>${code}</strong>? It will no longer be available for new applications. Historical redemptions will remain preserved for accounting audits.`,
@@ -290,15 +321,17 @@ async function handleDeleteCoupon(couponId, code) {
 
     if (!confirmed) return;
 
-    try {
-        const res = await adminDelete(`/coupons/${couponId}`);
-        if (!res || (!res.ok && !res.success)) throw new Error(res?.error || "Failed to archive coupon");
-        toast(`Coupon ${code} archived successfully`, "success");
-        await loadAdminCoupons();
-    } catch (err) {
-        console.error("Delete error:", err);
-        toast(err.message || "Failed to archive coupon", "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            const res = await adminDelete(`/coupons/${couponId}`);
+            if (!res || (!res.ok && !res.success)) throw new Error(res?.error || "Failed to archive coupon");
+            toast(`Coupon ${code} archived successfully`, "success");
+            await loadAdminCoupons();
+        } catch (err) {
+            console.error("Delete error:", err);
+            toast(err.message || "Failed to archive coupon", "error");
+        }
+    }, "");
 }
 
 async function ensurePassengersLoaded() {
@@ -400,13 +433,13 @@ function renderPassengerChips() {
     });
 }
 
-async function openCreateCouponModal(couponToEdit = null) {
+async function openCreateCouponModal(couponToEdit = null, triggerBtn = null) {
     const modal = document.getElementById("modal-create-coupon");
     if (!modal) return;
     const form = document.getElementById("form-create-coupon");
     if (form) form.reset();
 
-    await ensurePassengersLoaded();
+    await withButtonSpinner(triggerBtn, () => ensurePassengersLoaded(), couponToEdit ? "" : "Loading...");
 
     currentRestrictedPassengers.clear();
     editingCouponId = couponToEdit ? couponToEdit.couponId : null;
@@ -503,35 +536,26 @@ async function handleCreateCouponSubmit(e) {
     const submitBtn = document.getElementById("btn-submit-create-coupon");
 
     if (editingCouponId) {
-        // Edit flow
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerText = "Saving...";
-        }
+        await withButtonSpinner(submitBtn, async () => {
+            try {
+                const payload = {
+                    minRidesRequired,
+                    eligibleGender,
+                    restrictedPassengerIds,
+                    description,
+                };
 
-        try {
-            const payload = {
-                minRidesRequired,
-                eligibleGender,
-                restrictedPassengerIds,
-                description,
-            };
+                const res = await adminPatch(`/coupons/${editingCouponId}`, payload);
+                if (!res || !res.ok) throw new Error(res?.error || "Failed to update coupon");
 
-            const res = await adminPatch(`/coupons/${editingCouponId}`, payload);
-            if (!res || !res.ok) throw new Error(res?.error || "Failed to update coupon");
-
-            toast(`Coupon updated successfully!`, "success");
-            closeCreateCouponModal();
-            await loadAdminCoupons();
-        } catch (err) {
-            console.error("Update coupon error:", err);
-            toast(err.message || "Failed to update coupon", "error");
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerText = "Save Changes";
+                toast(`Coupon updated successfully!`, "success");
+                closeCreateCouponModal();
+                await loadAdminCoupons();
+            } catch (err) {
+                console.error("Update coupon error:", err);
+                toast(err.message || "Failed to update coupon", "error");
             }
-        }
+        }, "Saving...");
         return;
     }
 
@@ -549,86 +573,80 @@ async function handleCreateCouponSubmit(e) {
         return;
     }
 
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerText = "Creating...";
-    }
+    await withButtonSpinner(submitBtn, async () => {
+        try {
+            const payload = {
+                code,
+                discountType,
+                discountValue,
+                eligibilityCategory,
+                minRidesRequired,
+                eligibleGender,
+                restrictedPassengerIds,
+                description,
+                status: "active",
+            };
 
-    try {
-        const payload = {
-            code,
-            discountType,
-            discountValue,
-            eligibilityCategory,
-            minRidesRequired,
-            eligibleGender,
-            restrictedPassengerIds,
-            description,
-            status: "active",
-        };
+            const res = await adminPost("/coupons", payload);
+            if (!res || !res.ok) {
+                throw new Error(res?.error || "Failed to create coupon");
+            }
 
-        const res = await adminPost("/coupons", payload);
-        if (!res || !res.ok) {
-            throw new Error(res?.error || "Failed to create coupon");
+            toast(`Coupon ${code} created successfully!`, "success");
+            closeCreateCouponModal();
+            await loadAdminCoupons();
+        } catch (err) {
+            console.error("Create coupon error:", err);
+            toast(err.message || "Failed to create coupon", "error");
         }
-
-        toast(`Coupon ${code} created successfully!`, "success");
-        closeCreateCouponModal();
-        await loadAdminCoupons();
-    } catch (err) {
-        console.error("Create coupon error:", err);
-        toast(err.message || "Failed to create coupon", "error");
-    } finally {
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerText = "Create Coupon";
-        }
-    }
+    }, "Creating...");
 }
 
-async function openRedemptionsModal(couponId, code) {
+async function openRedemptionsModal(couponId, code, triggerBtn = null) {
     const modal = document.getElementById("modal-view-coupon-redemptions");
     if (!modal) return;
 
     document.getElementById("redemptions-modal-title").innerText = `Redemptions for ${code}`;
     const tbody = document.getElementById("table-coupon-redemptions-body");
     if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">Loading redemptions...</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm text-primary me-2" role="status"></span>Loading redemptions...</td></tr>`;
     }
 
     modal.style.display = "block";
     modal.classList.remove("d-none");
     modal.classList.add("show");
 
-    try {
-        const res = await adminGet(`/coupons/${couponId}/redemptions`);
-        if (!res || !res.ok) throw new Error(res?.error || "Failed to load redemptions");
+    await withButtonSpinner(triggerBtn, async () => {
+        try {
+            const res = await adminGet(`/coupons/${couponId}/redemptions`);
+            if (!res || !res.ok) throw new Error(res?.error || "Failed to load redemptions");
 
-        const redemptions = res.redemptions || [];
-        if (redemptions.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">No redemptions recorded yet for this coupon.</td></tr>`;
-            return;
-        }
+            const redemptions = res.redemptions || [];
+            if (redemptions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-muted">No redemptions recorded yet for this coupon.</td></tr>`;
+                return;
+            }
 
-        tbody.innerHTML = redemptions.map(r => {
-            const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleString("en-IN") : "N/A";
-            return `
-                <tr>
-                    <td><code>${r.redemptionId}</code></td>
-                    <td><code>${r.passengerId}</code></td>
-                    <td><code>${r.driverId}</code></td>
-                    <td><strong class="text-success">₹${r.calculatedDiscountINR}</strong></td>
-                    <td>₹${r.originalFareINR} &rarr; ₹${r.remainingFareAfterINR}</td>
-                    <td><small class="text-muted">${dateStr}</small></td>
-                </tr>
-            `;
-        }).join("");
-    } catch (err) {
-        console.error("Redemptions fetch error:", err);
-        if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-danger">${err.message || 'Failed to load redemptions'}</td></tr>`;
+            tbody.innerHTML = redemptions.map(r => {
+                const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleString("en-IN") : "N/A";
+                return `
+                    <tr>
+                        <td><code>${r.redemptionId}</code></td>
+                        <td><code>${r.passengerId}</code></td>
+                        <td><code>${r.driverId}</code></td>
+                        <td><strong class="text-success">₹${r.calculatedDiscountINR}</strong></td>
+                        <td>₹${r.originalFareINR} &rarr; ₹${r.remainingFareAfterINR}</td>
+                        <td><small class="text-muted">${dateStr}</small></td>
+                    </tr>
+                `;
+            }).join("");
+        } catch (err) {
+            console.error("Redemptions fetch error:", err);
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-danger">${err.message || 'Failed to load redemptions'}</td></tr>`;
+            }
         }
-    }
+    }, "Loading...");
 }
 
 function closeRedemptionsModal() {

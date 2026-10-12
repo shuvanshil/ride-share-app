@@ -1,8 +1,26 @@
-import { adminGet, adminPatch, adminPost, adminDelete } from "./admin-api.js?v=2.5.1";
+import { adminGet, adminPatch, adminPost, adminDelete } from "./admin-api.js?v=2.6.0";
 import { showTablerConfirm } from "./admin-confirm.js?v=2.5.1";
 import { toast } from "./admin-toast.js?v=2.5.1";
 
 const $ = (id) => document.getElementById(id);
+
+async function withButtonSpinner(btn, actionFn, loadingText = "Processing...") {
+    if (!btn) return actionFn();
+    const origHtml = btn.innerHTML;
+    const origDisabled = btn.disabled;
+    btn.disabled = true;
+    btn.innerHTML = loadingText
+        ? `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>${loadingText}`
+        : `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+    try {
+        return await actionFn();
+    } finally {
+        if (btn.isConnected) {
+            btn.disabled = origDisabled;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
 
 let reportsState = {
     reports: [],
@@ -38,8 +56,9 @@ export function initAdminReports() {
         renderReportsTable();
     });
 
-    $("reports-refresh-btn")?.addEventListener("click", () => {
-        loadAdminReports(true);
+    const refreshBtn = $("reports-refresh-btn");
+    refreshBtn?.addEventListener("click", () => {
+        withButtonSpinner(refreshBtn, () => loadAdminReports(true), "Refreshing...");
     });
 
     // Bulk actions
@@ -339,21 +358,21 @@ function renderReportsTable() {
     wrap.querySelectorAll(".report-resolve-btn").forEach((btn) => {
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            resolveSingleReport(btn.dataset.id);
+            resolveSingleReport(btn.dataset.id, btn);
         });
     });
 
     wrap.querySelectorAll(".report-reopen-btn").forEach((btn) => {
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            reopenSingleReport(btn.dataset.id);
+            reopenSingleReport(btn.dataset.id, btn);
         });
     });
 
     wrap.querySelectorAll(".report-delete-btn").forEach((btn) => {
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            deleteSingleReport(btn.dataset.id);
+            deleteSingleReport(btn.dataset.id, btn);
         });
     });
 }
@@ -435,27 +454,31 @@ function closeReportModal() {
     reportsState.currentReport = null;
 }
 
-async function resolveSingleReport(failureId) {
-    try {
-        await adminPatch(`/failures/${failureId}`, { action: "resolve" });
-        toast("Issue marked as resolved.", "success");
-        loadAdminReports();
-    } catch (err) {
-        toast(`Failed to resolve issue: ${err.message}`, "error");
-    }
+async function resolveSingleReport(failureId, btn) {
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPatch(`/failures/${failureId}`, { action: "resolve" });
+            toast("Issue marked as resolved.", "success");
+            await loadAdminReports();
+        } catch (err) {
+            toast(`Failed to resolve issue: ${err.message}`, "error");
+        }
+    }, "Resolving...");
 }
 
-async function reopenSingleReport(failureId) {
-    try {
-        await adminPatch(`/failures/${failureId}`, { action: "reopen" });
-        toast("Issue reopened.", "info");
-        loadAdminReports();
-    } catch (err) {
-        toast(`Failed to reopen issue: ${err.message}`, "error");
-    }
+async function reopenSingleReport(failureId, btn) {
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPatch(`/failures/${failureId}`, { action: "reopen" });
+            toast("Issue reopened.", "info");
+            await loadAdminReports();
+        } catch (err) {
+            toast(`Failed to reopen issue: ${err.message}`, "error");
+        }
+    }, "Reopening...");
 }
 
-async function deleteSingleReport(failureId) {
+async function deleteSingleReport(failureId, btn) {
     const confirmed = await showTablerConfirm(
         "Delete Failure Report",
         "Are you sure you want to permanently delete this failure report record from the database?",
@@ -464,14 +487,16 @@ async function deleteSingleReport(failureId) {
     );
     if (!confirmed) return;
 
-    try {
-        await adminDelete(`/failures/${failureId}`);
-        toast("Failure report deleted successfully.", "success");
-        reportsState.selectedIds.delete(failureId);
-        loadAdminReports();
-    } catch (err) {
-        toast(`Failed to delete failure report: ${err.message}`, "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminDelete(`/failures/${failureId}`);
+            toast("Failure report deleted successfully.", "success");
+            reportsState.selectedIds.delete(failureId);
+            await loadAdminReports();
+        } catch (err) {
+            toast(`Failed to delete failure report: ${err.message}`, "error");
+        }
+    }, "");
 }
 
 async function handleModalResolve() {
@@ -479,15 +504,18 @@ async function handleModalResolve() {
     const fid = reportsState.currentReport.failureId || reportsState.currentReport.id;
     const isResolved = (reportsState.currentReport.status || "").toLowerCase() === "resolved";
     const action = isResolved ? "reopen" : "resolve";
+    const btn = $("report-detail-resolve-btn");
 
-    try {
-        await adminPatch(`/failures/${fid}`, { action });
-        toast(isResolved ? "Issue reopened." : "Issue marked as resolved.", "success");
-        closeReportModal();
-        loadAdminReports();
-    } catch (err) {
-        toast(`Failed to update issue: ${err.message}`, "error");
-    }
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPatch(`/failures/${fid}`, { action });
+            toast(isResolved ? "Issue reopened." : "Issue marked as resolved.", "success");
+            closeReportModal();
+            await loadAdminReports();
+        } catch (err) {
+            toast(`Failed to update issue: ${err.message}`, "error");
+        }
+    }, isResolved ? "Reopening..." : "Resolving...");
 }
 
 async function handleModalDelete() {
@@ -501,29 +529,35 @@ async function handleModalDelete() {
     );
     if (!confirmed) return;
 
-    try {
-        await adminDelete(`/failures/${fid}`);
-        toast("Failure report deleted.", "success");
-        reportsState.selectedIds.delete(fid);
-        closeReportModal();
-        loadAdminReports();
-    } catch (err) {
-        toast(`Failed to delete report: ${err.message}`, "error");
-    }
+    const btn = $("report-detail-delete-btn");
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminDelete(`/failures/${fid}`);
+            toast("Failure report deleted.", "success");
+            reportsState.selectedIds.delete(fid);
+            closeReportModal();
+            await loadAdminReports();
+        } catch (err) {
+            toast(`Failed to delete report: ${err.message}`, "error");
+        }
+    }, "Deleting...");
 }
 
 async function handleBulkResolve() {
     const ids = Array.from(reportsState.selectedIds);
     if (ids.length === 0) return;
 
-    try {
-        await adminPost("/failures/bulk", { action: "resolve", failureIds: ids });
-        toast(`Successfully resolved ${ids.length} selected issue(s).`, "success");
-        reportsState.selectedIds.clear();
-        loadAdminReports();
-    } catch (err) {
-        toast(`Failed to resolve selected issues: ${err.message}`, "error");
-    }
+    const btn = $("reports-bulk-resolve-btn");
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost("/failures/bulk", { action: "resolve", failureIds: ids });
+            toast(`Successfully resolved ${ids.length} selected issue(s).`, "success");
+            reportsState.selectedIds.clear();
+            await loadAdminReports();
+        } catch (err) {
+            toast(`Failed to resolve selected issues: ${err.message}`, "error");
+        }
+    }, "Resolving...");
 }
 
 async function handleBulkDelete() {
@@ -538,14 +572,17 @@ async function handleBulkDelete() {
     );
     if (!confirmed) return;
 
-    try {
-        await adminPost("/failures/bulk", { action: "delete", failureIds: ids });
-        toast(`Successfully deleted ${ids.length} selected report(s).`, "success");
-        reportsState.selectedIds.clear();
-        loadAdminReports();
-    } catch (err) {
-        toast(`Failed to delete selected reports: ${err.message}`, "error");
-    }
+    const btn = $("reports-bulk-delete-btn");
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost("/failures/bulk", { action: "delete", failureIds: ids });
+            toast(`Successfully deleted ${ids.length} selected report(s).`, "success");
+            reportsState.selectedIds.clear();
+            await loadAdminReports();
+        } catch (err) {
+            toast(`Failed to delete selected reports: ${err.message}`, "error");
+        }
+    }, "Deleting...");
 }
 
 function handleCopyTrace() {

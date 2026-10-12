@@ -112,20 +112,29 @@ export function showFormDrawer(title, { fields, initialValues, onSave, extraHtml
         return ok;
     }
 
-    async function doSave(closeAfter) {
+    async function doSave(closeAfter, activeBtn) {
         const values = collectValues();
         if (!validate(values)) return;
         const saveBtn = footerEl.querySelector('[data-drawer-action="save"]');
         const saveCloseBtn = footerEl.querySelector('[data-drawer-action="save-close"]');
+        const discardBtn = footerEl.querySelector('[data-drawer-action="discard"]');
+        const targetBtn = activeBtn || (closeAfter ? saveCloseBtn : saveBtn);
+        const origHtml = targetBtn ? targetBtn.innerHTML : "";
         saveBtn.disabled = true;
         saveCloseBtn.disabled = true;
+        if (discardBtn) discardBtn.disabled = true;
+        if (targetBtn) {
+            targetBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving...`;
+        }
         try {
             await onSave(values);
             dirty = false;
             if (closeAfter) closeDrawer(true);
         } finally {
+            if (targetBtn) targetBtn.innerHTML = origHtml;
             saveBtn.disabled = false;
             saveCloseBtn.disabled = false;
+            if (discardBtn) discardBtn.disabled = false;
         }
     }
 
@@ -133,8 +142,8 @@ export function showFormDrawer(title, { fields, initialValues, onSave, extraHtml
         dirty = false;
         closeDrawer(true);
     });
-    footerEl.querySelector('[data-drawer-action="save"]').addEventListener("click", () => doSave(false));
-    footerEl.querySelector('[data-drawer-action="save-close"]').addEventListener("click", () => doSave(true));
+    footerEl.querySelector('[data-drawer-action="save"]').addEventListener("click", (e) => doSave(false, e.currentTarget));
+    footerEl.querySelector('[data-drawer-action="save-close"]').addEventListener("click", (e) => doSave(true, e.currentTarget));
 
     open();
 }

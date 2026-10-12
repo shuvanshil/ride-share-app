@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.7.1-broadcast-fix";
+const CACHE_VERSION = "liphtup-v2.7.2-admin-routes-spinners";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
