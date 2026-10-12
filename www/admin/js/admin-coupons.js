@@ -1,6 +1,6 @@
-import { adminGet, adminPost, adminPatch, adminDelete } from "./admin-api.js?v=2.6.0";
-import { showTablerConfirm } from "./admin-confirm.js?v=2.5.1";
-import { toast } from "./admin-toast.js?v=2.5.1";
+import { adminGet, adminPost, adminPatch, adminDelete } from "./admin-api.js?v=2.7.0";
+import { showTablerConfirm } from "./admin-confirm.js?v=2.7.0";
+import { toast } from "./admin-toast.js?v=2.7.0";
 
 let cachedCoupons = [];
 let cachedPassengers = [];

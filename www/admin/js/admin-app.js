@@ -1,14 +1,14 @@
-import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken, beginAdminBusy } from "./admin-api.js?v=2.6.0";
-import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js?v=2.5.1";
-import { DataTable } from "./data-table.js?v=2.6.0";
-import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js?v=2.6.0";
-import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderGodViewMap } from "./admin-live.js?v=2.5.1";
-import { toast } from "./admin-toast.js?v=2.5.1";
-import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js?v=2.6.0";
-import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.6.0";
-import { loadPermissions, initPermissionsModal } from "./admin-permissions.js?v=2.6.0";
-import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js?v=2.6.0";
-import { initAdminReports, loadAdminReports } from "./admin-reports.js?v=2.6.0";
+import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken, beginAdminBusy } from "./admin-api.js?v=2.7.0";
+import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js?v=2.7.0";
+import { DataTable } from "./data-table.js?v=2.7.0";
+import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js?v=2.7.0";
+import { startLiveFeed, stopLiveFeed, trackRideOnMap, stopTracking, openLiveRideMapModal, closeLiveRideMapModal, renderGodViewMap } from "./admin-live.js?v=2.7.0";
+import { toast } from "./admin-toast.js?v=2.7.0";
+import { loadSafety, refreshSafetyBadge, startSosRealtimeAlerts } from "./admin-safety.js?v=2.7.0";
+import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAdminWalletCredit } from "./admin-payments.js?v=2.7.0";
+import { loadPermissions, initPermissionsModal } from "./admin-permissions.js?v=2.7.0";
+import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js?v=2.7.0";
+import { initAdminReports, loadAdminReports } from "./admin-reports.js?v=2.7.0";
 
 const $ = (id) => document.getElementById(id);
 
@@ -194,6 +194,7 @@ $("btn-mobile-logout")?.addEventListener("click", async (e) => {
     await withButtonSpinner(e.currentTarget, async () => {
         isAdminAuthenticated = false;
         sessionStorage.removeItem("admin_session_active");
+        localStorage.removeItem("admin_session_active");
         sessionStorage.removeItem("liphtup_user_profile");
         await logoutAdmin().catch(() => null);
         window.history.replaceState(null, "", "/admin");
@@ -241,6 +242,7 @@ $("btn-super-admin-logout")?.addEventListener("click", async (e) => {
     await withButtonSpinner(e.currentTarget, async () => {
         isAdminAuthenticated = false;
         sessionStorage.removeItem("admin_session_active");
+        localStorage.removeItem("admin_session_active");
         sessionStorage.removeItem("liphtup_user_profile");
         const modal = $("modal-super-admin-notice");
         if (modal) {
@@ -399,6 +401,8 @@ function resolveInitialAuthorizedSection() {
 
 async function bootstrapAuthenticatedShell(result) {
     isAdminAuthenticated = true;
+    sessionStorage.setItem("admin_session_active", "true");
+    localStorage.setItem("admin_session_active", "true");
     applyRolePermissions(result.role, result);
     $("admin-unauth-subpage-notice")?.classList.add("d-none");
     showOnly(shell);
@@ -433,7 +437,12 @@ watchAdminAuth(async (user) => {
     if (!currentReq.isRoot) {
         pendingInitialRoute = currentReq;
     }
-    const adminSessionActive = sessionStorage.getItem("admin_session_active") === "true";
+    const hasPassengerOrDriverSession = Boolean(sessionStorage.getItem("liphtup_user_profile"));
+    const adminSessionActive =
+        sessionStorage.getItem("admin_session_active") === "true" ||
+        localStorage.getItem("admin_session_active") === "true" ||
+        (Boolean(user) && !hasPassengerOrDriverSession);
+
     if (!user || !adminSessionActive) {
         isAdminAuthenticated = false;
         stopLiveFeed();
@@ -452,6 +461,7 @@ watchAdminAuth(async (user) => {
     } catch (error) {
         isAdminAuthenticated = false;
         sessionStorage.removeItem("admin_session_active");
+        localStorage.removeItem("admin_session_active");
         stopLiveFeed();
         await logoutAdmin().catch(() => null);
         showDeniedSubpageNotice(pendingInitialRoute, "This account does not have admin privileges for LiphtUp.");
@@ -480,17 +490,20 @@ async function handleAdminLogin() {
             // Auto logout any previous passenger, driver, or active session to prevent role clashes
             sessionStorage.removeItem("liphtup_user_profile");
             sessionStorage.removeItem("admin_session_active");
+            localStorage.removeItem("admin_session_active");
             sessionStorage.removeItem("super_admin_notice_dismissed");
             await logoutAdmin().catch(() => null);
 
             await loginAdmin(email, password);
             sessionStorage.setItem("admin_session_active", "true");
+            localStorage.setItem("admin_session_active", "true");
             await refreshAdminToken();
             const result = await adminGet("/verify", {}, { showBusy: true, busyLabel: "Verifying admin permissions..." });
             await bootstrapAuthenticatedShell(result);
         } catch (error) {
             isAdminAuthenticated = false;
             sessionStorage.removeItem("admin_session_active");
+            localStorage.removeItem("admin_session_active");
             await logoutAdmin().catch(() => null);
             errorTextEl.textContent = error?.message?.includes?.("Admin access required")
                 ? "This account does not have admin privileges."
@@ -510,6 +523,7 @@ $("admin-email")?.addEventListener("keydown", (e) => {
 
 $("admin-denied-back-btn")?.addEventListener("click", () => {
     sessionStorage.removeItem("admin_session_active");
+    localStorage.removeItem("admin_session_active");
     window.history.replaceState(null, "", "/admin");
     showOnly(loginScreen);
 });
@@ -520,6 +534,7 @@ $("admin-logout-btn")?.addEventListener("click", async (e) => {
         stopLiveFeed();
         loadedSections.clear();
         sessionStorage.removeItem("admin_session_active");
+        localStorage.removeItem("admin_session_active");
         sessionStorage.removeItem("liphtup_user_profile");
         sessionStorage.removeItem("super_admin_notice_dismissed");
         await logoutAdmin();
@@ -674,7 +689,9 @@ async function activateAdminSection(name, { updateUrl = true, replaceUrl = false
 }
 
 document.querySelectorAll(".admin-nav-item").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (typeof e.button === "number" && e.button !== 0)) return;
+        e.preventDefault();
         const targetSection = btn.dataset.section;
         // If clicking the already-active section, force a fresh reload with spinner
         const isSameSection = currentSection === targetSection;

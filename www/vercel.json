@@ -8,16 +8,8 @@
       "destination": "/api/index"
     },
     {
-      "source": "/admin",
-      "destination": "/admin/index.html"
-    },
-    {
-      "source": "/admin/:section((?!css|js|assets)[^/.]+)",
-      "destination": "/admin/index.html"
-    },
-    {
-      "source": "/admin/:section((?!css|js|assets)[^/.]+)/:rest*",
-      "destination": "/admin/index.html"
+      "source": "/admin/:section",
+      "destination": "/admin"
     }
   ],
   "headers": [
