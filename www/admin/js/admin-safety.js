@@ -456,9 +456,9 @@ export async function openSosDetailDrawer(alertId) {
                     </div>
                 </div>
                 ${alertData.note ? `
-                    <div class="mt-2 p-2 rounded bg-white border border-danger-subtle small">
-                        <strong class="text-danger"><i class="ti ti-message-report me-1"></i>Emergency Note:</strong>
-                        <span class="text-dark">${escapeHtml(alertData.note)}</span>
+                    <div class="w-100 mt-2 p-3 rounded bg-white border border-danger-subtle small" style="box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">
+                        <strong class="text-danger d-block mb-1"><i class="ti ti-message-report me-1"></i>Emergency Note:</strong>
+                        <div class="text-dark" style="word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap;">${escapeHtml(alertData.note)}</div>
                     </div>
                 ` : ""}
             </div>
@@ -897,9 +897,9 @@ export async function openReportDetailDrawer(reportId) {
                             : ""}
                     </div>
                 </div>
-                <div class="mt-2 p-2 rounded bg-white border small">
+                <div class="w-100 mt-2 p-3 rounded bg-white border small" style="box-sizing: border-box; word-break: break-word; overflow-wrap: anywhere;">
                     <strong class="text-dark d-block mb-1"><i class="ti ti-blockquote me-1 text-warning"></i>Statement / Description:</strong>
-                    <div class="text-secondary">${escapeHtml(rep.description || "No statement text provided.")}</div>
+                    <div class="text-secondary" style="word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap;">${escapeHtml(rep.description || "No statement text provided.")}</div>
                 </div>
             </div>
 

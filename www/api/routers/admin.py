@@ -35,6 +35,7 @@ from ..core.admin import (
 from ..core.config import get_env
 from ..core.errors import ApiError
 from ..core.firebase import get_admin_app
+from ..core.notifications import send_user_notification, CHANNEL_DEFAULT
 
 logger = logging.getLogger(__name__)
 
@@ -1551,6 +1552,24 @@ def update_driver(
         )
 
     write_audit_log(admin_user, f"driver.{body.action}", "driver", uid, before, updates, body.notes)
+    if body.action == "approve":
+        try:
+            app_url = (get_env("PUBLIC_APP_URL") or get_env("APP_BASE_URL") or "https://liphtup.in").rstrip("/")
+            send_user_notification(
+                db=db,
+                user_id=uid,
+                event_type="driver_approved",
+                title="Registration Approved! 🎉",
+                body="Congratulations! Your driver account has been approved. You can now go online and start accepting trips.",
+                url=f"{app_url}/driver.html",
+                channel_id=CHANNEL_DEFAULT,
+                tag=f"driver-approved-{uid}",
+                extra_data={"type": "driver_approved", "driverId": uid},
+                fallback_inapp=True,
+                is_driver=True,
+            )
+        except Exception as push_err:
+            logger.warning("Failed to dispatch driver approval push notification to %s: %s", uid, push_err)
     return {"ok": True, "driver": _sanitize_driver(_doc_dict(ref.get()))}
 
 

@@ -2066,10 +2066,16 @@ def update_driver_availability(
         except Exception:
             pass
         if status == "searching":
-            activate_due_scheduled_requests(db)
-            _dispatch_with_fallback(
-                db, uid, profile, {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
-            )
+            try:
+                activate_due_scheduled_requests(db)
+            except Exception as sched_err:
+                logger.warning("Error activating scheduled requests on driver online: %s", sched_err)
+            try:
+                _dispatch_with_fallback(
+                    db, uid, profile, {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
+                )
+            except Exception as disp_err:
+                logger.warning("Error running dispatch fallback on driver online: %s", disp_err)
         return {"ok": True, "status": status}
     except ApiError:
         raise

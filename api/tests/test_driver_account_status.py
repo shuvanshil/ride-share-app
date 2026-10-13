@@ -99,6 +99,9 @@ def test_admin_update_driver_state_machine_pending_to_approved(monkeypatch):
     monkeypatch.setattr(admin_module, "_db", lambda: db)
     monkeypatch.setattr(admin_module, "write_audit_log", lambda *a, **k: None)
 
+    notifications_sent = []
+    monkeypatch.setattr(admin_module, "send_user_notification", lambda *a, **k: notifications_sent.append((a, k)))
+
     admin_user = {"uid": "admin1", "adminRole": "admin"}
     body = admin_module.DriverActionBody(action="approve")
     res = admin_module.update_driver("drv1", body, admin_user)
@@ -107,6 +110,11 @@ def test_admin_update_driver_state_machine_pending_to_approved(monkeypatch):
     assert res["driver"]["verificationStatus"] == "approved"
     assert res["driver"]["approvalAcknowledged"] is False
     assert db.users["drv1"]["verificationStatus"] == "approved"
+    assert len(notifications_sent) == 1
+    call_args, call_kwargs = notifications_sent[0]
+    assert call_kwargs.get("user_id") == "drv1"
+    assert "Approved" in call_kwargs.get("title", "")
+    assert call_kwargs.get("tag") == "driver-approved-drv1"
 
 
 def test_admin_update_driver_state_machine_pending_to_rejected(monkeypatch):
