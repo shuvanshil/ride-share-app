@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20261011-v1";
+export const TRANSLATIONS_VERSION = "20261015-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -104,8 +104,11 @@ export const TRANSLATIONS = {
             "create_account_title": "Create your account",
             "create_account_sub": "Verify your mobile number, then complete your passenger profile.",
             "or": "or",
-            "driver_signup_title": "Captain / Driver Signup >",
+            "driver_signup_title": "Captain / Driver Signup",
             "driver_signup_sub": "Register as a driver and start earning",
+            "passenger_signup_title": "Passenger Signup",
+            "passenger_signup_sub": "Looking for a ride? Register as a passenger",
+            "redirecting_to_driver_signup": "Redirecting to Captain / Driver Signup...",
             "driver_registration_title": "Captain / Driver Registration",
             "driver_registration_sub": "Register as a driver and start earning with your vehicle.",
             "step_mobile_verification": "Mobile Verification",
@@ -1288,8 +1291,11 @@ export const TRANSLATIONS = {
             "create_account_title": "আপনার অ্যাকাউন্ট তৈরি করুন",
             "create_account_sub": "আপনার মোবাইল নম্বর যাচাই করুন, তারপর আপনার প্যাসেঞ্জার প্রোফাইল সম্পূর্ণ করুন।",
             "or": "অথবা",
-            "driver_signup_title": "ক্যাপ্টেন / ড্রাইভার সাইন আপ >",
+            "driver_signup_title": "ক্যাপ্টেন / ড্রাইভার সাইন আপ",
             "driver_signup_sub": "ড্রাইভার হিসেবে রেজিস্টার করুন এবং আয় শুরু করুন",
+            "passenger_signup_title": "প্যাসেঞ্জার সাইন আপ",
+            "passenger_signup_sub": "রাইড খুঁজছেন? যাত্রী হিসেবে রেজিস্টার করুন",
+            "redirecting_to_driver_signup": "ক্যাপ্টেন / ড্রাইভার সাইন আপ-এ নিয়ে যাওয়া হচ্ছে...",
             "driver_registration_title": "ক্যাপ্টেন / ড্রাইভার রেজিস্ট্রেশন",
             "driver_registration_sub": "ড্রাইভার হিসেবে রেজিস্টার করুন এবং আপনার গাড়ি দিয়ে আয় শুরু করুন।",
             "step_mobile_verification": "মোবাইল যাচাইকরণ",

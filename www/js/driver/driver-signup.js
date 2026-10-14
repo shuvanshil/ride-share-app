@@ -853,6 +853,25 @@ if (accountExistsLoginBtn) {
     });
 }
 
+// Passenger Signup navigation handlers
+const headerPassengerSignupBtn = document.getElementById('header-passenger-signup-btn');
+if (headerPassengerSignupBtn) {
+    headerPassengerSignupBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const passengerUrl = window.getPlatformUrl ? window.getPlatformUrl("/login.html?mode=register") : "/login.html?mode=register";
+        window.location.href = passengerUrl;
+    });
+}
+
+const passengerSignupCardBtn = document.getElementById('passenger-signup-card-btn');
+if (passengerSignupCardBtn) {
+    passengerSignupCardBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const passengerUrl = window.getPlatformUrl ? window.getPlatformUrl("/login.html?mode=register") : "/login.html?mode=register";
+        window.location.href = passengerUrl;
+    });
+}
+
 // Initialize
 initGenderCards();
 if (customSelectVehicle) initCustomSelect(customSelectVehicle);

@@ -41,7 +41,10 @@
                 <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
             </a>
         </div>
-        <div id="auth-lang-switcher" class="app-bar-actions"></div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="login.html?mode=register" id="header-passenger-signup-btn" class="btn btn-sm btn-outline-success fw-bold rounded-pill text-decoration-none px-3 py-1" style="font-size:12px;" data-i18n="auth.passenger_signup_title">Passenger Signup</a>
+            <div id="auth-lang-switcher" class="app-bar-actions"></div>
+        </div>
     </header>
 
     <main class="auth-container">
@@ -127,8 +130,32 @@
                             <path d="m12 5 7 7-7 7"/>
                         </svg>
                     </button>
+                    <div id="passenger-signup-cta" class="auth-driver-signup-cta">
+                        <div class="auth-divider my-3">
+                            <span class="auth-divider-text" data-i18n="auth.or">or</span>
+                        </div>
+                        <a href="login.html?mode=register" id="passenger-signup-card-btn" class="driver-signup-card text-decoration-none">
+                            <div class="driver-signup-card-left">
+                                <div class="driver-signup-card-icon">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                                        <circle cx="12" cy="7" r="4"/>
+                                    </svg>
+                                </div>
+                                <div class="driver-signup-card-text">
+                                    <strong class="driver-signup-card-title" data-i18n="auth.passenger_signup_title">Passenger Signup</strong>
+                                    <small class="driver-signup-card-sub" data-i18n="auth.passenger_signup_sub">Looking for a ride? Register as a passenger</small>
+                                </div>
+                            </div>
+                            <div class="driver-signup-card-arrow">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="m9 18 6-6-6-6"/>
+                                </svg>
+                            </div>
+                        </a>
+                    </div>
                     <p class="auth-footer-text mt-3 text-center small text-muted">
-                        Already have an account? <a href="login.html" class="text-success fw-bold">Login</a>
+                        <span data-i18n="auth.already_account">Already have an account?</span> <a href="login.html" class="text-success fw-bold" data-i18n="common.login">Login</a>
                     </p>
                 </div>
 
@@ -477,9 +504,9 @@
     <script src="js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
-    <script type="module" src="js/driver/driver-signup.js?v=20261014-v1"></script>
+    <script type="module" src="js/driver/driver-signup.js?v=20261015-v1"></script>
     <script type="module" src="js/shared/password-toggle.js"></script>
-    <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module" src="js/shared/i18n.js?v=20261015-v1"></script>
     <script type="module">
         import { renderLanguageSwitcher } from './js/shared/i18n.js';
         renderLanguageSwitcher(document.getElementById('auth-lang-switcher'));

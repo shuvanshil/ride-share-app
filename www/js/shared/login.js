@@ -106,6 +106,7 @@ const otpInputContainer = document.getElementById('otp-input-container');
 const resetPasswordContainer = document.getElementById('reset-password-container');
 const registrationContainer = document.getElementById('registration-container');
 const userRoleSelect = document.getElementById('user-role');
+const authRoleSelectorWrapper = document.getElementById('auth-role-selector-wrapper');
 const driverVerificationFields = document.getElementById('driver-verification-fields');
 const driverAgreementCheckbox = document.getElementById('driver-agreement-checkbox');
 const driverSignupCta = document.getElementById('driver-signup-cta');
@@ -359,6 +360,7 @@ function restoreActiveOtpSession() {
         setVisible(otpInputContainer, true);
         setVisible(resetPasswordContainer, false);
         setVisible(registrationContainer, false);
+        if (authRoleSelectorWrapper) setVisible(authRoleSelectorWrapper, false);
 
         const otpSentMsg = t('auth.sent_otp_to', "We sent a 6-digit OTP to");
         const destEl = document.getElementById('otp-destination');
@@ -437,8 +439,35 @@ function updateRegistrationSubmitState() {
     if (registerBtn) registerBtn.disabled = false;
 }
 
+function showRedirectingSpinner(text) {
+    let loader = document.getElementById('redirect-loader');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'redirect-loader';
+        loader.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(255,255,255,0.94);backdrop-filter:blur(4px);';
+        loader.innerHTML = `
+            <div style="width:44px;height:44px;border:4px solid #e2e8f0;border-top:4px solid #166534;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
+            <div id="redirect-loader-text" style="margin-top:16px;font-weight:700;color:#166534;font-size:15px;letter-spacing:0.3px;font-family:sans-serif;">${text || 'Redirecting...'}</div>
+        `;
+        document.body.appendChild(loader);
+    } else {
+        const textEl = document.getElementById('redirect-loader-text');
+        if (textEl) textEl.textContent = text || 'Redirecting...';
+        loader.style.display = 'flex';
+    }
+}
+
 function updateRegistrationFieldsForRole() {
     if (driverVerificationFields) driverVerificationFields.classList.add('d-none');
+    const role = userRoleSelect ? userRoleSelect.value : "passenger";
+    if (role === "driver") {
+        showRedirectingSpinner(t('auth.redirecting_to_driver_signup', "Redirecting to Captain / Driver Signup..."));
+        setTimeout(() => {
+            const driverSignupUrl = window.getPlatformUrl ? window.getPlatformUrl("/driver-signup.html") : "/driver-signup.html";
+            window.location.href = driverSignupUrl;
+        }, 120);
+        return;
+    }
     updateRegistrationSubmitState();
 }
 
@@ -459,6 +488,17 @@ function resetAuthStep() {
     setVisible(otpInputContainer, false);
     setVisible(resetPasswordContainer, false);
     setVisible(registrationContainer, false);
+
+    if (userRoleSelect) {
+        userRoleSelect.value = "passenger";
+        const cs = document.getElementById('custom-select-user-role');
+        if (cs && typeof cs._updateDisplay === 'function') {
+            cs._updateDisplay("passenger");
+        }
+    }
+    if (authRoleSelectorWrapper) {
+        setVisible(authRoleSelectorWrapper, authMode === "login" || authMode === "register");
+    }
 
     sendOtpBtn.disabled = false;
     verifyOtpBtn.disabled = false;
@@ -676,6 +716,7 @@ async function sendOTP() {
         saveActiveOtpSession(phoneNumber, otpSessionId, authMode, activeOtpProvider);
         setVisible(phoneInputContainer, false);
         setVisible(otpInputContainer, true);
+        if (authRoleSelectorWrapper) setVisible(authRoleSelectorWrapper, false);
         const otpSentMsg = t('auth.sent_otp_to', "We sent a 6-digit OTP to");
         document.getElementById('otp-destination').textContent = `${otpSentMsg} ${maskPhoneNumber(phoneNumber)}.`;
         sendOtpBtn.textContent = authMode === "register" ? t('auth.send_registration_otp', "Send Registration OTP") : t('auth.send_reset_otp', "Send Reset OTP");
@@ -941,6 +982,7 @@ async function verifyOTP() {
         if (authMode === "register") {
             setVisible(otpInputContainer, false);
             setVisible(registrationContainer, true);
+            if (authRoleSelectorWrapper) setVisible(authRoleSelectorWrapper, true);
             authEntryTitle.textContent = t('auth.complete_profile_title', "Complete your profile");
             authEntryCopy.textContent = t('auth.complete_profile_sub', "Add your email and password for future logins.");
             document.getElementById('user-name').focus();
@@ -950,6 +992,7 @@ async function verifyOTP() {
         if (authMode === "reset") {
             setVisible(otpInputContainer, false);
             setVisible(resetPasswordContainer, true);
+            if (authRoleSelectorWrapper) setVisible(authRoleSelectorWrapper, false);
             authEntryTitle.textContent = t('auth.create_new_password_title', "Create new password");
             authEntryCopy.textContent = t('auth.create_new_password_sub', "Use this password for phone/email login from now on.");
             document.getElementById('reset-password').focus();
@@ -1351,6 +1394,11 @@ document.addEventListener('click', (e) => {
         });
     }
 });
+
+const initialUrlParams = new URLSearchParams(window.location.search);
+if (initialUrlParams.get('mode') === 'register') {
+    authMode = 'register';
+}
 
 initGenderCards();
 initAllCustomSelects();

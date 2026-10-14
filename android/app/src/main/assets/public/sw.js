@@ -11,13 +11,14 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CACHE_VERSION = "liphtup-v2.7.3-admin-subpages";
+const CACHE_VERSION = "liphtup-v2.7.4-driver-signup";
 const BASE_URL = new URL("./", self.location.href);
 const OFFLINE_URL = new URL("/offline.html", BASE_URL).href;
 const APP_SHELL = [
     "/offline.html",
     "/index.html",
     "/driver.html",
+    "/driver-signup.html",
     "/driver-service.html",
     "/driver-dashboard.html",
     "/driver-payments.html",
@@ -59,6 +60,7 @@ const APP_SHELL = [
     "js/passenger/passenger-app.js",
     "js/passenger/passenger-feedback.js",
     "js/driver/driver-onboarding.js",
+    "js/driver/driver-signup.js",
     "js/driver/driver-service.js",
     "js/driver/driver-dashboard.js",
     "js/shared/services.js",

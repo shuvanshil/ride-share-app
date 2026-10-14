@@ -3,7 +3,7 @@
  * Compatible with ES Modules & Traditional Script Tags
  */
 
-import { TRANSLATIONS, TRANSLATIONS_VERSION } from './translations.js';
+import { TRANSLATIONS, TRANSLATIONS_VERSION } from './translations.js?v=20261015-v1';
 
 const STORAGE_LANG_KEY = 'LIPHTUP_LANG';
 const STORAGE_VERSION_KEY = 'LIPHTUP_I18N_VERSION';
@@ -107,7 +107,8 @@ export function translateDOM(container = document) {
     container.querySelectorAll('[data-i18n-html]').forEach(el => {
         const key = el.getAttribute('data-i18n-html');
         if (!key) return;
-        const translated = t(key);
+        const fallback = el.innerHTML || '';
+        const translated = t(key, fallback);
         if (translated) {
             el.innerHTML = translated;
         }
@@ -117,7 +118,8 @@ export function translateDOM(container = document) {
     container.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         if (!key) return;
-        const translated = t(key);
+        const fallback = el.textContent ? el.textContent.trim() : '';
+        const translated = t(key, fallback);
         if (translated) {
             // Handle line breaks (\n) cleanly if present
             if (translated.includes('\n')) {
@@ -132,7 +134,8 @@ export function translateDOM(container = document) {
     container.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
         const key = el.getAttribute('data-i18n-placeholder');
         if (key) {
-            el.placeholder = t(key);
+            const fallback = el.placeholder || '';
+            el.placeholder = t(key, fallback);
         }
     });
 
@@ -140,7 +143,8 @@ export function translateDOM(container = document) {
     container.querySelectorAll('[data-i18n-title]').forEach(el => {
         const key = el.getAttribute('data-i18n-title');
         if (key) {
-            el.title = t(key);
+            const fallback = el.title || '';
+            el.title = t(key, fallback);
         }
     });
 
@@ -148,7 +152,8 @@ export function translateDOM(container = document) {
     container.querySelectorAll('[data-i18n-aria]').forEach(el => {
         const key = el.getAttribute('data-i18n-aria');
         if (key) {
-            el.setAttribute('aria-label', t(key));
+            const fallback = el.getAttribute('aria-label') || '';
+            el.setAttribute('aria-label', t(key, fallback));
         }
     });
 

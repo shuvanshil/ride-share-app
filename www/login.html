@@ -106,6 +106,72 @@
                 </button>
             </div>
 
+            <!-- Role Selector (Default: Passenger; changing to Driver auto-redirects to driver-signup) -->
+            <div class="liphtup-custom-select-wrapper mb-3" id="auth-role-selector-wrapper">
+                <label class="auth-section-label" data-i18n="auth.role">Role</label>
+                <div class="liphtup-custom-select" id="custom-select-user-role" data-target-select="user-role">
+                    <select id="user-role" class="liphtup-native-select-hidden" aria-hidden="true" tabindex="-1">
+                        <option value="passenger" selected data-i18n="auth.role_passenger">Passenger</option>
+                        <option value="driver" data-i18n="auth.role_driver">Driver</option>
+                    </select>
+                    <button type="button" class="liphtup-select-trigger" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="liphtup-select-left">
+                            <span class="liphtup-select-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                                    <circle cx="9" cy="7" r="4"/>
+                                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                </svg>
+                            </span>
+                            <span class="liphtup-select-label" data-i18n="auth.role_passenger">Passenger</span>
+                        </span>
+                        <span class="liphtup-select-arrow">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m6 9 6 6 6-6"/>
+                            </svg>
+                        </span>
+                    </button>
+                    <div class="liphtup-select-menu d-none" role="listbox">
+                        <div class="liphtup-select-option active" data-value="passenger" role="option" aria-selected="true">
+                            <div class="liphtup-option-left">
+                                <span class="liphtup-option-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                                        <circle cx="9" cy="7" r="4"/>
+                                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                    </svg>
+                                </span>
+                                <span class="liphtup-option-text" data-i18n="auth.role_passenger">Passenger</span>
+                            </div>
+                            <span class="liphtup-option-check">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="liphtup-select-option" data-value="driver" role="option" aria-selected="false">
+                            <div class="liphtup-option-left">
+                                <span class="liphtup-option-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <path d="m4.93 4.93 4.24 4.24"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </svg>
+                                </span>
+                                <span class="liphtup-option-text" data-i18n="auth.role_driver">Driver</span>
+                            </div>
+                            <span class="liphtup-option-check">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="auth-field-hint mt-1 text-muted" style="font-size: 12px;" data-i18n="auth.role_hint">Your role helps us show the right features for you.</div>
+            </div>
+
             <!-- Password Login Container -->
             <div id="password-login-container">
                 <div class="auth-input-group mb-3">
@@ -185,7 +251,7 @@
                                 </svg>
                             </div>
                             <div class="driver-signup-card-text">
-                                <strong class="driver-signup-card-title" data-i18n="auth.driver_signup_title">Captain / Driver Signup &gt;</strong>
+                                <strong class="driver-signup-card-title" data-i18n="auth.driver_signup_title">Captain / Driver Signup</strong>
                                 <small class="driver-signup-card-sub" data-i18n="auth.driver_signup_sub">Register as a driver and start earning</small>
                             </div>
                         </div>
@@ -405,9 +471,9 @@
     <script src="js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
-    <script type="module" src="js/shared/login.js?v=20260919-v1"></script>
+    <script type="module" src="js/shared/login.js?v=20261015-v1"></script>
     <script type="module" src="js/shared/password-toggle.js"></script>
-    <script type="module" src="js/shared/i18n.js"></script>
+    <script type="module" src="js/shared/i18n.js?v=20261015-v1"></script>
     <script type="module">
         import { renderLanguageSwitcher } from './js/shared/i18n.js';
         renderLanguageSwitcher(document.getElementById('auth-lang-switcher'));
