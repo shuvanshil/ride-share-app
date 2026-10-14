@@ -87,7 +87,11 @@ def normalize_phone(value: Any) -> str:
 
 
 def normalize_purpose(value: Any) -> str:
-    return "reset" if value == "reset" else "register"
+    if value == "reset":
+        return "reset"
+    if value == "driver_register":
+        return "driver_register"
+    return "register"
 
 
 def two_factor_phone(phone_number: str) -> str:
@@ -300,7 +304,7 @@ def build_verification_token(phone: str, purpose: str) -> str:
     )
 
 
-def verify_token(token: Optional[str], expected_purpose: str = "") -> dict[str, Any]:
+def verify_token(token: Optional[str], expected_purpose: Any = "") -> dict[str, Any]:
     secret = require_env("OTP_SESSION_SECRET")
     parts = str(token or "").split(".")
     if len(parts) != 2 or not parts[0] or not parts[1]:
@@ -322,8 +326,12 @@ def verify_token(token: Optional[str], expected_purpose: str = "") -> dict[str, 
     if not payload.get("phone") or not payload.get("purpose") or not payload.get("expiresAt"):
         raise ApiError("Invalid verification token.", 400)
 
-    if expected_purpose and payload["purpose"] != expected_purpose:
-        raise ApiError("This verification token cannot be used here.", 400)
+    if expected_purpose:
+        if isinstance(expected_purpose, (list, tuple, set)):
+            if payload["purpose"] not in expected_purpose:
+                raise ApiError("This verification token cannot be used here.", 400)
+        elif payload["purpose"] != expected_purpose:
+            raise ApiError("This verification token cannot be used here.", 400)
 
     if _now_ms() > int(payload["expiresAt"]):
         raise ApiError("This verification has expired. Please request a new OTP.", 400)

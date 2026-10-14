@@ -59,6 +59,13 @@ class RegisterAccountBody(BaseModel):
     profile: Optional[dict[str, Any]] = None
 
 
+class RegisterDriverBody(BaseModel):
+    verificationToken: Optional[str] = None
+    phone: Optional[str] = None
+    password: Optional[str] = None
+    profile: Optional[dict[str, Any]] = None
+
+
 class ResetPasswordBody(BaseModel):
     verificationToken: Optional[str] = None
     password: Optional[str] = None
@@ -212,7 +219,8 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
         user_record = auth_client.create_user(**create_user_kwargs)
         created_uid = user_record.uid
 
-        merged_profile_input = {**(body.profile or {}), **base}
+        # Enforce passenger role: register-account is strictly dedicated to passenger registration
+        merged_profile_input = {**(body.profile or {}), **base, "role": "passenger"}
         profile_data = _build_profile(created_uid, token_payload["phone"], merged_profile_input)
 
         db.collection("users").document(created_uid).set(profile_data)
@@ -220,7 +228,7 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
             {
                 "uid": created_uid,
                 "email": profile_data["email"],
-                "role": profile_data["role"],
+                "role": "passenger",
                 "phone": token_payload["phone"],
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             },
@@ -236,19 +244,318 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
 
         return {"ok": True, "customToken": custom_token, "profile": response_profile}
     except ApiError:
-        if created_uid:
+        if created_uid and auth_client:
             try:
                 auth_client.delete_user(created_uid)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                db.collection("users").document(created_uid).delete()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                db.collection("phoneLoginIndex").document(token_payload["phone"]).delete()
             except Exception:  # noqa: BLE001
                 pass
         raise
     except Exception as error:  # noqa: BLE001
-        if created_uid:
+        if created_uid and auth_client:
             try:
                 auth_client.delete_user(created_uid)
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                db.collection("users").document(created_uid).delete()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                db.collection("phoneLoginIndex").document(token_payload["phone"]).delete()
+            except Exception:  # noqa: BLE001
+                pass
         raise ApiError("Could not create account. Please try again.", 500)
+
+
+def _validate_driver_fields(profile: dict[str, Any]) -> dict[str, Any]:
+    vehicle_type_raw = str(profile.get("vehicleType") or profile.get("vehicle_type") or "").strip().lower()
+    vehicle_type = "auto" if vehicle_type_raw == "auto" else ("bike" if vehicle_type_raw == "bike" else "")
+    vehicle_number = _clean_string(profile.get("vehicleNumber") or profile.get("vehicle_number"), 20).upper()
+    vehicle_model = _clean_string(profile.get("vehicleModel") or profile.get("vehicle_model"), 80)
+    license_number = _clean_string(
+        profile.get("drivingLicenseNumber")
+        or profile.get("licenseNumber")
+        or profile.get("driving_license_number")
+        or profile.get("license_number"),
+        30,
+    ).upper()
+    upi_id = _clean_string(profile.get("upiId"), 100).lower()
+
+    if vehicle_type not in {"bike", "auto"}:
+        raise ApiError("Drivers must select Bike / Scooty or Auto.", 400)
+    if not vehicle_number or not re.match(r"^[A-Z0-9 -]{4,20}$", vehicle_number):
+        raise ApiError("Enter a valid vehicle registration number.", 400)
+    if len(vehicle_model) < 2:
+        raise ApiError("Enter the vehicle model.", 400)
+    if not license_number or not re.match(r"^[A-Z0-9 -]{5,30}$", license_number):
+        raise ApiError("Enter a valid driving licence number.", 400)
+    if not upi_id or not re.match(r"^[a-z0-9._-]{2,}@[a-z0-9.-]{2,}$", upi_id):
+        raise ApiError("Enter a valid UPI ID (e.g. name@upi).", 400)
+
+    if profile.get("termsAccepted") is not True:
+        raise ApiError("Drivers must agree to LiphtUp's Terms and Conditions & Privacy Policy.", 400)
+
+    return {
+        "vehicleType": vehicle_type,
+        "vehicle_type": vehicle_type,
+        "vehicleNumber": vehicle_number,
+        "vehicle_number": vehicle_number,
+        "vehicleModel": vehicle_model,
+        "vehicle_model": vehicle_model,
+        "drivingLicenseNumber": license_number,
+        "upiId": upi_id,
+        "termsAccepted": True,
+    }
+
+
+@router.post("/register-driver")
+async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
+    created_uid = ""
+    auth_client: Optional[fb_auth.Client] = None
+
+    try:
+        token_payload = verify_token(body.verificationToken, "driver_register")
+        token_phone = token_payload["phone"]
+
+        if body.phone:
+            from ..core.otp import normalize_phone
+            submitted_phone = normalize_phone(body.phone)
+            if not submitted_phone or submitted_phone != token_phone:
+                raise ApiError("Submitted mobile number does not match verified number.", 400)
+
+        password = body.password or ""
+        profile_input = body.profile or {}
+
+        # 1. Base personal info validation
+        name = _clean_string(profile_input.get("name"), 80)
+        email = _normalize_email(profile_input.get("email"))
+        raw_gender = _clean_string(profile_input.get("gender"), 20).lower()
+        gender = "Male" if raw_gender == "male" else ("Female" if raw_gender == "female" else "Others")
+
+        if len(name) < 2:
+            raise ApiError("Enter your full name.", 400)
+        if email and not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+            raise ApiError("Enter a valid email address.", 400)
+
+        # 2. Driver-specific fields validation
+        driver_fields = _validate_driver_fields(profile_input)
+
+        app = get_admin_app()
+        auth_client = fb_auth.Client(app)
+        db = fb_firestore.client(app)
+
+        # 3. Check for existing account
+        existing_index = db.collection("phoneLoginIndex").document(token_phone).get()
+        existing_uid = None
+        existing_role = None
+
+        if existing_index.exists:
+            idx_data = existing_index.to_dict() or {}
+            existing_uid = idx_data.get("uid")
+            existing_role = idx_data.get("role")
+
+        if not existing_uid:
+            user_query = db.collection("users").where("phone", "==", token_phone).limit(1).get()
+            if not user_query:
+                user_query = db.collection("users").where("phone_number", "==", token_phone).limit(1).get()
+            if not user_query:
+                user_query = db.collection("users").where("phoneNumber", "==", token_phone).limit(1).get()
+            if user_query:
+                u_data = user_query[0].to_dict() or {}
+                existing_uid = u_data.get("uid") or user_query[0].id
+                existing_role = u_data.get("role")
+            else:
+                try:
+                    fb_u = auth_client.get_user_by_phone_number(token_phone)
+                    if fb_u:
+                        existing_uid = fb_u.uid
+                except Exception:
+                    pass
+
+        # Authoritative check from users collection if UID is known
+        if existing_uid:
+            u_snap = db.collection("users").document(existing_uid).get()
+            if u_snap.exists:
+                actual_role = (u_snap.to_dict() or {}).get("role")
+                if actual_role:
+                    existing_role = actual_role
+
+        if not existing_role and existing_uid:
+            existing_role = "passenger"
+
+        # If already registered as a driver, disallow duplicate driver profile
+        if existing_role == "driver":
+            raise ApiError("An account already exists for this mobile number. Please login instead.", 409)
+
+        # Prevent upgrade if passenger has an in-flight ride
+        if existing_uid and _has_active_ride(db, "passenger_id", existing_uid, ACTIVE_PASSENGER_STATUSES):
+            raise ApiError("Cannot register as a driver while you have an active ride in progress.", 400)
+
+        accepted_at = datetime.now(timezone.utc)
+
+        # Case A: Existing passenger upgrading to driver account
+        if existing_uid:
+            user_ref = db.collection("users").document(existing_uid)
+            u_snap = user_ref.get()
+            existing_profile = u_snap.to_dict() or {} if u_snap.exists else {}
+
+            driver_updates: dict[str, Any] = {
+                "name": name,
+                "email": email or existing_profile.get("email", ""),
+                "gender": gender,
+                "role": "driver",  # Trusted server-side driver role assignment
+                "phone": token_phone,
+                "phoneVerified": True,
+                "vehicleType": driver_fields["vehicleType"],
+                "vehicle_type": driver_fields["vehicle_type"],
+                "vehicleNumber": driver_fields["vehicleNumber"],
+                "vehicle_number": driver_fields["vehicle_number"],
+                "vehicleModel": driver_fields["vehicleModel"],
+                "vehicle_model": driver_fields["vehicle_model"],
+                "drivingLicenseNumber": driver_fields["drivingLicenseNumber"],
+                "upiId": driver_fields["upiId"],
+                "termsAccepted": True,
+                "termsAcceptedAt": accepted_at,
+                "termsVersion": DRIVER_TERMS_VERSION,
+                "privacyPolicyAccepted": True,
+                "privacyPolicyAcceptedAt": accepted_at,
+                "privacyPolicyVersion": DRIVER_PRIVACY_POLICY_VERSION,
+                "verificationStatus": "pending_review",
+                "driverAvailability": "offline",
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            }
+
+            user_ref.set(driver_updates, merge=True)
+            db.collection("phoneLoginIndex").document(token_phone).set(
+                {
+                    "uid": existing_uid,
+                    "email": driver_updates["email"],
+                    "role": "driver",
+                    "phone": token_phone,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+
+            if password and len(password) >= 6:
+                try:
+                    auth_client.update_user(existing_uid, password=password, display_name=name)
+                except Exception:
+                    pass
+
+            custom_token = auth_client.create_custom_token(existing_uid)
+            if isinstance(custom_token, bytes):
+                custom_token = custom_token.decode("utf-8")
+
+            response_profile = {**existing_profile, **driver_updates, "uid": existing_uid}
+            response_profile["updatedAt"] = int(accepted_at.timestamp() * 1000)
+            return {"ok": True, "customToken": custom_token, "profile": _sanitize_for_json(response_profile)}
+
+        # Case B: Brand new driver account
+        if len(password) < 6:
+            raise ApiError("Password must be at least 6 characters.", 400)
+
+        create_user_kwargs: dict[str, Any] = {
+            "password": password,
+            "display_name": name,
+            "phone_number": token_phone,
+        }
+        if email:
+            create_user_kwargs["email"] = email
+
+        user_record = auth_client.create_user(**create_user_kwargs)
+        created_uid = user_record.uid
+
+        profile_data: dict[str, Any] = {
+            "uid": created_uid,
+            "name": name,
+            "phone": token_phone,
+            "email": email,
+            "role": "driver",  # Trusted server-side driver role assignment
+            "gender": gender,
+            "phoneVerified": True,
+            "authProvider": "password",
+            "otpProvider": get_active_otp_provider_name(),
+            "profileCompleted": True,
+            "createdAt": accepted_at,
+            "vehicleType": driver_fields["vehicleType"],
+            "vehicle_type": driver_fields["vehicle_type"],
+            "vehicleNumber": driver_fields["vehicleNumber"],
+            "vehicle_number": driver_fields["vehicle_number"],
+            "vehicleModel": driver_fields["vehicleModel"],
+            "vehicle_model": driver_fields["vehicle_model"],
+            "drivingLicenseNumber": driver_fields["drivingLicenseNumber"],
+            "upiId": driver_fields["upiId"],
+            "termsAccepted": True,
+            "termsAcceptedAt": accepted_at,
+            "termsVersion": DRIVER_TERMS_VERSION,
+            "privacyPolicyAccepted": True,
+            "privacyPolicyAcceptedAt": accepted_at,
+            "privacyPolicyVersion": DRIVER_PRIVACY_POLICY_VERSION,
+            "verificationStatus": "pending_review",
+            "driverAvailability": "offline",
+            "lifetime_earnings": 0,
+            "total_completed_trips": 0,
+        }
+
+        db.collection("users").document(created_uid).set(profile_data)
+        db.collection("phoneLoginIndex").document(token_phone).set(
+            {
+                "uid": created_uid,
+                "email": profile_data["email"],
+                "role": "driver",
+                "phone": token_phone,
+                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+        custom_token = auth_client.create_custom_token(created_uid)
+        if isinstance(custom_token, bytes):
+            custom_token = custom_token.decode("utf-8")
+
+        response_profile = dict(profile_data)
+        response_profile["createdAt"] = int(accepted_at.timestamp() * 1000)
+
+        return {"ok": True, "customToken": custom_token, "profile": _sanitize_for_json(response_profile)}
+    except ApiError:
+        if created_uid and auth_client:
+            try:
+                auth_client.delete_user(created_uid)
+            except Exception:
+                pass
+            try:
+                db.collection("users").document(created_uid).delete()
+            except Exception:
+                pass
+            try:
+                db.collection("phoneLoginIndex").document(token_phone).delete()
+            except Exception:
+                pass
+        raise
+    except Exception as error:
+        if created_uid and auth_client:
+            try:
+                auth_client.delete_user(created_uid)
+            except Exception:
+                pass
+            try:
+                db.collection("users").document(created_uid).delete()
+            except Exception:
+                pass
+            try:
+                db.collection("phoneLoginIndex").document(token_phone).delete()
+            except Exception:
+                pass
+        raise ApiError("Could not create driver account. Please try again.", 500)
 
 
 @router.post("/reset-password")

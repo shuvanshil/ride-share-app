@@ -57,6 +57,47 @@ def check_user_phone_exists(phone: str) -> bool:
         return False
 
 
+def get_user_phone_role(phone: str) -> Optional[str]:
+    """Fast check to return the account role ('driver' | 'passenger') for a phone number, or None if not found."""
+    if not phone:
+        return None
+    try:
+        app = get_admin_app()
+        db = fb_firestore.client(app)
+
+        index_snap = db.collection("phoneLoginIndex").document(phone).get()
+        if index_snap.exists:
+            data = index_snap.to_dict() or {}
+            role = data.get("role")
+            if role:
+                return role
+            uid = data.get("uid")
+            if uid:
+                u_snap = db.collection("users").document(uid).get()
+                if u_snap.exists:
+                    return (u_snap.to_dict() or {}).get("role") or "passenger"
+            return "passenger"
+
+        user_query = db.collection("users").where("phone", "==", phone).limit(1).get()
+        if len(user_query) > 0:
+            data = user_query[0].to_dict() or {}
+            return data.get("role") or "passenger"
+
+        user_query_alt = db.collection("users").where("phone_number", "==", phone).limit(1).get()
+        if len(user_query_alt) > 0:
+            data = user_query_alt[0].to_dict() or {}
+            return data.get("role") or "passenger"
+
+        user_query_camel = db.collection("users").where("phoneNumber", "==", phone).limit(1).get()
+        if len(user_query_camel) > 0:
+            data = user_query_camel[0].to_dict() or {}
+            return data.get("role") or "passenger"
+
+        return None
+    except Exception:
+        return None
+
+
 def extract_bearer_token(authorization: Optional[str]) -> str:
     """Return a bearer token or an empty string for a malformed header."""
     match = _BEARER_RE.match(authorization or "")

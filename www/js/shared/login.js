@@ -108,6 +108,7 @@ const registrationContainer = document.getElementById('registration-container');
 const userRoleSelect = document.getElementById('user-role');
 const driverVerificationFields = document.getElementById('driver-verification-fields');
 const driverAgreementCheckbox = document.getElementById('driver-agreement-checkbox');
+const driverSignupCta = document.getElementById('driver-signup-cta');
 const sendOtpBtn = document.getElementById('send-otp-btn');
 const verifyOtpBtn = document.getElementById('verify-otp-btn');
 const passwordLoginBtn = document.getElementById('password-login-btn');
@@ -175,9 +176,11 @@ function updateAuthModeUi() {
         registerModeBtn.setAttribute('aria-selected', String(isRegistration));
     }
 
+    setVisible(driverSignupCta, isRegistration);
+
     if (isRegistration) {
         if (authEntryTitle) authEntryTitle.textContent = t('auth.create_account_title', "Create your account");
-        if (authEntryCopy) authEntryCopy.textContent = t('auth.create_account_sub', "Verify your mobile number, then complete your passenger or driver profile.");
+        if (authEntryCopy) authEntryCopy.textContent = t('auth.create_account_sub', "Verify your mobile number, then complete your passenger profile.");
         if (sendOtpBtn) sendOtpBtn.textContent = t('auth.send_registration_otp', "Send Registration OTP");
         if (verifyOtpBtn) verifyOtpBtn.textContent = t('auth.verify_and_continue', "Verify & Continue");
         return;
@@ -426,16 +429,16 @@ function routeToHome(profile) {
 }
 
 function isDriverRegistration() {
-    return userRoleSelect.value === "driver";
+    return false;
 }
 
 function updateRegistrationSubmitState() {
-    if (registerBtn.textContent === t('auth.creating_account', "Creating account...")) return;
-    registerBtn.disabled = isDriverRegistration() && !driverAgreementCheckbox.checked;
+    if (registerBtn && registerBtn.textContent === t('auth.creating_account', "Creating account...")) return;
+    if (registerBtn) registerBtn.disabled = false;
 }
 
 function updateRegistrationFieldsForRole() {
-    driverVerificationFields.classList.toggle('d-none', !isDriverRegistration());
+    if (driverVerificationFields) driverVerificationFields.classList.add('d-none');
     updateRegistrationSubmitState();
 }
 
@@ -463,7 +466,7 @@ function resetAuthStep() {
     resendOtpBtn.textContent = t('auth.resend_otp', "Resend OTP");
     registerBtn.disabled = false;
     registerBtn.textContent = t('auth.register_btn', "Create Account");
-    driverAgreementCheckbox.checked = false;
+    if (driverAgreementCheckbox) driverAgreementCheckbox.checked = false;
     updateRegistrationSubmitState();
     resetPasswordBtn.disabled = false;
     resetPasswordBtn.textContent = t('auth.update_password', "Update Password");
@@ -1012,41 +1015,7 @@ async function finalizeRegistration() {
         return;
     }
 
-    const profileData = { name, email, role, gender };
-
-    if (role === "driver") {
-        const vehicleType = document.getElementById('driver-vehicle-type').value;
-        const vehicleNumber = document.getElementById('driver-vehicle-number').value.trim().toUpperCase();
-        const vehicleModel = document.getElementById('driver-vehicle-model').value.trim();
-        const licenseNumber = document.getElementById('driver-license-number').value.trim().toUpperCase();
-        const upiId = document.getElementById('driver-upi-id').value.trim();
-
-        if (!vehicleType || !vehicleNumber || !vehicleModel || !licenseNumber || !upiId) {
-            await showAppAlert(t('auth.driver_details_required', "Drivers must select Bike or Auto and add all required vehicle and payment details."));
-            return;
-        }
-
-        if (!driverAgreementCheckbox.checked) {
-            await showAppAlert(t('auth.driver_agreement_required', "Please agree to LiphtUp's Terms and Conditions & Privacy Policy to create a driver account."));
-            return;
-        }
-
-        Object.assign(profileData, {
-            vehicleType,
-            vehicle_type: vehicleType,
-            vehicleNumber,
-            vehicle_number: vehicleNumber,
-            vehicleModel,
-            vehicle_model: vehicleModel,
-            drivingLicenseNumber: licenseNumber,
-            upiId,
-            termsAccepted: true,
-            verificationStatus: "pending_review",
-            driverAvailability: "searching",
-            lifetime_earnings: 0,
-            total_completed_trips: 0
-        });
-    }
+    const profileData = { name, email, role: "passenger", gender };
 
     registerBtn.disabled = true;
     registerBtn.textContent = t('auth.creating_account', "Creating account...");

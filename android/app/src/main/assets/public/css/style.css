@@ -2508,6 +2508,225 @@ select.gy-input:focus {
     box-shadow: none !important;
 }
 
+/* ==========================================================================
+   Driver Signup Link Card & Multi-step Wizard Styles
+   ========================================================================== */
+
+.auth-driver-signup-cta {
+    width: 100%;
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: #94A3B8;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1.5px solid #E2E8F0;
+}
+
+.auth-divider-text {
+    padding: 0 12px;
+    text-transform: lowercase;
+}
+
+.driver-signup-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #FFFFFF;
+    border: 1.5px solid #BBF7D0;
+    border-radius: 16px;
+    padding: 13px 16px;
+    cursor: pointer;
+    text-decoration: none !important;
+    transition: all 180ms ease;
+    box-shadow: 0 2px 8px rgba(22, 101, 52, 0.05);
+}
+
+.driver-signup-card:hover {
+    border-color: #166534;
+    background: #F0FDF4;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(22, 101, 52, 0.12);
+}
+
+.driver-signup-card-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.driver-signup-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: #DCFCE7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.driver-signup-card-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    text-align: left;
+}
+
+.driver-signup-card-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #166534;
+    line-height: 1.25;
+}
+
+.driver-signup-card-sub {
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #64748B;
+    line-height: 1.2;
+    margin-top: 2px;
+}
+
+.driver-signup-card-arrow {
+    color: #166534;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.driver-signup-card:hover .driver-signup-card-arrow {
+    transform: translateX(3px);
+}
+
+/* Multi-step Driver Wizard */
+.driver-steps-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 0 24px;
+    position: relative;
+    padding: 0 6px;
+}
+
+.driver-steps-track {
+    position: absolute;
+    top: 15px;
+    left: 36px;
+    right: 36px;
+    height: 3px;
+    background: #E2E8F0;
+    z-index: 1;
+}
+
+.driver-steps-progress {
+    height: 100%;
+    background: #166534;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 0%;
+}
+
+.driver-step-item {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.driver-step-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    color: #64748B;
+    font-size: 0.85rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #E2E8F0;
+    transition: all 0.25s ease;
+}
+
+.driver-step-item.active .driver-step-badge {
+    background: #166534;
+    color: #FFFFFF;
+    border-color: #166534;
+    box-shadow: 0 0 0 4px rgba(22, 101, 52, 0.18);
+}
+
+.driver-step-item.completed .driver-step-badge {
+    background: #DCFCE7;
+    color: #166534;
+    border-color: #166534;
+}
+
+.driver-step-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #64748B;
+    white-space: nowrap;
+    transition: color 0.2s ease;
+}
+
+.driver-step-item.active .driver-step-label {
+    color: #166534;
+    font-weight: 800;
+}
+
+.driver-step-item.completed .driver-step-label {
+    color: #0F172A;
+}
+
+.driver-nav-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    width: 100%;
+}
+
+.gy-btn-prev {
+    min-height: 52px;
+    padding: 0 18px;
+    border-radius: 14px;
+    background: #F8FAFC;
+    color: #334155;
+    font-size: 0.95rem;
+    font-weight: 700;
+    border: 1.5px solid #E2E8F0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.gy-btn-prev:hover {
+    background: #F1F5F9;
+    border-color: #CBD5E1;
+}
+
+.gy-btn-prev:active {
+    transform: scale(0.98);
+}
+
+
 .auth-footer-text {
     text-align: center;
     margin-top: 20px;

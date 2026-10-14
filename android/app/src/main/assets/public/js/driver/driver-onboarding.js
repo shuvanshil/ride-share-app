@@ -622,11 +622,17 @@ function getNotificationEligibleUntilDate() {
     return new Date(Date.now() + DRIVER_NOTIFICATION_ELIGIBLE_MS);
 }
 
+let isDutySwitchTransitioning = false;
+
 function getDriverDutyStatus(profile = currentUser) {
-    if (profile?.desiredAvailability === "offline" || profile?.driverAvailability === "offline") {
-        return "offline";
+    if (!profile) return "offline";
+    if (profile.desiredAvailability) {
+        return profile.desiredAvailability === "online" ? "online" : "offline";
     }
-    return "online";
+    if (profile.driverAvailability) {
+        return profile.driverAvailability === "offline" ? "offline" : "online";
+    }
+    return "offline";
 }
 
 function isDriverDutyOnline() {
@@ -661,7 +667,7 @@ function updateDutySwitchUi() {
     if (pillText) {
         pillText.textContent = online ? t('driver.duty_online', "Online") : t('driver.duty_offline', "Offline");
     }
-    if (label) {
+    if (label && (!switchInput || switchInput.dataset.busy !== "true")) {
         label.textContent = online ? t('driver.duty_online', "Online") : t('driver.duty_offline', "Offline");
     }
     if (helper) {
@@ -1812,9 +1818,11 @@ async function cancelRideByDriver(rideId) {
 function startDriverConsole(profile) {
     if (activeConsoleUid === profile.uid) {
         currentUser = { ...(currentUser || {}), ...profile };
-        driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
-        showDriverHome(currentUser);
-        updateDutySwitchUi();
+        if (!isDutySwitchTransitioning) {
+            driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
+            showDriverHome(currentUser);
+            updateDutySwitchUi();
+        }
         if (isDriverDutyOnline()) {
             if (driverPresenceWatchId === null) {
                 startDriverPresenceTracking();
@@ -1827,9 +1835,11 @@ function startDriverConsole(profile) {
 
     activeConsoleUid = profile.uid;
     currentUser = { ...(currentUser || {}), ...profile };
-    driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
-    showDriverHome(currentUser);
-    updateDutySwitchUi();
+    if (!isDutySwitchTransitioning) {
+        driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
+        showDriverHome(currentUser);
+        updateDutySwitchUi();
+    }
 
     if (isDriverDutyOnline()) {
         const initialLoc = readCachedDriverLocation();
@@ -1935,7 +1945,7 @@ addOptionalClickListener('logout-btn-review', async () => {
 });
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const switchInput = event.target;
-    if (switchInput.dataset.busy === "true") {
+    if (isDutySwitchTransitioning || switchInput.dataset.busy === "true") {
         event.preventDefault();
         return;
     }
@@ -1946,9 +1956,18 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
     const prevDesired = currentUser?.desiredAvailability || "offline";
     const prevDutyOnline = isDriverDutyOnline();
 
-    // Mark switch as busy & display inline loading spinner
+    // Guard transition against re-entry or background onSnapshot overwriting
+    isDutySwitchTransitioning = true;
     switchInput.dataset.busy = "true";
-    switchInput.disabled = true;
+
+    // Optimistically update in-memory duty and UI state immediately
+    driverDutyOnline = checked;
+    if (currentUser) {
+        currentUser.driverAvailability = targetStatus;
+        currentUser.desiredAvailability = checked ? "online" : "offline";
+        cacheProfile(currentUser);
+    }
+    updateDutySwitchUi();
 
     const dutyStateLabel = document.getElementById('driver-duty-state');
     if (dutyStateLabel) {
@@ -2006,8 +2025,9 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
         updateDutySwitchUi();
         await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
     } finally {
+        isDutySwitchTransitioning = false;
         switchInput.dataset.busy = "false";
-        switchInput.disabled = false;
+        updateDutySwitchUi();
     }
 });
 
