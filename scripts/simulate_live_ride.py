@@ -93,27 +93,54 @@ class MockCollection:
         self.db = db
         self.name = name
 
-    def document(self, doc_id: str):
+    def document(self, doc_id: str | None = None):
+        if not doc_id:
+            doc_id = f"doc_{len(self.store) + 1}_{int(time.time() * 1000)}"
         return MockDocRef(self.store, doc_id, self.db, self.name)
 
     def where(self, field: str, op: str, value: Any):
         return MockQuery(self.store, field, op, value)
 
+    def add(self, data: dict[str, Any]):
+        doc_id = f"doc_{len(self.store) + 1}_{int(time.time() * 1000)}"
+        ref = self.document(doc_id)
+        ref.set(data)
+        return None, ref
+
 
 class MockQuery:
-    def __init__(self, store: dict[str, dict[str, Any]], field: str, op: str, value: Any):
+    def __init__(self, store: dict[str, dict[str, Any]], field: str, op: str, value: Any, filters=None):
         self.store = store
-        self.field = field
-        self.op = op
-        self.value = value
+        self.filters = list(filters) if filters else []
+        self.filters.append((field, op, value))
+        self._limit = None
+
+    def where(self, field: str, op: str, value: Any):
+        return MockQuery(self.store, field, op, value, filters=self.filters)
 
     def limit(self, n: int):
+        self._limit = n
         return self
 
     def stream(self):
+        count = 0
         for doc_id, data in list(self.store.items()):
-            if self.op == "==" and data.get(self.field) == self.value:
+            match = True
+            for field, op, val in self.filters:
+                doc_val = data.get(field)
+                if op == "==":
+                    if doc_val != val:
+                        match = False
+                        break
+                elif op == "in":
+                    if not isinstance(val, (list, tuple, set)) or doc_val not in val:
+                        match = False
+                        break
+            if match:
                 yield MockDocSnapshot(doc_id, dict(data))
+                count += 1
+                if self._limit is not None and count >= self._limit:
+                    break
 
 
 class MockTransaction:
@@ -139,6 +166,12 @@ class MockDocRef:
         self.id = doc_id
         self.db = db
         self.col_name = col_name
+
+    def collection(self, name: str):
+        key = f"{self.col_name}/{self.id}/{name}"
+        if key not in self.db.collections:
+            self.db.collections[key] = {}
+        return MockCollection(self.db.collections[key], self.db, key)
 
     def get(self, transaction: Any = None):
         data = self.store.get(self.id)

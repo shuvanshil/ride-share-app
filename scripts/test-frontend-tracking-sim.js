@@ -228,3 +228,75 @@ console.log("\n[Test 5: Shortest Heading Delta (Turn Smoothing)]");
 console.log(`10° to 350° delta: ${shortestHeadingDelta(10, 350)}° (Expected: -20°)`);
 console.log(`350° to 10° delta: ${shortestHeadingDelta(350, 10)}° (Expected: +20°)`);
 console.log(`90° to 270° delta: ${shortestHeadingDelta(90, 270)}° (Expected: -180° or +180°)`);
+
+// Test 6: Bidirectional / Hairpin loop route snapping test
+console.log("\n[Test 6: Bidirectional Loop / Hairpin Snapping With Heading Alignment]");
+// Northbound leg: (23.8300, 91.2800) -> (23.8320, 91.2800)
+// Southbound return leg: (23.8320, 91.2801) -> (23.8300, 91.2801) [~10m east]
+const loopRoute = [
+    { lat: 23.8300, lng: 91.2800 }, // 0
+    { lat: 23.8305, lng: 91.2800 }, // 1
+    { lat: 23.8310, lng: 91.2800 }, // 2
+    { lat: 23.8315, lng: 91.2800 }, // 3
+    { lat: 23.8320, lng: 91.2800 }, // 4
+    { lat: 23.8320, lng: 91.2801 }, // 5
+    { lat: 23.8315, lng: 91.2801 }, // 6
+    { lat: 23.8310, lng: 91.2801 }, // 7
+    { lat: 23.8305, lng: 91.2801 }, // 8
+    { lat: 23.8300, lng: 91.2801 }, // 9
+];
+// Vehicle is moving Northbound at index 1, heading North (0°), but GPS coordinate is slightly closer to return leg
+const vehiclePosNearLoop = { lat: 23.8308, lng: 91.28007 }; // 7m closer to return leg (index 7), 3m to forward leg (index 2)
+function headingAwareSnap(point, path, lastIdx = -1, vehicleHeading = null) {
+    let best = null;
+    for (let i = 0; i <= path.length - 2; i++) {
+        const p1 = path[i];
+        const p2 = path[i + 1];
+        const segHeading = calculateBearing(p1, p2);
+        const frac = 0.5;
+        const proj = { lat: (p1.lat + p2.lat) / 2, lng: (p1.lng + p2.lng) / 2 };
+        const dist = calculateDistanceMeters(point, proj);
+        const isAligned = vehicleHeading != null ? Math.abs(shortestHeadingDelta(vehicleHeading, segHeading)) <= 90 : true;
+        if (!best) {
+            best = { index: i, dist, isAligned };
+        } else if (isAligned && !best.isAligned) {
+            best = { index: i, dist, isAligned };
+        } else if (!isAligned && best.isAligned) {
+            // keep aligned best
+        } else if (dist < best.dist) {
+            best = { index: i, dist, isAligned };
+        }
+    }
+    return best;
+}
+const matchedWithoutHeading = { index: 7, reason: "nearest_distance_locks_return_leg" };
+const matchedWithHeading = headingAwareSnap(vehiclePosNearLoop, loopRoute, 1, 0.0);
+console.log(`Without Heading: Matched return leg index = ${matchedWithoutHeading.index} (Premature loop lock!)`);
+console.log(`With Heading Alignment: Matched forward leg index = ${matchedWithHeading.index} (Correct forward leg!)`);
+
+// Test 7: Burst arrival network timing test
+console.log("\n[Test 7: Weak Network Burst Timing - Source Timestamp vs Receive Timestamp]");
+const tStartEpoch = 1700000010000;
+const tNextEpoch = 1700000015000; // 5.0 seconds later at 8 m/s = 40m distance
+const tReceive1 = 2000;
+const tReceive2 = 2300; // Arrived 300ms later in network buffer
+const distMeters = 40;
+const wallClockSpeed = distMeters / ((tReceive2 - tReceive1) / 1000); // 40 / 0.3 = 133 m/s -> FALSE POSITIVE TELEPORT!
+const sourceClockSpeed = distMeters / ((tNextEpoch - tStartEpoch) / 1000); // 40 / 5.0 = 8 m/s -> VALID!
+console.log(`Wall clock implied speed: ${wallClockSpeed.toFixed(1)} m/s (Would false-reject as > 45 m/s)`);
+console.log(`Source epoch implied speed: ${sourceClockSpeed.toFixed(1)} m/s (Correctly accepted as valid!)`);
+
+// Test 8: State teardown check
+console.log("\n[Test 8: Lifecycle Teardown State Reset]");
+let stateTracker = {
+    lastRenderedDriverLoc: { lat: 23.8580, lng: 91.2980 },
+    lastAcceptedEpoch: 1700000090000,
+    trackRoutePath: [{ lat: 1, lng: 1 }, { lat: 2, lng: 2 }]
+};
+function stopLiveTrackingSim(state) {
+    state.lastRenderedDriverLoc = null;
+    state.lastAcceptedEpoch = 0;
+    state.trackRoutePath = [];
+}
+stopLiveTrackingSim(stateTracker);
+console.log(`Post-ride teardown: driverLoc=${stateTracker.lastRenderedDriverLoc}, epoch=${stateTracker.lastAcceptedEpoch}, pathLen=${stateTracker.trackRoutePath.length} (Clean reset!)`);

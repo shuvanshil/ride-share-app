@@ -14,9 +14,9 @@ This QA report details the implementation and results of the end-to-end live rid
 2. **Synchronization:** Timeliness, ordering, and consistency of location state propagation across Firestore collections (`rides`, `driverPresence`, `driverMapPresence`, and `tripShareView`).
 3. **Rendering & Motion:** Visual smoothness of the vehicle marker, interpolation along road polylines, heading continuity during sharp maneuvers, prevention of 0°/360° spinning during stationary jitter, and comprehensive cleanup at ride conclusion.
 
-An initial baseline audit of the tracking pipeline uncovered **8 distinct defects** spanning the backend API (`api/routers/rides.py`), passenger tracking client (`www/js/passenger/passenger-tracking.js`), and core map animation utilities (`www/js/map/map-core.js`). Left unresolved, these defects caused driver markers to become permanently desynchronized after off-route detours, spin erratically at traffic stops, accept implausible supersonic teleportation jumps, drop critical timestamps required for share view polling, and fail to release map resources upon ride completion.
+An initial baseline audit and rigorous edge-case review of the tracking pipeline uncovered **14 distinct defects** spanning the backend API (`api/routers/rides.py`), passenger tracking client (`www/js/passenger/passenger-tracking.js`), core map animation utilities (`www/js/map/map-core.js`), and simulation test harnesses. Left unresolved, these defects caused driver markers to become permanently desynchronized after off-route detours, spin erratically or freeze in place at traffic stops, accept implausible supersonic teleportation jumps when speed was omitted, lock onto return legs in hairpin loops, drop critical timestamps required for share view polling, falsely classify weak network bursts as teleportation anomalies, and fail to release map resources upon ride completion.
 
-All 8 defects were resolved, mirrored identically across backend paths (`api/routers/rides.py` and `www/api/routers/rides.py`), synchronized to Android native assets (`android/app/src/main/assets/public/`), and validated through automated pytest suites (281/281 passed), deterministic Node.js spatial math suites, and Android Gradle compilation.
+All 14 defects were resolved, mirrored identically across backend paths (`api/routers/rides.py` and `www/api/routers/rides.py`), synchronized to Android native assets (`android/app/src/main/assets/public/`), and validated through automated pytest suites (281/281 passed), deterministic Node.js spatial math suites (8/8 test suites passed), discrete lifecycle simulations, and Android Gradle compilation.
 
 ---
 
@@ -150,6 +150,48 @@ To ensure reproducibility without depending on physical road tests:
 - **Affected Files:** `api/routers/rides.py`, `www/api/routers/rides.py`
 - **Resolution:** Added unified candidate fallback: `poly_val = candidate_poly or ride.get("route_polyline") or ride.get("routePolyline")`.
 - **Verification:** Share view payload verified with valid polyline string across all ride stages.
+
+### Defect 9: Simulation Harness Mock Incompatibilities Causing Background Handler Exceptions
+- **Severity:** Medium
+- **Root Cause:** In `scripts/simulate_live_ride.py` and `api/tests/test_live_ride_tracking_simulation.py`, `MockDocRef` lacked `.collection()` and `MockCollection.document()` required an argument. Additionally, `MockQuery` did not support chained `.where()` clauses. This caused background dispatch and notification persistence (`users/{uid}/inAppNotifications`) to throw uncaught exceptions during simulation runs.
+- **Affected Files:** `scripts/simulate_live_ride.py`, `api/tests/test_live_ride_tracking_simulation.py`
+- **Resolution:** Implemented recursive subcollection routing on `MockDocRef`, optional auto-generated IDs on `MockCollection.document()`, and multi-filter `.where()` chaining on `MockQuery`.
+- **Verification:** Ran `python scripts/simulate_live_ride.py` cleanly with zero `Failed to save in-app notification record` or `Error checking driver active rides` warnings.
+
+### Defect 10: Teleportation Vulnerability When Reported Speed is Omitted
+- **Severity:** High
+- **Root Cause:** The backend speed limit (`speed <= 55.0 m/s`) only verified explicit `driverSpeed` field values. If a client omitted `driverSpeed` (`None`), large coordinate jumps (e.g., 9.5 km in 2 seconds) were accepted without validation.
+- **Affected Files:** `api/routers/rides.py`, `www/api/routers/rides.py`
+- **Resolution:** Added server-side implied velocity calculation (`jump_dist_m / delta_sec`) against previous active ride location when `driverSpeed` is omitted, rejecting jumps exceeding 55.0 m/s with `400 Bad Request`.
+- **Verification:** Verified via `test_scenario_4_gps_anomalies_and_teleport_rejection` with omitted `driverSpeed` resulting in HTTP 400.
+
+### Defect 11: Missing `stopLiveTracking` Definition & State Leak Across Sequential Rides
+- **Severity:** High
+- **Root Cause:** `stopLiveTracking()` was referenced in documentation but not defined in `passenger-tracking.js`. When a ride ended, internal state variables (`lastRenderedDriverLoc`, `trackLastAcceptedEpochMs`, `trackPendingOutlier`, `lastRouteMatchIndex`) were never reset, causing subsequent rides tracked in the same session to falsely reject initial GPS coordinates as teleportation outliers.
+- **Affected Files:** `www/js/passenger/passenger-tracking.js`, `android/app/src/main/assets/public/js/passenger/passenger-tracking.js`
+- **Resolution:** Explicitly implemented `stopLiveTracking()` resetting all motion, outlier, and polyline tracking state variables, invoked whenever status enters `ENDED_STATUSES`.
+- **Verification:** Frontend test suite Test 8 verified full teardown and clean state reset.
+
+### Defect 12: Erroneous `Number(null) === 0` Stationary Freeze When Speed Is Omitted
+- **Severity:** High
+- **Root Cause:** In `map-core.js` and `passenger-tracking.js`, `Number(driverSpeed)` was used to compute `isMoving`. Because `Number(null) === 0`, whenever GPS hardware omitted instantaneous speed, `isMoving` evaluated to `false`. This caused the stationary noise suppression filter to lock position back to `previousPosition` on any step < 8m, freezing slow-moving vehicles in place.
+- **Affected Files:** `www/js/map/map-core.js`, `www/js/passenger/passenger-tracking.js`, native assets
+- **Resolution:** Properly distinguish null/unspecified speed from 0.0 m/s. When speed is not reported, infer movement state from `moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS`.
+- **Verification:** Verified slow crawl crawling at 2.5 m/s without explicit speed update moves marker smoothly without position resets.
+
+### Defect 13: Bidirectional Loop / Hairpin Snapping Locking onto Return Leg
+- **Severity:** High
+- **Root Cause:** In `matchPositionToRoute` and `snapToTrackRoute`, candidate segments were ranked purely by geometric distance (`dist < best.dist`). On two-way avenues, loops, or hairpin turns where the return leg was within 30m, reverse-facing segments closer by a few centimeters would steal the vehicle match, jumping indices ahead prematurely.
+- **Affected Files:** `www/js/map/map-core.js`, `www/js/passenger/passenger-tracking.js`, native assets
+- **Resolution:** Added heading-alignment gating (`angleDelta <= 90°`). Forward-aligned road segments always take precedence over opposite-facing return segments.
+- **Verification:** `node scripts/test-frontend-tracking-sim.js` Test 6 confirmed forward leg (index 1) selected over closer reverse leg (index 7).
+
+### Defect 14: Weak Network Burst Teleport Misclassification
+- **Severity:** Medium
+- **Root Cause:** When packets were buffered during transient network outages and delivered in rapid bursts, `elapsedSeconds` in `filterTrackPositionOutlier` was computed using client `performance.now()`. Because two 5-second spaced packets arrived 300ms apart, implied speed was calculated as 40m / 0.3s = 133 m/s, falsely triggering outlier rejection.
+- **Affected Files:** `www/js/passenger/passenger-tracking.js`, native assets
+- **Resolution:** Use `sourceTimestampEpochMs` interval when available for both packets, only falling back to client receive clock if source timestamps are missing.
+- **Verification:** Verified in frontend simulation Test 7 with 8.0 m/s source epoch speed correctly accepted.
 
 ---
 

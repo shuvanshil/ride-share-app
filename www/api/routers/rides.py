@@ -2153,6 +2153,18 @@ def update_driver_location(
             if ride.get("status") not in ACTIVE_PASSENGER_STATUSES:
                 raise ApiError("This ride is no longer active.", 409)
 
+            # Validate physical movement plausibility when speed is omitted
+            if body.driverSpeed is None:
+                prev_loc = ride.get("driverLocation") or profile.get("driverLocation")
+                prev_updated = ride.get("driverLocationUpdatedAt") or ride.get("updatedAt") or profile.get("lastLocationAt")
+                if prev_loc and isinstance(prev_loc, dict) and prev_loc.get("lat") is not None and prev_loc.get("lng") is not None:
+                    if prev_updated and isinstance(prev_updated, datetime):
+                        delta_sec = (datetime.now(timezone.utc) - prev_updated).total_seconds()
+                        if 1.0 <= delta_sec <= 300.0:
+                            jump_dist_m = _haversine_km(float(prev_loc["lat"]), float(prev_loc["lng"]), lat, lng) * 1000.0
+                            if (jump_dist_m / delta_sec) > 55.0:
+                                raise ApiError("Invalid GPS speed.", 400)
+
         location = {"lat": lat, "lng": lng}
         telemetry = {key: value for key, value in {
             "driverHeading": body.driverHeading,

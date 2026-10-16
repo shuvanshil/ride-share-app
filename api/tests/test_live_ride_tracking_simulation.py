@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -35,27 +35,54 @@ class MockCollection:
         self.db = db
         self.name = name
 
-    def document(self, doc_id: str):
+    def document(self, doc_id: str | None = None):
+        if not doc_id:
+            doc_id = f"doc_{len(self.store) + 1}_{int(time.time() * 1000)}"
         return MockDocRef(self.store, doc_id, self.db, self.name)
 
     def where(self, field: str, op: str, value: Any):
         return MockQuery(self.store, field, op, value)
 
+    def add(self, data: dict[str, Any]):
+        doc_id = f"doc_{len(self.store) + 1}_{int(time.time() * 1000)}"
+        ref = self.document(doc_id)
+        ref.set(data)
+        return None, ref
+
 
 class MockQuery:
-    def __init__(self, store: dict[str, dict[str, Any]], field: str, op: str, value: Any):
+    def __init__(self, store: dict[str, dict[str, Any]], field: str, op: str, value: Any, filters=None):
         self.store = store
-        self.field = field
-        self.op = op
-        self.value = value
+        self.filters = list(filters) if filters else []
+        self.filters.append((field, op, value))
+        self._limit = None
+
+    def where(self, field: str, op: str, value: Any):
+        return MockQuery(self.store, field, op, value, filters=self.filters)
 
     def limit(self, n: int):
+        self._limit = n
         return self
 
     def stream(self):
+        count = 0
         for doc_id, data in list(self.store.items()):
-            if self.op == "==" and data.get(self.field) == self.value:
+            match = True
+            for field, op, val in self.filters:
+                doc_val = data.get(field)
+                if op == "==":
+                    if doc_val != val:
+                        match = False
+                        break
+                elif op == "in":
+                    if not isinstance(val, (list, tuple, set)) or doc_val not in val:
+                        match = False
+                        break
+            if match:
                 yield MockDocSnapshot(doc_id, dict(data))
+                count += 1
+                if self._limit is not None and count >= self._limit:
+                    break
 
 
 class MockDocRef:
@@ -390,9 +417,19 @@ def test_scenario_3_weak_network_out_of_order_rejection(sim_env):
         assert r2.status_code == 200
 
         # Client-side filtering check: older packet rejected
-        last_accepted_epoch = 1700000004000
-        older_packet_epoch = 1700000001000
-        assert older_packet_epoch < last_accepted_epoch  # Stale packet filtered
+        def filter_telemetry(raw_pos, now_ms, epoch_ms, state):
+            if epoch_ms > 0:
+                if epoch_ms < state["last_epoch"]:
+                    return None
+            state["last_epoch"] = epoch_ms
+            return raw_pos
+
+        filter_state = {"last_epoch": 0}
+        f1 = filter_telemetry({"lat": 23.8350, "lng": 91.2850}, 1000, 1700000004000, filter_state)
+        assert f1 is not None
+        # Delayed/stale packet with epoch 1700000001000 arrives late
+        f_stale = filter_telemetry({"lat": 23.8320, "lng": 91.2820}, 1500, 1700000001000, filter_state)
+        assert f_stale is None  # Successfully dropped out-of-order packet
 
     app.dependency_overrides.pop(current_user, None)
 
@@ -433,6 +470,16 @@ def test_scenario_4_gps_anomalies_and_teleport_rejection(sim_env):
         })
         assert r_teleport.status_code == 400
         assert "Invalid GPS speed" in r_teleport.json()["error"]
+
+        # Teleport jump where speed is omitted (None) and elapsed time is 2.0s -> 400 Bad Request
+        db.collection("rides").document(ride_id).update({
+            "driverLocationUpdatedAt": datetime.now(timezone.utc) - timedelta(seconds=2)
+        })
+        r_teleport_omitted = client.post("/api/rides/driver-location", json={
+            "lat": 23.8900, "lng": 91.3500, "rideId": ride_id
+        })
+        assert r_teleport_omitted.status_code == 400
+        assert "Invalid GPS speed" in r_teleport_omitted.json()["error"]
 
         # Duplicate update handled gracefully
         r_dup = client.post("/api/rides/driver-location", json={

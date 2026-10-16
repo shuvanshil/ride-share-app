@@ -352,7 +352,7 @@ function projectFractionOntoSegment(point, segStart, segEnd) {
     return Math.max(0, Math.min(1, fraction));
 }
 
-function matchPositionToRoute(position, routePath, lastIndex = -1) {
+function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeading = null) {
     if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
 
     let searchFullRange = lastIndex < 0 || lastIndex >= routePath.length - 1;
@@ -369,35 +369,48 @@ function matchPositionToRoute(position, routePath, lastIndex = -1) {
         windowEnd = routePath.length - 2;
     }
 
-    let best = null;
-    for (let i = windowStart; i <= windowEnd; i += 1) {
-        const segStart = routePath[i];
-        const segEnd = routePath[i + 1];
+    const evaluateCandidate = (currentBest, segIndex, segStart, segEnd) => {
         const fraction = projectFractionOntoSegment(position, segStart, segEnd);
         const projected = {
             lat: segStart.lat + ((segEnd.lat - segStart.lat) * fraction),
             lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
         };
         const distanceMeters = calculateDistanceMeters(position, projected);
-        if (!best || distanceMeters < best.distanceMeters) {
-            best = { index: i, point: projected, distanceMeters, heading: calculateBearing(segStart, segEnd) };
+        if (distanceMeters > ROUTE_SNAP_MAX_METERS) return currentBest;
+
+        const segHeading = calculateBearing(segStart, segEnd);
+        const isHeadingAligned = (vehicleHeading != null && segHeading != null)
+            ? Math.abs(shortestHeadingDelta(vehicleHeading, segHeading)) <= 90
+            : true;
+
+        if (!currentBest) {
+            return { index: segIndex, point: projected, distanceMeters, heading: segHeading, aligned: isHeadingAligned };
         }
+
+        // Heading-aligned segment takes precedence over opposite-facing segment
+        if (isHeadingAligned && !currentBest.aligned) {
+            return { index: segIndex, point: projected, distanceMeters, heading: segHeading, aligned: isHeadingAligned };
+        }
+        if (!isHeadingAligned && currentBest.aligned) {
+            return currentBest;
+        }
+
+        // Both aligned or both unaligned: compare distance
+        if (distanceMeters < currentBest.distanceMeters) {
+            return { index: segIndex, point: projected, distanceMeters, heading: segHeading, aligned: isHeadingAligned };
+        }
+        return currentBest;
+    };
+
+    let best = null;
+    for (let i = windowStart; i <= windowEnd; i += 1) {
+        best = evaluateCandidate(best, i, routePath[i], routePath[i + 1]);
     }
 
     // If windowed search did not find a match within tolerance (e.g. detour or rejoin far ahead), search the entire route
-    if ((!best || best.distanceMeters > ROUTE_SNAP_MAX_METERS) && !searchFullRange) {
+    if (!best && !searchFullRange) {
         for (let i = 0; i <= routePath.length - 2; i += 1) {
-            const segStart = routePath[i];
-            const segEnd = routePath[i + 1];
-            const fraction = projectFractionOntoSegment(position, segStart, segEnd);
-            const projected = {
-                lat: segStart.lat + ((segEnd.lat - segStart.lat) * fraction),
-                lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
-            };
-            const distanceMeters = calculateDistanceMeters(position, projected);
-            if (!best || distanceMeters < best.distanceMeters) {
-                best = { index: i, point: projected, distanceMeters, heading: calculateBearing(segStart, segEnd) };
-            }
+            best = evaluateCandidate(best, i, routePath[i], routePath[i + 1]);
         }
     }
 
@@ -1705,10 +1718,18 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
     let matchedRouteHeading = null;
     let routeMatchIndex = existing?.routeMatchIndex ?? -1;
 
+    const previousPosition = existing?.marker?.getPosition?.();
+    const prevPosObj = previousPosition ? { lat: previousPosition.lat(), lng: previousPosition.lng() } : null;
+    const moveDist = prevPosObj ? calculateDistanceMeters(prevPosObj, rawPosition) : 0;
+    const rawSpeed = driver?.driverSpeed != null && driver?.driverSpeed !== "" ? Number(driver.driverSpeed) : null;
+    const hasValidSpeed = rawSpeed !== null && Number.isFinite(rawSpeed);
+    const isMoving = hasValidSpeed ? rawSpeed >= 0.8 : (moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS);
+
     // 1. Monotonic Road-Snapping: If routePath exists, snap vehicle onto the road polyline
     if (Array.isArray(routePath) && routePath.length >= 2) {
         const lastIdx = existing?.routeMatchIndex ?? -1;
-        const match = matchPositionToRoute(rawPosition, routePath, lastIdx);
+        const candidateHeading = heading ?? existing?.heading ?? null;
+        const match = matchPositionToRoute(rawPosition, routePath, lastIdx, isMoving ? candidateHeading : null);
         if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
             position = match.point;
             routeMatchIndex = match.index;
@@ -1722,22 +1743,16 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
     }
 
     // 2. Authoritative Heading Determination & Stationary Noise Suppression
-    const previousPosition = existing?.marker?.getPosition?.();
-    const speed = Number(driver?.driverSpeed);
-    const isMoving = Number.isFinite(speed) ? speed >= 0.8 : false;
-
-    if (!isMoving && previousPosition && calculateDistanceMeters({ lat: previousPosition.lat(), lng: previousPosition.lng() }, position) < DRIVER_MARKER_NOISE_FLOOR_METERS) {
-        position = { lat: previousPosition.lat(), lng: previousPosition.lng() };
+    if (!isMoving && prevPosObj && calculateDistanceMeters(prevPosObj, position) < DRIVER_MARKER_NOISE_FLOOR_METERS) {
+        position = prevPosObj;
     }
 
     if (matchedRouteHeading != null) {
         // Vehicle is matched to the active road route; follow road segment bearing
         heading = matchedRouteHeading;
-    } else if (previousPosition) {
-        const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
-        const moveDist = calculateDistanceMeters(previous, rawPosition);
+    } else if (prevPosObj) {
         if (isMoving && moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
-            const motionBearing = calculateBearing(previous, rawPosition);
+            const motionBearing = calculateBearing(prevPosObj, rawPosition);
             if (motionBearing != null) {
                 heading = motionBearing;
             }
