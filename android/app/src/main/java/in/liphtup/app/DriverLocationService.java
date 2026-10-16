@@ -525,7 +525,7 @@ public class DriverLocationService extends Service implements LocationListener {
             JSONObject queued = offlineQueue.poll();
             if (queued == null) break;
             drained++;
-            int code = sendPayloadHttp(queued);
+            int code = sendPayloadHttp(queued, false);
             if (code != 200 && code != 204) {
                 enqueueOfflineFix(queued);
                 break;
@@ -533,7 +533,7 @@ public class DriverLocationService extends Service implements LocationListener {
         }
     }
 
-    private int sendPayloadHttp(JSONObject payload) {
+    private int sendPayloadHttp(JSONObject payload, boolean isLiveFix) {
         HttpURLConnection conn = null;
         try {
             String endpoint = normalizeApiBaseUrl(apiBaseUrl) + "/api/rides/driver-location";
@@ -554,7 +554,7 @@ public class DriverLocationService extends Service implements LocationListener {
 
             int code = conn.getResponseCode();
             Log.d(TAG, "Transmitted location via native background service: status=" + code);
-            if (code == 200) {
+            if (code == 200 && isLiveFix) {
                 try (java.io.InputStream is = conn.getInputStream()) {
                     if (is != null) {
                         java.util.Scanner scanner = new java.util.Scanner(is, StandardCharsets.UTF_8.name()).useDelimiter("\\A");
@@ -601,7 +601,7 @@ public class DriverLocationService extends Service implements LocationListener {
             }
         } catch (Exception ignored) {}
 
-        int code = sendPayloadHttp(payload);
+        int code = sendPayloadHttp(payload, true);
         if (code == 200 || code == 204) {
             flushOfflineQueue();
             return true;
@@ -615,6 +615,7 @@ public class DriverLocationService extends Service implements LocationListener {
             mainHandler.post(() -> {
                 activeRideId = "";
                 trackingState = "on_duty";
+                dynamicNotificationText = null;
                 getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
                         .putString("tracking_state", "on_duty")
                         .putString("ride_id", "")

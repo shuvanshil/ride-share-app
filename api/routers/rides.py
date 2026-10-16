@@ -309,6 +309,18 @@ def _finite_float(value: Any, default: float = 0.0) -> float:
     return number if math.isfinite(number) else default
 
 
+def _coord_or_none(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        f = float(value)
+        if math.isfinite(f) and abs(f) > 1e-4:
+            return f
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
 def _format_rupees(value: float) -> str:
     return f"Rs {round(value):g}"
 
@@ -2188,11 +2200,13 @@ def update_driver_location(
             if body.driverSpeed is None:
                 prev_loc = ride.get("driverLocation") or profile.get("driverLocation")
                 prev_updated = ride.get("driverLocationUpdatedAt") or ride.get("updatedAt") or profile.get("lastLocationAt")
-                if prev_loc and isinstance(prev_loc, dict) and prev_loc.get("lat") is not None and prev_loc.get("lng") is not None:
-                    if prev_updated and isinstance(prev_updated, datetime):
+                if prev_loc and isinstance(prev_loc, dict):
+                    p_lat = _coord_or_none(prev_loc.get("lat"))
+                    p_lng = _coord_or_none(prev_loc.get("lng"))
+                    if p_lat is not None and p_lng is not None and prev_updated and isinstance(prev_updated, datetime):
                         delta_sec = (datetime.now(timezone.utc) - prev_updated).total_seconds()
                         if 1.0 <= delta_sec <= 300.0:
-                            jump_dist_m = _haversine_km(float(prev_loc["lat"]), float(prev_loc["lng"]), lat, lng) * 1000.0
+                            jump_dist_m = _haversine_km(p_lat, p_lng, lat, lng) * 1000.0
                             if (jump_dist_m / delta_sec) > 55.0:
                                 raise ApiError("Invalid GPS speed.", 400)
 
@@ -2262,12 +2276,15 @@ def update_driver_location(
                     poly_candidate = (body.routePolyline and str(body.routePolyline).strip()) or ride.get("route_polyline") or ride.get("routePolyline") or ""
                     route_points = decode_polyline(str(poly_candidate))
                     road_travelled_km = road_distance_along_route_km(route_points, location)
-                    pickup = {"lat": _finite_float(ride.get("pickup_lat")), "lng": _finite_float(ride.get("pickup_lng"))}
-                    pickup_to_curr_km = (
-                        road_travelled_km
-                        if road_travelled_km is not None
-                        else _haversine_km(pickup["lat"], pickup["lng"], location["lat"], location["lng"])
-                    )
+                    pickup_obj = ride.get("pickup") if isinstance(ride.get("pickup"), dict) else {}
+                    p_lat_v = _coord_or_none(ride.get("pickup_lat") or ride.get("pickupLat") or pickup_obj.get("lat"))
+                    p_lng_v = _coord_or_none(ride.get("pickup_lng") or ride.get("pickupLng") or pickup_obj.get("lng"))
+                    if road_travelled_km is not None:
+                        pickup_to_curr_km = road_travelled_km
+                    elif p_lat_v is not None and p_lng_v is not None:
+                        pickup_to_curr_km = _haversine_km(p_lat_v, p_lng_v, location["lat"], location["lng"])
+                    else:
+                        pickup_to_curr_km = 0.0
                     curr_travelled_km = max(0.0, min(pickup_to_curr_km, planned_km))
                     curr_ratio = max(0.0, min(1.0, pickup_to_curr_km / planned_km))
 
@@ -2360,10 +2377,10 @@ def update_driver_location(
             ride_status = str(ride.get("status") or "")
             pickup_obj = ride.get("pickup") if isinstance(ride.get("pickup"), dict) else {}
             drop_obj = ride.get("drop") if isinstance(ride.get("drop"), dict) else {}
-            drop_lat = _finite_float(ride.get("drop_lat") or ride.get("dropLat") or ride.get("destination_lat") or ride.get("destinationLat") or drop_obj.get("lat"))
-            drop_lng = _finite_float(ride.get("drop_lng") or ride.get("dropLng") or ride.get("destination_lng") or ride.get("destinationLng") or drop_obj.get("lng"))
-            pickup_lat = _finite_float(ride.get("pickup_lat") or ride.get("pickupLat") or pickup_obj.get("lat"))
-            pickup_lng = _finite_float(ride.get("pickup_lng") or ride.get("pickupLng") or pickup_obj.get("lng"))
+            drop_lat = _coord_or_none(ride.get("drop_lat") or ride.get("dropLat") or ride.get("destination_lat") or ride.get("destinationLat") or drop_obj.get("lat"))
+            drop_lng = _coord_or_none(ride.get("drop_lng") or ride.get("dropLng") or ride.get("destination_lng") or drop_obj.get("destinationLng") or drop_obj.get("lng"))
+            pickup_lat = _coord_or_none(ride.get("pickup_lat") or ride.get("pickupLat") or pickup_obj.get("lat"))
+            pickup_lng = _coord_or_none(ride.get("pickup_lng") or ride.get("pickupLng") or pickup_obj.get("lng"))
 
             if ride_status in {"started", "en_route"} or bool(ride.get("pinVerifiedAt")):
                 planned_km = max(0.0, _finite_float(ride.get("distance_km") or ride.get("distanceKm")))
@@ -2379,6 +2396,8 @@ def update_driver_location(
                     remaining_km = 0.0
                 elif pickup_lat is not None and pickup_lng is not None:
                     remaining_km = _haversine_km(lat, lng, pickup_lat, pickup_lng)
+                elif (ride.get("distance_km") or ride.get("distanceKm")) is not None:
+                    remaining_km = max(0.0, _finite_float(ride.get("distance_km") or ride.get("distanceKm")))
             else:
                 if drop_lat is not None and drop_lng is not None:
                     remaining_km = _haversine_km(lat, lng, drop_lat, drop_lng)
@@ -2393,14 +2412,14 @@ def update_driver_location(
                     speed_mps = body.driverSpeed
                     if speed_mps is not None and speed_mps > 2.0:
                         speed_kmh = speed_mps * 3.6
-                        eta_mins = max(1, round((remaining_km / speed_kmh) * 60))
+                        eta_mins = min(1440, max(1, round((remaining_km / speed_kmh) * 60)))
                     else:
                         planned_dist = _finite_float(ride.get("distance_km") or ride.get("distanceKm"))
                         planned_dur = _finite_float(ride.get("duration_minutes") or ride.get("durationMinutes"))
                         if planned_dist > 0.5 and planned_dur > 0:
-                            eta_mins = max(1, round(planned_dur * (remaining_km / planned_dist)))
+                            eta_mins = min(1440, max(1, round(planned_dur * (remaining_km / planned_dist))))
                         else:
-                            eta_mins = max(1, round((remaining_km / 25.0) * 60))
+                            eta_mins = min(1440, max(1, round((remaining_km / 25.0) * 60)))
 
         return {
             "ok": True,

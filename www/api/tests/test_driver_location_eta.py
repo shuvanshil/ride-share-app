@@ -150,4 +150,32 @@ def test_driver_location_calculates_remaining_km_and_eta():
         assert data_acc["eta_mins"] is not None
         assert data_acc["eta_mins"] >= 1
 
+        # 7. Test missing/zero coordinates do NOT calculate bogus 10,000+ km Null Island distance
+        ride_no_coords_id = "ride_test_no_coords_505"
+        db.collection("rides").document(ride_no_coords_id).set({
+            "ride_id": ride_no_coords_id,
+            "driver_id": driver_uid,
+            "passenger_id": passenger_uid,
+            "status": "en_route",
+            "distance_km": 6.0,
+            "duration_minutes": 18,
+            "pickup_lat": 0.0,
+            "pickup_lng": 0.0,
+            "drop_lat": 0.0,
+            "drop_lng": 0.0,
+        })
+        resp_no_coords = client.post("/api/rides/driver-location", json={
+            "lat": 23.8350,
+            "lng": 91.2850,
+            "rideId": ride_no_coords_id,
+            "driverSpeed": 8.0,
+        })
+        assert resp_no_coords.status_code == 200
+        data_nc = resp_no_coords.json()
+        assert data_nc["ok"] is True
+        # Must fall back to planned distance (6.0), NOT Null Island distance (~10,000 km)
+        assert data_nc["remaining_km"] == 6.0
+        assert data_nc["eta_mins"] is not None
+        assert data_nc["eta_mins"] < 60
+
     app.dependency_overrides.clear()
