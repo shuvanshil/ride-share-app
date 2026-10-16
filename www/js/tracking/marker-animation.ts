@@ -173,6 +173,13 @@ export function animateMarkerMove(
         return { cancel: () => {}, isFinished: () => true };
     }
 
+    // 2. Cancel any currently executing animation on this marker first so marker freezes at its exact current frame
+    const previous = activeAnimations.get(marker);
+    if (previous) {
+        previous.cancel();
+        activeAnimations.delete(marker);
+    }
+
     const startPos = extractMarkerPosition(marker);
     if (!startPos) {
         // Initial placement without prior position
@@ -184,7 +191,7 @@ export function animateMarkerMove(
     const startLat = startPos.lat;
     const startLng = startPos.lng;
 
-    // 2. Teleport / Identity Check
+    // 3. Teleport / Identity Check
     const distanceKm = haversineKm(startLat, startLng, targetLat, targetLng);
     if (distanceKm < 0.0001) {
         // Less than 10 centimeters: stationary, no movement needed
@@ -199,13 +206,6 @@ export function animateMarkerMove(
         return { cancel: () => {}, isFinished: () => true };
     }
 
-    // 3. Cancel any currently executing animation on this marker
-    const previous = activeAnimations.get(marker);
-    if (previous) {
-        previous.cancel();
-        activeAnimations.delete(marker);
-    }
-
     // 4. Calculate Bearing & Antimeridian Longitude Delta
     let deltaLng = targetLng - startLng;
     if (deltaLng > 180) {
@@ -218,9 +218,18 @@ export function animateMarkerMove(
         ? options.targetHeading
         : calculateBearing(startLat, startLng, targetLat, targetLng);
 
-    const startHeading = (marker as any).__currentHeading !== undefined
-        ? (marker as any).__currentHeading
-        : targetHeading;
+    let startHeading = (marker as any).__currentHeading;
+    if (startHeading === undefined) {
+        const icon = typeof marker.getIcon === 'function' ? marker.getIcon() : marker.icon;
+        if (icon && typeof icon === 'object' && typeof icon.rotation === 'number') {
+            startHeading = icon.rotation;
+        } else if (typeof marker.getHeading === 'function') {
+            startHeading = marker.getHeading();
+        }
+    }
+    if (startHeading === undefined || isNaN(startHeading)) {
+        startHeading = targetHeading;
+    }
 
     const headingDelta = shortestAngleDelta(startHeading, targetHeading);
     const easingType = options?.easing || 'easeInOutCubic';
@@ -253,7 +262,12 @@ export function animateMarkerMove(
 
         // Incremental smooth positional frames via Linear Interpolation (LERP)
         const currentLat = startLat + (targetLat - startLat) * progress;
-        const currentLng = startLng + deltaLng * progress;
+        let currentLng = startLng + deltaLng * progress;
+        if (currentLng > 180) {
+            currentLng -= 360;
+        } else if (currentLng < -180) {
+            currentLng += 360;
+        }
 
         setMarkerPosition(marker, currentLat, currentLng);
 

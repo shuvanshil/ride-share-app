@@ -160,6 +160,13 @@
             return { cancel: function () {}, isFinished: function () { return true; } };
         }
 
+        // Cancel previous animation frame first so marker freezes at its exact intermediate position
+        var prev = activeAnimations.get(marker);
+        if (prev) {
+            prev.cancel();
+            activeAnimations.delete(marker);
+        }
+
         var startPos = extractMarkerPosition(marker);
         if (!startPos) {
             setMarkerPosition(marker, targetLat, targetLng);
@@ -183,13 +190,6 @@
             return { cancel: function () {}, isFinished: function () { return true; } };
         }
 
-        // Cancel previous animation frame
-        var prev = activeAnimations.get(marker);
-        if (prev) {
-            prev.cancel();
-            activeAnimations.delete(marker);
-        }
-
         var deltaLng = targetLng - startLng;
         if (deltaLng > 180) {
             deltaLng -= 360;
@@ -201,9 +201,18 @@
             ? options.targetHeading
             : calculateBearing(startLat, startLng, targetLat, targetLng);
 
-        var startHeading = marker.__currentHeading !== undefined
-            ? marker.__currentHeading
-            : targetHeading;
+        var startHeading = marker.__currentHeading;
+        if (startHeading === undefined) {
+            var icon = typeof marker.getIcon === 'function' ? marker.getIcon() : marker.icon;
+            if (icon && typeof icon === 'object' && typeof icon.rotation === 'number') {
+                startHeading = icon.rotation;
+            } else if (typeof marker.getHeading === 'function') {
+                startHeading = marker.getHeading();
+            }
+        }
+        if (startHeading === undefined || isNaN(startHeading)) {
+            startHeading = targetHeading;
+        }
 
         var headingDelta = shortestAngleDelta(startHeading, targetHeading);
         var easingType = (options && options.easing) || 'easeInOutCubic';
@@ -237,6 +246,11 @@
             // Incremental LERP calculations
             var currentLat = startLat + (targetLat - startLat) * progress;
             var currentLng = startLng + deltaLng * progress;
+            if (currentLng > 180) {
+                currentLng -= 360;
+            } else if (currentLng < -180) {
+                currentLng += 360;
+            }
 
             setMarkerPosition(marker, currentLat, currentLng);
 

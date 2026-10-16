@@ -124,4 +124,30 @@ def test_driver_location_calculates_remaining_km_and_eta():
         assert data_no_ride["remaining_km"] is None
         assert data_no_ride["eta_mins"] is None
 
+        # 6. Test 'accepted' state with camelCase pickupLat/pickupLng
+        ride_accepted_id = "ride_test_accepted_404"
+        db.collection("rides").document(ride_accepted_id).set({
+            "ride_id": ride_accepted_id,
+            "driver_id": driver_uid,
+            "passenger_id": passenger_uid,
+            "status": "accepted",
+            "pickupLat": 23.8400,
+            "pickupLng": 91.2900,
+            "distanceKm": 4.0,
+            "durationMinutes": 12,
+        })
+        resp_accepted = client.post("/api/rides/driver-location", json={
+            "lat": 23.8350,
+            "lng": 91.2850,
+            "rideId": ride_accepted_id,
+            "driverSpeed": 1.0,  # Below 2.0 m/s threshold -> uses planned duration ratio
+        })
+        assert resp_accepted.status_code == 200
+        data_acc = resp_accepted.json()
+        assert data_acc["ok"] is True
+        assert data_acc["remaining_km"] is not None
+        assert data_acc["remaining_km"] > 0
+        assert data_acc["eta_mins"] is not None
+        assert data_acc["eta_mins"] >= 1
+
     app.dependency_overrides.clear()

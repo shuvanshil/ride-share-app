@@ -491,7 +491,7 @@ export class RideTrackingService {
         const endpoint = `${this.options.apiBaseUrl}${this.options.syncUrl}`;
         for (const item of batch) {
             try {
-                await fetch(endpoint, {
+                const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -499,6 +499,9 @@ export class RideTrackingService {
                     },
                     body: JSON.stringify(item),
                 });
+                if (!res.ok && res.status >= 500) {
+                    this.offlineQueue.push(item);
+                }
             } catch (e) {
                 // If network fails again, re-enqueue remaining items
                 this.offlineQueue.push(item);

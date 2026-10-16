@@ -124,6 +124,9 @@ public class DriverLocationService extends Service implements LocationListener {
     private Float lastBearing = null;
     private long lastGpsFixTimeMs = 0;
 
+    private static final int MAX_OFFLINE_QUEUE_SIZE = 60;
+    private final java.util.concurrent.ConcurrentLinkedQueue<JSONObject> offlineQueue = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
     public static String normalizeApiBaseUrl(String url) {
         if (url == null || url.trim().isEmpty()) {
             return DEFAULT_API_BASE_URL;
@@ -186,6 +189,7 @@ public class DriverLocationService extends Service implements LocationListener {
         String action = intent.getAction();
         if (ACTION_STOP.equals(action)) {
             Log.d(TAG, "Stopping driver background location service.");
+            dynamicNotificationText = null;
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -194,7 +198,11 @@ public class DriverLocationService extends Service implements LocationListener {
             trackingState = intent.getStringExtra(EXTRA_TRACKING_STATE);
         }
         if (intent.hasExtra(EXTRA_RIDE_ID)) {
-            activeRideId = intent.getStringExtra(EXTRA_RIDE_ID);
+            String newRideId = intent.getStringExtra(EXTRA_RIDE_ID);
+            if (newRideId != null && !newRideId.equals(activeRideId)) {
+                dynamicNotificationText = null;
+            }
+            activeRideId = newRideId != null ? newRideId : "";
         }
         if (intent.hasExtra(EXTRA_AUTH_TOKEN)) {
             String token = intent.getStringExtra(EXTRA_AUTH_TOKEN);
@@ -501,7 +509,31 @@ public class DriverLocationService extends Service implements LocationListener {
         });
     }
 
-    private boolean doTransmit(Location location, Float heading, String rideId) {
+    private void enqueueOfflineFix(JSONObject payload) {
+        if (payload == null) return;
+        if (offlineQueue.size() >= MAX_OFFLINE_QUEUE_SIZE) {
+            offlineQueue.poll();
+        }
+        offlineQueue.offer(payload);
+        Log.d(TAG, "Enqueued offline location fix, queue size: " + offlineQueue.size());
+    }
+
+    private void flushOfflineQueue() {
+        if (offlineQueue.isEmpty()) return;
+        int drained = 0;
+        while (!offlineQueue.isEmpty() && drained < 5) {
+            JSONObject queued = offlineQueue.poll();
+            if (queued == null) break;
+            drained++;
+            int code = sendPayloadHttp(queued);
+            if (code != 200 && code != 204) {
+                enqueueOfflineFix(queued);
+                break;
+            }
+        }
+    }
+
+    private int sendPayloadHttp(JSONObject payload) {
         HttpURLConnection conn = null;
         try {
             String endpoint = normalizeApiBaseUrl(apiBaseUrl) + "/api/rides/driver-location";
@@ -514,7 +546,45 @@ public class DriverLocationService extends Service implements LocationListener {
             conn.setReadTimeout(6000);
             conn.setDoOutput(true);
 
-            JSONObject payload = new JSONObject();
+            byte[] postBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(postBytes);
+                os.flush();
+            }
+
+            int code = conn.getResponseCode();
+            Log.d(TAG, "Transmitted location via native background service: status=" + code);
+            if (code == 200) {
+                try (java.io.InputStream is = conn.getInputStream()) {
+                    if (is != null) {
+                        java.util.Scanner scanner = new java.util.Scanner(is, StandardCharsets.UTF_8.name()).useDelimiter("\\A");
+                        String respBody = scanner.hasNext() ? scanner.next() : "";
+                        if (!respBody.isEmpty()) {
+                            JSONObject json = new JSONObject(respBody);
+                            if (json.has("remaining_km") && !json.isNull("remaining_km") &&
+                                json.has("eta_mins") && !json.isNull("eta_mins")) {
+                                double remainingKm = json.getDouble("remaining_km");
+                                int etaMins = json.getInt("eta_mins");
+                                updateRideProgress(remainingKm, etaMins);
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    Log.d(TAG, "Could not parse response for dynamic notification: " + ex.getMessage());
+                }
+            }
+            return code;
+        } catch (Exception e) {
+            Log.w(TAG, "Native background location transmission failed: " + e.getMessage());
+            return -1;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private boolean doTransmit(Location location, Float heading, String rideId) {
+        JSONObject payload = new JSONObject();
+        try {
             payload.put("lat", location.getLatitude());
             payload.put("lng", location.getLongitude());
             if (rideId != null && !rideId.isEmpty()) {
@@ -529,59 +599,33 @@ public class DriverLocationService extends Service implements LocationListener {
             if (heading != null && !Float.isNaN(heading) && heading >= 0 && heading <= 360.0f) {
                 payload.put("driverHeading", heading.doubleValue());
             }
+        } catch (Exception ignored) {}
 
-            byte[] postBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(postBytes);
-                os.flush();
-            }
-
-            int code = conn.getResponseCode();
-            Log.d(TAG, "Transmitted location via native background service: status=" + code);
-            if (code == 200 || code == 204) {
-                if (code == 200) {
-                    try (java.io.InputStream is = conn.getInputStream()) {
-                        if (is != null) {
-                            java.util.Scanner scanner = new java.util.Scanner(is, StandardCharsets.UTF_8.name()).useDelimiter("\\A");
-                            String respBody = scanner.hasNext() ? scanner.next() : "";
-                            if (!respBody.isEmpty()) {
-                                JSONObject json = new JSONObject(respBody);
-                                if (json.has("remaining_km") && !json.isNull("remaining_km") &&
-                                    json.has("eta_mins") && !json.isNull("eta_mins")) {
-                                    double remainingKm = json.getDouble("remaining_km");
-                                    int etaMins = json.getInt("eta_mins");
-                                    updateRideProgress(remainingKm, etaMins);
-                                }
-                            }
-                        }
-                    } catch (Exception ex) {
-                        Log.d(TAG, "Could not parse response for dynamic notification: " + ex.getMessage());
-                    }
-                }
-                return true;
-            }
-            if (code == 401) {
-                Log.w(TAG, "Backend returned 401 Unauthorized for background location.");
-                return false;
-            }
-            if (code == 404 || code == 409) {
-                Log.w(TAG, "Active ride terminated on backend (status=" + code + "). Resetting to on_duty.");
-                mainHandler.post(() -> {
-                    activeRideId = "";
-                    trackingState = "on_duty";
-                    getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
-                            .putString("tracking_state", "on_duty")
-                            .putString("ride_id", "")
-                            .apply();
-                    updateNotification();
-                    requestLocationUpdates();
-                });
-                return true;
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Native background location transmission failed: " + e.getMessage());
-        } finally {
-            if (conn != null) conn.disconnect();
+        int code = sendPayloadHttp(payload);
+        if (code == 200 || code == 204) {
+            flushOfflineQueue();
+            return true;
+        }
+        if (code == 401) {
+            Log.w(TAG, "Backend returned 401 Unauthorized for background location.");
+            return false;
+        }
+        if (code == 404 || code == 409) {
+            Log.w(TAG, "Active ride terminated on backend (status=" + code + "). Resetting to on_duty.");
+            mainHandler.post(() -> {
+                activeRideId = "";
+                trackingState = "on_duty";
+                getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
+                        .putString("tracking_state", "on_duty")
+                        .putString("ride_id", "")
+                        .apply();
+                updateNotification();
+                requestLocationUpdates();
+            });
+            return true;
+        }
+        if (code == -1 || code >= 500) {
+            enqueueOfflineFix(payload);
         }
         return false;
     }

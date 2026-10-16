@@ -425,6 +425,10 @@
                     'Authorization': 'Bearer ' + self.driverToken,
                 },
                 body: JSON.stringify(item),
+            }).then(function (res) {
+                if (res && !res.ok && res.status >= 500) {
+                    self.offlineQueue.push(item);
+                }
             }).catch(function () {
                 self.offlineQueue.push(item);
             });
