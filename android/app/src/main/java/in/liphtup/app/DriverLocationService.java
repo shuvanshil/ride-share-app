@@ -65,6 +65,8 @@ public class DriverLocationService extends Service implements LocationListener {
     private static volatile LocationCallback activeCallback = null;
     private static volatile boolean isServiceRunning = false;
     private static volatile boolean isAppInForeground = false;
+    private static volatile DriverLocationService activeInstance = null;
+    private volatile String dynamicNotificationText = null;
 
     public static void setLocationCallback(LocationCallback callback) {
         activeCallback = callback;
@@ -72,6 +74,26 @@ public class DriverLocationService extends Service implements LocationListener {
 
     public static boolean isRunning() {
         return isServiceRunning;
+    }
+
+    public static void updateNotificationTextDynamic(String text) {
+        if (activeInstance != null) {
+            activeInstance.dynamicNotificationText = text;
+            activeInstance.mainHandler.post(activeInstance::updateNotification);
+        }
+    }
+
+    public static void updateRideProgress(double remainingKm, int etaMins) {
+        if (activeInstance != null) {
+            String formatted;
+            if (remainingKm <= 0.05) {
+                formatted = "Arrived at destination • Completing ride";
+            } else {
+                formatted = String.format(java.util.Locale.US, "%.1f KM remaining • %d mins to destination", remainingKm, etaMins);
+            }
+            activeInstance.dynamicNotificationText = formatted;
+            activeInstance.mainHandler.post(activeInstance::updateNotification);
+        }
     }
 
     public static void setAppInForeground(boolean inForeground) {
@@ -137,6 +159,7 @@ public class DriverLocationService extends Service implements LocationListener {
     @Override
     public void onCreate() {
         super.onCreate();
+        activeInstance = this;
         isServiceRunning = true;
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
@@ -223,9 +246,14 @@ public class DriverLocationService extends Service implements LocationListener {
     private Notification buildNotification() {
         boolean isActiveRide = "active_ride".equalsIgnoreCase(trackingState) && activeRideId != null && !activeRideId.isEmpty();
         String title = isActiveRide ? "LiphtUp Navigation Active" : "LiphtUp Driver On-Duty";
-        String content = isActiveRide
-                ? "Broadcasting live route location to passenger"
-                : "GPS active. Ready for new ride requests";
+        String content;
+        if (dynamicNotificationText != null && !dynamicNotificationText.trim().isEmpty() && isActiveRide) {
+            content = dynamicNotificationText.trim();
+        } else {
+            content = isActiveRide
+                    ? "Broadcasting live route location to passenger"
+                    : "GPS active. Ready for new ride requests";
+        }
 
         Intent launchIntent = new Intent(this, MainActivity.class);
         launchIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -511,6 +539,25 @@ public class DriverLocationService extends Service implements LocationListener {
             int code = conn.getResponseCode();
             Log.d(TAG, "Transmitted location via native background service: status=" + code);
             if (code == 200 || code == 204) {
+                if (code == 200) {
+                    try (java.io.InputStream is = conn.getInputStream()) {
+                        if (is != null) {
+                            java.util.Scanner scanner = new java.util.Scanner(is, StandardCharsets.UTF_8.name()).useDelimiter("\\A");
+                            String respBody = scanner.hasNext() ? scanner.next() : "";
+                            if (!respBody.isEmpty()) {
+                                JSONObject json = new JSONObject(respBody);
+                                if (json.has("remaining_km") && !json.isNull("remaining_km") &&
+                                    json.has("eta_mins") && !json.isNull("eta_mins")) {
+                                    double remainingKm = json.getDouble("remaining_km");
+                                    int etaMins = json.getInt("eta_mins");
+                                    updateRideProgress(remainingKm, etaMins);
+                                }
+                            }
+                        }
+                    } catch (Exception ex) {
+                        Log.d(TAG, "Could not parse response for dynamic notification: " + ex.getMessage());
+                    }
+                }
                 return true;
             }
             if (code == 401) {
@@ -562,6 +609,9 @@ public class DriverLocationService extends Service implements LocationListener {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (activeInstance == this) {
+            activeInstance = null;
+        }
         isServiceRunning = false;
         if (wakeLock != null && wakeLock.isHeld()) {
             try {

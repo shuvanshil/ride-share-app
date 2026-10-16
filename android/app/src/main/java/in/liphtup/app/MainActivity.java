@@ -221,6 +221,24 @@ public class MainActivity extends BridgeActivity {
                     }
                 }
             }
+
+            @JavascriptInterface
+            public void updateNotificationText(String text) {
+                try {
+                    DriverLocationService.updateNotificationTextDynamic(text);
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Failed to update notification text: " + e.getMessage());
+                }
+            }
+
+            @JavascriptInterface
+            public void updateRideProgress(double remainingKm, int etaMins) {
+                try {
+                    DriverLocationService.updateRideProgress(remainingKm, etaMins);
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Failed to update ride progress: " + e.getMessage());
+                }
+            }
         }, "LiphtUpNativeStatus");
     }
 

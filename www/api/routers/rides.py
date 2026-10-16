@@ -2144,6 +2144,7 @@ def update_driver_availability(
 
 
 @router.post("/driver-location")
+@router.post("/location-update")
 def update_driver_location(
     body: DriverLocationBody,
     user: dict[str, Any] = Depends(current_user),
@@ -2352,7 +2353,60 @@ def update_driver_location(
                 DispatchPoolManager.remove_driver_dap(db, uid, reason="offline")
             except Exception:
                 pass
-        return {"ok": True, "rideId": ride_id or None, "status": availability}
+        remaining_km: Optional[float] = None
+        eta_mins: Optional[int] = None
+
+        if ride_id and ride:
+            ride_status = str(ride.get("status") or "")
+            drop_lat = _finite_float(ride.get("drop_lat") or ride.get("destination_lat"))
+            drop_lng = _finite_float(ride.get("drop_lng") or ride.get("destination_lng"))
+            pickup_lat = _finite_float(ride.get("pickup_lat"))
+            pickup_lng = _finite_float(ride.get("pickup_lng"))
+
+            if ride_status in {"started", "en_route"} or bool(ride.get("pinVerifiedAt")):
+                planned_km = max(0.0, _finite_float(ride.get("distance_km")))
+                traveled = ride_updates.get("max_travelled_km") if "ride_updates" in locals() else None
+                if traveled is not None and planned_km > 0:
+                    remaining_km = max(0.0, planned_km - float(traveled))
+                elif drop_lat is not None and drop_lng is not None:
+                    remaining_km = _haversine_km(lat, lng, drop_lat, drop_lng)
+                elif planned_km > 0:
+                    remaining_km = planned_km
+            elif ride_status in {"accepted", "arrived"}:
+                if ride_status == "arrived":
+                    remaining_km = 0.0
+                elif pickup_lat is not None and pickup_lng is not None:
+                    remaining_km = _haversine_km(lat, lng, pickup_lat, pickup_lng)
+            else:
+                if drop_lat is not None and drop_lng is not None:
+                    remaining_km = _haversine_km(lat, lng, drop_lat, drop_lng)
+                elif ride.get("distance_km") is not None:
+                    remaining_km = max(0.0, _finite_float(ride.get("distance_km")))
+
+            if remaining_km is not None:
+                remaining_km = round(float(remaining_km), 1)
+                if remaining_km <= 0.05:
+                    eta_mins = 0
+                else:
+                    speed_mps = body.driverSpeed
+                    if speed_mps is not None and speed_mps > 2.0:
+                        speed_kmh = speed_mps * 3.6
+                        eta_mins = max(1, round((remaining_km / speed_kmh) * 60))
+                    else:
+                        planned_dist = _finite_float(ride.get("distance_km"))
+                        planned_dur = _finite_float(ride.get("duration_minutes"))
+                        if planned_dist > 0.5 and planned_dur > 0:
+                            eta_mins = max(1, round(planned_dur * (remaining_km / planned_dist)))
+                        else:
+                            eta_mins = max(1, round((remaining_km / 25.0) * 60))
+
+        return {
+            "ok": True,
+            "rideId": ride_id or None,
+            "status": availability,
+            "remaining_km": remaining_km,
+            "eta_mins": eta_mins,
+        }
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
@@ -4717,3 +4771,8 @@ def submit_ride_feedback(
         raise
     except Exception as error:  # noqa: BLE001
         raise ApiError("Could not submit feedback. Please try again.", 503)
+
+
+v1_driver_router = APIRouter(prefix="/v1/driver", tags=["v1_driver"])
+v1_driver_router.add_api_route("/location-update", update_driver_location, methods=["POST"])
+
