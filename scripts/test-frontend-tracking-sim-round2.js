@@ -226,6 +226,8 @@ let currentActiveRideId = "ride_A";
 let completedRideId = "";
 
 // Ride A completes
+completedRideIdsSet = new Set();
+completedRideIdsSet.add(currentActiveRideId);
 completedRideId = currentActiveRideId;
 currentActiveRideId = "";
 console.log(`Ride A teardown: activeId cleared, lastCompletedRideId = ${completedRideId}`);
@@ -233,7 +235,7 @@ console.log(`Ride A teardown: activeId cleared, lastCompletedRideId = ${complete
 // Delayed event from Ride A arrives late
 const lateEventRideA = { rideId: "ride_A", lat: 23.835, lng: 91.285 };
 let lateEventAccepted = true;
-if (lateEventRideA.rideId === completedRideId) {
+if (completedRideIdsSet.has(lateEventRideA.rideId) || lateEventRideA.rideId === completedRideId) {
     lateEventAccepted = false; // Discard late arriving event
 }
 console.log(`Late event from Ride A discarded: ${!lateEventAccepted ? "PASSED" : "FAILED"}`);
@@ -256,5 +258,19 @@ if (lateEventRideA.rideId !== currentActiveRideId) {
 }
 console.log(`Cross-ride contamination prevented: ${!crossRideAccepted ? "PASSED" : "FAILED"}`);
 if (crossRideAccepted) throw new Error("Scenario 6 Failed: Cross ride event leaked into Ride B");
+
+// Ride B now completes as well
+completedRideIdsSet.add(currentActiveRideId);
+completedRideId = currentActiveRideId;
+currentActiveRideId = "";
+console.log(`Ride B teardown: activeId cleared, completedRideIds = [${Array.from(completedRideIdsSet).join(", ")}]`);
+
+// Delayed event from Ride A arrives AFTER Ride B also completed
+let oldRideAAcceptedAfterRideB = true;
+if (completedRideIdsSet.has(lateEventRideA.rideId) || lateEventRideA.rideId === completedRideId) {
+    oldRideAAcceptedAfterRideB = false;
+}
+console.log(`Old event from Ride A arriving after Ride B completed discarded: ${!oldRideAAcceptedAfterRideB ? "PASSED" : "FAILED"}`);
+if (oldRideAAcceptedAfterRideB) throw new Error("Scenario 6 Failed: Old Ride A event resurrected after Ride B ended");
 
 console.log("\nALL 6 FRONTEND & FARE INTEGRITY SCENARIOS PASSED DETERMINISTICALLY!");

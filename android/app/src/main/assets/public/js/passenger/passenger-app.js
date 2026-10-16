@@ -2428,7 +2428,9 @@ function handlePassengerRideCancelled(ride) {
     hideTripProgressPanel();
     const driverHadAccepted = Boolean(ride?.driver_id) || ["accepted", "arrived", "started", "en_route", "cancelled_by_driver"].includes(ride?.status);
     resetPassengerBookingUi({ preserveSelections: driverHadAccepted });
-    window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
+    window.dispatchEvent(new CustomEvent('ride-completed-clear-map', {
+        detail: { rideId: ride?.id || ride?.rideId || "" }
+    }));
     if (typeof window.clearRouteAndDestination === 'function') {
         window.clearRouteAndDestination();
     }

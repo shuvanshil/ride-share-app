@@ -89,6 +89,7 @@ let pendingAssignedDriverDetail = null;
 let assignedDriverTrackingDriverId = "";
 let assignedDriverTrackingRideId = "";
 let lastCompletedRideId = "";
+const completedRideIds = new Set();
 let assignedDriverRoutePolyline = null;
 let assignedDriverTrackingElement = null;
 let assignedDriverLastDistanceKm = null;
@@ -2399,15 +2400,21 @@ function resetActiveDriverRouteState() {
     };
 }
 
-function clearActiveDriverMarker() {
+function clearActiveDriverMarker(event) {
     if (activeDriverMarker?.animationFrame) cancelAnimationFrame(activeDriverMarker.animationFrame);
     if (activeDriverMarker) stopDriverMarkerCoast(activeDriverMarker);
     removeMarker(activeDriverMarker?.marker);
     activeDriverMarker = null;
     passengerDriverPendingOutlier = null;
     passengerDriverLastAcceptedFixAt = null;
-    if (assignedDriverTrackingRideId) {
-        lastCompletedRideId = assignedDriverTrackingRideId;
+    const finishedRideId = String(event?.detail?.rideId || assignedDriverTrackingRideId || "").trim();
+    if (finishedRideId) {
+        lastCompletedRideId = finishedRideId;
+        completedRideIds.add(finishedRideId);
+        if (completedRideIds.size > 100) {
+            const oldest = completedRideIds.values().next().value;
+            completedRideIds.delete(oldest);
+        }
     }
     assignedDriverTrackingDriverId = "";
     assignedDriverTrackingRideId = "";
@@ -2499,6 +2506,9 @@ async function refreshActiveDriverRoute(detail, position, target) {
         if (!routeDetails?.routePath?.length) {
             const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
             drawAssignedDriverRoute([], position, target, destinationPosition);
+            if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
+                clearPickupMarker();
+            }
             renderAssignedDriverTracking(routeDetails, straightLineDistanceKm);
             return;
         }
@@ -2510,11 +2520,17 @@ async function refreshActiveDriverRoute(detail, position, target) {
         activeDriverRouteState.lastRouteAt = Date.now();
         drawAssignedDriverRoute(routeDetails.routePath, position, target, destinationPosition);
         if (!hadRoutePath) assignedDriverLastDistanceKm = null;
+        if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
+            clearPickupMarker();
+        }
         renderAssignedDriverTracking(routeDetails);
     } catch (error) {
         console.warn("Assigned driver route heading lookup failed:", error);
         const straightLineDistanceKm = calculateDistanceMeters(position, target) / 1000;
         drawAssignedDriverRoute([], position, target, destinationPosition);
+        if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
+            clearPickupMarker();
+        }
         renderAssignedDriverTracking(null, straightLineDistanceKm);
     } finally {
         activeDriverRouteState.routeRequestInFlight = false;
@@ -2534,7 +2550,7 @@ async function handleAssignedDriverLocation(event) {
     }
 
     const eventRideId = String(detail.rideId || detail.ride_id || "").trim();
-    if (eventRideId && lastCompletedRideId && eventRideId === lastCompletedRideId) {
+    if (eventRideId && (completedRideIds.has(eventRideId) || (lastCompletedRideId && eventRideId === lastCompletedRideId))) {
         return; // Discard late arriving event from previously completed ride
     }
     if (assignedDriverTrackingRideId && eventRideId && eventRideId !== assignedDriverTrackingRideId) {

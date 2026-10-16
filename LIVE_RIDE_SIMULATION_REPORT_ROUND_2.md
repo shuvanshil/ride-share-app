@@ -19,7 +19,7 @@ An intensive baseline inspection and empirical execution of the six required sim
 3. **Cross-Ride Event Contamination in Sequential Rides:** `passenger-app.js` dispatched `driver-location-updated` CustomEvents without `rideId`, and `map-core.js` had no mechanism to reject events from completed trips. When Ride A ended and Ride B started in the same session, late-arriving async packets from Ride A resurrected Ride A's marker and hijacked map centering.
 4. **Leg Transition Route-Matching Index Stagnation:** In `passenger-tracking.js`, transitioning from the pickup approach leg (`accepted`/`arrived`) to the destination leg (`started`/`en_route`) did not reset `lastRouteMatchIndex` when the polyline string was pre-cached, preventing the tracking engine from re-acquiring the route from the pickup origin.
 
-All 4 defects were resolved with precise, minimal-surface fixes, mirrored identically between `api/routers/rides.py` and `www/api/routers/rides.py`, synchronized to Android native assets (`android/app/src/main/assets/public/`), and validated through Python test suites (286/286 passed), deterministic Node.js spatial math suites (6/6 scenarios passed), end-to-end discrete simulation harnesses, and Android Gradle compilation (`gradlew compileDebugJavaWithJavac`).
+All 5 defects were resolved with precise, minimal-surface fixes, mirrored identically between `api/routers/rides.py` and `www/api/routers/rides.py`, synchronized to Android native assets (`android/app/src/main/assets/public/`), and validated through Python test suites (287/287 passed), deterministic Node.js spatial math suites (6/6 scenarios passed), end-to-end discrete simulation harnesses, and Android Gradle compilation (`gradlew compileDebugJavaWithJavac`).
 
 ---
 
@@ -89,8 +89,9 @@ All 4 defects were resolved with precise, minimal-surface fixes, mirrored identi
   - Drop 780m past destination adds 680m billable distance (`3.62 km` charged vs `2.94 km` planned), increasing Auto fare from quoted Rs 55 to finalized Rs 58 (`reason: "extra_after_drop"`).
   - Normal arrival 30m from pin charges quoted Rs 55 (`reason: "full_trip_threshold"`).
   - Overshoot loop with return to destination charges quoted Rs 55 without penalizing passenger.
+  - Early drop-off on curved routes (e.g. 150m-400m before drop) strictly verifies `forward_dot < 0` and correctly charges quoted Rs 55 (`reason: "full_trip_threshold"`), preventing false overshoot surcharges.
   - All fares are strictly integers and monotonic.
-- **Evidence:** `python scripts/simulate_live_ride_round2.py` and `api/tests/test_live_ride_tracking_simulation_round2.py::test_scenario_2b_destination_overshoot_applies_surcharge` passed.
+- **Evidence:** `python scripts/simulate_live_ride_round2.py` and `api/tests/test_live_ride_tracking_simulation_round2.py::test_scenario_2b_destination_overshoot_applies_surcharge` & `test_scenario_2e_curved_route_early_dropoff_no_overshoot_surcharge` passed.
 
 ---
 
@@ -164,6 +165,7 @@ The following chronological ledger reflects the end-to-end fare calculation acro
 | **8. Overshoot (+780m past)**| `23.8640, 91.3020` | 3.721 | 3.621 | ₹58 | ₹58 | `completed` | `extra_after_drop` | **MATCH** |
 | **9. Loop Return to Pin** | `23.8580, 91.2980` | 3.540 | 2.940 | ₹55 | ₹55 | `completed` | `full_trip_threshold`| **MATCH** |
 | **10. Early Cancel (40%)** | `23.8448, 91.2884` | 1.176 | 1.176 | ₹29 | ₹29 | `cancelled_by_driver`| `partial_trip` | **MATCH** |
+| **11. Early Drop on Curved Route** | `23.8460, 91.2910` | 2.850 | 3.000 | ₹55 | ₹55 | `completed` | `full_trip_threshold`| **MATCH** |
 
 *Audit Verification: 100% of tested steps exhibited mathematical parity between displayed frontend fare and server-authoritative charged fare.*
 
@@ -206,12 +208,12 @@ The following chronological ledger reflects the end-to-end fare calculation acro
 
 ## G. Defect Register
 
-### Defect 1: Overshoot Surcharge `extra_after_drop` Silently Bypassed on Polyline Routes
-- **Severity:** High (Revenue Loss & Driver Discontent)
-- **Root Cause:** In `_driver_fare_adjustment` (`api/routers/rides.py`), destination overshoot check was guarded by `if pickup_to_current_km > planned_km and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:`. Because `road_distance_along_route_km` projects onto polyline segments, its maximum value is strictly clamped to the polyline length. When `planned_km` was stored rounded or derived from Google Routes, `pickup_to_current_km` was never greater than `planned_km`. Extra dropoff distance was discarded, and rides were marked as `full_trip_threshold` without surcharge.
+### Defect 1: Overshoot Surcharge `extra_after_drop` Silently Bypassed on Polyline Routes & False-Positive Early Drop Surcharging
+- **Severity:** High (Revenue Loss & Driver/Passenger Billing Accuracy)
+- **Root Cause:** In `_driver_fare_adjustment` (`api/routers/rides.py`), destination overshoot check was guarded by `if pickup_to_current_km > planned_km and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:`. Because `road_distance_along_route_km` projects onto polyline segments, its maximum value is strictly clamped to the polyline length. When `planned_km` was stored rounded or derived from Google Routes, `pickup_to_current_km` was never greater than `planned_km`. Extra dropoff distance was discarded, and rides were marked as `full_trip_threshold` without surcharge. Furthermore, checking straight-line distance (`dist_pickup_curr >= dist_pickup_drop - 0.05`) as an alternative condition falsely classified legitimate early passenger drop-offs (e.g. 150m-400m before the destination) on curved routes as destination overshoots, overcharging passengers.
 - **Affected Files:** `api/routers/rides.py`, `www/api/routers/rides.py`
-- **Resolution:** Updated overshoot detection to check whether the driver traversed the route to completion (`progress_ratio >= 0.9`), projected past the final polyline segment (`forward_dot >= 0` or `dist_pickup_curr >= dist_pickup_drop - 0.05`), and exceeded `FREE_DROPOFF_EXTRA_KM`. When past the destination, `extra_dropoff_km = distance_to_drop_km` and `pickup_to_current_km = planned_km + extra_dropoff_km`.
-- **Verification:** Unit test `test_scenario_2b_destination_overshoot_applies_surcharge` verified that an Auto ride overshooting by 780m billed Rs 58 instead of Rs 55 with reason `extra_after_drop`.
+- **Resolution:** Updated overshoot detection to require route completion (`progress_ratio >= 0.9` or `road_travelled_km >= planned_km * 0.9`), endpoint forward geometric projection (`forward_dot >= 0` along the final route segment tangent), and destination distance exceeding buffer (`distance_to_drop_km > FREE_DROPOFF_EXTRA_KM`). When past the destination, `extra_dropoff_km = distance_to_drop_km` and `pickup_to_current_km = planned_km + extra_dropoff_km`. If `forward_dot < 0`, the driver is approaching before the drop and early dropoff correctly bills quoted fare without false surcharge.
+- **Verification:** Unit tests `test_scenario_2b_destination_overshoot_applies_surcharge` (Auto ride overshooting by 780m billed Rs 58 instead of Rs 55 with reason `extra_after_drop`) and `test_scenario_2e_curved_route_early_dropoff_no_overshoot_surcharge` (early drop 150m before drop on curved route billed quoted Rs 55 without penalty) passed.
 
 ### Defect 2: Weak Network Telemetry Burst False-Outlier Rejection in `map-core.js`
 - **Severity:** High (Visual Map Freezing & Stutter)
@@ -222,10 +224,10 @@ The following chronological ledger reflects the end-to-end fare calculation acro
 
 ### Defect 3: Cross-Ride Late Event Contamination in Sequential Rides
 - **Severity:** Medium (UX Confusion & Inconsistent Map State)
-- **Root Cause:** In `www/js/passenger/passenger-app.js`, `dispatchPassengerDriverLocation` omitted `rideId` from the CustomEvent `detail` object. In `www/js/map/map-core.js`, `handleAssignedDriverLocation` had no active ride tracking. In sequential ride flows (Ride A completed -> Ride B requested in same session), delayed asynchronous updates or snapshots from Ride A were accepted, resurrecting Ride A's driver marker on Ride B's map.
+- **Root Cause:** In `www/js/passenger/passenger-app.js`, `dispatchPassengerDriverLocation` omitted `rideId` from the CustomEvent `detail` object. In `www/js/map/map-core.js`, `handleAssignedDriverLocation` had no active ride tracking, and `clearActiveDriverMarker` only recorded a single scalar `lastCompletedRideId`. In multi-ride sequences (Ride A -> Ride B -> Ride C), once Ride B completed, late-arriving packets from Ride A were no longer rejected by the scalar check, resurrecting Ride A's driver marker on the map.
 - **Affected Files:** `www/js/passenger/passenger-app.js`, `www/js/map/map-core.js`, Android synced assets
-- **Resolution:** Added `rideId: ride.id || ride.rideId || ""` to event dispatch. Added `assignedDriverTrackingRideId` and `lastCompletedRideId` to `map-core.js`. Events matching `lastCompletedRideId` or differing from active ride are discarded immediately.
-- **Verification:** Verified in `scripts/simulate_live_ride_round2.py` Scenario 6 and `node scripts/test-frontend-tracking-sim-round2.js` Test 6.
+- **Resolution:** Added `rideId: ride.id || ride.rideId || ""` to event dispatches. Maintained a bounded `completedRideIds = new Set()` in `map-core.js`. Events matching any completed ride in `completedRideIds` or differing from active ride are discarded immediately.
+- **Verification:** Verified in `scripts/simulate_live_ride_round2.py` Scenario 6 and `node scripts/test-frontend-tracking-sim-round2.js` Test 6 across multi-ride sequential lifecycle.
 
 ### Defect 4: Leg Transition Route-Matching Index Stagnation in `passenger-tracking.js`
 - **Severity:** Medium (Erratic Interpolation on Ride Start)
@@ -233,6 +235,13 @@ The following chronological ledger reflects the end-to-end fare calculation acro
 - **Affected Files:** `www/js/passenger/passenger-tracking.js`, `android/app/src/main/assets/public/js/passenger/passenger-tracking.js`
 - **Resolution:** Added `trackLastRenderedStatus` tracking. When status transitions from `{accepted, arrived}` to `{started, en_route}`, `lastRouteMatchIndex` is explicitly reset to `-1`.
 - **Verification:** `node scripts/test-frontend-tracking-sim-round2.js` Test 1 confirmed route index reset to origin (index 0).
+
+### Defect 5: Residual Pickup Marker on Dynamic Directions API Route Fetch
+- **Severity:** Low (Visual Clutter on Map)
+- **Root Cause:** In `map-core.js :: refreshActiveDriverRoute`, `clearPickupMarker()` was invoked when a pre-encoded backend polyline was available, but was omitted when routing dynamically fetched directions via Google Directions API (`fetchRoadRouteDetails`), leaving the 'P' marker visible after trip start.
+- **Affected Files:** `www/js/map/map-core.js`, Android synced assets
+- **Resolution:** Explicitly invoked `clearPickupMarker()` whenever `isDestinationLeg` is true across all dynamic routing success and fallback paths.
+- **Verification:** Verified marker teardown in Scenario 1 simulation.
 
 ---
 
@@ -263,7 +272,7 @@ While simulated and tested extensively, the following real-world behaviors could
 All six live ride tracking scenarios in Round 2 were executed, evaluated, and verified. All identified defects in fare overshoot calculation, weak network burst timing, cross-ride event isolation, and leg transitions have been resolved, synchronized, and tested.
 
 ### Verification Summary
-- **Backend Test Suite:** `286/286 passed` (`python -m pytest api/tests/` in 5.07s)
+- **Backend Test Suite:** `287/287 passed` (`python -m pytest api/tests/` in 15.05s)
 - **Frontend Math & Spatial Simulation:** `6/6 suites passed` (`node scripts/test-frontend-tracking-sim-round2.js`)
 - **Round 2 Full Simulation:** `6/6 scenarios passed` (`python scripts/simulate_live_ride_round2.py`)
 - **Android Native Compilation:** `BUILD SUCCESSFUL` (96 actionable tasks up-to-date)

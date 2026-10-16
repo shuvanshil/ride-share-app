@@ -367,15 +367,25 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
                 if (road_travelled_km is not None and road_travelled_km >= planned_km * FULL_FARE_PROGRESS_RATIO) or prior_max_ratio >= FULL_FARE_PROGRESS_RATIO:
                     p_last = route_points[-1]
                     p_prev = route_points[-2]
+                    for pt in reversed(route_points[:-1]):
+                        if pt[0] != p_last[0] or pt[1] != p_last[1]:
+                            p_prev = pt
+                            break
                     d_lat = p_last[0] - p_prev[0]
                     d_lng = (p_last[1] - p_prev[1]) * (math.cos(math.radians(p_last[0])) or 1.0)
                     pt_lat = current["lat"] - p_last[0]
                     pt_lng = (current["lng"] - p_last[1]) * (math.cos(math.radians(p_last[0])) or 1.0)
                     forward_dot = (pt_lat * d_lat) + (pt_lng * d_lng)
-                    if forward_dot >= 0 or (dist_pickup_curr >= dist_pickup_drop - 0.05):
+                    if forward_dot >= 0:
                         is_past_drop = True
-            elif dist_pickup_curr > dist_pickup_drop or pickup_to_current_km > planned_km:
-                is_past_drop = True
+            else:
+                d_lat = drop["lat"] - pickup["lat"]
+                d_lng = (drop["lng"] - pickup["lng"]) * (math.cos(math.radians(pickup["lat"])) or 1.0)
+                pt_lat = current["lat"] - drop["lat"]
+                pt_lng = (current["lng"] - drop["lng"]) * (math.cos(math.radians(drop["lat"])) or 1.0)
+                forward_dot = (pt_lat * d_lat) + (pt_lng * d_lng)
+                if forward_dot >= 0 or dist_pickup_curr > dist_pickup_drop or pickup_to_current_km > planned_km:
+                    is_past_drop = True
 
         if is_past_drop:
             extra_dropoff_km = distance_to_drop_km

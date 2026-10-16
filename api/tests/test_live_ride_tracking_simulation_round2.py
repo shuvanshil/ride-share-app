@@ -154,3 +154,36 @@ def test_scenario_2d_fare_rounding_and_monotinicity():
     adj = _driver_fare_adjustment(ride, "complete")
     assert isinstance(adj["final_fare"], int)
     assert adj["final_fare"] >= 55
+
+
+def test_scenario_2e_curved_route_early_dropoff_no_overshoot_surcharge():
+    """Scenario 2E: Dropping off early (e.g. 150m-400m before drop) on a curved route must NOT apply overshoot surcharge."""
+    pickup = {"lat": 23.8360, "lng": 91.2820}
+    intermediate = {"lat": 23.8500, "lng": 91.2950}
+    drop = {"lat": 23.8450, "lng": 91.2900}
+    pts = [(pickup["lat"], pickup["lng"]), (intermediate["lat"], intermediate["lng"]), (drop["lat"], drop["lng"])]
+    poly = encode_polyline(pts)
+
+    # Driver stops 150m BEFORE drop
+    early_drop_loc = {"lat": 23.8460, "lng": 91.2910}
+    ride = {
+        "status": "started",
+        "pickup_lat": pickup["lat"],
+        "pickup_lng": pickup["lng"],
+        "drop_lat": drop["lat"],
+        "drop_lng": drop["lng"],
+        "route_polyline": poly,
+        "fare": 55,
+        "distance_km": 3.0,
+        "vehicle_type": "auto",
+        "driverLocation": early_drop_loc,
+        "max_travelled_km": 2.85,
+        "max_progress_ratio": 0.95,
+    }
+
+    adj = _driver_fare_adjustment(ride, "complete")
+    assert adj["reason"] == "full_trip_threshold"
+    assert adj["final_fare"] == 55
+    assert adj["extra_dropoff_distance_km"] == 0.0
+    assert "Drop was" not in adj["message"]
+
