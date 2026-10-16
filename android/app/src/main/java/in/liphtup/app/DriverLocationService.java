@@ -60,6 +60,7 @@ public class DriverLocationService extends Service implements LocationListener {
 
     private static volatile LocationCallback activeCallback = null;
     private static volatile boolean isServiceRunning = false;
+    private static volatile boolean isAppInForeground = true;
 
     public static void setLocationCallback(LocationCallback callback) {
         activeCallback = callback;
@@ -69,10 +70,19 @@ public class DriverLocationService extends Service implements LocationListener {
         return isServiceRunning;
     }
 
+    public static void setAppInForeground(boolean inForeground) {
+        isAppInForeground = inForeground;
+        Log.d(TAG, "App foreground state changed to: " + inForeground);
+    }
+
+    public static boolean isAppInForeground() {
+        return isAppInForeground;
+    }
+
     private LocationManager locationManager;
     private NotificationManager notificationManager;
     private android.os.PowerManager.WakeLock wakeLock = null;
-    private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
+    private ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private String trackingState = "on_duty";
@@ -85,22 +95,31 @@ public class DriverLocationService extends Service implements LocationListener {
     private Float lastBearing = null;
     private long lastGpsFixTimeMs = 0;
 
+    private synchronized void ensureWakeLockAcquired() {
+        try {
+            if (wakeLock == null) {
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "LiphtUp:DriverLocationTracking");
+                    wakeLock.setReferenceCounted(false);
+                }
+            }
+            if (wakeLock != null && !wakeLock.isHeld()) {
+                wakeLock.acquire();
+                Log.d(TAG, "Continuous partial WakeLock acquired for driver location tracking.");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not acquire partial WakeLock: " + e.getMessage());
+        }
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
         isServiceRunning = true;
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        try {
-            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (pm != null) {
-                wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "LiphtUp:DriverLocationTracking");
-                wakeLock.setReferenceCounted(false);
-                wakeLock.acquire();
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Could not acquire partial WakeLock: " + e.getMessage());
-        }
+        ensureWakeLockAcquired();
         createNotificationChannel();
 
         SharedPreferences prefs = getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE);
@@ -112,6 +131,7 @@ public class DriverLocationService extends Service implements LocationListener {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        ensureWakeLockAcquired();
         if (intent == null) {
             startForegroundWithNotification();
             requestLocationUpdates();
@@ -233,7 +253,7 @@ public class DriverLocationService extends Service implements LocationListener {
         if (locationManager == null) return;
 
         boolean isActiveRide = "active_ride".equalsIgnoreCase(trackingState);
-        long minTimeMs = isActiveRide ? 3000L : 10000L;
+        long minTimeMs = isActiveRide ? 2500L : 8000L;
         // Use 0.0f minDistance so timed updates and stationary heartbeats are not dropped by the OS
         float minDistanceMeters = 0.0f;
 
@@ -309,9 +329,11 @@ public class DriverLocationService extends Service implements LocationListener {
                 lastBearing = computedBearing;
             }
 
-            // Stationary heartbeat: skip if moved < 2m and elapsed < 15s in active ride (or 30s idle)
-            long minInterval = isActiveRide ? 3000L : 8000L;
-            long heartbeatInterval = isActiveRide ? 15000L : 30000L;
+            // Stationary heartbeat & cadence:
+            // In active ride: updates every 2.5s if moving, or every 8s if stationary.
+            // In on_duty idle: updates every 6s if moving, or every 25s if stationary.
+            long minInterval = isActiveRide ? 2500L : 6000L;
+            long heartbeatInterval = isActiveRide ? 8000L : 25000L;
             if (distanceMoved < 2.0f && elapsed < heartbeatInterval) {
                 return;
             }
@@ -327,7 +349,7 @@ public class DriverLocationService extends Service implements LocationListener {
         lastBroadcastLocation = location;
         lastBroadcastTimeMs = now;
 
-        // 1. Notify WebView callback if attached
+        // 1. Notify WebView callback if attached (moves driver UI smoothly when in foreground)
         final Location finalLoc = location;
         final Float finalHeading = lastBearing;
         mainHandler.post(() -> {
@@ -337,13 +359,23 @@ public class DriverLocationService extends Service implements LocationListener {
         });
 
         // 2. Direct HTTP Post to backend if token is available
-        // This guarantees continuous tracking even when WebView process is suspended by Android
+        // Foreground/Background Handoff:
+        // When in foreground AND activeCallback is attached, the WebView handles location ingestion
+        // to avoid duplicate HTTP requests.
+        // When backgrounded (minimized, screen off, or driver navigating in Google Maps) OR if
+        // the WebView callback is disconnected, DriverLocationService independently posts telemetry
+        // directly over HTTPS to /api/rides/driver-location so live tracking never stops.
         if (authToken != null && !authToken.isEmpty()) {
-            transmitLocationToBackend(location, finalHeading, activeRideId);
+            if (!isAppInForeground || activeCallback == null) {
+                transmitLocationToBackend(location, finalHeading, activeRideId);
+            }
         }
     }
 
     private void transmitLocationToBackend(Location location, Float heading, String rideId) {
+        if (networkExecutor == null || networkExecutor.isShutdown()) {
+            networkExecutor = Executors.newSingleThreadExecutor();
+        }
         networkExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {

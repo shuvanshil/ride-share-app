@@ -237,3 +237,33 @@ export function openGoogleMapsNavigation(lat, lng, label = "") {
     window.open(webNavUrl, "_blank", "noopener,noreferrer");
     return true;
 }
+
+/**
+ * Checks if battery optimization is ignored for the app on Android.
+ */
+export function isBatteryOptimizationIgnored() {
+    if (window.LiphtUpNativeStatus?.isBatteryOptimizationIgnored) {
+        try {
+            return Boolean(window.LiphtUpNativeStatus.isBatteryOptimizationIgnored());
+        } catch (e) {
+            console.warn("[geolocation] Error checking battery optimization status:", e);
+        }
+    }
+    return true;
+}
+
+/**
+ * Prompts the driver to exempt LiphtUp from battery optimization.
+ */
+export function requestIgnoreBatteryOptimizations() {
+    if (window.LiphtUpNativeStatus?.requestIgnoreBatteryOptimizations) {
+        try {
+            window.LiphtUpNativeStatus.requestIgnoreBatteryOptimizations();
+            return true;
+        } catch (e) {
+            console.warn("[geolocation] Error requesting battery optimization exemption:", e);
+        }
+    }
+    return false;
+}
+

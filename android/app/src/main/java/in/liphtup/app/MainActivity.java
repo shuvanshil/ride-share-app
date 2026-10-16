@@ -179,7 +179,59 @@ public class MainActivity extends BridgeActivity {
                     android.util.Log.e("MainActivity", "Failed to open Google Maps navigation", e);
                 }
             }
+
+            @JavascriptInterface
+            public boolean isBatteryOptimizationIgnored() {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    try {
+                        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(android.content.Context.POWER_SERVICE);
+                        if (pm != null) {
+                            return pm.isIgnoringBatteryOptimizations(getPackageName());
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.w("MainActivity", "Failed to check battery optimization: " + e.getMessage());
+                    }
+                }
+                return true;
+            }
+
+            @JavascriptInterface
+            public void requestIgnoreBatteryOptimizations() {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    try {
+                        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(android.content.Context.POWER_SERVICE);
+                        if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                            Intent intent = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                            intent.setData(Uri.parse("package:" + getPackageName()));
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                            return;
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.w("MainActivity", "Direct battery exemption intent failed: " + e.getMessage());
+                        try {
+                            Intent intent = new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                        } catch (Exception ex) {
+                            android.util.Log.e("MainActivity", "Failed to open battery optimization settings: " + ex.getMessage());
+                        }
+                    }
+                }
+            }
         }, "LiphtUpNativeStatus");
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        DriverLocationService.setAppInForeground(true);
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        DriverLocationService.setAppInForeground(false);
     }
 
     @Override

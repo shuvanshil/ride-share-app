@@ -116,4 +116,7 @@
 
     <!-- Keeps the screen on during an active ride (wake-lock.js). -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Exemption from Doze / OEM App Standby to guarantee unbroken background telemetry during rides. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

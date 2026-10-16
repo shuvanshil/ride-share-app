@@ -1,7 +1,7 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from '../map/map-core.js';
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
-import { startDriverTracking, updateDriverTrackingState, stopDriverTracking, openGoogleMapsNavigation } from '../platform/geolocation.js';
+import { startDriverTracking, updateDriverTrackingState, stopDriverTracking, openGoogleMapsNavigation, isBatteryOptimizationIgnored, requestIgnoreBatteryOptimizations } from '../platform/geolocation.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, hideInitialLoader } from '../shared/loading.js';
 import { waitForAuth } from '../shared/auth.js';
@@ -3473,10 +3473,17 @@ async function updateDriverLocationThroughBackend(position, telemetry, rideId = 
 async function writeDriverLocation(position, options = {}) {
     if (!currentUser?.uid) return;
 
+    // In native Android app, when the app is backgrounded / hidden,
+    // DriverLocationService directly transmits the location over HTTP to the backend.
+    // Skip duplicate web HTTP requests when document is hidden and native tracking is active.
+    if (document.hidden && Boolean(window.LiphtUpNativeStatus?.isTrackingActive?.())) {
+        return;
+    }
+
     const hasActiveRide = Boolean(currentRideId || options.rideId);
     const minDistanceMeters = hasActiveRide ? 3 : LOCATION_WRITE_DISTANCE_METERS;
     const minMovingInterval = hasActiveRide ? 2500 : 5000;
-    const stationaryHeartbeatInterval = hasActiveRide ? 12000 : 30000;
+    const stationaryHeartbeatInterval = hasActiveRide ? 8000 : 30000;
 
     const elapsed = Date.now() - lastWriteAt;
     const moved = distanceMeters(lastWritePosition, position);
@@ -3668,6 +3675,14 @@ async function startLocationTracking() {
         onLocation: handleLocation,
         onError: handleLocationError
     });
+
+    if (!isBatteryOptimizationIgnored()) {
+        const lastPrompt = Number(sessionStorage.getItem("liphtup_battery_prompt_shown") || "0");
+        if (Date.now() - lastPrompt > 12 * 60 * 60 * 1000) {
+            sessionStorage.setItem("liphtup_battery_prompt_shown", String(Date.now()));
+            requestIgnoreBatteryOptimizations();
+        }
+    }
 }
 
 function getRideTarget(ride) {
