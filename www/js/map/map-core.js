@@ -42,8 +42,8 @@ const PASSENGER_CAMERA_ROTATE_ANIM_MS = 220;
 // marker onto the nearest point of that polyline instead of the raw ping -
 // but only within this radius, so a driver who has genuinely left the route
 // (wrong turn, reroute in progress) isn't incorrectly glued to the old path.
-const ROUTE_SNAP_MAX_METERS = 60;
-const ROUTE_SNAP_HYSTERESIS_METERS = 75;
+const ROUTE_SNAP_MAX_METERS = 120;
+const ROUTE_SNAP_HYSTERESIS_METERS = 160;
 // Once we've matched the vehicle to a point on the route, only search a
 // small window forward/backward of that point next time, and never accept
 // a match that regresses more than this many points. Without this, GPS
@@ -393,7 +393,7 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeadin
     const maxSnapMeters = searchFullRange ? ROUTE_SNAP_MAX_METERS : ROUTE_SNAP_HYSTERESIS_METERS;
     const normalizedVehicleHeading = normalizeHeading(vehicleHeading);
 
-    const evaluateCandidate = (currentBest, segIndex, segStart, segEnd, isWindowSearch) => {
+    const evaluateCandidate = (currentBest, segIndex, segStart, segEnd, isWindowSearch, snapLimit = maxSnapMeters) => {
         if (!segStart || !segEnd) return currentBest;
         let fraction = projectFractionOntoSegment(position, segStart, segEnd);
 
@@ -412,7 +412,7 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeadin
             lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
         };
         const distanceMeters = calculateDistanceMeters(position, projected);
-        if (distanceMeters > maxSnapMeters) return currentBest;
+        if (distanceMeters > snapLimit) return currentBest;
 
         let segHeading = calculateBearing(segStart, segEnd);
         if (segHeading == null && segIndex + 2 < routePath.length) {
@@ -446,17 +446,17 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeadin
 
     let best = null;
     for (let i = windowStart; i <= windowEnd; i += 1) {
-        best = evaluateCandidate(best, i, routePath[i], routePath[i + 1], !searchFullRange);
+        best = evaluateCandidate(best, i, routePath[i], routePath[i + 1], !searchFullRange, maxSnapMeters);
     }
 
     // If windowed search did not find a match within tolerance (e.g. detour or rejoin far ahead), search the entire route
     if (!best && !searchFullRange) {
         for (let i = 0; i <= routePath.length - 2; i += 1) {
-            best = evaluateCandidate(best, i, routePath[i], routePath[i + 1], false);
+            best = evaluateCandidate(best, i, routePath[i], routePath[i + 1], false, ROUTE_SNAP_MAX_METERS);
         }
     }
 
-    if (!best || best.distanceMeters > maxSnapMeters) {
+    if (!best) {
         return null;
     }
 
@@ -1844,10 +1844,20 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
                 existing.routeMatchIndex = match.index;
                 existing.routeMatchFraction = routeMatchFraction;
                 existing.routeMatchPoint = match.point;
+                existing.offRouteCount = 0;
             }
             if (match.heading != null) {
                 matchedRouteHeading = match.heading;
             }
+        } else if (existing && existing.routeMatchIndex >= 0 && (existing.offRouteCount || 0) < 3) {
+            // Sticky Route Hold: transient GPS spike outside snap corridor.
+            // Hold vehicle on the route at its last valid segment rather than instantly jumping into fields/buildings!
+            existing.offRouteCount = (existing.offRouteCount || 0) + 1;
+            routeMatchIndex = existing.routeMatchIndex;
+            routeMatchFraction = existing.routeMatchFraction ?? 0;
+            routeMatchPoint = existing.routeMatchPoint || routePath[routeMatchIndex] || rawPosition;
+            position = routeMatchPoint;
+            matchedRouteHeading = existing.heading ?? null;
         } else {
             routeMatchIndex = -1;
             routeMatchFraction = 0;
@@ -1855,6 +1865,7 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
                 existing.routeMatchIndex = -1;
                 existing.routeMatchFraction = 0;
                 existing.routeMatchPoint = null;
+                existing.offRouteCount = 0;
             }
         }
     } else {
@@ -1864,6 +1875,7 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
             existing.routeMatchIndex = -1;
             existing.routeMatchFraction = 0;
             existing.routeMatchPoint = null;
+            existing.offRouteCount = 0;
         }
     }
 
@@ -1879,15 +1891,23 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
         const motionBearing = (prevRawObj && rawMoveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS)
             ? calculateBearing(prevRawObj, rawPosition)
             : null;
-        const reliableDocHeading = (docHeading != null && docHeading !== 0) ? docHeading : null;
+        const reliableDocHeading = (docHeading != null && docHeading !== 0 && hasValidSpeed && rawSpeed >= 1.2) ? docHeading : null;
         heading = reliableDocHeading ?? motionBearing ?? existing?.heading ?? docHeading;
     } else if (existing?.heading != null) {
-        // Stationary: LOCK PREVIOUS HEADING! Never turn or spin in place!
+        // Stationary / low-speed: LOCK PREVIOUS HEADING! Never turn or spin in place from compass noise!
         heading = existing.heading;
     }
 
-    if (heading == null && existing?.heading != null) {
-        heading = existing.heading;
+    // If starting from rest or heading is still uninitialized, point towards next route waypoint or target
+    if (heading == null) {
+        if (Array.isArray(routePath) && routePath.length >= 2) {
+            const nextIdx = Math.min(routePath.length - 1, Math.max(1, (routeMatchIndex >= 0 ? routeMatchIndex + 1 : 1)));
+            const routeBearing = calculateBearing(position, routePath[nextIdx]);
+            if (routeBearing != null) heading = routeBearing;
+        }
+        if (heading == null && existing?.heading != null) {
+            heading = existing.heading;
+        }
     }
 
     const resolvedDriverId = driverId || driver?.driverId || driver?.id || "";
@@ -2587,7 +2607,7 @@ function selectValidBackendRoute(detail, position, target) {
         if (!Array.isArray(decoded) || decoded.length < 2) continue;
         if (candidate.checkTargetEnd && target) {
             const endPt = decoded[decoded.length - 1];
-            if (calculateDistanceMeters(endPt, target) > 350) {
+            if (calculateDistanceMeters(endPt, target) > 600) {
                 continue;
             }
         }

@@ -358,8 +358,8 @@ let trackPendingOutlier = null;
 let trackLastAcceptedFixAt = null;
 const TRACK_MAX_PLAUSIBLE_SPEED_MPS = 45;
 const TRACK_OUTLIER_CONFIRM_RADIUS_METERS = 60;
-const TRACK_ROUTE_SNAP_MAX_METERS = 60;
-const TRACK_ROUTE_SNAP_HYSTERESIS_METERS = 75;
+const TRACK_ROUTE_SNAP_MAX_METERS = 120;
+const TRACK_ROUTE_SNAP_HYSTERESIS_METERS = 160;
 
 function stopLiveTracking() {
     if (driverMarkerAnimation) {
@@ -448,10 +448,13 @@ function filterTrackPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs =
     return lastAcceptedRawLoc;
 }
 
+let trackOffRouteCount = 0;
+
 function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, lastFrac = 0) {
     if (!point || !Array.isArray(path) || path.length < 2) {
         lastRouteMatchIndex = -1;
         lastRouteMatchFraction = 0;
+        trackOffRouteCount = 0;
         return { point, heading: null, index: -1, fraction: 0 };
     }
     let searchFullRange = lastIdx < 0 || lastIdx >= path.length - 1;
@@ -467,7 +470,7 @@ function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, last
     const maxSnap = searchFullRange ? TRACK_ROUTE_SNAP_MAX_METERS : TRACK_ROUTE_SNAP_HYSTERESIS_METERS;
     const normalizedHeading = normalizeHeading(vehicleHeading);
 
-    const evaluateCandidate = (currentBest, segIndex, p1, p2, isWindowSearch) => {
+    const evaluateCandidate = (currentBest, segIndex, p1, p2, isWindowSearch, snapLimit = maxSnap) => {
         if (!p1 || !p2) return currentBest;
         const segLat = p2.lat - p1.lat;
         const segLng = (p2.lng - p1.lng) * (Math.cos((p1.lat * Math.PI) / 180) || 1);
@@ -485,9 +488,12 @@ function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, last
 
         const proj = { lat: p1.lat + (p2.lat - p1.lat) * frac, lng: p1.lng + (p2.lng - p1.lng) * frac };
         const dist = calculateDistanceMeters(point, proj);
-        if (dist > maxSnap) return currentBest;
+        if (dist > snapLimit) return currentBest;
 
-        const segHeading = calculateBearing(p1, p2);
+        let segHeading = calculateBearing(p1, p2);
+        if (segHeading == null && segIndex + 2 < path.length) {
+            segHeading = calculateBearing(p1, path[segIndex + 2]);
+        }
         const isHeadingAligned = (normalizedHeading != null && segHeading != null)
             ? Math.abs(shortestHeadingDelta(normalizedHeading, segHeading)) <= 100
             : true;
@@ -504,20 +510,30 @@ function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, last
 
     let best = null;
     for (let i = windowStart; i <= windowEnd; i++) {
-        best = evaluateCandidate(best, i, path[i], path[i + 1], !searchFullRange);
+        best = evaluateCandidate(best, i, path[i], path[i + 1], !searchFullRange, maxSnap);
     }
 
     if (!best && !searchFullRange) {
         for (let i = 0; i <= path.length - 2; i++) {
-            best = evaluateCandidate(best, i, path[i], path[i + 1], false);
+            best = evaluateCandidate(best, i, path[i], path[i + 1], false, TRACK_ROUTE_SNAP_MAX_METERS);
         }
     }
 
-    if (best && best.dist <= maxSnap) {
+    if (best) {
+        trackOffRouteCount = 0;
         lastRouteMatchIndex = best.index;
         lastRouteMatchFraction = best.fraction ?? 0;
         return { point: best.point, heading: best.heading, index: best.index, fraction: lastRouteMatchFraction };
     }
+
+    if (lastRouteMatchIndex >= 0 && trackOffRouteCount < 3) {
+        // Sticky Route Hold: transient GPS spike outside snap corridor
+        trackOffRouteCount += 1;
+        const stickyPoint = path[Math.min(path.length - 1, Math.max(0, lastRouteMatchIndex))] || point;
+        return { point: stickyPoint, heading: lastDriverHeading, index: lastRouteMatchIndex, fraction: lastRouteMatchFraction };
+    }
+
+    trackOffRouteCount = 0;
     lastRouteMatchIndex = -1;
     lastRouteMatchFraction = 0;
     return { point, heading: null, index: -1, fraction: 0 };
@@ -538,11 +554,19 @@ function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", sp
     if (!map || !rawTarget || !window.google?.maps) return;
     const now0 = performance.now();
     const prevMatchIndex = lastRouteMatchIndex;
-    const isMoving = speed != null ? speed >= 0.8 : true;
+    const hasSpeed = speed != null && Number.isFinite(Number(speed)) && Number(speed) >= 0;
+    const isMoving = hasSpeed ? Number(speed) >= 0.8 : true;
     const candidateHeading = isMoving ? (normalizeHeading(heading) ?? lastDriverHeading) : lastDriverHeading;
     const snapResult = snapToTrackRoute(rawTarget, trackRoutePath, lastRouteMatchIndex, candidateHeading, lastRouteMatchFraction);
     const targetPosition = snapResult.point;
-    const effectiveHeading = snapResult.heading ?? (isMoving ? normalizeHeading(heading) : null) ?? lastDriverHeading;
+    let effectiveHeading = snapResult.heading;
+    if (effectiveHeading == null) {
+        effectiveHeading = isMoving ? (normalizeHeading(heading) ?? lastDriverHeading) : lastDriverHeading;
+    }
+    if (effectiveHeading == null && Array.isArray(trackRoutePath) && trackRoutePath.length >= 2) {
+        const nextIdx = Math.min(trackRoutePath.length - 1, Math.max(1, (snapResult.index >= 0 ? snapResult.index + 1 : 1)));
+        effectiveHeading = calculateBearing(targetPosition, trackRoutePath[nextIdx]) ?? lastDriverHeading;
+    }
 
     if (snapResult.index >= 0) {
         updateTrackRouteProgress(snapResult.index, snapResult.point);

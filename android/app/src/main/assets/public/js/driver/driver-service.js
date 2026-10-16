@@ -56,8 +56,8 @@ const CAMERA_ROTATE_ANIM_MS = 220;
 // it from ordinary GPS inaccuracy) and keep its heading matched to the
 // route monotonically, so noisy GPS pings on a winding road can't make the
 // icon momentarily face backward.
-const ROUTE_SNAP_MAX_METERS = 60;
-const ROUTE_SNAP_HYSTERESIS_METERS = 75;
+const ROUTE_SNAP_MAX_METERS = 120;
+const ROUTE_SNAP_HYSTERESIS_METERS = 160;
 const ROUTE_MATCH_BACKWARD_TOLERANCE = 2;
 const ROUTE_MATCH_SEARCH_WINDOW = 60;
 const ROUTE_DEVIATION_RECALC_MIN_INTERVAL_MS = 6000;
@@ -479,7 +479,7 @@ function projectFractionOntoSegment(point, segStart, segEnd) {
 // can't match a distant part of the route and flip the heading backward.
 // Falls back to a full search the first time or when the window has nothing
 // within ROUTE_SNAP_MAX_METERS.
-function matchPositionToRoute(position, routePath, lastIndex = -1, lastFraction = 0, vehicleHeading = null) {
+function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeading = null, lastFraction = 0) {
     if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
 
     const searchFullRange = lastIndex < 0;
@@ -490,17 +490,19 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, lastFraction 
         ? routePath.length - 2
         : Math.min(routePath.length - 2, lastIndex + ROUTE_MATCH_SEARCH_WINDOW);
 
+    const maxSnapMeters = searchFullRange ? ROUTE_SNAP_MAX_METERS : ROUTE_SNAP_HYSTERESIS_METERS;
     const normalizedVehicleHeading = normalizeHeading(vehicleHeading);
     let best = null;
-    for (let i = windowStart; i <= windowEnd; i += 1) {
+
+    const evaluateSeg = (currentBest, i, isWindowSearch, snapLimit = maxSnapMeters) => {
         const segStart = routePath[i];
         const segEnd = routePath[i + 1];
-        if (!segStart || !segEnd) continue;
+        if (!segStart || !segEnd) return currentBest;
         let fraction = projectFractionOntoSegment(position, segStart, segEnd);
 
         // Enforce monotonic progress on the same segment when GPS jitter drifts
         // slightly backward (<= 15m) so the vehicle never slides backward at stops.
-        if (!searchFullRange && i === lastIndex && Number.isFinite(lastFraction) && fraction < lastFraction) {
+        if (isWindowSearch && i === lastIndex && Number.isFinite(lastFraction) && fraction < lastFraction) {
             const segLen = distanceMeters(segStart, segEnd);
             const backwardMeters = (lastFraction - fraction) * segLen;
             if (backwardMeters <= 15) {
@@ -513,13 +515,15 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, lastFraction 
             lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
         };
         const distance = distanceMeters(position, projected);
+        if (distance > snapLimit) return currentBest;
+
         let segHeading = calculateBearing(segStart, segEnd);
         if (segHeading == null && i + 2 < routePath.length) {
             segHeading = calculateBearing(segStart, routePath[i + 2]);
         }
 
         let score = distance;
-        if (!searchFullRange && i < lastIndex) {
+        if (isWindowSearch && i < lastIndex) {
             score += (lastIndex - i) * 12;
         }
         if (normalizedVehicleHeading != null && segHeading != null) {
@@ -531,8 +535,8 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, lastFraction 
             }
         }
 
-        if (!best || score < best.score) {
-            best = {
+        if (!currentBest || score < currentBest.score) {
+            return {
                 index: i,
                 fraction,
                 point: projected,
@@ -541,13 +545,20 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, lastFraction 
                 score
             };
         }
+        return currentBest;
+    };
+
+    for (let i = windowStart; i <= windowEnd; i += 1) {
+        best = evaluateSeg(best, i, !searchFullRange, maxSnapMeters);
     }
 
-    const maxSnapMeters = searchFullRange ? ROUTE_SNAP_MAX_METERS : ROUTE_SNAP_HYSTERESIS_METERS;
-    if (!best || best.distanceMeters > maxSnapMeters) {
-        if (!searchFullRange) {
-            return matchPositionToRoute(position, routePath, -1, 0, vehicleHeading);
+    if (!best && !searchFullRange) {
+        for (let i = 0; i <= routePath.length - 2; i += 1) {
+            best = evaluateSeg(best, i, false, ROUTE_SNAP_MAX_METERS);
         }
+    }
+
+    if (!best) {
         return null;
     }
 
@@ -3433,6 +3444,8 @@ function drawRoute(path) {
     }
 }
 
+let driverOffRouteCount = 0;
+
 // Finds where on the known route the driver's own vehicle currently is,
 // snapping onto it (see matchPositionToRoute above) so this driver's own
 // marker renders on the road instead of drifting off it, and so its heading
@@ -3443,20 +3456,34 @@ function resolveRouteMatch(position, vehicleHeading = null) {
         driverRouteMatchIndex = -1;
         driverRouteMatchFraction = 0;
         driverLastRoutePathRef = activeRoutePath;
+        driverOffRouteCount = 0;
     }
     const match = matchPositionToRoute(
         position,
         activeRoutePath,
         driverRouteMatchIndex,
-        driverRouteMatchFraction,
-        vehicleHeading
+        vehicleHeading,
+        driverRouteMatchFraction
     );
     if (!match) {
+        if (driverRouteMatchIndex >= 0 && driverOffRouteCount < 3) {
+            driverOffRouteCount += 1;
+            return {
+                index: driverRouteMatchIndex,
+                fraction: driverRouteMatchFraction,
+                point: driverRouteMatchPoint || position,
+                heading: lastDriverHeading,
+                distanceMeters: 0,
+                score: 0
+            };
+        }
         driverRouteMatchIndex = -1;
         driverRouteMatchFraction = 0;
         driverRouteMatchPoint = null;
+        driverOffRouteCount = 0;
         return null;
     }
+    driverOffRouteCount = 0;
     driverRouteMatchIndex = match.index;
     driverRouteMatchFraction = match.fraction ?? 0;
     driverRouteMatchPoint = match.point;
@@ -3472,7 +3499,7 @@ function buildLocationTelemetry(coords, browserCoords, previousRawPosition, prev
         ? (speed >= 0.8 && (previousRawPosition == null || moved >= 1.5))
         : moved >= DRIVER_HEADING_MIN_DISTANCE_METERS;
     const gpsHeading = normalizeHeading(browserCoords?.heading);
-    const reliableGpsHeading = (isMoving && gpsHeading != null && gpsHeading !== 0) ? gpsHeading : null;
+    const reliableGpsHeading = (isMoving && gpsHeading != null && gpsHeading !== 0 && hasSpeed && speed >= 1.2) ? gpsHeading : null;
     const calculatedHeading = (isMoving && moved >= DRIVER_HEADING_MIN_DISTANCE_METERS)
         ? calculateBearing(previousRawPosition, coords)
         : null;
@@ -3480,7 +3507,7 @@ function buildLocationTelemetry(coords, browserCoords, previousRawPosition, prev
 
     const routeMatch = currentTarget ? resolveRouteMatch(coords, hintHeading) : null;
     const routeHeading = routeMatch?.heading ?? null;
-    const targetBearing = (isMoving && currentTarget && previousHeading == null)
+    const targetBearing = (currentTarget && previousHeading == null)
         ? calculateBearing(coords, currentTarget.position)
         : null;
     // CRITICAL: Lock to road segment heading when snapped, or previous valid heading when stationary
