@@ -42,7 +42,8 @@ const PASSENGER_CAMERA_ROTATE_ANIM_MS = 220;
 // marker onto the nearest point of that polyline instead of the raw ping -
 // but only within this radius, so a driver who has genuinely left the route
 // (wrong turn, reroute in progress) isn't incorrectly glued to the old path.
-const ROUTE_SNAP_MAX_METERS = 30;
+const ROUTE_SNAP_MAX_METERS = 60;
+const ROUTE_SNAP_HYSTERESIS_METERS = 75;
 // Once we've matched the vehicle to a point on the route, only search a
 // small window forward/backward of that point next time, and never accept
 // a match that regresses more than this many points. Without this, GPS
@@ -287,19 +288,36 @@ function buildRouteAnimationWaypoints(startPosition, targetPosition, routePath, 
         return null;
     }
 
-    const waypoints = [startPosition];
+    const waypoints = [{
+        lat: startPosition.lat,
+        lng: startPosition.lng,
+        segHeading: calculateBearing(routePath[startIndex], routePath[Math.min(routePath.length - 1, startIndex + 1)])
+    }];
     for (let i = startIndex + 1; i <= targetIndex; i += 1) {
         const pt = routePath[i];
         if (pt) {
             const prev = waypoints[waypoints.length - 1];
             if (calculateDistanceMeters(prev, pt) >= 1.0) {
-                waypoints.push(pt);
+                const nextPt = routePath[Math.min(routePath.length - 1, i + 1)];
+                waypoints.push({
+                    lat: pt.lat,
+                    lng: pt.lng,
+                    segHeading: calculateBearing(pt, nextPt) ?? prev.segHeading
+                });
             }
         }
     }
     const prev = waypoints[waypoints.length - 1];
     if (calculateDistanceMeters(prev, targetPosition) >= 0.5) {
-        waypoints.push(targetPosition);
+        const targetSegHeading = calculateBearing(
+            routePath[targetIndex],
+            routePath[Math.min(routePath.length - 1, targetIndex + 1)]
+        ) ?? prev.segHeading;
+        waypoints.push({
+            lat: targetPosition.lat,
+            lng: targetPosition.lng,
+            segHeading: targetSegHeading
+        });
     }
 
     const cumulative = [0];
@@ -330,7 +348,7 @@ function sampleRouteAnimation(routeAnimData, progress) {
             const p0 = waypoints[i];
             const p1 = waypoints[i + 1];
             const point = sphericalInterpolate(p0, p1, fraction);
-            let heading = calculateBearing(p0, p1);
+            let heading = p0.segHeading ?? (segDist >= 2.0 ? calculateBearing(p0, p1) : null) ?? p1.segHeading;
             if (heading == null && i + 2 < waypoints.length) {
                 heading = calculateBearing(p0, waypoints[i + 2]);
             }
@@ -338,7 +356,7 @@ function sampleRouteAnimation(routeAnimData, progress) {
         }
     }
     const last = waypoints[waypoints.length - 1];
-    return { point: last, heading: null };
+    return { point: last, heading: last?.segHeading ?? null };
 }
 
 function projectFractionOntoSegment(point, segStart, segEnd) {
@@ -355,7 +373,7 @@ function projectFractionOntoSegment(point, segStart, segEnd) {
     return Math.max(0, Math.min(1, fraction));
 }
 
-function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeading = null) {
+function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeading = null, lastFraction = 0) {
     if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
 
     let searchFullRange = lastIndex < 0 || lastIndex >= routePath.length - 1;
@@ -372,52 +390,73 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeadin
         windowEnd = routePath.length - 2;
     }
 
-    const evaluateCandidate = (currentBest, segIndex, segStart, segEnd) => {
-        const fraction = projectFractionOntoSegment(position, segStart, segEnd);
+    const maxSnapMeters = searchFullRange ? ROUTE_SNAP_MAX_METERS : ROUTE_SNAP_HYSTERESIS_METERS;
+    const normalizedVehicleHeading = normalizeHeading(vehicleHeading);
+
+    const evaluateCandidate = (currentBest, segIndex, segStart, segEnd, isWindowSearch) => {
+        if (!segStart || !segEnd) return currentBest;
+        let fraction = projectFractionOntoSegment(position, segStart, segEnd);
+
+        // Enforce monotonic progress on the same segment when GPS jitter drifts
+        // slightly backward (<= 15m) so the vehicle never slides backward at stops.
+        if (isWindowSearch && segIndex === lastIndex && Number.isFinite(lastFraction) && fraction < lastFraction) {
+            const segLen = calculateDistanceMeters(segStart, segEnd);
+            const backwardMeters = (lastFraction - fraction) * segLen;
+            if (backwardMeters <= 15) {
+                fraction = lastFraction;
+            }
+        }
+
         const projected = {
             lat: segStart.lat + ((segEnd.lat - segStart.lat) * fraction),
             lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
         };
         const distanceMeters = calculateDistanceMeters(position, projected);
-        if (distanceMeters > ROUTE_SNAP_MAX_METERS) return currentBest;
+        if (distanceMeters > maxSnapMeters) return currentBest;
 
-        const segHeading = calculateBearing(segStart, segEnd);
-        const isHeadingAligned = (vehicleHeading != null && segHeading != null)
-            ? Math.abs(shortestHeadingDelta(vehicleHeading, segHeading)) <= 90
+        let segHeading = calculateBearing(segStart, segEnd);
+        if (segHeading == null && segIndex + 2 < routePath.length) {
+            segHeading = calculateBearing(segStart, routePath[segIndex + 2]);
+        }
+        const isHeadingAligned = (normalizedVehicleHeading != null && segHeading != null)
+            ? Math.abs(shortestHeadingDelta(normalizedVehicleHeading, segHeading)) <= 100
             : true;
 
-        if (!currentBest) {
-            return { index: segIndex, point: projected, distanceMeters, heading: segHeading, aligned: isHeadingAligned };
+        let score = distanceMeters;
+        if (isWindowSearch && segIndex < lastIndex) {
+            score += (lastIndex - segIndex) * 12;
+        }
+        if (!isHeadingAligned) {
+            score += 24;
         }
 
-        // Heading-aligned segment takes precedence over opposite-facing segment
-        if (isHeadingAligned && !currentBest.aligned) {
-            return { index: segIndex, point: projected, distanceMeters, heading: segHeading, aligned: isHeadingAligned };
-        }
-        if (!isHeadingAligned && currentBest.aligned) {
-            return currentBest;
-        }
-
-        // Both aligned or both unaligned: compare distance
-        if (distanceMeters < currentBest.distanceMeters) {
-            return { index: segIndex, point: projected, distanceMeters, heading: segHeading, aligned: isHeadingAligned };
+        if (!currentBest || score < currentBest.score) {
+            return {
+                index: segIndex,
+                fraction,
+                point: projected,
+                distanceMeters,
+                heading: segHeading,
+                aligned: isHeadingAligned,
+                score
+            };
         }
         return currentBest;
     };
 
     let best = null;
     for (let i = windowStart; i <= windowEnd; i += 1) {
-        best = evaluateCandidate(best, i, routePath[i], routePath[i + 1]);
+        best = evaluateCandidate(best, i, routePath[i], routePath[i + 1], !searchFullRange);
     }
 
     // If windowed search did not find a match within tolerance (e.g. detour or rejoin far ahead), search the entire route
     if (!best && !searchFullRange) {
         for (let i = 0; i <= routePath.length - 2; i += 1) {
-            best = evaluateCandidate(best, i, routePath[i], routePath[i + 1]);
+            best = evaluateCandidate(best, i, routePath[i], routePath[i + 1], false);
         }
     }
 
-    if (!best || best.distanceMeters > ROUTE_SNAP_MAX_METERS) {
+    if (!best || best.distanceMeters > maxSnapMeters) {
         return null;
     }
 
@@ -1361,26 +1400,64 @@ function renderPassengerNextPickup(nextPickup, driverPosition) {
     }
 }
 
+function splitAssignedDriverRouteAtMatch(path, matchIndex, matchPoint) {
+    if (!Array.isArray(path) || path.length < 2) {
+        return path || [];
+    }
+    if (!Number.isInteger(matchIndex) || matchIndex < 0) {
+        return path;
+    }
+    const index = Math.max(0, Math.min(path.length - 2, matchIndex));
+    const anchor = matchPoint || path[index];
+    const remaining = [anchor].concat(path.slice(index + 1));
+    return remaining.length >= 2 ? remaining : path;
+}
+
+function updateAssignedDriverRouteProgress(routePath, matchIndex, matchPoint) {
+    if (!assignedDriverRoutePolyline || !Array.isArray(routePath) || routePath.length < 2) return;
+    if (matchIndex < 0) return;
+    const remaining = splitAssignedDriverRouteAtMatch(routePath, matchIndex, matchPoint);
+    if (remaining.length >= 2) {
+        assignedDriverRoutePolyline.setPath(remaining);
+    }
+}
+
 function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinationPosition = null) {
     if (!window.mapInstance || !window.google?.maps) return;
 
-    const routePath = Array.isArray(path) && path.length >= 2
+    const fullRoutePath = Array.isArray(path) && path.length >= 2
         ? path
         : [driverPosition, targetPosition].filter(Boolean);
-    if (routePath.length < 2) return;
+    if (fullRoutePath.length < 2) return;
 
-    const oldPolyline = assignedDriverRoutePolyline;
-    assignedDriverRoutePolyline = new window.google.maps.Polyline({
-        map: window.mapInstance,
-        path: routePath,
-        strokeColor: "#16723a",
-        strokeOpacity: 0.96,
-        strokeWeight: 6,
-        zIndex: 640
-    });
+    let displayPath = fullRoutePath;
+    if (Array.isArray(path) && path.length >= 2 && driverPosition) {
+        const match = matchPositionToRoute(
+            driverPosition,
+            path,
+            activeDriverMarker?.routeMatchIndex ?? -1,
+            activeDriverMarker?.heading ?? null,
+            activeDriverMarker?.routeMatchFraction ?? 0
+        );
+        if (match) {
+            displayPath = splitAssignedDriverRouteAtMatch(path, match.index, match.point);
+        }
+    }
 
-    if (oldPolyline?.setMap) {
-        oldPolyline.setMap(null);
+    if (assignedDriverRoutePolyline) {
+        assignedDriverRoutePolyline.setPath(displayPath);
+        if (assignedDriverRoutePolyline.getMap?.() !== window.mapInstance) {
+            assignedDriverRoutePolyline.setMap(window.mapInstance);
+        }
+    } else {
+        assignedDriverRoutePolyline = new window.google.maps.Polyline({
+            map: window.mapInstance,
+            path: displayPath,
+            strokeColor: "#16723a",
+            strokeOpacity: 0.96,
+            strokeWeight: 6,
+            zIndex: 640
+        });
     }
 
     const isDestinationLeg = Boolean(
@@ -1391,7 +1468,7 @@ function drawAssignedDriverRoute(path, driverPosition, targetPosition, destinati
     );
 
     const bounds = new window.google.maps.LatLngBounds();
-    routePath.forEach((point) => bounds.extend(point));
+    displayPath.forEach((point) => bounds.extend(point));
     bounds.extend(driverPosition);
     bounds.extend(targetPosition);
     if (isDestinationLeg && destinationPosition) {
@@ -1628,6 +1705,7 @@ let passengerDriverPendingOutlier = null;
 let passengerDriverLastAcceptedFixAt = null;
 // epoch ms based - for ordering Firestore timestamps
 let passengerDriverLastAcceptedEpochMs = 0;
+let passengerDriverLastAcceptedRaw = null;
 
 function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs = 0) {
     // Reject stale out-of-order Firestore packets using wall-clock epoch ms
@@ -1638,14 +1716,14 @@ function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp
         }
     }
 
-    const current = activeDriverMarker?.marker?.getPosition?.();
-    if (!current) {
+    if (!passengerDriverLastAcceptedRaw) {
         if (sourceTimestampEpochMs > 0) passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
         passengerDriverLastAcceptedFixAt = nowMs;
+        passengerDriverLastAcceptedRaw = rawPosition;
         return rawPosition;
     }
 
-    const lastKnown = { lat: current.lat(), lng: current.lng() };
+    const lastKnown = passengerDriverLastAcceptedRaw;
     let elapsedSeconds;
     if (sourceTimestampEpochMs > 0 && passengerDriverLastAcceptedEpochMs > 0) {
         const deltaSource = (sourceTimestampEpochMs - passengerDriverLastAcceptedEpochMs) / 1000;
@@ -1663,6 +1741,7 @@ function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp
         passengerDriverPendingOutlier = null;
         if (sourceTimestampEpochMs > 0) passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
         passengerDriverLastAcceptedFixAt = nowMs;
+        passengerDriverLastAcceptedRaw = rawPosition;
         return rawPosition;
     }
 
@@ -1671,11 +1750,12 @@ function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp
         passengerDriverPendingOutlier = null;
         if (sourceTimestampEpochMs > 0) passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
         passengerDriverLastAcceptedFixAt = nowMs;
+        passengerDriverLastAcceptedRaw = rawPosition;
         return rawPosition;
     }
 
     passengerDriverPendingOutlier = rawPosition;
-    // Return last known position to hold the marker in place
+    // Return last known raw position to hold the marker in place
     return lastKnown;
 }
 
@@ -1726,31 +1806,64 @@ function adjustForMarkerOverlap(position, heading, driverId = "") {
 
 function resolveDriverRenderState(existing, rawPosition, driver, routePath = [], driverId = "") {
     let position = rawPosition;
-    let heading = getDriverDocumentHeading(driver);
+    let docHeading = getDriverDocumentHeading(driver);
+    let heading = docHeading;
     let matchedRouteHeading = null;
     let routeMatchIndex = existing?.routeMatchIndex ?? -1;
+    let routeMatchFraction = existing?.routeMatchFraction ?? 0;
+    let routeMatchPoint = null;
 
     const previousPosition = existing?.marker?.getPosition?.();
     const prevPosObj = previousPosition ? { lat: previousPosition.lat(), lng: previousPosition.lng() } : null;
-    const moveDist = prevPosObj ? calculateDistanceMeters(prevPosObj, rawPosition) : 0;
+    // Compare raw-to-raw for movement detection and motion bearing so road-snap offsets
+    // never produce false perpendicular 90-degree headings!
+    const prevRawObj = existing?.lastRawPosition || existing?.rawPosition || prevPosObj;
+    const rawMoveDist = prevRawObj ? calculateDistanceMeters(prevRawObj, rawPosition) : 0;
     const rawSpeed = driver?.driverSpeed != null && driver?.driverSpeed !== "" ? Number(driver.driverSpeed) : null;
-    const hasValidSpeed = rawSpeed !== null && Number.isFinite(rawSpeed);
-    const isMoving = hasValidSpeed ? rawSpeed >= 0.8 : (moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS);
+    const hasValidSpeed = rawSpeed !== null && Number.isFinite(rawSpeed) && rawSpeed >= 0;
+    const isMoving = hasValidSpeed
+        ? (rawSpeed >= 0.8 && (prevRawObj == null || rawMoveDist >= 1.5))
+        : (rawMoveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS);
+
+    if (existing) {
+        existing.lastRawPosition = rawPosition;
+    }
 
     // 1. Monotonic Road-Snapping: If routePath exists, snap vehicle onto the road polyline
     if (Array.isArray(routePath) && routePath.length >= 2) {
         const lastIdx = existing?.routeMatchIndex ?? -1;
-        const candidateHeading = heading ?? existing?.heading ?? null;
-        const match = matchPositionToRoute(rawPosition, routePath, lastIdx, isMoving ? candidateHeading : null);
-        if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
+        const lastFrac = existing?.routeMatchFraction ?? 0;
+        const candidateHeading = (isMoving ? docHeading : null) ?? existing?.heading ?? docHeading ?? null;
+        const match = matchPositionToRoute(rawPosition, routePath, lastIdx, candidateHeading, lastFrac);
+        if (match) {
             position = match.point;
             routeMatchIndex = match.index;
+            routeMatchFraction = match.fraction ?? 0;
+            routeMatchPoint = match.point;
             if (existing) {
                 existing.routeMatchIndex = match.index;
+                existing.routeMatchFraction = routeMatchFraction;
+                existing.routeMatchPoint = match.point;
             }
             if (match.heading != null) {
                 matchedRouteHeading = match.heading;
             }
+        } else {
+            routeMatchIndex = -1;
+            routeMatchFraction = 0;
+            if (existing) {
+                existing.routeMatchIndex = -1;
+                existing.routeMatchFraction = 0;
+                existing.routeMatchPoint = null;
+            }
+        }
+    } else {
+        routeMatchIndex = -1;
+        routeMatchFraction = 0;
+        if (existing) {
+            existing.routeMatchIndex = -1;
+            existing.routeMatchFraction = 0;
+            existing.routeMatchPoint = null;
         }
     }
 
@@ -1762,16 +1875,15 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
     if (matchedRouteHeading != null) {
         // Vehicle is matched to the active road route; follow road segment bearing
         heading = matchedRouteHeading;
-    } else if (prevPosObj) {
-        if (isMoving && moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
-            const motionBearing = calculateBearing(prevPosObj, rawPosition);
-            if (motionBearing != null) {
-                heading = motionBearing;
-            }
-        } else if (!isMoving && existing?.heading != null) {
-            // Stationary: LOCK PREVIOUS HEADING! Never turn or spin in place!
-            heading = existing.heading;
-        }
+    } else if (isMoving) {
+        const motionBearing = (prevRawObj && rawMoveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS)
+            ? calculateBearing(prevRawObj, rawPosition)
+            : null;
+        const reliableDocHeading = (docHeading != null && docHeading !== 0) ? docHeading : null;
+        heading = reliableDocHeading ?? motionBearing ?? existing?.heading ?? docHeading;
+    } else if (existing?.heading != null) {
+        // Stationary: LOCK PREVIOUS HEADING! Never turn or spin in place!
+        heading = existing.heading;
     }
 
     if (heading == null && existing?.heading != null) {
@@ -1779,12 +1891,14 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
     }
 
     const resolvedDriverId = driverId || driver?.driverId || driver?.id || "";
-    const finalHeading = existing?.heading != null
-        ? smoothHeading(existing.heading, heading, 0.45)
-        : normalizeHeading(heading);
+    // Do not pre-damp matchedRouteHeading by 0.45 because animateGlobalDriverMarker already
+    // interpolates smoothly across frames and pre-damping causes a backward snap at progress=1.
+    const finalHeading = matchedRouteHeading != null
+        ? normalizeHeading(matchedRouteHeading)
+        : (existing?.heading != null ? smoothHeading(existing.heading, heading, 0.55) : normalizeHeading(heading));
     const finalPosition = adjustForMarkerOverlap(position, finalHeading, resolvedDriverId);
 
-    return { position: finalPosition, heading: finalHeading, routeMatchIndex };
+    return { position: finalPosition, heading: finalHeading, routeMatchIndex, routeMatchFraction, routeMatchPoint };
 }
 
 function updateVehicleMarkerLegend() {
@@ -2185,15 +2299,12 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     const distanceMeters = calculateDistanceMeters(startPosition, targetPosition);
     existing.lastMoveDistanceMeters = distanceMeters;
 
-    const startHeading = normalizeHeading(existing.heading ?? targetHeading);
-    const headingDelta = (targetHeading != null && startHeading != null)
-        ? shortestHeadingDelta(startHeading, targetHeading)
-        : 0;
+    const startHeading = normalizeHeading(existing.marker?.heading ?? existing.heading ?? targetHeading);
 
-    if (distanceMeters < 1.0) {
+    if (distanceMeters < 0.8) {
         existing.marker.setPosition(targetPosition);
         if (targetHeading != null) {
-            existing.heading = smoothHeading(startHeading, targetHeading, 0.2);
+            existing.heading = smoothHeading(startHeading, targetHeading, 0.35);
             existing.marker.setHeading?.(existing.heading);
         }
         existing.lastFixAt = now0;
@@ -2221,10 +2332,10 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
 
     const step = (now) => {
         const progress = Math.min(1, (now - startedAt) / duration);
-        // Smooth Hermite / cubic easing curve
-        const eased = progress < 0.5
+        // Smooth linear-dominant interpolation prevents stop-and-go pulsing between consecutive updates
+        const eased = 0.25 * (progress < 0.5
             ? 4 * progress * progress * progress
-            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2) + 0.75 * progress;
 
         let framePosition;
         let segHeading = null;
@@ -2268,7 +2379,8 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
         if (progress < 1) {
             existing.animationFrame = requestAnimationFrame(step);
         } else {
-            existing.heading = targetHeading ?? frameHeading ?? existing.heading;
+            const finalHeading = (segHeading != null ? segHeading : targetHeading) ?? frameHeading ?? existing.heading;
+            existing.heading = finalHeading;
             existing.marker.setPosition(targetPosition);
             existing.marker.setHeading?.(existing.heading);
             existing.animationFrame = null;
@@ -2348,7 +2460,10 @@ function upsertGlobalDriverMarker(driverId, driver) {
             vehicleType,
             heading,
             rawPosition,
+            lastRawPosition: rawPosition,
             routeMatchIndex: -1,
+            routeMatchFraction: 0,
+            routeMatchPoint: null,
             animationFrame: null,
             coastFrame: null,
             lastFixAt: performance.now(),
@@ -2393,6 +2508,7 @@ function resetActiveDriverRouteState() {
         driverId: "",
         targetKey: "",
         routePath: [],
+        lastPolyline: "",
         lastRoutePosition: null,
         lastRouteAt: 0,
         routeRequestInFlight: false,
@@ -2407,6 +2523,7 @@ function clearActiveDriverMarker(event) {
     activeDriverMarker = null;
     passengerDriverPendingOutlier = null;
     passengerDriverLastAcceptedFixAt = null;
+    passengerDriverLastAcceptedRaw = null;
     const finishedRideId = String(event?.detail?.rideId || assignedDriverTrackingRideId || "").trim();
     if (finishedRideId) {
         lastCompletedRideId = finishedRideId;
@@ -2437,6 +2554,51 @@ function getActiveRideTarget(detail = {}) {
     return target;
 }
 
+// Validates that a backend-supplied encoded polyline belongs to the active leg
+// (never using the Pickup->Drop `route_polyline` during the Driver->Pickup leg)
+// and that the driver is currently on or near that polyline (within 75m).
+// When the driver takes a different road or is in background mode without live
+// polyline updates, this returns null so `refreshActiveDriverRoute` fetches the
+// real live road route via `fetchRoadRouteDetails(position, target)`.
+function selectValidBackendRoute(detail, position, target) {
+    if (!detail || !position) return null;
+    const status = String(detail.rideStatus || detail.status || "").toLowerCase();
+    const isDestinationLeg = status === "started" || status === "en_route";
+    const expectedLeg = isDestinationLeg ? "destination" : "pickup";
+    const isShareRide = detail.rideType === "share" && Boolean(detail.parentTripId || detail.sharedInfo?.parentTripId);
+
+    const candidates = [];
+    if (detail.sharedInfo?.routePolyline) {
+        candidates.push({ poly: detail.sharedInfo.routePolyline, checkTargetEnd: false });
+    }
+    if (detail.routePolyline) {
+        const legTag = detail.routePolylineLeg ? String(detail.routePolylineLeg).toLowerCase() : "";
+        if (!legTag || legTag === expectedLeg) {
+            candidates.push({ poly: detail.routePolyline, checkTargetEnd: !isShareRide });
+        }
+    }
+    // Only consider `route_polyline` (the pre-booked Pickup -> Drop polyline) during the destination leg
+    if (isDestinationLeg && detail.route_polyline) {
+        candidates.push({ poly: detail.route_polyline, checkTargetEnd: !isShareRide });
+    }
+
+    for (const candidate of candidates) {
+        const decoded = decodePolyline(candidate.poly);
+        if (!Array.isArray(decoded) || decoded.length < 2) continue;
+        if (candidate.checkTargetEnd && target) {
+            const endPt = decoded[decoded.length - 1];
+            if (calculateDistanceMeters(endPt, target) > 350) {
+                continue;
+            }
+        }
+        const match = matchPositionToRoute(position, decoded, -1);
+        if (match && match.distanceMeters <= ROUTE_SNAP_HYSTERESIS_METERS) {
+            return { polyline: candidate.poly, routePath: decoded, match };
+        }
+    }
+    return null;
+}
+
 async function refreshActiveDriverRoute(detail, position, target) {
     const driverId = detail.driver_id || detail.driverId || "assigned";
     const targetKey = `${driverId}:${target.lat}:${target.lng}`;
@@ -2447,50 +2609,62 @@ async function refreshActiveDriverRoute(detail, position, target) {
 
     if (targetChanged) {
         activeDriverRouteState.routePath = [];
+        activeDriverRouteState.lastPolyline = "";
         activeDriverRouteState.lastRoutePosition = null;
         activeDriverRouteState.lastRouteAt = 0;
         passengerFirstRouteFitComplete = false;
-    }
-
-    if (!targetChanged
-        && activeDriverRouteState.routePath.length
-        && moved < ACTIVE_DRIVER_ROUTE_RECALC_DISTANCE_METERS) {
-        return;
-    }
-
-    if (!targetChanged
-        && activeDriverRouteState.routePath.length
-        && elapsed < ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS) {
-        return;
+        if (activeDriverMarker) {
+            activeDriverMarker.routeMatchIndex = -1;
+            activeDriverMarker.routeMatchFraction = 0;
+            activeDriverMarker.routeMatchPoint = null;
+        }
     }
 
     const isShareRide = detail.rideType === "share" && Boolean(detail.parentTripId || detail.sharedInfo?.parentTripId);
-    const backendPoly = detail.routePolyline || detail.route_polyline || detail.sharedInfo?.routePolyline;
-    if (backendPoly) {
-        const decodedRoute = decodePolyline(backendPoly);
-        if (decodedRoute.length >= 2) {
-            activeDriverRouteState.driverId = driverId;
-            activeDriverRouteState.targetKey = targetKey;
-            activeDriverRouteState.routePath = decodedRoute;
-            activeDriverRouteState.lastPolyline = backendPoly;
-            activeDriverRouteState.lastRoutePosition = position;
-            activeDriverRouteState.lastRouteAt = Date.now();
-            drawAssignedDriverRoute(decodedRoute, position, target, destinationPosition);
-            if (isShareRide && detail.sharedInfo?.nextPickup) {
-                renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
-            }
-            if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
-                clearPickupMarker();
-            }
-            renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
-            return;
+    const validBackend = selectValidBackendRoute(detail, position, target);
+    if (validBackend) {
+        const polyChanged = activeDriverRouteState.lastPolyline !== validBackend.polyline || targetChanged || !activeDriverRouteState.routePath.length;
+        activeDriverRouteState.driverId = driverId;
+        activeDriverRouteState.targetKey = targetKey;
+        activeDriverRouteState.routePath = validBackend.routePath;
+        activeDriverRouteState.lastPolyline = validBackend.polyline;
+        activeDriverRouteState.lastRoutePosition = position;
+        activeDriverRouteState.lastRouteAt = Date.now();
+        if (polyChanged) {
+            drawAssignedDriverRoute(validBackend.routePath, position, target, destinationPosition);
         }
+        if (isShareRide && detail.sharedInfo?.nextPickup) {
+            renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
+        }
+        if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
+            clearPickupMarker();
+        }
+        renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
+        return;
     }
+
     if (isShareRide && detail.sharedInfo) {
         renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
         if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
             clearPickupMarker();
         }
+    }
+
+    // Check if the driver is still on our currently cached routePath for this target
+    const existingMatch = (!targetChanged && activeDriverRouteState.routePath.length >= 2)
+        ? matchPositionToRoute(position, activeDriverRouteState.routePath, activeDriverMarker?.routeMatchIndex ?? -1)
+        : null;
+    if (existingMatch && existingMatch.distanceMeters <= ROUTE_SNAP_HYSTERESIS_METERS) {
+        return;
+    }
+
+    // Driver is either on a new leg without a backend route or has deviated off the current route:
+    // throttle live Directions API recalculation to once every 6 seconds.
+    if (!targetChanged && activeDriverRouteState.lastRouteAt > 0 && elapsed < 6000) {
+        return;
+    }
+    if (!targetChanged && activeDriverRouteState.lastRoutePosition && moved < 10 && activeDriverRouteState.routePath.length >= 2) {
+        return;
     }
 
     if (activeDriverRouteState.routeRequestInFlight) {
@@ -2516,8 +2690,19 @@ async function refreshActiveDriverRoute(detail, position, target) {
         activeDriverRouteState.driverId = driverId;
         activeDriverRouteState.targetKey = targetKey;
         activeDriverRouteState.routePath = routeDetails.routePath;
+        activeDriverRouteState.lastPolyline = "";
         activeDriverRouteState.lastRoutePosition = position;
         activeDriverRouteState.lastRouteAt = Date.now();
+
+        if (activeDriverMarker) {
+            activeDriverMarker.routeMatchIndex = -1;
+            activeDriverMarker.routeMatchFraction = 0;
+            activeDriverMarker.routeMatchPoint = null;
+            const latestRaw = activeDriverMarker.lastRawPosition || position;
+            const snapped = resolveDriverRenderState(activeDriverMarker, latestRaw, detail, routeDetails.routePath, driverId);
+            animateGlobalDriverMarker(activeDriverMarker, snapped.position, snapped.heading, routeDetails.routePath, -1, snapped.routeMatchIndex);
+        }
+
         drawAssignedDriverRoute(routeDetails.routePath, position, target, destinationPosition);
         if (!hadRoutePath) assignedDriverLastDistanceKm = null;
         if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
@@ -2595,17 +2780,7 @@ async function handleAssignedDriverLocation(event) {
     }
 
     // Ensure destination marker is placed or kept, never destroyed during live tracking
-    upsertRideDestinationMarker(detail);
-
-    if (target) {
-        const targetKey = `${driverId}:${target.lat}:${target.lng}`;
-        if (activeDriverRouteState.targetKey !== targetKey || !activeDriverRouteState.routePath.length) {
-            renderAssignedDriverTracking(null, calculateDistanceMeters(filteredPosition, target) / 1000);
-        }
-        refreshActiveDriverRoute(detail, filteredPosition, target).catch((error) => {
-            console.warn("Assigned driver route heading refresh failed:", error);
-        });
-    }
+    const destinationPosition = upsertRideDestinationMarker(detail);
 
     // Remove the assigned driver from global idle markers map (they are tracked separately now)
     const existingGlobal = driverId ? globalDriverMarkers.get(driverId) : null;
@@ -2618,22 +2793,51 @@ async function handleAssignedDriverLocation(event) {
     }
 
     const existing = activeDriverMarker;
-    const backendPolyline = detail.routePolyline || detail.route_polyline || detail.sharedInfo?.routePolyline;
-    if (backendPolyline && (!activeDriverRouteState.routePath.length || activeDriverRouteState.lastPolyline !== backendPolyline)) {
-        const decoded = decodePolyline(backendPolyline);
-        if (decoded.length >= 2) {
+    if (target) {
+        const targetKey = `${driverId}:${target.lat}:${target.lng}`;
+        if (activeDriverRouteState.targetKey !== targetKey) {
+            activeDriverRouteState.routePath = [];
+            activeDriverRouteState.lastPolyline = "";
+            if (existing) {
+                existing.routeMatchIndex = -1;
+                existing.routeMatchFraction = 0;
+                existing.routeMatchPoint = null;
+            }
+        }
+        const validBackend = selectValidBackendRoute(detail, filteredPosition, target);
+        if (validBackend && (!activeDriverRouteState.routePath.length || activeDriverRouteState.lastPolyline !== validBackend.polyline)) {
             activeDriverRouteState.driverId = driverId;
-            activeDriverRouteState.routePath = decoded;
-            activeDriverRouteState.lastPolyline = backendPolyline;
-            if (existing) existing.routeMatchIndex = -1;
-            const destinationPosition = upsertRideDestinationMarker(detail);
-            drawAssignedDriverRoute(decoded, filteredPosition, target, destinationPosition);
+            activeDriverRouteState.targetKey = targetKey;
+            activeDriverRouteState.routePath = validBackend.routePath;
+            activeDriverRouteState.lastPolyline = validBackend.polyline;
+            activeDriverRouteState.lastRoutePosition = filteredPosition;
+            activeDriverRouteState.lastRouteAt = Date.now();
+            if (existing) {
+                existing.routeMatchIndex = -1;
+                existing.routeMatchFraction = 0;
+                existing.routeMatchPoint = null;
+            }
+            drawAssignedDriverRoute(validBackend.routePath, filteredPosition, target, destinationPosition);
         }
     }
 
     const prevRouteIndex = existing?.routeMatchIndex ?? -1;
     const routePath = target ? activeDriverRouteState.routePath : [];
-    const { position, heading, routeMatchIndex } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
+    const { position, heading, routeMatchIndex, routeMatchFraction, routeMatchPoint } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
+
+    if (routePath.length >= 2 && routeMatchIndex >= 0) {
+        updateAssignedDriverRouteProgress(routePath, routeMatchIndex, routeMatchPoint);
+    }
+
+    if (target) {
+        const targetKey = `${driverId}:${target.lat}:${target.lng}`;
+        if (activeDriverRouteState.targetKey !== targetKey || !activeDriverRouteState.routePath.length) {
+            renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
+        }
+        refreshActiveDriverRoute(detail, filteredPosition, target).catch((error) => {
+            console.warn("Assigned driver route heading refresh failed:", error);
+        });
+    }
 
     if (!activeDriverMarker) {
         activeDriverMarker = {
@@ -2648,7 +2852,10 @@ async function handleAssignedDriverLocation(event) {
             }),
             vehicleType,
             heading,
+            lastRawPosition: filteredPosition,
             routeMatchIndex: routeMatchIndex >= 0 ? routeMatchIndex : -1,
+            routeMatchFraction: routeMatchFraction ?? 0,
+            routeMatchPoint: routeMatchPoint ?? null,
             animationFrame: null,
             coastFrame: null,
             lastFixAt: nowMs,

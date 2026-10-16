@@ -28,9 +28,8 @@ public class MainActivity extends BridgeActivity {
                     json.put("lng", location.getLongitude());
                     json.put("accuracy", location.hasAccuracy() ? location.getAccuracy() : 10.0);
                     json.put("speed", location.hasSpeed() ? location.getSpeed() : 0.0);
-                    Float headingToReport = location.hasBearing() ? location.getBearing() : bearing;
-                    if (headingToReport != null && !Float.isNaN(headingToReport)) {
-                        json.put("heading", headingToReport.doubleValue());
+                    if (bearing != null && !Float.isNaN(bearing) && bearing >= 0f && bearing <= 360f) {
+                        json.put("heading", bearing.doubleValue());
                     } else {
                         json.put("heading", org.json.JSONObject.NULL);
                     }
@@ -39,12 +38,24 @@ public class MainActivity extends BridgeActivity {
                     json.put("rideId", rideId != null ? rideId : "");
                     final String payloadStr = json.toString();
                     getBridge().getWebView().post(() -> {
+                        if (getBridge() == null || getBridge().getWebView() == null) {
+                            DriverLocationService.transmitFallbackFromNative(location, bearing, rideId);
+                            return;
+                        }
                         getBridge().getWebView().evaluateJavascript(
-                            "if (window.onNativeLocationUpdate) { window.onNativeLocationUpdate(" + payloadStr + "); }",
-                            null
+                            "(typeof window.onNativeLocationUpdate === 'function' ? (window.onNativeLocationUpdate(" + payloadStr + "), 'ok') : 'no_handler')",
+                            value -> {
+                                if (value == null || !value.contains("ok")) {
+                                    DriverLocationService.transmitFallbackFromNative(location, bearing, rideId);
+                                }
+                            }
                         );
                     });
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    DriverLocationService.transmitFallbackFromNative(location, bearing, rideId);
+                }
+            } else {
+                DriverLocationService.transmitFallbackFromNative(location, bearing, rideId);
             }
         });
         

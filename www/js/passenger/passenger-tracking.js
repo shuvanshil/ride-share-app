@@ -346,8 +346,10 @@ let trackLastPolyline = null;
 let trackLastRenderedStatus = null;
 let driverMarkerAnimation = null;
 let lastRenderedDriverLoc = null;
+let lastAcceptedRawLoc = null;
 let lastDriverHeading = 0;
 let lastRouteMatchIndex = -1;
+let lastRouteMatchFraction = 0;
 let trackLastFixAt = 0;
 let trackIntervalEma = null;
 
@@ -356,6 +358,8 @@ let trackPendingOutlier = null;
 let trackLastAcceptedFixAt = null;
 const TRACK_MAX_PLAUSIBLE_SPEED_MPS = 45;
 const TRACK_OUTLIER_CONFIRM_RADIUS_METERS = 60;
+const TRACK_ROUTE_SNAP_MAX_METERS = 60;
+const TRACK_ROUTE_SNAP_HYSTERESIS_METERS = 75;
 
 function stopLiveTracking() {
     if (driverMarkerAnimation) {
@@ -371,8 +375,10 @@ function stopLiveTracking() {
         trackRoutePolyline = null;
     }
     lastRenderedDriverLoc = null;
+    lastAcceptedRawLoc = null;
     lastDriverHeading = 0;
     lastRouteMatchIndex = -1;
+    lastRouteMatchFraction = 0;
     trackLastPolyline = null;
     trackRoutePath = [];
     trackLastFixAt = 0;
@@ -401,9 +407,10 @@ function filterTrackPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs =
         }
     }
 
-    if (!lastRenderedDriverLoc) {
+    if (!lastAcceptedRawLoc) {
         if (sourceTimestampEpochMs > 0) trackLastAcceptedEpochMs = sourceTimestampEpochMs;
         trackLastAcceptedFixAt = nowMs;
+        lastAcceptedRawLoc = rawPosition;
         return rawPosition;
     }
 
@@ -417,13 +424,14 @@ function filterTrackPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs =
             : 3;
     }
 
-    const jumpDistanceMeters = calculateDistanceMeters(lastRenderedDriverLoc, rawPosition);
+    const jumpDistanceMeters = calculateDistanceMeters(lastAcceptedRawLoc, rawPosition);
     const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
 
     if (impliedSpeedMps <= TRACK_MAX_PLAUSIBLE_SPEED_MPS) {
         trackPendingOutlier = null;
         if (sourceTimestampEpochMs > 0) trackLastAcceptedEpochMs = sourceTimestampEpochMs;
         trackLastAcceptedFixAt = nowMs;
+        lastAcceptedRawLoc = rawPosition;
         return rawPosition;
     }
 
@@ -432,15 +440,20 @@ function filterTrackPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs =
         trackPendingOutlier = null;
         if (sourceTimestampEpochMs > 0) trackLastAcceptedEpochMs = sourceTimestampEpochMs;
         trackLastAcceptedFixAt = nowMs;
+        lastAcceptedRawLoc = rawPosition;
         return rawPosition;
     }
 
     trackPendingOutlier = rawPosition;
-    return lastRenderedDriverLoc;
+    return lastAcceptedRawLoc;
 }
 
-function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null) {
-    if (!point || !Array.isArray(path) || path.length < 2) return { point, heading: null, index: -1 };
+function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, lastFrac = 0) {
+    if (!point || !Array.isArray(path) || path.length < 2) {
+        lastRouteMatchIndex = -1;
+        lastRouteMatchFraction = 0;
+        return { point, heading: null, index: -1, fraction: 0 };
+    }
     let searchFullRange = lastIdx < 0 || lastIdx >= path.length - 1;
     let windowStart = searchFullRange ? 0 : Math.max(0, lastIdx - 2);
     let windowEnd = searchFullRange ? path.length - 2 : Math.min(path.length - 2, lastIdx + 60);
@@ -451,54 +464,74 @@ function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null) {
         windowEnd = path.length - 2;
     }
 
-    const evaluateCandidate = (currentBest, segIndex, p1, p2) => {
+    const maxSnap = searchFullRange ? TRACK_ROUTE_SNAP_MAX_METERS : TRACK_ROUTE_SNAP_HYSTERESIS_METERS;
+    const normalizedHeading = normalizeHeading(vehicleHeading);
+
+    const evaluateCandidate = (currentBest, segIndex, p1, p2, isWindowSearch) => {
+        if (!p1 || !p2) return currentBest;
         const segLat = p2.lat - p1.lat;
         const segLng = (p2.lng - p1.lng) * (Math.cos((p1.lat * Math.PI) / 180) || 1);
         const ptLat = point.lat - p1.lat;
         const ptLng = (point.lng - p1.lng) * (Math.cos((p1.lat * Math.PI) / 180) || 1);
         const segLenSq = (segLat * segLat) + (segLng * segLng);
-        const frac = segLenSq > 1e-18 ? Math.max(0, Math.min(1, ((ptLat * segLat) + (ptLng * segLng)) / segLenSq)) : 0;
+        let frac = segLenSq > 1e-18 ? Math.max(0, Math.min(1, ((ptLat * segLat) + (ptLng * segLng)) / segLenSq)) : 0;
+
+        if (isWindowSearch && segIndex === lastIdx && Number.isFinite(lastFrac) && frac < lastFrac) {
+            const segLen = calculateDistanceMeters(p1, p2);
+            if ((lastFrac - frac) * segLen <= 15) {
+                frac = lastFrac;
+            }
+        }
+
         const proj = { lat: p1.lat + (p2.lat - p1.lat) * frac, lng: p1.lng + (p2.lng - p1.lng) * frac };
         const dist = calculateDistanceMeters(point, proj);
-        if (dist > 30) return currentBest;
+        if (dist > maxSnap) return currentBest;
 
         const segHeading = calculateBearing(p1, p2);
-        const isHeadingAligned = (vehicleHeading != null && segHeading != null)
-            ? Math.abs(shortestHeadingDelta(vehicleHeading, segHeading)) <= 90
+        const isHeadingAligned = (normalizedHeading != null && segHeading != null)
+            ? Math.abs(shortestHeadingDelta(normalizedHeading, segHeading)) <= 100
             : true;
 
-        if (!currentBest) {
-            return { index: segIndex, point: proj, dist, heading: segHeading, aligned: isHeadingAligned };
-        }
-        if (isHeadingAligned && !currentBest.aligned) {
-            return { index: segIndex, point: proj, dist, heading: segHeading, aligned: isHeadingAligned };
-        }
-        if (!isHeadingAligned && currentBest.aligned) {
-            return currentBest;
-        }
-        if (dist < currentBest.dist) {
-            return { index: segIndex, point: proj, dist, heading: segHeading, aligned: isHeadingAligned };
+        let score = dist;
+        if (isWindowSearch && segIndex < lastIdx) score += (lastIdx - segIndex) * 12;
+        if (!isHeadingAligned) score += 24;
+
+        if (!currentBest || score < currentBest.score) {
+            return { index: segIndex, fraction: frac, point: proj, dist, heading: segHeading, aligned: isHeadingAligned, score };
         }
         return currentBest;
     };
 
     let best = null;
     for (let i = windowStart; i <= windowEnd; i++) {
-        best = evaluateCandidate(best, i, path[i], path[i + 1]);
+        best = evaluateCandidate(best, i, path[i], path[i + 1], !searchFullRange);
     }
 
-    // If windowed search did not find a match within tolerance (e.g. detour or rejoin far ahead), search the entire route
     if (!best && !searchFullRange) {
         for (let i = 0; i <= path.length - 2; i++) {
-            best = evaluateCandidate(best, i, path[i], path[i + 1]);
+            best = evaluateCandidate(best, i, path[i], path[i + 1], false);
         }
     }
 
-    if (best && best.dist <= 30) {
+    if (best && best.dist <= maxSnap) {
         lastRouteMatchIndex = best.index;
-        return { point: best.point, heading: best.heading, index: best.index };
+        lastRouteMatchFraction = best.fraction ?? 0;
+        return { point: best.point, heading: best.heading, index: best.index, fraction: lastRouteMatchFraction };
     }
-    return { point, heading: null, index: -1 };
+    lastRouteMatchIndex = -1;
+    lastRouteMatchFraction = 0;
+    return { point, heading: null, index: -1, fraction: 0 };
+}
+
+function updateTrackRouteProgress(matchIndex, matchPoint) {
+    if (!trackRoutePolyline || !Array.isArray(trackRoutePath) || trackRoutePath.length < 2) return;
+    if (!Number.isInteger(matchIndex) || matchIndex < 0) return;
+    const index = Math.max(0, Math.min(trackRoutePath.length - 2, matchIndex));
+    const anchor = matchPoint || trackRoutePath[index];
+    const remaining = [anchor].concat(trackRoutePath.slice(index + 1));
+    if (remaining.length >= 2) {
+        trackRoutePolyline.setPath(remaining);
+    }
 }
 
 function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", speed = null) {
@@ -506,10 +539,14 @@ function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", sp
     const now0 = performance.now();
     const prevMatchIndex = lastRouteMatchIndex;
     const isMoving = speed != null ? speed >= 0.8 : true;
-    const candidateHeading = isMoving ? (normalizeHeading(heading) ?? lastDriverHeading) : null;
-    const snapResult = snapToTrackRoute(rawTarget, trackRoutePath, lastRouteMatchIndex, candidateHeading);
+    const candidateHeading = isMoving ? (normalizeHeading(heading) ?? lastDriverHeading) : lastDriverHeading;
+    const snapResult = snapToTrackRoute(rawTarget, trackRoutePath, lastRouteMatchIndex, candidateHeading, lastRouteMatchFraction);
     const targetPosition = snapResult.point;
-    const effectiveHeading = snapResult.heading ?? candidateHeading ?? lastDriverHeading;
+    const effectiveHeading = snapResult.heading ?? (isMoving ? normalizeHeading(heading) : null) ?? lastDriverHeading;
+
+    if (snapResult.index >= 0) {
+        updateTrackRouteProgress(snapResult.index, snapResult.point);
+    }
 
     if (driverMarkerAnimation) {
         cancelAnimationFrame(driverMarkerAnimation);
@@ -540,7 +577,7 @@ function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", sp
     } : targetPosition);
 
     const distance = calculateDistanceMeters(start, targetPosition);
-    if (distance < 1.0) {
+    if (distance < 0.8) {
         markers.driver.setPosition(targetPosition);
         if (effectiveHeading != null) {
             markers.driver.setHeading(effectiveHeading);
@@ -564,9 +601,9 @@ function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", sp
     const startedAt = now0;
     const step = (now) => {
         const progress = Math.min(1, (now - startedAt) / duration);
-        const eased = progress < 0.5
+        const eased = 0.25 * (progress < 0.5
             ? 4 * progress * progress * progress
-            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2) + 0.75 * progress;
 
         let framePosition;
         let segHeading = null;
@@ -675,6 +712,7 @@ function renderSnapshot(data) {
     // Reset route-matching index when transitioning from pickup approach to destination leg
     if (prevStatus && ["accepted", "arrived"].includes(prevStatus) && ["started", "en_route"].includes(status)) {
         lastRouteMatchIndex = -1;
+        lastRouteMatchFraction = 0;
     }
 
     statusTitle.innerText = STATUS_COPY[status] ? "Trip in progress" : "Trip status";
@@ -715,26 +753,39 @@ function renderSnapshot(data) {
         updateMarker(markers, 'nextPickup', null);
     }
 
-    const polylineString = data.routePolyline || data.route_polyline || shared?.routePolyline;
+    const expectedLeg = isPickedUp ? "destination" : "pickup";
+    const legMatches = !data.routePolylineLeg || String(data.routePolylineLeg).toLowerCase() === expectedLeg;
+    const polylineString = shared?.routePolyline
+        || (legMatches ? data.routePolyline : null)
+        || (isPickedUp ? data.route_polyline : null);
     if (polylineString && (!trackRoutePolyline || trackLastPolyline !== polylineString)) {
         trackLastPolyline = polylineString;
         lastRouteMatchIndex = -1;
+        lastRouteMatchFraction = 0;
         const path = decodeTrackPolyline(polylineString);
         if (path.length >= 2) {
             trackRoutePath = path;
-            const oldPolyline = trackRoutePolyline;
-            trackRoutePolyline = new window.google.maps.Polyline({
-                map,
-                path,
-                strokeColor: "#16723a",
-                strokeOpacity: 0.95,
-                strokeWeight: 5,
-                zIndex: 500
-            });
-            if (oldPolyline?.setMap) {
-                oldPolyline.setMap(null);
+            if (trackRoutePolyline) {
+                trackRoutePolyline.setPath(path);
+                if (trackRoutePolyline.getMap?.() !== map) trackRoutePolyline.setMap(map);
+            } else {
+                trackRoutePolyline = new window.google.maps.Polyline({
+                    map,
+                    path,
+                    strokeColor: "#16723a",
+                    strokeOpacity: 0.95,
+                    strokeWeight: 5,
+                    zIndex: 500
+                });
             }
         }
+    } else if (!polylineString && trackRoutePolyline) {
+        trackRoutePolyline.setMap(null);
+        trackRoutePolyline = null;
+        trackRoutePath = [];
+        trackLastPolyline = null;
+        lastRouteMatchIndex = -1;
+        lastRouteMatchFraction = 0;
     }
 
     function inferVehicleType(d) {
@@ -758,7 +809,7 @@ function renderSnapshot(data) {
             const vehicleType = inferVehicleType(data);
             const rawSpeed = data.driverSpeed ?? driverLoc.driverSpeed;
             const speed = (rawSpeed != null && rawSpeed !== "" && !isNaN(Number(rawSpeed))) ? Number(rawSpeed) : null;
-            animateDriverMarker(filteredLoc, data.driverHeading || driverLoc.driverHeading || null, vehicleType, speed);
+            animateDriverMarker(filteredLoc, data.driverHeading ?? driverLoc.driverHeading ?? null, vehicleType, speed);
         }
     }
 }

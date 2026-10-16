@@ -373,10 +373,12 @@ public class DriverLocationService extends Service implements LocationListener {
         }
 
         boolean isActiveRide = "active_ride".equalsIgnoreCase(trackingState);
+        float distanceMoved = lastBroadcastLocation != null ? lastBroadcastLocation.distanceTo(location) : Float.MAX_VALUE;
+        boolean hasReliableSpeed = location.hasSpeed() && !Float.isNaN(location.getSpeed()) && location.getSpeed() >= 0.8f;
 
-        // Compute motion bearing if GPS did not provide heading and we have moved >= 3m
+        // Compute motion bearing if we have moved >= 3.5m
+        Float computedMotionBearing = null;
         if (lastBroadcastLocation != null) {
-            float distanceMoved = lastBroadcastLocation.distanceTo(location);
             long elapsed = now - lastBroadcastTimeMs;
 
             // Plausibility check: speed > 55 m/s (~198 km/h) jump is rejected
@@ -388,15 +390,20 @@ public class DriverLocationService extends Service implements LocationListener {
                 }
             }
 
-            if (distanceMoved >= 3.0f) {
+            if (distanceMoved >= 3.5f) {
                 float computedBearing = lastBroadcastLocation.bearingTo(location);
                 if (computedBearing < 0) computedBearing += 360f;
-                lastBearing = computedBearing;
+                computedMotionBearing = computedBearing;
             }
         }
 
-        if (location.hasBearing() && !Float.isNaN(location.getBearing()) && location.getBearing() >= 0) {
+        // Only trust GPS sensor bearing when the vehicle is actually moving; stationary GPS bearing
+        // on Android frequently emits 0.0 or random multipath compass rotation.
+        if (location.hasBearing() && !Float.isNaN(location.getBearing()) && location.getBearing() > 0.0f
+                && (hasReliableSpeed || distanceMoved >= 4.0f)) {
             lastBearing = location.getBearing();
+        } else if (computedMotionBearing != null) {
+            lastBearing = computedMotionBearing;
         }
 
         lastBroadcastLocation = location;
@@ -414,32 +421,44 @@ public class DriverLocationService extends Service implements LocationListener {
 
         // 2. Direct HTTP Post to backend when app is backgrounded / WebView is suspended
         // When foregrounded AND activeCallback is attached, the WebView handles location ingestion
-        // to avoid duplicate HTTP requests.
+        // (with road-snapping and route polyline sync) to avoid duplicate competing HTTP requests.
         // When backgrounded (minimized, screen off, or driver navigating in Google Maps) OR if
         // the WebView callback is disconnected, DriverLocationService independently posts telemetry
         // directly over HTTPS to /api/rides/driver-location so live tracking never stops.
         boolean isForegroundReady = isAppInForeground && (activeCallback != null);
-        if (!isForegroundReady && authToken != null && !authToken.isEmpty()) {
-            float distanceSinceLastHttp = lastHttpTransmitLocation != null ? lastHttpTransmitLocation.distanceTo(location) : Float.MAX_VALUE;
-            long elapsedHttp = now - lastHttpTransmitTimeMs;
+        if (!isForegroundReady) {
+            maybeTransmitFromNative(location, finalHeading, activeRideId, now, isActiveRide);
+        }
+    }
 
-            long minHttpInterval = isActiveRide ? 2200L : 5500L;
-            long heartbeatHttpInterval = isActiveRide ? 8000L : 25000L;
+    public static void transmitFallbackFromNative(Location location, Float heading, String rideId) {
+        DriverLocationService svc = activeInstance;
+        if (svc == null || location == null) return;
+        boolean isActiveRide = "active_ride".equalsIgnoreCase(svc.trackingState);
+        svc.maybeTransmitFromNative(location, heading, rideId != null ? rideId : svc.activeRideId, System.currentTimeMillis(), isActiveRide);
+    }
 
-            boolean shouldTransmit = false;
-            if (lastHttpTransmitLocation == null) {
-                shouldTransmit = true;
-            } else if (distanceSinceLastHttp < 2.0f) {
-                shouldTransmit = (elapsedHttp >= heartbeatHttpInterval);
-            } else {
-                shouldTransmit = (elapsedHttp >= minHttpInterval);
-            }
+    private void maybeTransmitFromNative(Location location, Float heading, String rideId, long now, boolean isActiveRide) {
+        if (authToken == null || authToken.isEmpty()) return;
+        float distanceSinceLastHttp = lastHttpTransmitLocation != null ? lastHttpTransmitLocation.distanceTo(location) : Float.MAX_VALUE;
+        long elapsedHttp = now - lastHttpTransmitTimeMs;
 
-            if (shouldTransmit) {
-                lastHttpTransmitLocation = location;
-                lastHttpTransmitTimeMs = now;
-                transmitLocationToBackend(location, finalHeading, activeRideId);
-            }
+        long minHttpInterval = isActiveRide ? 2200L : 5500L;
+        long heartbeatHttpInterval = isActiveRide ? 8000L : 25000L;
+
+        boolean shouldTransmit = false;
+        if (lastHttpTransmitLocation == null) {
+            shouldTransmit = true;
+        } else if (distanceSinceLastHttp < 2.0f) {
+            shouldTransmit = (elapsedHttp >= heartbeatHttpInterval);
+        } else {
+            shouldTransmit = (elapsedHttp >= minHttpInterval);
+        }
+
+        if (shouldTransmit) {
+            lastHttpTransmitLocation = location;
+            lastHttpTransmitTimeMs = now;
+            transmitLocationToBackend(location, heading, rideId);
         }
     }
 

@@ -186,7 +186,11 @@ class DriverLocationBody(BaseModel):
     driverHeading: Optional[float] = None
     driverSpeed: Optional[float] = None
     driverAccuracy: Optional[float] = None
+    heading: Optional[float] = None
+    speed: Optional[float] = None
+    accuracy: Optional[float] = None
     routePolyline: Optional[str] = Field(default=None, max_length=25000)
+    routePolylineLeg: Optional[str] = Field(default=None, max_length=32)
 
 
 class DriverPushTokenBody(BaseModel):
@@ -1622,7 +1626,7 @@ def transition_driver_ride(
                     "cancellation_reason": "no_show",
                     "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
                 })
-            elif action == "verify_pin":
+            elif action in {"verify_pin", "start"}:
                 now_utc = datetime.now(timezone.utc)
                 is_night = is_sensitive_time_window(now_utc, KOLKATA_TZ)
                 p_gender = ride.get("passenger_gender")
@@ -1642,12 +1646,19 @@ def transition_driver_ride(
                     "pinVerifiedAt": fb_firestore.SERVER_TIMESTAMP,
                     "startedAt": fb_firestore.SERVER_TIMESTAMP,
                     "sensitiveRide": is_sensitive,
+                    "routePolylineLeg": "destination",
                 }
+                if ride.get("route_polyline"):
+                    pin_updates["routePolyline"] = ride.get("route_polyline")
+                else:
+                    pin_updates["routePolyline"] = None
                 if is_sensitive:
                     pin_updates["sensitiveRideDetectedAt"] = fb_firestore.SERVER_TIMESTAMP
                     pin_updates["sensitiveRideNotificationSent"] = False
                 updates.update(pin_updates)
                 result["is_sensitive"] = is_sensitive
+                result["routePolyline"] = pin_updates["routePolyline"]
+                result["routePolylineLeg"] = "destination"
             elif action == "complete":
                 fare_adjustment = _driver_fare_adjustment(ride, action)
                 final_fare_val = fare_adjustment["final_fare"]
@@ -1763,7 +1774,14 @@ def transition_driver_ride(
                 if next_status in {"completed", "cancelled_by_driver", "no_show"}:
                     tx.delete(share_ref)
                 else:
-                    tx.set(share_ref, {"status": next_status, "updatedAt": fb_firestore.SERVER_TIMESTAMP}, merge=True)
+                    share_tx_updates: dict[str, Any] = {
+                        "status": next_status,
+                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                    }
+                    if action in {"verify_pin", "start"}:
+                        share_tx_updates["routePolyline"] = ride.get("route_polyline") or None
+                        share_tx_updates["routePolylineLeg"] = "destination"
+                    tx.set(share_ref, share_tx_updates, merge=True)
 
         transition_transaction(transaction)
         if action == "arrive":
@@ -2167,6 +2185,13 @@ def update_driver_location(
         raise ApiError("Authenticated user identity is missing.", 401)
     lat = _coordinate(body.lat, -90, 90)
     lng = _coordinate(body.lng, -180, 180)
+    if body.driverHeading is None and body.heading is not None:
+        body.driverHeading = body.heading
+    if body.driverSpeed is None and body.speed is not None:
+        body.driverSpeed = body.speed
+    if body.driverAccuracy is None and body.accuracy is not None:
+        body.driverAccuracy = body.accuracy
+
     if body.driverAccuracy is not None and (not math.isfinite(body.driverAccuracy) or body.driverAccuracy < 0):
         raise ApiError("Invalid GPS accuracy.", 400)
     if body.driverSpeed is not None and (not math.isfinite(body.driverSpeed) or body.driverSpeed < 0 or body.driverSpeed > 55.0):
@@ -2257,6 +2282,8 @@ def update_driver_location(
         }, merge=True)
 
         if ride_id:
+            is_dest_leg = bool(ride and (ride.get("status") in {"started", "en_route"} or bool(ride.get("pinVerifiedAt"))))
+            current_leg = "destination" if is_dest_leg else "pickup"
             ride_updates: dict[str, Any] = {
                 "driverLocation": location,
                 **telemetry,
@@ -2265,15 +2292,22 @@ def update_driver_location(
             }
             if body.routePolyline and str(body.routePolyline).strip():
                 poly_clean = str(body.routePolyline).strip()[:25000]
-                ride_updates["routePolyline"] = poly_clean
-                ride_updates["route_polyline"] = poly_clean
+                req_leg = str(body.routePolylineLeg or "").strip().lower()
+                if not req_leg or req_leg == current_leg:
+                    ride_updates["routePolyline"] = poly_clean
+                    ride_updates["routePolylineLeg"] = current_leg
+                    # Preserve original pickup->drop `route_polyline` for post-trip fare calculation;
+                    # only backfill `route_polyline` if on destination leg and it was missing.
+                    if is_dest_leg and not ride.get("route_polyline"):
+                        ride_updates["route_polyline"] = poly_clean
 
-            if ride and (ride.get("status") in {"started", "en_route"} or bool(ride.get("pinVerifiedAt"))):
+            if is_dest_leg:
                 planned_km = max(0.0, _finite_float(ride.get("distance_km")))
                 accuracy = _finite_float(body.driverAccuracy, 0.0)
                 # Only accumulate travel if GPS accuracy is reasonable (<= 250m or unspecified)
                 if planned_km > 0 and (accuracy <= 250 or body.driverAccuracy is None):
-                    poly_candidate = (body.routePolyline and str(body.routePolyline).strip()) or ride.get("route_polyline") or ride.get("routePolyline") or ""
+                    # Always prefer the full pickup->drop `route_polyline` (anchored at pickup) for cumulative travel distance
+                    poly_candidate = ride.get("route_polyline") or (body.routePolyline and str(body.routePolyline).strip()) or ride.get("routePolyline") or ""
                     route_points = decode_polyline(str(poly_candidate))
                     road_travelled_km = road_distance_along_route_km(route_points, location)
                     pickup_obj = ride.get("pickup") if isinstance(ride.get("pickup"), dict) else {}
@@ -2308,14 +2342,17 @@ def update_driver_location(
                     "updatedAt": now,
                     **telemetry,
                 }
-                if body.routePolyline and str(body.routePolyline).strip():
-                    poly_val = str(body.routePolyline).strip()[:25000]
-                    share_view_payload["routePolyline"] = poly_val
-                    share_view_payload["route_polyline"] = poly_val
-                elif ride.get("route_polyline") or ride.get("routePolyline"):
-                    poly_val = ride.get("route_polyline") or ride.get("routePolyline")
-                    share_view_payload["routePolyline"] = poly_val
-                    share_view_payload["route_polyline"] = poly_val
+                if "routePolyline" in ride_updates:
+                    share_view_payload["routePolyline"] = ride_updates["routePolyline"]
+                    share_view_payload["routePolylineLeg"] = current_leg
+                elif ride.get("routePolyline") and (not ride.get("routePolylineLeg") or ride.get("routePolylineLeg") == current_leg):
+                    share_view_payload["routePolyline"] = ride.get("routePolyline")
+                    share_view_payload["routePolylineLeg"] = current_leg
+                elif is_dest_leg and ride.get("route_polyline"):
+                    share_view_payload["routePolyline"] = ride.get("route_polyline")
+                    share_view_payload["routePolylineLeg"] = "destination"
+                if is_dest_leg and (ride.get("route_polyline") or ride_updates.get("route_polyline")):
+                    share_view_payload["route_polyline"] = ride.get("route_polyline") or ride_updates.get("route_polyline")
                 if ride.get("sharedInfo"):
                     share_view_payload["sharedInfo"] = ride.get("sharedInfo")
                 batch.set(db.collection("tripShareView").document(ride_id), share_view_payload, merge=True)
@@ -3066,6 +3103,8 @@ def accept_driver_ride(
                 "vehicle_number": str(profile.get("vehicle_number") or profile.get("vehicleNumber") or "Vehicle number pending")[:60],
                 "vehicle_type": driver_type,
                 "verification_pin": verification_pin,
+                "routePolyline": None,
+                "routePolylineLeg": "pickup",
             })
 
             parent_trip_id = None
@@ -3149,6 +3188,8 @@ def accept_driver_ride(
                 "vehicle_number": accepted_ride["vehicle_number"],
                 "vehicle_type": driver_type,
                 "verification_pin": verification_pin,
+                "routePolyline": None,
+                "routePolylineLeg": "pickup",
                 "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             }
@@ -3607,6 +3648,11 @@ def _trip_share_snapshot(ride: dict[str, Any]) -> dict[str, Any]:
         "vehicle_type": ride.get("vehicle_type") or "",
         "fare": ride.get("fare"),
         "driverLocation": ride.get("driverLocation"),
+        "driverHeading": ride.get("driverHeading"),
+        "driverSpeed": ride.get("driverSpeed"),
+        "routePolyline": ride.get("routePolyline"),
+        "routePolylineLeg": ride.get("routePolylineLeg"),
+        "route_polyline": ride.get("route_polyline"),
         "pickup_lat": ride.get("pickup_lat"),
         "pickup_lng": ride.get("pickup_lng"),
         "drop_lat": ride.get("drop_lat"),
