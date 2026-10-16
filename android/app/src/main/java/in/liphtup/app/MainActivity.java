@@ -108,6 +108,7 @@ public class MainActivity extends BridgeActivity {
                     if (config.has("state")) serviceIntent.putExtra(DriverLocationService.EXTRA_TRACKING_STATE, config.getString("state"));
                     if (config.has("rideId")) serviceIntent.putExtra(DriverLocationService.EXTRA_RIDE_ID, config.getString("rideId"));
                     if (config.has("authToken")) serviceIntent.putExtra(DriverLocationService.EXTRA_AUTH_TOKEN, config.getString("authToken"));
+                    if (config.has("refreshToken")) serviceIntent.putExtra(DriverLocationService.EXTRA_REFRESH_TOKEN, config.getString("refreshToken"));
                     if (config.has("apiBaseUrl")) serviceIntent.putExtra(DriverLocationService.EXTRA_API_BASE_URL, config.getString("apiBaseUrl"));
                     androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
                 } catch (Exception e) {
@@ -124,6 +125,7 @@ public class MainActivity extends BridgeActivity {
                     if (config.has("state")) serviceIntent.putExtra(DriverLocationService.EXTRA_TRACKING_STATE, config.getString("state"));
                     if (config.has("rideId")) serviceIntent.putExtra(DriverLocationService.EXTRA_RIDE_ID, config.getString("rideId"));
                     if (config.has("authToken")) serviceIntent.putExtra(DriverLocationService.EXTRA_AUTH_TOKEN, config.getString("authToken"));
+                    if (config.has("refreshToken")) serviceIntent.putExtra(DriverLocationService.EXTRA_REFRESH_TOKEN, config.getString("refreshToken"));
                     if (config.has("apiBaseUrl")) serviceIntent.putExtra(DriverLocationService.EXTRA_API_BASE_URL, config.getString("apiBaseUrl"));
                     androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
                 } catch (Exception e) {
@@ -232,6 +234,19 @@ public class MainActivity extends BridgeActivity {
     public void onPause() {
         super.onPause();
         DriverLocationService.setAppInForeground(false);
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        DriverLocationService.setAppInForeground(false);
+    }
+
+    @Override
+    public void onDestroy() {
+        DriverLocationService.setLocationCallback(null);
+        DriverLocationService.setAppInForeground(false);
+        super.onDestroy();
     }
 
     @Override

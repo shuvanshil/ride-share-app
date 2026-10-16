@@ -3663,23 +3663,26 @@ async function startLocationTracking() {
 
     const trackingState = currentRideId ? "active_ride" : "on_duty";
     let token = "";
+    let refreshToken = "";
     try {
         token = await auth.currentUser?.getIdToken() || "";
+        refreshToken = auth.currentUser?.refreshToken || "";
     } catch (_) {}
 
     locationWatchId = startDriverTracking({
         state: trackingState,
         rideId: currentRideId || "",
         authToken: token,
-        apiBaseUrl: window.location.origin,
+        refreshToken: refreshToken,
+        apiBaseUrl: "https://liphtup.in",
         onLocation: handleLocation,
         onError: handleLocationError
     });
 
     if (!isBatteryOptimizationIgnored()) {
-        const lastPrompt = Number(sessionStorage.getItem("liphtup_battery_prompt_shown") || "0");
-        if (Date.now() - lastPrompt > 12 * 60 * 60 * 1000) {
-            sessionStorage.setItem("liphtup_battery_prompt_shown", String(Date.now()));
+        const lastPrompt = Number(localStorage.getItem("liphtup_battery_prompt_shown") || "0");
+        if (Date.now() - lastPrompt > 24 * 60 * 60 * 1000) {
+            localStorage.setItem("liphtup_battery_prompt_shown", String(Date.now()));
             requestIgnoreBatteryOptimizations();
         }
     }
@@ -3725,7 +3728,8 @@ function renderIdleState() {
             state: "on_duty",
             rideId: "",
             authToken: token || "",
-            apiBaseUrl: window.location.origin
+            refreshToken: auth.currentUser?.refreshToken || "",
+            apiBaseUrl: "https://liphtup.in"
         });
     }).catch(() => {});
     statusText.innerText = "Online and ready for ride requests";
@@ -3747,7 +3751,8 @@ function renderActiveRideState(rideId, ride) {
             state: "active_ride",
             rideId: rideId,
             authToken: token || "",
-            apiBaseUrl: window.location.origin
+            refreshToken: auth.currentUser?.refreshToken || "",
+            apiBaseUrl: "https://liphtup.in"
         });
     }).catch(() => {});
 
@@ -4621,4 +4626,38 @@ window.addEventListener('online', () => {
         startIncomingRideListener();
     }
 });
+
+// Keep native background tracking service synchronized with fresh Firebase auth tokens
+// when app is restored from background or every 20 minutes during long active tracking sessions.
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && auth.currentUser) {
+        auth.currentUser.getIdToken().then((token) => {
+            if (token) {
+                updateDriverTrackingState({
+                    state: currentRideId ? "active_ride" : "on_duty",
+                    rideId: currentRideId || "",
+                    authToken: token,
+                    refreshToken: auth.currentUser?.refreshToken || "",
+                    apiBaseUrl: "https://liphtup.in"
+                });
+            }
+        }).catch(() => {});
+    }
+});
+
+setInterval(async () => {
+    try {
+        if (!auth.currentUser) return;
+        const freshToken = await auth.currentUser.getIdToken();
+        if (freshToken) {
+            updateDriverTrackingState({
+                state: currentRideId ? "active_ride" : "on_duty",
+                rideId: currentRideId || "",
+                authToken: freshToken,
+                refreshToken: auth.currentUser?.refreshToken || "",
+                apiBaseUrl: "https://liphtup.in"
+            });
+        }
+    } catch (_) {}
+}, 20 * 60 * 1000);
 

@@ -86,13 +86,23 @@ export function clearWatch(watchId) {
     }
 }
 
+export function normalizeApiBaseUrl(url) {
+    if (!url || typeof url !== 'string') return "https://liphtup.in";
+    const trimmed = url.trim();
+    if (trimmed.includes("localhost") || trimmed.includes("127.0.0.1") || trimmed.startsWith("capacitor:") || trimmed.startsWith("file:")) {
+        return "https://liphtup.in";
+    }
+    return trimmed.replace(/\/+$/, "");
+}
+
 /**
  * Starts production driver background location tracking.
  * On native Android, starts the foreground service with persistent notification.
  * On Web/Desktop, establishes watchPosition and locks screen wake lock.
  */
-export function startDriverTracking({ state = "on_duty", rideId = "", authToken = "", apiBaseUrl = "", onLocation, onError }) {
+export function startDriverTracking({ state = "on_duty", rideId = "", authToken = "", refreshToken = "", apiBaseUrl = "", onLocation, onError }) {
     const isNativeAndroid = Boolean(window.LiphtUpNativeStatus?.startDriverTracking);
+    let nativeStarted = false;
 
     if (isNativeAndroid) {
         try {
@@ -122,9 +132,11 @@ export function startDriverTracking({ state = "on_duty", rideId = "", authToken 
                 state: state || "on_duty",
                 rideId: rideId || "",
                 authToken: authToken || "",
-                apiBaseUrl: apiBaseUrl || window.location.origin
+                refreshToken: refreshToken || "",
+                apiBaseUrl: normalizeApiBaseUrl(apiBaseUrl || window.location.origin)
             };
             window.LiphtUpNativeStatus.startDriverTracking(JSON.stringify(config));
+            nativeStarted = true;
             console.log("[geolocation] Started native Android driver foreground tracking:", config.state);
         } catch (nativeError) {
             console.error("[geolocation] Failed to start native tracking:", nativeError);
@@ -132,28 +144,30 @@ export function startDriverTracking({ state = "on_duty", rideId = "", authToken 
         }
     }
 
-    // Always keep or initiate browser watchPosition as active in-app provider / web fallback
     if (fallbackWatchId !== null) {
         clearWatch(fallbackWatchId);
+        fallbackWatchId = null;
     }
 
-    fallbackWatchId = watchPosition(
-        (pos) => {
-            if (typeof onLocation === "function") onLocation(pos);
-        },
-        (err) => {
-            console.warn("[geolocation] Web watchPosition error:", err);
-            // If native tracking is running, don't kill the tracking session on browser error
-            if (!isNativeAndroid && typeof onError === "function") {
-                onError(err);
+    // On standard web / desktop or if native service failed to start, use browser watchPosition
+    if (!nativeStarted) {
+        fallbackWatchId = watchPosition(
+            (pos) => {
+                if (typeof onLocation === "function") onLocation(pos);
+            },
+            (err) => {
+                console.warn("[geolocation] Web watchPosition error:", err);
+                if (typeof onError === "function") {
+                    onError(err);
+                }
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 3000,
+                timeout: 12000
             }
-        },
-        {
-            enableHighAccuracy: true,
-            maximumAge: 3000,
-            timeout: 12000
-        }
-    );
+        );
+    }
 
     return fallbackWatchId;
 }
@@ -161,14 +175,15 @@ export function startDriverTracking({ state = "on_duty", rideId = "", authToken 
 /**
  * Updates active driver tracking state (e.g. transitioning from on_duty to active_ride).
  */
-export function updateDriverTrackingState({ state = "on_duty", rideId = "", authToken = "", apiBaseUrl = "" }) {
+export function updateDriverTrackingState({ state = "on_duty", rideId = "", authToken = "", refreshToken = "", apiBaseUrl = "" }) {
     if (window.LiphtUpNativeStatus?.updateTrackingState) {
         try {
             const config = {
                 state: state || "on_duty",
                 rideId: rideId || "",
                 authToken: authToken || "",
-                apiBaseUrl: apiBaseUrl || window.location.origin
+                refreshToken: refreshToken || "",
+                apiBaseUrl: normalizeApiBaseUrl(apiBaseUrl || window.location.origin)
             };
             window.LiphtUpNativeStatus.updateTrackingState(JSON.stringify(config));
             console.log("[geolocation] Updated native tracking state:", config);

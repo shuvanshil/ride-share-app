@@ -52,7 +52,11 @@ public class DriverLocationService extends Service implements LocationListener {
     public static final String EXTRA_TRACKING_STATE = "tracking_state"; // "on_duty" or "active_ride"
     public static final String EXTRA_RIDE_ID = "ride_id";
     public static final String EXTRA_AUTH_TOKEN = "auth_token";
+    public static final String EXTRA_REFRESH_TOKEN = "refresh_token";
     public static final String EXTRA_API_BASE_URL = "api_base_url";
+
+    public static final String DEFAULT_API_BASE_URL = "https://liphtup.in";
+    private static final String FIREBASE_API_KEY = "AIzaSyCyzfuJy3DuhVQ5mL6OTXpkZLs7EgVklws";
 
     public interface LocationCallback {
         void onLocationUpdated(Location location, Float bearing, String trackingState, String rideId);
@@ -60,7 +64,7 @@ public class DriverLocationService extends Service implements LocationListener {
 
     private static volatile LocationCallback activeCallback = null;
     private static volatile boolean isServiceRunning = false;
-    private static volatile boolean isAppInForeground = true;
+    private static volatile boolean isAppInForeground = false;
 
     public static void setLocationCallback(LocationCallback callback) {
         activeCallback = callback;
@@ -88,12 +92,29 @@ public class DriverLocationService extends Service implements LocationListener {
     private String trackingState = "on_duty";
     private String activeRideId = "";
     private String authToken = "";
-    private String apiBaseUrl = "https://liphtup.in";
+    private String refreshToken = "";
+    private String apiBaseUrl = DEFAULT_API_BASE_URL;
 
     private Location lastBroadcastLocation = null;
     private long lastBroadcastTimeMs = 0;
+    private Location lastHttpTransmitLocation = null;
+    private long lastHttpTransmitTimeMs = 0;
     private Float lastBearing = null;
     private long lastGpsFixTimeMs = 0;
+
+    public static String normalizeApiBaseUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return DEFAULT_API_BASE_URL;
+        }
+        String trimmed = url.trim();
+        if (trimmed.contains("localhost") || trimmed.contains("127.0.0.1") || trimmed.startsWith("capacitor:") || trimmed.startsWith("file:")) {
+            return DEFAULT_API_BASE_URL;
+        }
+        if (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
 
     private synchronized void ensureWakeLockAcquired() {
         try {
@@ -126,7 +147,8 @@ public class DriverLocationService extends Service implements LocationListener {
         trackingState = prefs.getString("tracking_state", "on_duty");
         activeRideId = prefs.getString("ride_id", "");
         authToken = prefs.getString("auth_token", "");
-        apiBaseUrl = prefs.getString("api_base_url", "https://liphtup.in");
+        refreshToken = prefs.getString("refresh_token", "");
+        apiBaseUrl = normalizeApiBaseUrl(prefs.getString("api_base_url", DEFAULT_API_BASE_URL));
     }
 
     @Override
@@ -157,10 +179,16 @@ public class DriverLocationService extends Service implements LocationListener {
                 authToken = token;
             }
         }
+        if (intent.hasExtra(EXTRA_REFRESH_TOKEN)) {
+            String rToken = intent.getStringExtra(EXTRA_REFRESH_TOKEN);
+            if (rToken != null && !rToken.isEmpty()) {
+                refreshToken = rToken;
+            }
+        }
         if (intent.hasExtra(EXTRA_API_BASE_URL)) {
             String url = intent.getStringExtra(EXTRA_API_BASE_URL);
             if (url != null && !url.isEmpty()) {
-                apiBaseUrl = url;
+                apiBaseUrl = normalizeApiBaseUrl(url);
             }
         }
 
@@ -169,6 +197,7 @@ public class DriverLocationService extends Service implements LocationListener {
                 .putString("tracking_state", trackingState)
                 .putString("ride_id", activeRideId)
                 .putString("auth_token", authToken)
+                .putString("refresh_token", refreshToken)
                 .putString("api_base_url", apiBaseUrl)
                 .apply();
 
@@ -253,7 +282,7 @@ public class DriverLocationService extends Service implements LocationListener {
         if (locationManager == null) return;
 
         boolean isActiveRide = "active_ride".equalsIgnoreCase(trackingState);
-        long minTimeMs = isActiveRide ? 2500L : 8000L;
+        long minTimeMs = isActiveRide ? 2000L : 6000L;
         // Use 0.0f minDistance so timed updates and stationary heartbeats are not dropped by the OS
         float minDistanceMeters = 0.0f;
 
@@ -328,28 +357,17 @@ public class DriverLocationService extends Service implements LocationListener {
                 if (computedBearing < 0) computedBearing += 360f;
                 lastBearing = computedBearing;
             }
-
-            // Stationary heartbeat & cadence:
-            // In active ride: updates every 2.5s if moving, or every 8s if stationary.
-            // In on_duty idle: updates every 6s if moving, or every 25s if stationary.
-            long minInterval = isActiveRide ? 2500L : 6000L;
-            long heartbeatInterval = isActiveRide ? 8000L : 25000L;
-            if (distanceMoved < 2.0f && elapsed < heartbeatInterval) {
-                return;
-            }
-            if (elapsed < minInterval) {
-                return;
-            }
         }
 
-        if (location.hasBearing()) {
+        if (location.hasBearing() && !Float.isNaN(location.getBearing()) && location.getBearing() >= 0) {
             lastBearing = location.getBearing();
         }
 
         lastBroadcastLocation = location;
         lastBroadcastTimeMs = now;
 
-        // 1. Notify WebView callback if attached (moves driver UI smoothly when in foreground)
+        // 1. Immediately forward all valid fixes to WebView callback when in foreground
+        // This ensures the driver's map UI and vehicle icon animate smoothly without lag
         final Location finalLoc = location;
         final Float finalHeading = lastBearing;
         mainHandler.post(() -> {
@@ -358,18 +376,86 @@ public class DriverLocationService extends Service implements LocationListener {
             }
         });
 
-        // 2. Direct HTTP Post to backend if token is available
-        // Foreground/Background Handoff:
-        // When in foreground AND activeCallback is attached, the WebView handles location ingestion
+        // 2. Direct HTTP Post to backend when app is backgrounded / WebView is suspended
+        // When foregrounded AND activeCallback is attached, the WebView handles location ingestion
         // to avoid duplicate HTTP requests.
         // When backgrounded (minimized, screen off, or driver navigating in Google Maps) OR if
         // the WebView callback is disconnected, DriverLocationService independently posts telemetry
         // directly over HTTPS to /api/rides/driver-location so live tracking never stops.
-        if (authToken != null && !authToken.isEmpty()) {
-            if (!isAppInForeground || activeCallback == null) {
+        boolean isForegroundReady = isAppInForeground && (activeCallback != null);
+        if (!isForegroundReady && authToken != null && !authToken.isEmpty()) {
+            float distanceSinceLastHttp = lastHttpTransmitLocation != null ? lastHttpTransmitLocation.distanceTo(location) : Float.MAX_VALUE;
+            long elapsedHttp = now - lastHttpTransmitTimeMs;
+
+            long minHttpInterval = isActiveRide ? 2200L : 5500L;
+            long heartbeatHttpInterval = isActiveRide ? 8000L : 25000L;
+
+            boolean shouldTransmit = false;
+            if (lastHttpTransmitLocation == null) {
+                shouldTransmit = true;
+            } else if (distanceSinceLastHttp < 2.0f) {
+                shouldTransmit = (elapsedHttp >= heartbeatHttpInterval);
+            } else {
+                shouldTransmit = (elapsedHttp >= minHttpInterval);
+            }
+
+            if (shouldTransmit) {
+                lastHttpTransmitLocation = location;
+                lastHttpTransmitTimeMs = now;
                 transmitLocationToBackend(location, finalHeading, activeRideId);
             }
         }
+    }
+
+    private synchronized boolean refreshAuthTokenSync() {
+        if (refreshToken == null || refreshToken.trim().isEmpty()) {
+            Log.w(TAG, "No refresh token available to refresh auth token.");
+            return false;
+        }
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL("https://securetoken.googleapis.com/v1/token?key=" + FIREBASE_API_KEY);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+            conn.setDoOutput(true);
+
+            String body = "grant_type=refresh_token&refresh_token=" + java.net.URLEncoder.encode(refreshToken.trim(), "UTF-8");
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(bytes);
+                os.flush();
+            }
+
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                java.io.InputStream is = conn.getInputStream();
+                java.util.Scanner s = new java.util.Scanner(is, StandardCharsets.UTF_8.name()).useDelimiter("\\A");
+                String responseStr = s.hasNext() ? s.next() : "";
+                JSONObject resJson = new JSONObject(responseStr);
+                String newIdToken = resJson.optString("id_token", resJson.optString("access_token", ""));
+                String newRefresh = resJson.optString("refresh_token", refreshToken);
+                if (!newIdToken.isEmpty()) {
+                    this.authToken = newIdToken;
+                    this.refreshToken = newRefresh;
+                    getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
+                            .putString("auth_token", authToken)
+                            .putString("refresh_token", refreshToken)
+                            .apply();
+                    Log.i(TAG, "Successfully refreshed Firebase Auth token in background service.");
+                    return true;
+                }
+            } else {
+                Log.w(TAG, "Token refresh request failed with HTTP " + code);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Exception during background auth token refresh: " + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        return false;
     }
 
     private void transmitLocationToBackend(Location location, Float heading, String rideId) {
@@ -377,61 +463,80 @@ public class DriverLocationService extends Service implements LocationListener {
             networkExecutor = Executors.newSingleThreadExecutor();
         }
         networkExecutor.execute(() -> {
-            HttpURLConnection conn = null;
-            try {
-                String endpoint = (apiBaseUrl != null ? apiBaseUrl : "https://liphtup.in") + "/api/rides/driver-location";
-                URL url = new URL(endpoint);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Authorization", "Bearer " + authToken);
-                conn.setConnectTimeout(6000);
-                conn.setReadTimeout(6000);
-                conn.setDoOutput(true);
-
-                JSONObject payload = new JSONObject();
-                payload.put("lat", location.getLatitude());
-                payload.put("lng", location.getLongitude());
-                if (rideId != null && !rideId.isEmpty()) {
-                    payload.put("rideId", rideId);
+            boolean success = doTransmit(location, heading, rideId);
+            if (!success && authToken != null && !authToken.isEmpty()) {
+                // If failed due to 401 or token expiration during long ride, refresh and retry once
+                if (refreshAuthTokenSync()) {
+                    doTransmit(location, heading, rideId);
                 }
-                if (location.hasSpeed()) {
-                    payload.put("driverSpeed", location.getSpeed());
-                }
-                if (location.hasAccuracy()) {
-                    payload.put("driverAccuracy", location.getAccuracy());
-                }
-                if (heading != null && !Float.isNaN(heading)) {
-                    payload.put("driverHeading", heading.doubleValue());
-                }
-
-                byte[] postBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(postBytes);
-                    os.flush();
-                }
-
-                int code = conn.getResponseCode();
-                Log.d(TAG, "Transmitted location via native background service: status=" + code);
-                if (code == 404 || code == 409) {
-                    Log.w(TAG, "Active ride terminated on backend (status=" + code + "). Resetting to on_duty.");
-                    mainHandler.post(() -> {
-                        activeRideId = "";
-                        trackingState = "on_duty";
-                        getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
-                                .putString("tracking_state", "on_duty")
-                                .putString("ride_id", "")
-                                .apply();
-                        updateNotification();
-                        requestLocationUpdates();
-                    });
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "Native background location transmission failed: " + e.getMessage());
-            } finally {
-                if (conn != null) conn.disconnect();
             }
         });
+    }
+
+    private boolean doTransmit(Location location, Float heading, String rideId) {
+        HttpURLConnection conn = null;
+        try {
+            String endpoint = normalizeApiBaseUrl(apiBaseUrl) + "/api/rides/driver-location";
+            URL url = new URL(endpoint);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+            conn.setDoOutput(true);
+
+            JSONObject payload = new JSONObject();
+            payload.put("lat", location.getLatitude());
+            payload.put("lng", location.getLongitude());
+            if (rideId != null && !rideId.isEmpty()) {
+                payload.put("rideId", rideId);
+            }
+            if (location.hasSpeed() && !Float.isNaN(location.getSpeed()) && location.getSpeed() >= 0 && location.getSpeed() <= 55.0f) {
+                payload.put("driverSpeed", location.getSpeed());
+            }
+            if (location.hasAccuracy() && !Float.isNaN(location.getAccuracy()) && location.getAccuracy() >= 0) {
+                payload.put("driverAccuracy", location.getAccuracy());
+            }
+            if (heading != null && !Float.isNaN(heading) && heading >= 0 && heading <= 360.0f) {
+                payload.put("driverHeading", heading.doubleValue());
+            }
+
+            byte[] postBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(postBytes);
+                os.flush();
+            }
+
+            int code = conn.getResponseCode();
+            Log.d(TAG, "Transmitted location via native background service: status=" + code);
+            if (code == 200 || code == 204) {
+                return true;
+            }
+            if (code == 401) {
+                Log.w(TAG, "Backend returned 401 Unauthorized for background location.");
+                return false;
+            }
+            if (code == 404 || code == 409) {
+                Log.w(TAG, "Active ride terminated on backend (status=" + code + "). Resetting to on_duty.");
+                mainHandler.post(() -> {
+                    activeRideId = "";
+                    trackingState = "on_duty";
+                    getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
+                            .putString("tracking_state", "on_duty")
+                            .putString("ride_id", "")
+                            .apply();
+                    updateNotification();
+                    requestLocationUpdates();
+                });
+                return true;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Native background location transmission failed: " + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        return false;
     }
 
     @Override
