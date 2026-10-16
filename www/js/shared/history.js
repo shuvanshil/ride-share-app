@@ -329,12 +329,11 @@ function renderSummary(trips) {
     summaryGrid.classList.toggle('d-none', !isDriverAccount());
     if (!isDriverAccount()) return;
 
-    const totalFare = trips
-        .filter((trip) => trip.final_status === "completed" || trip.trip_status === "completed")
-        .reduce((sum, trip) => sum + Number(trip.fare_amount || 0), 0);
-    const totalDistance = trips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
+    const completedTrips = trips.filter((trip) => trip.final_status === "completed" || trip.trip_status === "completed");
+    const totalFare = completedTrips.reduce((sum, trip) => sum + Number(trip.fare_amount || 0), 0);
+    const totalDistance = completedTrips.reduce((sum, trip) => sum + Number(trip.distance_km || 0), 0);
 
-    totalTripsEl.innerText = String(trips.length);
+    totalTripsEl.innerText = String(completedTrips.length);
     totalFareEl.innerText = formatMoney(totalFare);
     totalDistanceEl.innerText = totalDistance > 0 ? `${totalDistance.toFixed(1)} km` : "0 km";
     moneyLabelEl.innerText = t('history.total_fare', 'Total Fare');

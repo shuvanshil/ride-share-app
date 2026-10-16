@@ -1211,7 +1211,10 @@ function dispatchPassengerDriverLocation(ride) {
             pickup_lat: ride.pickup_lat,
             pickup_lng: ride.pickup_lng,
             drop_lat: ride.drop_lat,
-            drop_lng: ride.drop_lng
+            drop_lng: ride.drop_lng,
+            routePolyline: ride.routePolyline || ride.route_polyline || null,
+            route_polyline: ride.route_polyline || ride.routePolyline || null,
+            sharedInfo: ride.sharedInfo || null
         }
     }));
 }

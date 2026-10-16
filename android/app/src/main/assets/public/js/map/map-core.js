@@ -180,6 +180,14 @@ function smoothHeading(previousHeading, nextHeading, strength = 0.35) {
 function calculateDistanceMeters(pointA, pointB) {
     if (!pointA || !pointB) return Infinity;
 
+    if (window.google?.maps?.geometry?.spherical?.computeDistanceBetween) {
+        try {
+            const p1 = new window.google.maps.LatLng(Number(pointA.lat), Number(pointA.lng));
+            const p2 = new window.google.maps.LatLng(Number(pointB.lat), Number(pointB.lng));
+            return window.google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+        } catch (_) {}
+    }
+
     const earthRadius = 6371000;
     const lat1 = Number(pointA.lat) * Math.PI / 180;
     const lat2 = Number(pointB.lat) * Math.PI / 180;
@@ -192,14 +200,142 @@ function calculateDistanceMeters(pointA, pointB) {
 
 function calculateBearing(from, to) {
     if (!from || !to) return null;
+    const lat1 = Number(from.lat);
+    const lng1 = Number(from.lng);
+    const lat2 = Number(to.lat);
+    const lng2 = Number(to.lng);
+    if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) {
+        return null;
+    }
+    // Reject degenerate zero-distance bearings which falsely yield 0° (Due North)
+    if (Math.abs(lat1 - lat2) < 1e-7 && Math.abs(lng1 - lng2) < 1e-7) {
+        return null;
+    }
 
-    const lat1 = Number(from.lat) * Math.PI / 180;
-    const lat2 = Number(to.lat) * Math.PI / 180;
-    const deltaLng = (Number(to.lng) - Number(from.lng)) * Math.PI / 180;
-    const y = Math.sin(deltaLng) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2)
-        - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+    if (window.google?.maps?.geometry?.spherical?.computeHeading) {
+        try {
+            const p1 = new window.google.maps.LatLng(lat1, lng1);
+            const p2 = new window.google.maps.LatLng(lat2, lng2);
+            return normalizeHeading(window.google.maps.geometry.spherical.computeHeading(p1, p2));
+        } catch (_) {}
+    }
+
+    const radLat1 = lat1 * Math.PI / 180;
+    const radLat2 = lat2 * Math.PI / 180;
+    const deltaLng = (lng2 - lng1) * Math.PI / 180;
+    const y = Math.sin(deltaLng) * Math.cos(radLat2);
+    const x = Math.cos(radLat1) * Math.sin(radLat2)
+        - Math.sin(radLat1) * Math.cos(radLat2) * Math.cos(deltaLng);
     return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+}
+
+function sphericalInterpolate(from, to, fraction) {
+    if (!from || !to) return to || from;
+    const t = Math.max(0, Math.min(1, Number(fraction) || 0));
+    if (t <= 0) return { lat: from.lat, lng: from.lng };
+    if (t >= 1) return { lat: to.lat, lng: to.lng };
+
+    if (window.google?.maps?.geometry?.spherical?.interpolate) {
+        try {
+            const p1 = new window.google.maps.LatLng(Number(from.lat), Number(from.lng));
+            const p2 = new window.google.maps.LatLng(Number(to.lat), Number(to.lng));
+            const res = window.google.maps.geometry.spherical.interpolate(p1, p2, t);
+            if (res) return { lat: res.lat(), lng: res.lng() };
+        } catch (_) {}
+    }
+
+    const fromLat = from.lat * Math.PI / 180;
+    const fromLng = from.lng * Math.PI / 180;
+    const toLat = to.lat * Math.PI / 180;
+    const toLng = to.lng * Math.PI / 180;
+    const cosFromLat = Math.cos(fromLat);
+    const cosToLat = Math.cos(toLat);
+
+    const cosDistance = Math.sin(fromLat) * Math.sin(toLat) +
+        cosFromLat * cosToLat * Math.cos(fromLng - toLng);
+
+    const d = Math.acos(Math.max(-1, Math.min(1, cosDistance)));
+    if (d < 1e-6) {
+        return {
+            lat: from.lat + (to.lat - from.lat) * t,
+            lng: from.lng + (to.lng - from.lng) * t
+        };
+    }
+    const sinD = Math.sin(d);
+    const a = Math.sin((1 - t) * d) / sinD;
+    const b = Math.sin(t * d) / sinD;
+
+    const x = a * cosFromLat * Math.cos(fromLng) + b * cosToLat * Math.cos(toLng);
+    const y = a * cosFromLat * Math.sin(fromLng) + b * cosToLat * Math.sin(toLng);
+    const z = a * Math.sin(fromLat) + b * Math.sin(toLat);
+
+    return {
+        lat: Math.atan2(z, Math.sqrt(x * x + y * y)) * 180 / Math.PI,
+        lng: Math.atan2(y, x) * 180 / Math.PI
+    };
+}
+
+function buildRouteAnimationWaypoints(startPosition, targetPosition, routePath, startIndex = -1, targetIndex = -1) {
+    if (!Array.isArray(routePath) || routePath.length < 2 || startIndex < 0 || targetIndex < 0) {
+        return null;
+    }
+    // Only follow intermediate polyline vertices when progressing forward along the route within sensible window
+    if (targetIndex < startIndex || (targetIndex - startIndex) > 80) {
+        return null;
+    }
+
+    const waypoints = [startPosition];
+    for (let i = startIndex + 1; i <= targetIndex; i += 1) {
+        const pt = routePath[i];
+        if (pt) {
+            const prev = waypoints[waypoints.length - 1];
+            if (calculateDistanceMeters(prev, pt) >= 1.0) {
+                waypoints.push(pt);
+            }
+        }
+    }
+    const prev = waypoints[waypoints.length - 1];
+    if (calculateDistanceMeters(prev, targetPosition) >= 0.5) {
+        waypoints.push(targetPosition);
+    }
+
+    const cumulative = [0];
+    let totalDistance = 0;
+    for (let i = 0; i < waypoints.length - 1; i += 1) {
+        const segDist = calculateDistanceMeters(waypoints[i], waypoints[i + 1]);
+        totalDistance += segDist;
+        cumulative.push(totalDistance);
+    }
+
+    if (totalDistance < 0.5) {
+        return null;
+    }
+
+    return { waypoints, cumulative, totalDistance };
+}
+
+function sampleRouteAnimation(routeAnimData, progress) {
+    const { waypoints, cumulative, totalDistance } = routeAnimData;
+    const targetDist = Math.max(0, Math.min(1, progress)) * totalDistance;
+
+    for (let i = 0; i < cumulative.length - 1; i += 1) {
+        const d0 = cumulative[i];
+        const d1 = cumulative[i + 1];
+        if (targetDist <= d1 || i === cumulative.length - 2) {
+            const segDist = d1 - d0;
+            const fraction = segDist > 1e-6 ? (targetDist - d0) / segDist : 0;
+            const p0 = waypoints[i];
+            const p1 = waypoints[i + 1];
+            const point = sphericalInterpolate(p0, p1, fraction);
+            let heading = calculateBearing(p0, p1);
+            if (heading == null && i + 2 < waypoints.length) {
+                heading = calculateBearing(p0, waypoints[i + 2]);
+            }
+            return { point, heading };
+        }
+    }
+    const last = waypoints[waypoints.length - 1];
+    return { point: last, heading: null };
 }
 
 function projectFractionOntoSegment(point, segStart, segEnd) {
@@ -242,8 +378,8 @@ function matchPositionToRoute(position, routePath, lastIndex = -1) {
         }
     }
 
-    if (!searchFullRange && (!best || best.distanceMeters > ROUTE_SNAP_MAX_METERS)) {
-        return matchPositionToRoute(position, routePath, -1);
+    if (!best || best.distanceMeters > ROUTE_SNAP_MAX_METERS) {
+        return null;
     }
 
     return best;
@@ -803,6 +939,30 @@ function addGoogleMapStyles() {
             70% { transform: scale(1.6); opacity: 0; }
             100% { transform: scale(1.6); opacity: 0; }
         }
+
+        .passenger-recenter-btn {
+            position: absolute;
+            bottom: 74px;
+            right: 14px;
+            z-index: 720;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border: 1px solid rgba(22, 101, 52, 0.2);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.96);
+            color: #166534;
+            font-size: 12px;
+            font-weight: 800;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+            cursor: pointer;
+            transition: transform 140ms ease, background 140ms ease;
+        }
+
+        .passenger-recenter-btn:active {
+            transform: scale(0.95);
+        }
     `;
     document.head.appendChild(style);
 }
@@ -1226,8 +1386,13 @@ function stopPassengerCameraAnimation() {
 }
 
 function applyPassengerNavigationCamera(position, heading, instant = false) {
-    if (!window.mapInstance || !passengerNavigationModeEnabled || !position || !window.mapInstance.moveCamera) return;
+    if (!window.mapInstance || !passengerNavigationModeEnabled || !position) return;
     if (!assignedDriverTrackingDriverId || !passengerFirstRouteFitComplete) return;
+
+    if (!window.mapInstance.moveCamera) {
+        if (window.mapInstance.panTo) window.mapInstance.panTo(position);
+        return;
+    }
 
     const targetHeading = normalizeHeading(heading) ?? lastPassengerCameraHeading;
     const targetZoom = window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM;
@@ -1299,6 +1464,55 @@ function ensurePassengerNavToggleButton(hostElement) {
     hostElement.appendChild(passengerNavToggleButton);
     setPassengerNavigationMode(passengerNavigationModeEnabled);
 }
+
+let passengerUserInteracted = false;
+let passengerUserInteractionTimer = null;
+let passengerRecenterButton = null;
+
+function setPassengerMapInteracted(interacted) {
+    passengerUserInteracted = Boolean(interacted);
+    if (passengerRecenterButton) {
+        passengerRecenterButton.classList.toggle("d-none", !passengerUserInteracted || !assignedDriverTrackingDriverId);
+    }
+    if (passengerUserInteracted) {
+        if (passengerUserInteractionTimer) clearTimeout(passengerUserInteractionTimer);
+        passengerUserInteractionTimer = setTimeout(() => {
+            passengerUserInteracted = false;
+            if (passengerRecenterButton) passengerRecenterButton.classList.add("d-none");
+        }, 15000);
+    }
+}
+
+function ensurePassengerRecenterButton(hostElement) {
+    if (passengerRecenterButton || !hostElement) return;
+
+    passengerRecenterButton = document.createElement("button");
+    passengerRecenterButton.type = "button";
+    passengerRecenterButton.className = "passenger-recenter-btn d-none";
+    passengerRecenterButton.setAttribute("aria-label", "Recenter on driver");
+    passengerRecenterButton.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="me-1" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="12" y1="2" x2="12" y2="5"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="5" y2="12"/>
+            <line x1="19" y1="12" x2="22" y2="12"/>
+        </svg>
+        <span>Recenter</span>
+    `;
+    passengerRecenterButton.addEventListener("click", () => {
+        setPassengerMapInteracted(false);
+        if (activeDriverMarker?.marker && window.mapInstance) {
+            const pos = activeDriverMarker.marker.getPosition();
+            if (pos) {
+                applyPassengerNavigationCamera({ lat: pos.lat(), lng: pos.lng() }, activeDriverMarker.heading, true);
+            }
+        }
+    });
+    hostElement.appendChild(passengerRecenterButton);
+}
+
 
 function syncGlobalDriverMarkerVisibility() {
     if (!window.mapInstance) return;
@@ -1465,52 +1679,58 @@ function adjustForMarkerOverlap(position, heading, driverId = "") {
 function resolveDriverRenderState(existing, rawPosition, driver, routePath = [], driverId = "") {
     let position = rawPosition;
     let heading = getDriverDocumentHeading(driver);
+    let matchedRouteHeading = null;
+    let routeMatchIndex = existing?.routeMatchIndex ?? -1;
 
+    // 1. Monotonic Road-Snapping: If routePath exists, snap vehicle onto the road polyline
+    if (Array.isArray(routePath) && routePath.length >= 2) {
+        const lastIdx = existing?.routeMatchIndex ?? -1;
+        const match = matchPositionToRoute(rawPosition, routePath, lastIdx);
+        if (match && match.distanceMeters <= ROUTE_SNAP_MAX_METERS) {
+            position = match.point;
+            routeMatchIndex = match.index;
+            if (existing) {
+                existing.routeMatchIndex = match.index;
+            }
+            if (match.heading != null) {
+                matchedRouteHeading = match.heading;
+            }
+        }
+    }
+
+    // 2. Authoritative Heading Determination
     const previousPosition = existing?.marker?.getPosition?.();
-    if (previousPosition) {
+    const speed = Number(driver?.driverSpeed);
+    const isMoving = Number.isFinite(speed) ? speed >= 0.8 : false;
+
+    if (matchedRouteHeading != null) {
+        // Vehicle is matched to the active road route; follow road segment bearing
+        heading = matchedRouteHeading;
+    } else if (previousPosition) {
         const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
         const moveDist = calculateDistanceMeters(previous, rawPosition);
         if (moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
             const motionBearing = calculateBearing(previous, rawPosition);
             if (motionBearing != null) {
-                if (heading != null) {
-                    const diff = Math.abs(shortestHeadingDelta(heading, motionBearing));
-                    if (diff > 110) {
-                        heading = motionBearing;
-                    } else {
-                        heading = smoothHeading(existing?.heading, motionBearing, 0.4);
-                    }
-                } else {
-                    heading = motionBearing;
-                }
+                heading = motionBearing;
             }
+        } else if (!isMoving && existing?.heading != null) {
+            // Stationary: LOCK PREVIOUS HEADING! Never turn or spin in place!
+            heading = existing.heading;
         }
     }
 
-    // Determine target pointing (Passenger pickup vs Destination)
-    const isAssigned = (driver?.driverId && driver.driverId === assignedDriverTrackingDriverId) || (existing?.isAssigned) || Boolean(assignedDriverTrackingDriverId);
-    if (isAssigned) {
-        const isTripStarted = Boolean(driver?.status === "in_trip" || driver?.rideStatus === "in_trip" || driver?.status === "started" || driver?.status === "en_route");
-        const targetPt = isTripStarted
-            ? (destinationMarker?.getPosition?.() ? { lat: destinationMarker.getPosition().lat(), lng: destinationMarker.getPosition().lng() } : null)
-            : (userMarker?.getPosition?.() ? { lat: userMarker.getPosition().lat(), lng: userMarker.getPosition().lng() } : (userLatitude && userLongitude ? { lat: Number(userLatitude), lng: Number(userLongitude) } : null));
-
-        if (targetPt && calculateDistanceMeters(position, targetPt) > 5) {
-            const targetBearing = calculateBearing(position, targetPt);
-            if (targetBearing != null) {
-                // If stationary, starting, or heading is uninitialized, immediately point toward the target
-                if (heading == null || Number(driver?.driverSpeed || 0) < 1.0) {
-                    heading = targetBearing;
-                }
-            }
-        }
+    if (heading == null && existing?.heading != null) {
+        heading = existing.heading;
     }
 
     const resolvedDriverId = driverId || driver?.driverId || driver?.id || "";
-    const finalHeading = smoothHeading(existing?.heading, heading, 0.85);
+    const finalHeading = existing?.heading != null
+        ? smoothHeading(existing.heading, heading, 0.45)
+        : normalizeHeading(heading);
     const finalPosition = adjustForMarkerOverlap(position, finalHeading, resolvedDriverId);
 
-    return { position: finalPosition, heading: finalHeading };
+    return { position: finalPosition, heading: finalHeading, routeMatchIndex };
 }
 
 function updateVehicleMarkerLegend() {
@@ -1883,7 +2103,7 @@ function beginDriverMarkerCoast(existing) {
     return;
 }
 
-function animateGlobalDriverMarker(existing, targetPosition, targetHeading = null) {
+function animateGlobalDriverMarker(existing, targetPosition, targetHeading = null, routePath = [], prevRouteIndex = -1, targetRouteIndex = -1) {
     if (existing.animationFrame) cancelAnimationFrame(existing.animationFrame);
     stopDriverMarkerCoast(existing);
 
@@ -1891,7 +2111,7 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     const now0 = performance.now();
     if (!current || typeof requestAnimationFrame !== "function") {
         existing.marker.setPosition(targetPosition);
-        existing.marker.setHeading?.(targetHeading);
+        if (targetHeading != null) existing.marker.setHeading?.(targetHeading);
         existing.lastFixAt = now0;
         return;
     }
@@ -1901,7 +2121,7 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     const longitudeDelta = targetPosition.lng - startPosition.lng;
     if (Math.abs(latitudeDelta) > 0.05 || Math.abs(longitudeDelta) > 0.05) {
         existing.marker.setPosition(targetPosition);
-        existing.marker.setHeading?.(targetHeading);
+        if (targetHeading != null) existing.marker.setHeading?.(targetHeading);
         existing.lastFixAt = now0;
         existing.lastMoveDistanceMeters = 0;
         existing.speedMetersPerSecond = 0;
@@ -1911,10 +2131,15 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     const distanceMeters = calculateDistanceMeters(startPosition, targetPosition);
     existing.lastMoveDistanceMeters = distanceMeters;
 
-    if (distanceMeters < 1.5) {
+    const startHeading = normalizeHeading(existing.heading ?? targetHeading);
+    const headingDelta = (targetHeading != null && startHeading != null)
+        ? shortestHeadingDelta(startHeading, targetHeading)
+        : 0;
+
+    if (distanceMeters < 1.0) {
         existing.marker.setPosition(targetPosition);
         if (targetHeading != null) {
-            existing.heading = smoothHeading(existing.heading, targetHeading, 0.25);
+            existing.heading = smoothHeading(startHeading, targetHeading, 0.2);
             existing.marker.setHeading?.(existing.heading);
         }
         existing.lastFixAt = now0;
@@ -1922,31 +2147,75 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
         return;
     }
 
-    const sinceLastFix = existing.lastFixAt ? now0 - existing.lastFixAt : DRIVER_MARKER_ANIMATION_MS;
-    // Cap duration to 80% of the sinceLastFix time to ensure we catch up before the next expected update.
-    const duration = Math.min(DRIVER_MARKER_ANIMATION_MAX_MS, Math.max(DRIVER_MARKER_ANIMATION_MIN_MS, sinceLastFix * 0.8));
+    // Adaptive arrival interval using Exponential Moving Average (EMA)
+    // Eliminates the 20% freeze stop between updates while maintaining responsiveness
+    const sinceLastFix = existing.lastFixAt ? Math.max(150, now0 - existing.lastFixAt) : DRIVER_MARKER_ANIMATION_MS;
+    existing.intervalEma = existing.intervalEma
+        ? (existing.intervalEma * 0.65 + sinceLastFix * 0.35)
+        : sinceLastFix;
+    const duration = Math.min(DRIVER_MARKER_ANIMATION_MAX_MS, Math.max(DRIVER_MARKER_ANIMATION_MIN_MS, existing.intervalEma));
     existing.speedMetersPerSecond = duration > 0 ? distanceMeters / (duration / 1000) : 0;
     existing.lastFixAt = now0;
 
+    // Build intermediate polyline waypoints if moving forward along an active route
+    const routeAnimData = (Array.isArray(routePath) && routePath.length >= 2 && prevRouteIndex >= 0 && targetRouteIndex >= prevRouteIndex)
+        ? buildRouteAnimationWaypoints(startPosition, targetPosition, routePath, prevRouteIndex, targetRouteIndex)
+        : null;
+
     const startedAt = now0;
+    const isAssignedActiveMarker = (existing === activeDriverMarker);
+
     const step = (now) => {
         const progress = Math.min(1, (now - startedAt) / duration);
-        const eased = progress * progress * (3 - (2 * progress));
-        existing.marker.setPosition({
-            lat: startPosition.lat + (latitudeDelta * eased),
-            lng: startPosition.lng + (longitudeDelta * eased)
-        });
-        if (targetHeading != null) {
-            const frameHeading = smoothHeading(existing.heading, targetHeading, eased);
+        // Smooth Hermite / cubic easing curve
+        const eased = progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+        let framePosition;
+        let segHeading = null;
+        if (routeAnimData) {
+            const sampled = sampleRouteAnimation(routeAnimData, eased);
+            framePosition = sampled.point;
+            segHeading = sampled.heading;
+        } else {
+            framePosition = sphericalInterpolate(startPosition, targetPosition, eased);
+        }
+        existing.marker.setPosition(framePosition);
+
+        let frameHeading = startHeading;
+        const desiredHeading = (segHeading != null) ? segHeading : targetHeading;
+        if (desiredHeading != null && startHeading != null) {
+            const curDelta = shortestHeadingDelta(startHeading, desiredHeading);
+            frameHeading = normalizeHeading(startHeading + (curDelta * eased));
             existing.marker.setHeading(frameHeading);
-            // Update the tracked heading immediately to prevent jump-back on the next update
-            if (progress > 0.5) existing.heading = frameHeading;
+        } else if (desiredHeading != null) {
+            frameHeading = desiredHeading;
+            existing.marker.setHeading(frameHeading);
+        }
+        existing.heading = frameHeading;
+
+        // Synchronize passenger camera smoothly during marker animation
+        if (isAssignedActiveMarker && passengerNavigationModeEnabled && !passengerUserInteracted && window.mapInstance) {
+            if (passengerFirstRouteFitComplete) {
+                if (window.mapInstance.moveCamera) {
+                    window.mapInstance.moveCamera({
+                        center: framePosition,
+                        heading: frameHeading,
+                        tilt: PASSENGER_NAV_CAMERA_TILT,
+                        zoom: Math.max(window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM, PASSENGER_NAV_CAMERA_ZOOM)
+                    });
+                } else if (window.mapInstance.panTo) {
+                    window.mapInstance.panTo(framePosition);
+                }
+            }
         }
 
         if (progress < 1) {
             existing.animationFrame = requestAnimationFrame(step);
         } else {
-            existing.heading = targetHeading ?? existing.heading;
+            existing.heading = targetHeading ?? frameHeading ?? existing.heading;
+            existing.marker.setPosition(targetPosition);
             existing.marker.setHeading?.(existing.heading);
             existing.animationFrame = null;
             beginDriverMarkerCoast(existing);
@@ -2133,20 +2402,26 @@ async function refreshActiveDriverRoute(detail, position, target) {
     }
 
     const isShareRide = detail.rideType === "share" && Boolean(detail.parentTripId || detail.sharedInfo?.parentTripId);
-    if (isShareRide && detail.sharedInfo?.routePolyline) {
-        const decodedRoute = decodePolyline(detail.sharedInfo.routePolyline);
-        activeDriverRouteState.driverId = driverId;
-        activeDriverRouteState.targetKey = targetKey;
-        activeDriverRouteState.routePath = decodedRoute;
-        activeDriverRouteState.lastRoutePosition = position;
-        activeDriverRouteState.lastRouteAt = Date.now();
-        drawAssignedDriverRoute(decodedRoute, position, target, destinationPosition);
-        renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
-        if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
-            clearPickupMarker();
+    const backendPoly = detail.routePolyline || detail.route_polyline || detail.sharedInfo?.routePolyline;
+    if (backendPoly) {
+        const decodedRoute = decodePolyline(backendPoly);
+        if (decodedRoute.length >= 2) {
+            activeDriverRouteState.driverId = driverId;
+            activeDriverRouteState.targetKey = targetKey;
+            activeDriverRouteState.routePath = decodedRoute;
+            activeDriverRouteState.lastPolyline = backendPoly;
+            activeDriverRouteState.lastRoutePosition = position;
+            activeDriverRouteState.lastRouteAt = Date.now();
+            drawAssignedDriverRoute(decodedRoute, position, target, destinationPosition);
+            if (isShareRide && detail.sharedInfo?.nextPickup) {
+                renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
+            }
+            if (detail.status === "started" || detail.status === "en_route" || detail.rideStatus === "started" || detail.rideStatus === "en_route") {
+                clearPickupMarker();
+            }
+            renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
+            return;
         }
-        renderAssignedDriverTracking(null, calculateDistanceMeters(position, target) / 1000);
-        return;
     }
     if (isShareRide && detail.sharedInfo) {
         renderPassengerNextPickup(detail.sharedInfo.nextPickup, position);
@@ -2260,9 +2535,21 @@ async function handleAssignedDriverLocation(event) {
     }
 
     const existing = activeDriverMarker;
+    const backendPolyline = detail.routePolyline || detail.route_polyline || detail.sharedInfo?.routePolyline;
+    if (backendPolyline && (!activeDriverRouteState.routePath.length || activeDriverRouteState.lastPolyline !== backendPolyline)) {
+        const decoded = decodePolyline(backendPolyline);
+        if (decoded.length >= 2) {
+            activeDriverRouteState.driverId = driverId;
+            activeDriverRouteState.routePath = decoded;
+            activeDriverRouteState.lastPolyline = backendPolyline;
+            const destinationPosition = upsertRideDestinationMarker(detail);
+            drawAssignedDriverRoute(decoded, filteredPosition, target, destinationPosition);
+        }
+    }
+
+    const prevRouteIndex = existing?.routeMatchIndex ?? -1;
     const routePath = target ? activeDriverRouteState.routePath : [];
-    const { position, heading } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
-    applyPassengerNavigationCamera(position, heading);
+    const { position, heading, routeMatchIndex } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
 
     if (!activeDriverMarker) {
         activeDriverMarker = {
@@ -2277,16 +2564,19 @@ async function handleAssignedDriverLocation(event) {
             }),
             vehicleType,
             heading,
-            routeMatchIndex: -1,
+            routeMatchIndex: routeMatchIndex >= 0 ? routeMatchIndex : -1,
             animationFrame: null,
             coastFrame: null,
             lastFixAt: nowMs,
             speedMetersPerSecond: 0
         };
+        if (passengerNavigationModeEnabled && !passengerUserInteracted) {
+            applyPassengerNavigationCamera(position, heading, true);
+        }
         return;
     }
 
-    animateGlobalDriverMarker(activeDriverMarker, position, heading);
+    animateGlobalDriverMarker(activeDriverMarker, position, heading, routePath, prevRouteIndex, activeDriverMarker.routeMatchIndex);
     activeDriverMarker.marker.setTitle(detail.driver_name || "Assigned Driver");
     if (activeDriverMarker.vehicleType !== vehicleType) {
         activeDriverMarker.marker.setVehicleType(vehicleType);
@@ -2410,6 +2700,7 @@ export async function initializeMapEngine() {
 
         window.mapInstance = mainMapShell.map;
         ensurePassengerNavToggleButton(mapContainer);
+        ensurePassengerRecenterButton(mapContainer);
         addPickupMarker(coords);
         if (pendingAssignedDriverDetail) {
             const detail = pendingAssignedDriverDetail;
@@ -2419,9 +2710,13 @@ export async function initializeMapEngine() {
 
         window.mapInstance.addListener("dragstart", () => {
             centerMapPickerElement?.classList.add("is-moving");
+            if (assignedDriverTrackingDriverId) setPassengerMapInteracted(true);
         });
         window.mapInstance.addListener("dragend", () => {
             centerMapPickerElement?.classList.remove("is-moving");
+        });
+        window.mapInstance.addListener("zoom_changed", () => {
+            if (assignedDriverTrackingDriverId) setPassengerMapInteracted(true);
         });
 
         setupFareEngineListeners();

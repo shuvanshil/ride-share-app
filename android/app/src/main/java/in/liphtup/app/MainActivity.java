@@ -19,6 +19,34 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         PushNotificationService.createNotificationChannels(this);
         handleIncomingIntent(getIntent());
+
+        DriverLocationService.setLocationCallback((location, bearing, state, rideId) -> {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                try {
+                    org.json.JSONObject json = new org.json.JSONObject();
+                    json.put("lat", location.getLatitude());
+                    json.put("lng", location.getLongitude());
+                    json.put("accuracy", location.hasAccuracy() ? location.getAccuracy() : 10.0);
+                    json.put("speed", location.hasSpeed() ? location.getSpeed() : 0.0);
+                    Float headingToReport = location.hasBearing() ? location.getBearing() : bearing;
+                    if (headingToReport != null && !Float.isNaN(headingToReport)) {
+                        json.put("heading", headingToReport.doubleValue());
+                    } else {
+                        json.put("heading", org.json.JSONObject.NULL);
+                    }
+                    json.put("timestamp", location.getTime());
+                    json.put("state", state);
+                    json.put("rideId", rideId != null ? rideId : "");
+                    final String payloadStr = json.toString();
+                    getBridge().getWebView().post(() -> {
+                        getBridge().getWebView().evaluateJavascript(
+                            "if (window.onNativeLocationUpdate) { window.onNativeLocationUpdate(" + payloadStr + "); }",
+                            null
+                        );
+                    });
+                } catch (Exception ignored) {}
+            }
+        });
         
         // Defensive check: Does the app have the Firebase configuration resource?
         // google-services.json adds a string resource named 'google_app_id'.
@@ -69,6 +97,87 @@ public class MainActivity extends BridgeActivity {
                 String rId = pendingRideId;
                 pendingRideId = null;
                 return rId != null ? rId : "";
+            }
+
+            @JavascriptInterface
+            public void startDriverTracking(String configJson) {
+                try {
+                    org.json.JSONObject config = new org.json.JSONObject(configJson != null ? configJson : "{}");
+                    Intent serviceIntent = new Intent(MainActivity.this, DriverLocationService.class);
+                    serviceIntent.setAction(DriverLocationService.ACTION_START);
+                    if (config.has("state")) serviceIntent.putExtra(DriverLocationService.EXTRA_TRACKING_STATE, config.getString("state"));
+                    if (config.has("rideId")) serviceIntent.putExtra(DriverLocationService.EXTRA_RIDE_ID, config.getString("rideId"));
+                    if (config.has("authToken")) serviceIntent.putExtra(DriverLocationService.EXTRA_AUTH_TOKEN, config.getString("authToken"));
+                    if (config.has("apiBaseUrl")) serviceIntent.putExtra(DriverLocationService.EXTRA_API_BASE_URL, config.getString("apiBaseUrl"));
+                    androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Failed to start driver tracking service", e);
+                }
+            }
+
+            @JavascriptInterface
+            public void updateTrackingState(String configJson) {
+                try {
+                    org.json.JSONObject config = new org.json.JSONObject(configJson != null ? configJson : "{}");
+                    Intent serviceIntent = new Intent(MainActivity.this, DriverLocationService.class);
+                    serviceIntent.setAction(DriverLocationService.ACTION_UPDATE_STATE);
+                    if (config.has("state")) serviceIntent.putExtra(DriverLocationService.EXTRA_TRACKING_STATE, config.getString("state"));
+                    if (config.has("rideId")) serviceIntent.putExtra(DriverLocationService.EXTRA_RIDE_ID, config.getString("rideId"));
+                    if (config.has("authToken")) serviceIntent.putExtra(DriverLocationService.EXTRA_AUTH_TOKEN, config.getString("authToken"));
+                    if (config.has("apiBaseUrl")) serviceIntent.putExtra(DriverLocationService.EXTRA_API_BASE_URL, config.getString("apiBaseUrl"));
+                    androidx.core.content.ContextCompat.startForegroundService(MainActivity.this, serviceIntent);
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Failed to update driver tracking state", e);
+                }
+            }
+
+            @JavascriptInterface
+            public void stopDriverTracking() {
+                try {
+                    Intent serviceIntent = new Intent(MainActivity.this, DriverLocationService.class);
+                    serviceIntent.setAction(DriverLocationService.ACTION_STOP);
+                    startService(serviceIntent);
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Failed to stop driver tracking service", e);
+                }
+            }
+
+            @JavascriptInterface
+            public boolean isTrackingActive() {
+                return DriverLocationService.isRunning();
+            }
+
+            @JavascriptInterface
+            public void openGoogleMapsNavigation(double lat, double lng, String label) {
+                try {
+                    Uri navUri = Uri.parse("google.navigation:q=" + lat + "," + lng + "&mode=d");
+                    Intent mapIntent = new Intent(Intent.ACTION_VIEW, navUri);
+                    mapIntent.setPackage("com.google.android.apps.maps");
+                    mapIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        startActivity(mapIntent);
+                        return;
+                    } catch (Exception e1) {
+                        android.util.Log.w("MainActivity", "Direct google.navigation intent failed: " + e1.getMessage());
+                    }
+
+                    Uri geoUri = Uri.parse("geo:" + lat + "," + lng + "?q=" + lat + "," + lng + (label != null && !label.isEmpty() ? "(" + Uri.encode(label) + ")" : ""));
+                    Intent geoIntent = new Intent(Intent.ACTION_VIEW, geoUri);
+                    geoIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        startActivity(geoIntent);
+                        return;
+                    } catch (Exception e2) {
+                        android.util.Log.w("MainActivity", "Geo intent failed: " + e2.getMessage());
+                    }
+
+                    Uri genericUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lng + "&travelmode=driving");
+                    Intent genericIntent = new Intent(Intent.ACTION_VIEW, genericUri);
+                    genericIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(genericIntent);
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Failed to open Google Maps navigation", e);
+                }
             }
         }, "LiphtUpNativeStatus");
     }

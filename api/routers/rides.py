@@ -186,6 +186,7 @@ class DriverLocationBody(BaseModel):
     driverHeading: Optional[float] = None
     driverSpeed: Optional[float] = None
     driverAccuracy: Optional[float] = None
+    routePolyline: Optional[str] = Field(default=None, max_length=25000)
 
 
 class DriverPushTokenBody(BaseModel):
@@ -788,6 +789,9 @@ async def _server_route(pickup_lat: float, pickup_lng: float, drop_lat: float, d
 
 def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
     """Create the minimum compatible history record for a verified ride."""
+    fare_adj = ride.get("fare_adjustment") or {}
+    planned_km = float(ride.get("distance_km") or 0.0)
+    actual_distance_km = float(fare_adj.get("charged_distance_km", 0.0))
     return {
         "ride_id": ride_id,
         "passenger_id": ride.get("passenger_id"),
@@ -804,11 +808,13 @@ def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
         "verifiedAt": ride.get("pinVerifiedAt") or ride.get("verifiedAt") or fb_firestore.SERVER_TIMESTAMP,
         "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
         "finalStatusAt": fb_firestore.SERVER_TIMESTAMP,
-        "distance_km": float(ride.get("distance_km") or 0),
+        "distance_km": round(actual_distance_km, 3),
+        "planned_distance_km": round(float(fare_adj.get("planned_distance_km", planned_km)), 3),
+        "actual_travelled_km": round(float(fare_adj.get("travelled_after_pickup_km", actual_distance_km)), 3),
         "duration_minutes": float(ride.get("duration_minutes") or 0),
         "fare_amount": float(ride.get("fare") or 0),
         "quoted_fare_amount": float(ride.get("quoted_fare") or ride.get("fare_original") or ride.get("fare") or 0),
-        "fare_adjustment": ride.get("fare_adjustment") or {},
+        "fare_adjustment": fare_adj,
         "trip_status": "cancelled_by_passenger",
         "final_status": "cancelled",
         "cancelled_by": "passenger",
@@ -828,6 +834,14 @@ def _driver_history_update(ride_id: str, ride: dict[str, Any], status: str) -> d
     """Build a server-owned history record for driver lifecycle transitions."""
     cancelled = status == "cancelled_by_driver"
     completed = status == "completed"
+    fare_adj = ride.get("fare_adjustment") or {}
+    planned_km = float(ride.get("distance_km") or 0.0)
+    if "charged_distance_km" in fare_adj:
+        actual_distance_km = float(fare_adj["charged_distance_km"] or 0.0)
+    elif completed:
+        actual_distance_km = planned_km
+    else:
+        actual_distance_km = 0.0
     return {
         "ride_id": ride_id,
         "passenger_id": ride.get("passenger_id"),
@@ -841,11 +855,13 @@ def _driver_history_update(ride_id: str, ride: dict[str, Any], status: str) -> d
         "completedAt": fb_firestore.SERVER_TIMESTAMP if completed else None,
         "cancelledAt": fb_firestore.SERVER_TIMESTAMP if cancelled else None,
         "finalStatusAt": fb_firestore.SERVER_TIMESTAMP,
-        "distance_km": float(ride.get("distance_km") or 0),
+        "distance_km": round(actual_distance_km, 3),
+        "planned_distance_km": round(float(fare_adj.get("planned_distance_km", planned_km)), 3),
+        "actual_travelled_km": round(float(fare_adj.get("travelled_after_pickup_km", actual_distance_km)), 3),
         "duration_minutes": float(ride.get("duration_minutes") or 0),
         "fare_amount": float(ride.get("fare") or 0),
         "quoted_fare_amount": float(ride.get("quoted_fare") or ride.get("fare_original") or ride.get("fare") or 0),
-        "fare_adjustment": ride.get("fare_adjustment") or {},
+        "fare_adjustment": fare_adj,
         "trip_status": status,
         "final_status": "completed" if completed else "cancelled" if cancelled else "verified",
         "cancelled_by": "driver" if cancelled else "",
@@ -1692,7 +1708,14 @@ def transition_driver_ride(
             if action in {"complete", "cancel", "mark_paid"}:
                 tx.set(history_ref, _driver_history_update(clean_ride_id, {**ride, **result}, next_status), merge=True)
             if action == "complete":
-                tx.update(user_ref, {"lifetime_earnings": fb_firestore.Increment(float(final_fare_val)), "total_completed_trips": fb_firestore.Increment(1)})
+                actual_dist_km = max(0.0, float(fare_adjustment.get("charged_distance_km", 0.0)))
+                user_updates: dict[str, Any] = {
+                    "lifetime_earnings": fb_firestore.Increment(float(final_fare_val)),
+                    "total_completed_trips": fb_firestore.Increment(1),
+                }
+                if actual_dist_km > 0:
+                    user_updates["lifetime_distance_km"] = fb_firestore.Increment(round(actual_dist_km, 3))
+                tx.update(user_ref, user_updates)
             if ride.get("share_enabled"):
                 share_ref = db.collection("tripShareView").document(clean_ride_id)
                 if next_status in {"completed", "cancelled_by_driver", "no_show"}:
@@ -1796,7 +1819,14 @@ def transition_driver_ride(
                     )
                 except Exception:
                     pass
-            _bump_daily_stats(db, uid, {"completed_rides": 1, "earnings": float(result.get("fare") or 0)})
+            actual_dist_km = max(0.0, float(result.get("fare_adjustment", {}).get("charged_distance_km", 0.0)))
+            daily_increments: dict[str, Any] = {
+                "completed_rides": 1,
+                "earnings": float(result.get("fare") or 0),
+            }
+            if actual_dist_km > 0:
+                daily_increments["distance_km"] = round(actual_dist_km, 3)
+            _bump_daily_stats(db, uid, daily_increments)
             try:
                 from ..services.db import record_financial_ledger_entry
                 final_fare_val = float(result.get("fare") or 0)
@@ -2176,6 +2206,11 @@ def update_driver_location(
                 "driverLocationUpdatedAt": now,
                 "updatedAt": now,
             }
+            if body.routePolyline and str(body.routePolyline).strip():
+                poly_clean = str(body.routePolyline).strip()[:25000]
+                ride_updates["routePolyline"] = poly_clean
+                ride_updates["route_polyline"] = poly_clean
+
             if ride and (ride.get("status") in {"started", "en_route"} or bool(ride.get("pinVerifiedAt"))):
                 planned_km = max(0.0, _finite_float(ride.get("distance_km")))
                 accuracy = _finite_float(body.driverAccuracy, 0.0)
@@ -2209,7 +2244,16 @@ def update_driver_location(
                     "driverLocation": location,
                     "status": ride.get("status"),
                     "updatedAt": now,
+                    **telemetry,
                 }
+                if body.routePolyline and str(body.routePolyline).strip():
+                    poly_val = str(body.routePolyline).strip()[:25000]
+                    share_view_payload["routePolyline"] = poly_val
+                    share_view_payload["route_polyline"] = poly_val
+                elif ride.get("route_polyline") or ride.get("routePolyline"):
+                    poly_val = ride.get("route_polyline") or ride.get("routePolyline")
+                    share_view_payload["routePolyline"] = poly_val
+                    share_view_payload["route_polyline"] = poly_val
                 if ride.get("sharedInfo"):
                     share_view_payload["sharedInfo"] = ride.get("sharedInfo")
                 batch.set(db.collection("tripShareView").document(ride_id), share_view_payload, merge=True)
@@ -3400,6 +3444,8 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
         decided_today = completed_today + declined_today
         lifetime_trips = int(profile.get("total_completed_trips") or 0)
         lifetime_earnings = float(profile.get("lifetime_earnings") or 0)
+        lifetime_distance = float(profile.get("lifetime_distance_km") or 0.0)
+        today_distance = float(daily.get("distance_km") or 0.0)
 
         return {
             "ok": True,
@@ -3408,6 +3454,7 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
                 "earnings": round(float(daily.get("earnings") or 0), 2),
                 "completedRides": completed_today,
                 "declinedRides": declined_today,
+                "distanceKm": round(today_distance, 2),
                 "onlineHours": round(float(daily.get("online_seconds") or 0) / 3600, 2),
                 "acceptanceRate": round(completed_today / decided_today, 2) if decided_today else None,
             },
@@ -3416,6 +3463,7 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
             "performance": {
                 "lifetimeEarnings": round(lifetime_earnings, 2),
                 "lifetimeCompletedTrips": lifetime_trips,
+                "lifetimeDistanceKm": round(lifetime_distance, 2),
                 "averageFare": round(lifetime_earnings / lifetime_trips, 2) if lifetime_trips else 0,
             },
         }

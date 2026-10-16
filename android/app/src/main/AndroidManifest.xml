@@ -1,6 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <queries>
+        <package android:name="com.google.android.apps.maps" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="google.navigation" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -76,6 +88,12 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".DriverLocationService"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false"
+            android:exported="false" />
+
     </application>
 
     <!-- Permissions -->
@@ -86,6 +104,9 @@
     <!-- Required for passenger pickup detection, driver GPS tracking, and live map (map.js, driver.js, driver-service.js, dashboard.js). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Android 13+ requires this at runtime before any notification (ride alerts, SOS, etc.) can be shown. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

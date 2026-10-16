@@ -518,6 +518,59 @@ body {
     top: 130px;
 }
 
+.driver-open-gmaps-btn {
+    position: absolute;
+    top: 66px;
+    left: 14px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid rgba(26, 115, 232, 0.3);
+    border-radius: 999px;
+    background: #1a73e8;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 800;
+    box-shadow: 0 4px 14px rgba(26, 115, 232, 0.4);
+    cursor: pointer;
+    transition: transform 140ms ease, background 140ms ease;
+}
+
+.driver-open-gmaps-btn:active {
+    transform: scale(0.95);
+    background: #1557b0;
+}
+
+.driver-route-panel:not(.d-none) ~ .driver-open-gmaps-btn {
+    top: 130px;
+}
+
+.driver-recenter-btn {
+    position: absolute;
+    bottom: 74px;
+    right: 14px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid rgba(22, 101, 52, 0.2);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #166534;
+    font-size: 12px;
+    font-weight: 800;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+    cursor: pointer;
+    transition: transform 140ms ease, background 140ms ease;
+}
+
+.driver-recenter-btn:active {
+    transform: scale(0.95);
+}
+
 .driver-route-warning {
     position: absolute;
     right: 14px;
