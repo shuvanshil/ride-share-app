@@ -2126,7 +2126,7 @@ def update_driver_location(
     lng = _coordinate(body.lng, -180, 180)
     if body.driverAccuracy is not None and (not math.isfinite(body.driverAccuracy) or body.driverAccuracy < 0):
         raise ApiError("Invalid GPS accuracy.", 400)
-    if body.driverSpeed is not None and (not math.isfinite(body.driverSpeed) or body.driverSpeed < 0):
+    if body.driverSpeed is not None and (not math.isfinite(body.driverSpeed) or body.driverSpeed < 0 or body.driverSpeed > 55.0):
         raise ApiError("Invalid GPS speed.", 400)
     if body.driverHeading is not None and not math.isfinite(body.driverHeading):
         raise ApiError("Invalid GPS heading.", 400)
@@ -2216,7 +2216,8 @@ def update_driver_location(
                 accuracy = _finite_float(body.driverAccuracy, 0.0)
                 # Only accumulate travel if GPS accuracy is reasonable (<= 250m or unspecified)
                 if planned_km > 0 and (accuracy <= 250 or body.driverAccuracy is None):
-                    route_points = decode_polyline(str(ride.get("route_polyline") or ""))
+                    poly_candidate = (body.routePolyline and str(body.routePolyline).strip()) or ride.get("route_polyline") or ride.get("routePolyline") or ""
+                    route_points = decode_polyline(str(poly_candidate))
                     road_travelled_km = road_distance_along_route_km(route_points, location)
                     pickup = {"lat": _finite_float(ride.get("pickup_lat")), "lng": _finite_float(ride.get("pickup_lng"))}
                     pickup_to_curr_km = (
@@ -2242,6 +2243,7 @@ def update_driver_location(
             if ride and ride.get("share_enabled"):
                 share_view_payload: dict[str, Any] = {
                     "driverLocation": location,
+                    "driverLocationUpdatedAt": now,
                     "status": ride.get("status"),
                     "updatedAt": now,
                     **telemetry,

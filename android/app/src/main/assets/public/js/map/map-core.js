@@ -355,13 +355,19 @@ function projectFractionOntoSegment(point, segStart, segEnd) {
 function matchPositionToRoute(position, routePath, lastIndex = -1) {
     if (!position || !Array.isArray(routePath) || routePath.length < 2) return null;
 
-    const searchFullRange = lastIndex < 0;
-    const windowStart = searchFullRange
+    let searchFullRange = lastIndex < 0 || lastIndex >= routePath.length - 1;
+    let windowStart = searchFullRange
         ? 0
         : Math.max(0, lastIndex - ROUTE_MATCH_BACKWARD_TOLERANCE);
-    const windowEnd = searchFullRange
+    let windowEnd = searchFullRange
         ? routePath.length - 2
         : Math.min(routePath.length - 2, lastIndex + ROUTE_MATCH_SEARCH_WINDOW);
+
+    if (windowStart > windowEnd) {
+        searchFullRange = true;
+        windowStart = 0;
+        windowEnd = routePath.length - 2;
+    }
 
     let best = null;
     for (let i = windowStart; i <= windowEnd; i += 1) {
@@ -375,6 +381,23 @@ function matchPositionToRoute(position, routePath, lastIndex = -1) {
         const distanceMeters = calculateDistanceMeters(position, projected);
         if (!best || distanceMeters < best.distanceMeters) {
             best = { index: i, point: projected, distanceMeters, heading: calculateBearing(segStart, segEnd) };
+        }
+    }
+
+    // If windowed search did not find a match within tolerance (e.g. detour or rejoin far ahead), search the entire route
+    if ((!best || best.distanceMeters > ROUTE_SNAP_MAX_METERS) && !searchFullRange) {
+        for (let i = 0; i <= routePath.length - 2; i += 1) {
+            const segStart = routePath[i];
+            const segEnd = routePath[i + 1];
+            const fraction = projectFractionOntoSegment(position, segStart, segEnd);
+            const projected = {
+                lat: segStart.lat + ((segEnd.lat - segStart.lat) * fraction),
+                lng: segStart.lng + ((segEnd.lng - segStart.lng) * fraction)
+            };
+            const distanceMeters = calculateDistanceMeters(position, projected);
+            if (!best || distanceMeters < best.distanceMeters) {
+                best = { index: i, point: projected, distanceMeters, heading: calculateBearing(segStart, segEnd) };
+            }
         }
     }
 
@@ -1698,10 +1721,14 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
         }
     }
 
-    // 2. Authoritative Heading Determination
+    // 2. Authoritative Heading Determination & Stationary Noise Suppression
     const previousPosition = existing?.marker?.getPosition?.();
     const speed = Number(driver?.driverSpeed);
     const isMoving = Number.isFinite(speed) ? speed >= 0.8 : false;
+
+    if (!isMoving && previousPosition && calculateDistanceMeters({ lat: previousPosition.lat(), lng: previousPosition.lng() }, position) < DRIVER_MARKER_NOISE_FLOOR_METERS) {
+        position = { lat: previousPosition.lat(), lng: previousPosition.lng() };
+    }
 
     if (matchedRouteHeading != null) {
         // Vehicle is matched to the active road route; follow road segment bearing
@@ -1709,7 +1736,7 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
     } else if (previousPosition) {
         const previous = { lat: previousPosition.lat(), lng: previousPosition.lng() };
         const moveDist = calculateDistanceMeters(previous, rawPosition);
-        if (moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
+        if (isMoving && moveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS) {
             const motionBearing = calculateBearing(previous, rawPosition);
             if (motionBearing != null) {
                 heading = motionBearing;
@@ -2542,6 +2569,7 @@ async function handleAssignedDriverLocation(event) {
             activeDriverRouteState.driverId = driverId;
             activeDriverRouteState.routePath = decoded;
             activeDriverRouteState.lastPolyline = backendPolyline;
+            if (existing) existing.routeMatchIndex = -1;
             const destinationPosition = upsertRideDestinationMarker(detail);
             drawAssignedDriverRoute(decoded, filteredPosition, target, destinationPosition);
         }

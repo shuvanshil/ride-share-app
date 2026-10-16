@@ -342,6 +342,7 @@ class RotatingVehicleMarker {
 
 let trackRoutePolyline = null;
 let trackRoutePath = [];
+let trackLastPolyline = null;
 let driverMarkerAnimation = null;
 let lastRenderedDriverLoc = null;
 let lastDriverHeading = 0;
@@ -349,10 +350,71 @@ let lastRouteMatchIndex = -1;
 let trackLastFixAt = 0;
 let trackIntervalEma = null;
 
+let trackLastAcceptedEpochMs = 0;
+let trackPendingOutlier = null;
+let trackLastAcceptedFixAt = null;
+const TRACK_MAX_PLAUSIBLE_SPEED_MPS = 45;
+const TRACK_OUTLIER_CONFIRM_RADIUS_METERS = 60;
+
+function getTimestampMs(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    if (typeof value.seconds === "number") return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+    if (typeof value._seconds === "number") return value._seconds * 1000 + Math.floor((value._nanoseconds || 0) / 1000000);
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === "number") return value > 1e11 ? value : value * 1000;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function filterTrackPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs = 0) {
+    if (sourceTimestampEpochMs > 0) {
+        if (sourceTimestampEpochMs < trackLastAcceptedEpochMs) {
+            return null; // Reject stale out-of-order packet
+        }
+        trackLastAcceptedEpochMs = sourceTimestampEpochMs;
+    }
+
+    if (!lastRenderedDriverLoc) {
+        trackLastAcceptedFixAt = nowMs;
+        return rawPosition;
+    }
+
+    const elapsedSeconds = trackLastAcceptedFixAt
+        ? Math.max(0.5, (nowMs - trackLastAcceptedFixAt) / 1000)
+        : 3;
+    const jumpDistanceMeters = calculateDistanceMeters(lastRenderedDriverLoc, rawPosition);
+    const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
+
+    if (impliedSpeedMps <= TRACK_MAX_PLAUSIBLE_SPEED_MPS) {
+        trackPendingOutlier = null;
+        trackLastAcceptedFixAt = nowMs;
+        return rawPosition;
+    }
+
+    if (trackPendingOutlier
+        && calculateDistanceMeters(trackPendingOutlier, rawPosition) <= TRACK_OUTLIER_CONFIRM_RADIUS_METERS) {
+        trackPendingOutlier = null;
+        trackLastAcceptedFixAt = nowMs;
+        return rawPosition;
+    }
+
+    trackPendingOutlier = rawPosition;
+    return lastRenderedDriverLoc;
+}
+
 function snapToTrackRoute(point, path, lastIdx = -1) {
     if (!point || !Array.isArray(path) || path.length < 2) return { point, heading: null, index: -1 };
-    const windowStart = lastIdx < 0 ? 0 : Math.max(0, lastIdx - 2);
-    const windowEnd = lastIdx < 0 ? path.length - 2 : Math.min(path.length - 2, lastIdx + 60);
+    let searchFullRange = lastIdx < 0 || lastIdx >= path.length - 1;
+    let windowStart = searchFullRange ? 0 : Math.max(0, lastIdx - 2);
+    let windowEnd = searchFullRange ? path.length - 2 : Math.min(path.length - 2, lastIdx + 60);
+
+    if (windowStart > windowEnd) {
+        searchFullRange = true;
+        windowStart = 0;
+        windowEnd = path.length - 2;
+    }
+
     let best = null;
     for (let i = windowStart; i <= windowEnd; i++) {
         const p1 = path[i];
@@ -369,6 +431,26 @@ function snapToTrackRoute(point, path, lastIdx = -1) {
             best = { index: i, point: proj, dist, heading: calculateBearing(p1, p2) };
         }
     }
+
+    // If windowed search did not find a match within tolerance (e.g. detour or rejoin far ahead), search the forward path
+    if ((!best || best.dist > 30) && !searchFullRange) {
+        for (let i = 0; i <= path.length - 2; i++) {
+            const p1 = path[i];
+            const p2 = path[i + 1];
+            const segLat = p2.lat - p1.lat;
+            const segLng = (p2.lng - p1.lng) * (Math.cos((p1.lat * Math.PI) / 180) || 1);
+            const ptLat = point.lat - p1.lat;
+            const ptLng = (point.lng - p1.lng) * (Math.cos((p1.lat * Math.PI) / 180) || 1);
+            const segLenSq = (segLat * segLat) + (segLng * segLng);
+            const frac = segLenSq > 1e-18 ? Math.max(0, Math.min(1, ((ptLat * segLat) + (ptLng * segLng)) / segLenSq)) : 0;
+            const proj = { lat: p1.lat + (p2.lat - p1.lat) * frac, lng: p1.lng + (p2.lng - p1.lng) * frac };
+            const dist = calculateDistanceMeters(point, proj);
+            if (!best || dist < best.dist) {
+                best = { index: i, point: proj, dist, heading: calculateBearing(p1, p2) };
+            }
+        }
+    }
+
     if (best && best.dist <= 30) {
         lastRouteMatchIndex = best.index;
         return { point: best.point, heading: best.heading, index: best.index };
@@ -376,13 +458,14 @@ function snapToTrackRoute(point, path, lastIdx = -1) {
     return { point, heading: null, index: -1 };
 }
 
-function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto") {
+function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", speed = null) {
     if (!map || !rawTarget || !window.google?.maps) return;
     const now0 = performance.now();
     const prevMatchIndex = lastRouteMatchIndex;
     const snapResult = snapToTrackRoute(rawTarget, trackRoutePath, lastRouteMatchIndex);
     const targetPosition = snapResult.point;
-    const effectiveHeading = snapResult.heading ?? normalizeHeading(heading) ?? lastDriverHeading;
+    const isMoving = Number.isFinite(speed) ? speed >= 0.8 : true;
+    const effectiveHeading = snapResult.heading ?? (isMoving ? normalizeHeading(heading) : null) ?? lastDriverHeading;
 
     if (driverMarkerAnimation) {
         cancelAnimationFrame(driverMarkerAnimation);
@@ -553,6 +636,21 @@ function renderSnapshot(data) {
         setStatusCardState('is-live');
     }
 
+    if (ENDED_STATUSES.has(status)) {
+        if (driverMarkerAnimation) {
+            cancelAnimationFrame(driverMarkerAnimation);
+            driverMarkerAnimation = null;
+        }
+        if (markers.driver?.setMap) {
+            markers.driver.setMap(null);
+            delete markers.driver;
+        }
+        if (trackRoutePolyline?.setMap) {
+            trackRoutePolyline.setMap(null);
+            trackRoutePolyline = null;
+        }
+    }
+
     document.getElementById('track-driver-name').innerText = data.driver_name || "Assigned driver";
     document.getElementById('track-vehicle').innerText = [data.vehicle_model, data.vehicle_number].filter(Boolean).join(" · ") || "—";
     document.getElementById('track-pickup').innerText = data.pickup_name || "—";
@@ -577,7 +675,9 @@ function renderSnapshot(data) {
     }
 
     const polylineString = data.routePolyline || data.route_polyline || shared?.routePolyline;
-    if (polylineString) {
+    if (polylineString && (!trackRoutePolyline || trackLastPolyline !== polylineString)) {
+        trackLastPolyline = polylineString;
+        lastRouteMatchIndex = -1;
         const path = decodeTrackPolyline(polylineString);
         if (path.length >= 2) {
             trackRoutePath = path;
@@ -603,9 +703,21 @@ function renderSnapshot(data) {
         return "cab";
     }
 
-    if (driverLoc) {
-        const vehicleType = inferVehicleType(data);
-        animateDriverMarker(driverLoc, data.driverHeading || driverLoc.driverHeading || null, vehicleType);
+    if (driverLoc && !ENDED_STATUSES.has(status)) {
+        const sourceTimestamp = getTimestampMs(
+            data.driverLocationUpdatedAt
+            || data.lastLocationAt
+            || data.updatedAt
+            || driverLoc.updatedAt
+            || driverLoc.timestamp
+        );
+        const nowMs = performance.now();
+        const filteredLoc = filterTrackPositionOutlier(driverLoc, nowMs, sourceTimestamp);
+        if (filteredLoc) {
+            const vehicleType = inferVehicleType(data);
+            const speed = Number(data.driverSpeed ?? driverLoc.driverSpeed);
+            animateDriverMarker(filteredLoc, data.driverHeading || driverLoc.driverHeading || null, vehicleType, speed);
+        }
     }
 }
 
