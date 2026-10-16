@@ -343,6 +343,7 @@ class RotatingVehicleMarker {
 let trackRoutePolyline = null;
 let trackRoutePath = [];
 let trackLastPolyline = null;
+let trackLastRenderedStatus = null;
 let driverMarkerAnimation = null;
 let lastRenderedDriverLoc = null;
 let lastDriverHeading = 0;
@@ -379,6 +380,7 @@ function stopLiveTracking() {
     trackLastAcceptedEpochMs = 0;
     trackPendingOutlier = null;
     trackLastAcceptedFixAt = null;
+    trackLastRenderedStatus = null;
 }
 
 function getTimestampMs(value) {
@@ -667,6 +669,14 @@ function renderSnapshot(data) {
     const detailsCard = document.getElementById('track-details-card');
 
     const status = data.status || "";
+    const prevStatus = trackLastRenderedStatus;
+    trackLastRenderedStatus = status;
+
+    // Reset route-matching index when transitioning from pickup approach to destination leg
+    if (prevStatus && ["accepted", "arrived"].includes(prevStatus) && ["started", "en_route"].includes(status)) {
+        lastRouteMatchIndex = -1;
+    }
+
     statusTitle.innerText = STATUS_COPY[status] ? "Trip in progress" : "Trip status";
     statusCopy.innerText = STATUS_COPY[status] || "Waiting for the latest trip update...";
 

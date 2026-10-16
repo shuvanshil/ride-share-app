@@ -358,15 +358,35 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
             else _haversine_km(pickup["lat"], pickup["lng"], current["lat"], current["lng"])
         )
 
+        # Detect destination overshoot past the free buffer
+        is_past_drop = False
+        if distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:
+            dist_pickup_curr = _haversine_km(pickup["lat"], pickup["lng"], current["lat"], current["lng"])
+            dist_pickup_drop = _haversine_km(pickup["lat"], pickup["lng"], drop["lat"], drop["lng"])
+            if route_points and len(route_points) >= 2:
+                if (road_travelled_km is not None and road_travelled_km >= planned_km * FULL_FARE_PROGRESS_RATIO) or prior_max_ratio >= FULL_FARE_PROGRESS_RATIO:
+                    p_last = route_points[-1]
+                    p_prev = route_points[-2]
+                    d_lat = p_last[0] - p_prev[0]
+                    d_lng = (p_last[1] - p_prev[1]) * (math.cos(math.radians(p_last[0])) or 1.0)
+                    pt_lat = current["lat"] - p_last[0]
+                    pt_lng = (current["lng"] - p_last[1]) * (math.cos(math.radians(p_last[0])) or 1.0)
+                    forward_dot = (pt_lat * d_lat) + (pt_lng * d_lng)
+                    if forward_dot >= 0 or (dist_pickup_curr >= dist_pickup_drop - 0.05):
+                        is_past_drop = True
+            elif dist_pickup_curr > dist_pickup_drop or pickup_to_current_km > planned_km:
+                is_past_drop = True
+
+        if is_past_drop:
+            extra_dropoff_km = distance_to_drop_km
+            pickup_to_current_km = planned_km + extra_dropoff_km
+
         curr_progress_ratio = max(0.0, min(1.0, pickup_to_current_km / planned_km))
-        curr_travelled_km = max(0.0, min(pickup_to_current_km, planned_km))
+        curr_travelled_km = max(0.0, pickup_to_current_km if is_past_drop else min(pickup_to_current_km, planned_km))
 
         # Monotonicity guard: travel progress can NEVER decrease due to jitter, out-of-order, or stale GPS ticks
         progress_ratio = max(prior_max_ratio, curr_progress_ratio)
         travelled_km = max(prior_max_travelled, curr_travelled_km)
-
-        if pickup_to_current_km > planned_km and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:
-            extra_dropoff_km = distance_to_drop_km
     elif prior_max_travelled > 0:
         # Fallback when GPS is temporarily missing/offline at terminal event, but was tracked during ride
         travelled_km = prior_max_travelled

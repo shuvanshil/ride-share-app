@@ -87,6 +87,8 @@ let googleMapsLoadPromise = null;
 let activeDriverMarker = null;
 let pendingAssignedDriverDetail = null;
 let assignedDriverTrackingDriverId = "";
+let assignedDriverTrackingRideId = "";
+let lastCompletedRideId = "";
 let assignedDriverRoutePolyline = null;
 let assignedDriverTrackingElement = null;
 let assignedDriverLastDistanceKm = null;
@@ -1633,24 +1635,32 @@ function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp
             // Reject stale out-of-order packet
             return null;
         }
-        passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
     }
 
     const current = activeDriverMarker?.marker?.getPosition?.();
     if (!current) {
+        if (sourceTimestampEpochMs > 0) passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
         passengerDriverLastAcceptedFixAt = nowMs;
         return rawPosition;
     }
 
     const lastKnown = { lat: current.lat(), lng: current.lng() };
-    const elapsedSeconds = passengerDriverLastAcceptedFixAt
-        ? Math.max(0.5, (nowMs - passengerDriverLastAcceptedFixAt) / 1000)
-        : 3;
+    let elapsedSeconds;
+    if (sourceTimestampEpochMs > 0 && passengerDriverLastAcceptedEpochMs > 0) {
+        const deltaSource = (sourceTimestampEpochMs - passengerDriverLastAcceptedEpochMs) / 1000;
+        elapsedSeconds = deltaSource >= 0.2 ? deltaSource : Math.max(0.5, (nowMs - (passengerDriverLastAcceptedFixAt || nowMs)) / 1000);
+    } else {
+        elapsedSeconds = passengerDriverLastAcceptedFixAt
+            ? Math.max(0.5, (nowMs - passengerDriverLastAcceptedFixAt) / 1000)
+            : 3;
+    }
+
     const jumpDistanceMeters = calculateDistanceMeters(lastKnown, rawPosition);
     const impliedSpeedMps = jumpDistanceMeters / elapsedSeconds;
 
     if (impliedSpeedMps <= PASSENGER_MAX_PLAUSIBLE_SPEED_MPS) {
         passengerDriverPendingOutlier = null;
+        if (sourceTimestampEpochMs > 0) passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
         passengerDriverLastAcceptedFixAt = nowMs;
         return rawPosition;
     }
@@ -1658,6 +1668,7 @@ function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp
     if (passengerDriverPendingOutlier
         && calculateDistanceMeters(passengerDriverPendingOutlier, rawPosition) <= PASSENGER_OUTLIER_CONFIRM_RADIUS_METERS) {
         passengerDriverPendingOutlier = null;
+        if (sourceTimestampEpochMs > 0) passengerDriverLastAcceptedEpochMs = sourceTimestampEpochMs;
         passengerDriverLastAcceptedFixAt = nowMs;
         return rawPosition;
     }
@@ -2395,8 +2406,11 @@ function clearActiveDriverMarker() {
     activeDriverMarker = null;
     passengerDriverPendingOutlier = null;
     passengerDriverLastAcceptedFixAt = null;
-    passengerDriverLastAcceptedEpochMs = 0;
+    if (assignedDriverTrackingRideId) {
+        lastCompletedRideId = assignedDriverTrackingRideId;
+    }
     assignedDriverTrackingDriverId = "";
+    assignedDriverTrackingRideId = "";
     passengerFirstRouteFitComplete = false;
     resetPassengerCameraToOverview();
     clearAssignedDriverRoute();
@@ -2517,6 +2531,17 @@ async function handleAssignedDriverLocation(event) {
     if (!window.mapInstance) {
         pendingAssignedDriverDetail = detail;
         return;
+    }
+
+    const eventRideId = String(detail.rideId || detail.ride_id || "").trim();
+    if (eventRideId && lastCompletedRideId && eventRideId === lastCompletedRideId) {
+        return; // Discard late arriving event from previously completed ride
+    }
+    if (assignedDriverTrackingRideId && eventRideId && eventRideId !== assignedDriverTrackingRideId) {
+        return; // Discard event from another ride while tracking active ride
+    }
+    if (eventRideId && !assignedDriverTrackingRideId) {
+        assignedDriverTrackingRideId = eventRideId;
     }
 
     const location = detail.driverLocation || detail;

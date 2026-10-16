@@ -1194,6 +1194,7 @@ function dispatchPassengerDriverLocation(ride) {
     window.dispatchEvent(new CustomEvent('driver-location-updated', {
         detail: {
             ...location,
+            rideId: ride.id || ride.rideId || "",
             driverLocation: location,
             driverLocationUpdatedAt: ride.driverLocationUpdatedAt || ride.lastLocationAt || ride.updatedAt,
             driver_id: ride.driver_id,
