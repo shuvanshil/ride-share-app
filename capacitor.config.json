@@ -23,8 +23,9 @@
       "showSpinner": false
     },
     "StatusBar": {
-      "overlaysWebView": true,
-      "style": "DARK"
+      "overlaysWebView": false,
+      "style": "DARK",
+      "backgroundColor": "#1A7A2E"
     },
     "PushNotifications": {
       "presentationOptions": ["badge", "sound"],

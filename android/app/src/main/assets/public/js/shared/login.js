@@ -497,7 +497,7 @@ function resetAuthStep() {
         }
     }
     if (authRoleSelectorWrapper) {
-        setVisible(authRoleSelectorWrapper, authMode === "login" || authMode === "register");
+        setVisible(authRoleSelectorWrapper, false);
     }
 
     sendOtpBtn.disabled = false;
@@ -1027,7 +1027,7 @@ async function finalizeRegistration() {
     const name = document.getElementById('user-name').value.trim();
     const emailEl = document.getElementById('user-email');
     const email = emailEl ? normalizeEmail(emailEl.value) : "";
-    const role = document.getElementById('user-role').value;
+    const role = document.getElementById('user-role')?.value || "passenger";
     const password = document.getElementById('user-password').value;
     const genderInput = document.getElementById('user-gender');
     const gender = genderInput ? genderInput.value : "Male";
@@ -1058,7 +1058,7 @@ async function finalizeRegistration() {
         return;
     }
 
-    const profileData = { name, email, role: "passenger", gender };
+    const profileData = { name, email, role, gender };
 
     registerBtn.disabled = true;
     registerBtn.textContent = t('auth.creating_account', "Creating account...");
