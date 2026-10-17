@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Ensure project root and api package are on sys.path for Vercel Serverless
 _API_DIR = Path(__file__).resolve().parent
