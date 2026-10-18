@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+import math
+from typing import Any
+
+SHARE_MAX_SEATS: int = 3
+SHARE_FARE_BASE: int = 10
+SHARE_BASE_METERS: int = 1000
+SHARE_STEP_METERS: int = 300
+SHARE_STEP_FARE: int = 5
+SHARE_ZONE_RADIUS_M: int = 1000
+SHARE_MAX_PICKUP_M: int = 2000
+SHARE_MAX_DETOUR_MIN: int = 8
+SHARE_OFFER_TIMEOUT_S: int = 15
+SHARE_PRIORITY_WINDOW_S: int = 45
+SHARE_MAX_OFFER_DRIVERS: int = 3
+SHARE_PICKUP_WAIT_S: int = 120
+SHARE_FALLBACK_SPEED_KMH: float = 25.0
+SHARE_DETOUR_ROAD_FACTOR: float = 1.3
+
+
+def calculate_share_fare(distance_meters: int | float) -> int:
+    d = max(0, int(round(distance_meters)))
+    if d <= SHARE_BASE_METERS:
+        return SHARE_FARE_BASE
+    extra = d - SHARE_BASE_METERS
+    steps = math.ceil(extra / SHARE_STEP_METERS)
+    return SHARE_FARE_BASE + (steps * SHARE_STEP_FARE)
+
+
+def get_share_config_dict() -> dict[str, Any]:
+    return {
+        "SHARE_MAX_SEATS": SHARE_MAX_SEATS,
+        "SHARE_FARE_BASE": SHARE_FARE_BASE,
+        "SHARE_BASE_METERS": SHARE_BASE_METERS,
+        "SHARE_STEP_METERS": SHARE_STEP_METERS,
+        "SHARE_STEP_FARE": SHARE_STEP_FARE,
+        "SHARE_ZONE_RADIUS_M": SHARE_ZONE_RADIUS_M,
+        "SHARE_MAX_PICKUP_M": SHARE_MAX_PICKUP_M,
+        "SHARE_MAX_DETOUR_MIN": SHARE_MAX_DETOUR_MIN,
+        "SHARE_OFFER_TIMEOUT_S": SHARE_OFFER_TIMEOUT_S,
+        "SHARE_PRIORITY_WINDOW_S": SHARE_PRIORITY_WINDOW_S,
+        "SHARE_MAX_OFFER_DRIVERS": SHARE_MAX_OFFER_DRIVERS,
+        "SHARE_PICKUP_WAIT_S": SHARE_PICKUP_WAIT_S,
+        "SHARE_FALLBACK_SPEED_KMH": SHARE_FALLBACK_SPEED_KMH,
+        "SHARE_DETOUR_ROAD_FACTOR": SHARE_DETOUR_ROAD_FACTOR,
+    }

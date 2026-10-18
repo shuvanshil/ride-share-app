@@ -607,7 +607,7 @@ class TestDispatchPhase2Hardening(unittest.TestCase):
         fake_db = FakeFirestore()
         app.dependency_overrides[require_admin] = lambda: fake_admin
         try:
-            with patch("api.routers.admin._db", return_value=fake_db):
+            with patch("backend.routers.admin._db", return_value=fake_db):
                 res_admin = client.get("/api/admin/dispatch-stats")
                 self.assertEqual(res_admin.status_code, 200)
                 data = res_admin.json()

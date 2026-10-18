@@ -370,7 +370,7 @@ class TestDispatchPoolsAndRunner(unittest.TestCase):
 
         # Patch solve_dispatch to simulate crash in new engine
         captured_stderr = io.StringIO()
-        with patch("api.dispatch.runner.solve_dispatch", side_effect=RuntimeError("Simulated algorithm bug")):
+        with patch("backend.dispatch.runner.solve_dispatch", side_effect=RuntimeError("Simulated algorithm bug")):
             with patch("sys.stderr", captured_stderr):
                 # Run 1, 2, 3 failures
                 for _ in range(MAX_CONSECUTIVE_ENGINE_ERRORS):
