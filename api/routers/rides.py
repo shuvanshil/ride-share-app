@@ -772,7 +772,8 @@ def _availability_for_location_update(profile: dict[str, Any], ride_id: str, db:
     Returns (availability, desiredAvailability)
     """
     desired = str(profile.get("desiredAvailability") or "").strip().lower()
-    if desired == "offline":
+    driver_avail = str(profile.get("driverAvailability") or "").strip().lower()
+    if desired == "offline" or (not desired and driver_avail == "offline"):
         return "offline", "offline"
     if ride_id:
         # When a ride is active the driver is busy but their desiredAvailability
@@ -2243,6 +2244,44 @@ def update_driver_location(
         }.items() if value is not None}
         now = datetime.now(timezone.utc)
         is_connected = availability != "offline"
+
+        if availability == "offline" and not ride_id:
+            batch = db.batch()
+            batch.set(profile_ref, {
+                "driverLocation": location,
+                **telemetry,
+                "driverAvailability": "offline",
+                "desiredAvailability": "offline",
+                "isConnected": False,
+                "lastLocationAt": now,
+                "updatedAt": now,
+            }, merge=True)
+            batch.set(db.collection("driverPresence").document(uid), {
+                "driverAvailability": "offline",
+                "desiredAvailability": "offline",
+                "isConnected": False,
+                "updatedAt": now,
+            }, merge=True)
+            batch.set(db.collection("driverMapPresence").document(uid), {
+                "uid": uid,
+                "name": str(profile.get("name") or "Driver")[:80],
+                "driverAvailability": "offline",
+                "desiredAvailability": "offline",
+                "verificationStatus": profile.get("verificationStatus"),
+                "vehicle_model": profile.get("vehicle_model") or profile.get("vehicleModel") or "",
+                "vehicle_type": _driver_type(profile),
+                "driverLocation": _coarse_location(location),
+                "isConnected": False,
+                "lastLocationAt": now,
+                "updatedAt": now,
+            }, merge=True)
+            batch.commit()
+            try:
+                DispatchPoolManager.remove_driver_dap(db, uid, reason="offline")
+            except Exception:
+                pass
+            return {"ok": True, "status": "offline", "availability": "offline"}
+
         presence_update = {
             "driverLocation": location,
             **telemetry,
