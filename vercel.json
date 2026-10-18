@@ -9,10 +9,16 @@
       "permanent": true
     }
   ],
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "backend/**",
+      "maxDuration": 15
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index"
+      "destination": "/api/index.py?__vercel_path=/api/$1"
     },
     {
       "source": "/admin-access-denied",

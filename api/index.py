@@ -11,13 +11,19 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Ensure project root is on sys.path for Vercel Serverless
+# Ensure project root and lambda directories are on sys.path for Vercel Serverless
 _API_DIR = Path(__file__).resolve().parent
 _ROOT_DIR = _API_DIR.parent
-if str(_ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(_ROOT_DIR))
-if str(_API_DIR) not in sys.path:
-    sys.path.insert(0, str(_API_DIR))
+for _candidate in [
+    _ROOT_DIR,
+    _API_DIR,
+    _ROOT_DIR / "backend",
+    _API_DIR / "backend",
+    Path("/var/task"),
+    Path("/var/task/backend"),
+]:
+    if _candidate.exists() and str(_candidate) not in sys.path:
+        sys.path.insert(0, str(_candidate))
 
 from backend.main import *
 from backend.main import (

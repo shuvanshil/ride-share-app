@@ -45,6 +45,32 @@ from .routers import driver_payments
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
 
+# --- Vercel Path Rewrite Middleware ---
+class VercelPathRewriteMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.scope.get("path", "")
+        if path in {"/api/index", "/api/index.py", "/api/index/", "/api", "/index", "/index.py"}:
+            vercel_path = (
+                request.query_params.get("__vercel_path")
+                or request.headers.get("x-matched-path")
+                or request.headers.get("x-forwarded-uri")
+                or request.headers.get("x-invoke-path")
+            )
+            if vercel_path:
+                clean_path = vercel_path.split("?")[0].rstrip("/")
+                if clean_path:
+                    request.scope["path"] = clean_path
+                    if b"__vercel_path=" in request.scope.get("query_string", b""):
+                        q_parts = [
+                            q for q in request.scope["query_string"].split(b"&")
+                            if not q.startswith(b"__vercel_path=")
+                        ]
+                        request.scope["query_string"] = b"&".join(q_parts)
+
+        return await call_next(request)
+
+app.add_middleware(VercelPathRewriteMiddleware)
+
 # --- Aggressive CORS Middleware ---
 class ForceCORSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -186,5 +212,9 @@ if not os.getenv("VERCEL") and "pytest" not in sys.modules and not os.getenv("PY
 
 @app.get("/api/health")
 @app.get("/health")
+@app.get("/api/index")
+@app.get("/api/index.py")
+@app.get("/api")
 async def health() -> dict[str, Any]:
     return {"ok": True, "version": "share-20261003-v1"}
+
