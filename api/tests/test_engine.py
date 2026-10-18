@@ -5,14 +5,14 @@ import itertools
 import random
 import unittest
 
-from backend.dispatch.config import BASE_MAX_ETA_MIN, WEIGHTS, DispatchWeights
-from backend.dispatch.engine.eligibility import check_eligibility
-from backend.dispatch.engine.eta import pickup_eta_minutes
-from backend.dispatch.engine.geo import haversine_km, lat_lon_to_cell
-from backend.dispatch.engine.hungarian import hungarian_min_cost
-from backend.dispatch.engine.plan import DriverEntry, PassengerEntry
-from backend.dispatch.engine.radius import max_eta_minutes
-from backend.dispatch.engine.solve import solve_dispatch
+from ..dispatch.config import BASE_MAX_ETA_MIN, WEIGHTS, DispatchWeights
+from ..dispatch.engine.eligibility import check_eligibility
+from ..dispatch.engine.eta import pickup_eta_minutes
+from ..dispatch.engine.geo import haversine_km, lat_lon_to_cell
+from ..dispatch.engine.hungarian import hungarian_min_cost
+from ..dispatch.engine.plan import DriverEntry, PassengerEntry
+from ..dispatch.engine.radius import max_eta_minutes
+from ..dispatch.engine.solve import solve_dispatch
 
 
 def _brute_force_assignment(matrix: list[list[float]]) -> tuple[list[int], float]:

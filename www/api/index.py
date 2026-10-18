@@ -1,22 +1,19 @@
 """
-FastAPI application core definition for LiphtUp.
+FastAPI application entrypoint.
 """
 from __future__ import annotations
 
-import os
 import sys
-import threading
-import time
 from pathlib import Path
 from typing import Any
 
-# Ensure project root is on sys.path
-_BACKEND_DIR = Path(__file__).resolve().parent
-_ROOT_DIR = _BACKEND_DIR.parent
+# Ensure project root and api package are on sys.path for Vercel Serverless
+_API_DIR = Path(__file__).resolve().parent
+_ROOT_DIR = _API_DIR.parent
 if str(_ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(_ROOT_DIR))
-if str(_BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_DIR))
+if str(_API_DIR) not in sys.path:
+    sys.path.insert(0, str(_API_DIR))
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -44,32 +41,6 @@ from .routers import (
 from .routers import driver_payments
 
 app = FastAPI(title="LiphtUp API", docs_url=None, redoc_url=None, openapi_url=None)
-
-# --- Vercel Path Rewrite Middleware ---
-class VercelPathRewriteMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        path = request.scope.get("path", "")
-        if path in {"/api/index", "/api/index.py", "/api/index/", "/api", "/index", "/index.py"}:
-            vercel_path = (
-                request.query_params.get("__vercel_path")
-                or request.headers.get("x-matched-path")
-                or request.headers.get("x-forwarded-uri")
-                or request.headers.get("x-invoke-path")
-            )
-            if vercel_path:
-                clean_path = vercel_path.split("?")[0].rstrip("/")
-                if clean_path:
-                    request.scope["path"] = clean_path
-                    if b"__vercel_path=" in request.scope.get("query_string", b""):
-                        q_parts = [
-                            q for q in request.scope["query_string"].split(b"&")
-                            if not q.startswith(b"__vercel_path=")
-                        ]
-                        request.scope["query_string"] = b"&".join(q_parts)
-
-        return await call_next(request)
-
-app.add_middleware(VercelPathRewriteMiddleware)
 
 # --- Aggressive CORS Middleware ---
 class ForceCORSMiddleware(BaseHTTPMiddleware):
@@ -178,6 +149,9 @@ app.include_router(dispatch.router, prefix="/api")
 app.include_router(dispatch.router)
 
 # Continuous background thread for scheduled ride activation & matching sweep
+import threading
+import time
+
 def _bg_scheduled_ride_sweeper():
     while True:
         try:
@@ -206,21 +180,13 @@ def _bg_scheduled_ride_sweeper():
         except Exception:
             time.sleep(10)
 
-_is_serverless = bool(
-    os.getenv("VERCEL")
-    or os.getenv("VERCEL_ENV")
-    or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
-    or os.getenv("LAMBDA_TASK_ROOT")
-)
-if not _is_serverless and "pytest" not in sys.modules and not os.getenv("PYTEST_CURRENT_TEST"):
+import os
+
+if not os.getenv("VERCEL"):
     _sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)
     _sweeper_thread.start()
 
 @app.get("/api/health")
 @app.get("/health")
-@app.get("/api/index")
-@app.get("/api/index.py")
-@app.get("/api")
 async def health() -> dict[str, Any]:
     return {"ok": True, "version": "share-20261003-v1"}
-

@@ -6,7 +6,7 @@ import unittest
 from typing import Any, Optional
 from unittest.mock import patch
 
-from backend.dispatch.config import (
+from ..dispatch.config import (
     COLLECTION_ASSIGNMENTS,
     COLLECTION_CONTROL,
     COLLECTION_DAP,
@@ -21,15 +21,15 @@ from backend.dispatch.config import (
     SHARE_MAX_SEATS,
     WEIGHTS,
 )
-from backend.dispatch.engine.cost import compute_pairing_cost
-from backend.dispatch.engine.detour import compute_detour_penalty
-from backend.dispatch.engine.eligibility import check_eligibility
-from backend.dispatch.engine.plan import DriverEntry, PassengerEntry
-from backend.dispatch.engine.solve import solve_dispatch
-from backend.dispatch.invariants import check_dispatch_invariants, reconcile_daily
-from backend.dispatch.pools import DispatchPoolManager
-from backend.dispatch.runner import nudge_dispatch, run_dispatch
-from tests.test_dispatch_pools import FakeCollection, FakeFirestore
+from ..dispatch.engine.cost import compute_pairing_cost
+from ..dispatch.engine.detour import compute_detour_penalty
+from ..dispatch.engine.eligibility import check_eligibility
+from ..dispatch.engine.plan import DriverEntry, PassengerEntry
+from ..dispatch.engine.solve import solve_dispatch
+from ..dispatch.invariants import check_dispatch_invariants, reconcile_daily
+from ..dispatch.pools import DispatchPoolManager
+from ..dispatch.runner import nudge_dispatch, run_dispatch
+from .test_dispatch_pools import FakeCollection, FakeFirestore
 
 
 class TestDispatchPhase2Detour(unittest.TestCase):
@@ -523,7 +523,7 @@ class TestDispatchPhase2Hardening(unittest.TestCase):
     """Test hardening features: sweeper share preservation, feature flags, and admin endpoint."""
 
     def test_sweeper_expired_offer_preserves_share_pool_and_updates_assignment(self):
-        from backend.dispatch.sweeper import sweep_expired_offers
+        from ..dispatch.sweeper import sweep_expired_offers
         db = FakeFirestore()
         now = time.time()
         # Driver in pool=SHARE with route stops, currently OFFERED
@@ -586,15 +586,15 @@ class TestDispatchPhase2Hardening(unittest.TestCase):
             vehicle_type="auto",
         )
 
-        with patch("backend.dispatch.engine.eligibility.SHARE_ENABLED", False):
+        with patch("api.dispatch.engine.eligibility.SHARE_ENABLED", False):
             eligible, reason, _ = check_eligibility(pax, driver, now=time.time())
             self.assertFalse(eligible)
             self.assertEqual(reason, "share_disabled")
 
     def test_admin_dispatch_stats_endpoint(self):
         from fastapi.testclient import TestClient
-        from backend.main import app
-        from backend.core.admin import require_admin
+        from ..index import app
+        from ..core.admin import require_admin
 
         client = TestClient(app)
 
@@ -607,7 +607,7 @@ class TestDispatchPhase2Hardening(unittest.TestCase):
         fake_db = FakeFirestore()
         app.dependency_overrides[require_admin] = lambda: fake_admin
         try:
-            with patch("backend.routers.admin._db", return_value=fake_db):
+            with patch("api.routers.admin._db", return_value=fake_db):
                 res_admin = client.get("/api/admin/dispatch-stats")
                 self.assertEqual(res_admin.status_code, 200)
                 data = res_admin.json()

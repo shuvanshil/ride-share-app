@@ -8,7 +8,7 @@ import unittest
 from typing import Any, Optional
 from unittest.mock import patch
 
-from backend.dispatch.config import (
+from ..dispatch.config import (
     COLLECTION_ASSIGNMENTS,
     COLLECTION_CONTROL,
     COLLECTION_DAP,
@@ -18,16 +18,16 @@ from backend.dispatch.config import (
     COLLECTION_WPP,
     MAX_CONSECUTIVE_ENGINE_ERRORS,
 )
-from backend.dispatch.pools import DispatchPoolManager
-from backend.dispatch.queries import get_dispatch_status, get_recent_assignments, get_recent_runs
-from backend.dispatch.runner import (
+from ..dispatch.pools import DispatchPoolManager
+from ..dispatch.queries import get_dispatch_status, get_recent_assignments, get_recent_runs
+from ..dispatch.runner import (
     get_consecutive_errors,
     nudge_dispatch,
     reset_consecutive_errors,
     run_dispatch,
     set_custom_fallback_handler,
 )
-from backend.dispatch.sweeper import (
+from ..dispatch.sweeper import (
     run_dispatch_sweeper,
     sweep_expired_offers,
     sweep_outbox_notifications,
@@ -370,7 +370,7 @@ class TestDispatchPoolsAndRunner(unittest.TestCase):
 
         # Patch solve_dispatch to simulate crash in new engine
         captured_stderr = io.StringIO()
-        with patch("backend.dispatch.runner.solve_dispatch", side_effect=RuntimeError("Simulated algorithm bug")):
+        with patch("api.dispatch.runner.solve_dispatch", side_effect=RuntimeError("Simulated algorithm bug")):
             with patch("sys.stderr", captured_stderr):
                 # Run 1, 2, 3 failures
                 for _ in range(MAX_CONSECUTIVE_ENGINE_ERRORS):

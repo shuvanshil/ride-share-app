@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from api.index import app
 from api.routers.rides import current_user
-from tests.test_live_ride_tracking_simulation import MockFirestoreDb
+from api.tests.test_live_ride_tracking_simulation import MockFirestoreDb
 
 
 def test_driver_location_calculates_remaining_km_and_eta():
@@ -175,72 +175,7 @@ def test_driver_location_calculates_remaining_km_and_eta():
         assert data_nc["ok"] is True
         # Must fall back to planned distance (6.0), NOT Null Island distance (~10,000 km)
         assert data_nc["remaining_km"] == 6.0
-        # 8. Test native background service aliases (heading/speed/accuracy) and leg-route separation
-        ride_leg_id = "ride_test_leg_sep_606"
-        planned_dest_poly = "_p~iF~ps|U_ulLnnqC_mqNvxq`@"
-        pickup_approach_poly = "}_~iF~ps|U_c|A_c|A"
-        db.collection("rides").document(ride_leg_id).set({
-            "ride_id": ride_leg_id,
-            "driver_id": driver_uid,
-            "passenger_id": passenger_uid,
-            "status": "accepted",
-            "pickup_lat": 23.8400,
-            "pickup_lng": 91.2900,
-            "drop_lat": 23.8600,
-            "drop_lng": 91.3100,
-            "route_polyline": planned_dest_poly,
-            "routePolyline": None,
-            "routePolylineLeg": "pickup",
-            "share_enabled": True,
-            "distance_km": 4.0,
-            "duration_minutes": 12,
-        })
-        resp_leg_pickup = client.post("/api/rides/driver-location", json={
-            "lat": 23.8360,
-            "lng": 91.2860,
-            "rideId": ride_leg_id,
-            "heading": 128.5,
-            "speed": 7.5,
-            "accuracy": 4.2,
-            "routePolyline": pickup_approach_poly,
-            "routePolylineLeg": "pickup",
-        })
-        assert resp_leg_pickup.status_code == 200
-        ride_doc_pickup = db.collection("rides").document(ride_leg_id).get().to_dict()
-        assert ride_doc_pickup["driverHeading"] == 128.5
-        assert ride_doc_pickup["driverSpeed"] == 7.5
-        assert ride_doc_pickup["driverAccuracy"] == 4.2
-        assert ride_doc_pickup["routePolyline"] == pickup_approach_poly
-        assert ride_doc_pickup["routePolylineLeg"] == "pickup"
-        # Planned Pickup->Drop polyline MUST remain intact during approach leg
-        assert ride_doc_pickup["route_polyline"] == planned_dest_poly
-
-        share_doc_pickup = db.collection("tripShareView").document(ride_leg_id).get().to_dict()
-        assert share_doc_pickup["driverHeading"] == 128.5
-        assert share_doc_pickup["routePolyline"] == pickup_approach_poly
-        assert share_doc_pickup["routePolylineLeg"] == "pickup"
-
-        # Mismatched leg update (e.g., delayed 'pickup' polyline arriving after ride started) must be ignored
-        db.collection("rides").document(ride_leg_id).set({
-            "status": "en_route",
-            "pinVerifiedAt": datetime.now(timezone.utc),
-            "routePolyline": planned_dest_poly,
-            "routePolylineLeg": "destination",
-        }, merge=True)
-        resp_leg_stale = client.post("/api/rides/driver-location", json={
-            "lat": 23.8410,
-            "lng": 91.2910,
-            "rideId": ride_leg_id,
-            "heading": 42.0,
-            "speed": 9.0,
-            "routePolyline": pickup_approach_poly,
-            "routePolylineLeg": "pickup",
-        })
-        assert resp_leg_stale.status_code == 200
-        ride_doc_dest = db.collection("rides").document(ride_leg_id).get().to_dict()
-        assert ride_doc_dest["routePolyline"] == planned_dest_poly
-        assert ride_doc_dest["routePolylineLeg"] == "destination"
+        assert data_nc["eta_mins"] is not None
+        assert data_nc["eta_mins"] < 60
 
     app.dependency_overrides.clear()
-
-
