@@ -206,7 +206,13 @@ def _bg_scheduled_ride_sweeper():
         except Exception:
             time.sleep(10)
 
-if not os.getenv("VERCEL") and "pytest" not in sys.modules and not os.getenv("PYTEST_CURRENT_TEST"):
+_is_serverless = bool(
+    os.getenv("VERCEL")
+    or os.getenv("VERCEL_ENV")
+    or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    or os.getenv("LAMBDA_TASK_ROOT")
+)
+if not _is_serverless and "pytest" not in sys.modules and not os.getenv("PYTEST_CURRENT_TEST"):
     _sweeper_thread = threading.Thread(target=_bg_scheduled_ride_sweeper, daemon=True)
     _sweeper_thread.start()
 
