@@ -3893,16 +3893,22 @@ function renderIdleState() {
     hideRouteWarning();
     updateGoogleMapsNavButtonVisibility();
     updateDriverRecenterVisibility();
-    auth.currentUser?.getIdToken().then((token) => {
-        updateDriverTrackingState({
-            state: "on_duty",
-            rideId: "",
-            authToken: token || "",
-            refreshToken: auth.currentUser?.refreshToken || "",
-            apiBaseUrl: "https://liphtup.in"
-        });
-    }).catch(() => {});
-    statusText.innerText = "Online and ready for ride requests";
+    const isOffline = (currentUser?.driverAvailability || "offline") === "offline" || (currentUser?.desiredAvailability === "offline");
+    if (isOffline) {
+        stopDriverTracking();
+        statusText.innerText = "You are currently offline";
+    } else {
+        auth.currentUser?.getIdToken().then((token) => {
+            updateDriverTrackingState({
+                state: "on_duty",
+                rideId: "",
+                authToken: token || "",
+                refreshToken: auth.currentUser?.refreshToken || "",
+                apiBaseUrl: "https://liphtup.in"
+            });
+        }).catch(() => {});
+        statusText.innerText = "Online and ready for ride requests";
+    }
     updateIncomingRequestsVisibility();
     if (lastPosition && map) map.panTo(lastPosition);
 }
@@ -4399,7 +4405,9 @@ retryButton.addEventListener('click', () => {
         return;
     }
 
-    startLocationTracking();
+    if (currentRideId || (currentUser?.driverAvailability === "searching")) {
+        startLocationTracking();
+    }
 });
 
 openConsoleButton?.addEventListener('click', () => {
@@ -4617,7 +4625,9 @@ async function bootstrapDriverService() {
                 window.clearTimeout(mapRetryTimer);
                 mapRetryTimer = null;
             }
-            startLocationTracking();
+            if (currentRideId || (currentUser?.driverAvailability === "searching")) {
+                startLocationTracking();
+            }
             if (!map) {
                 ensureMap(lastPosition || getInitialDriverLocation()).catch(() => {});
             }
@@ -4635,7 +4645,12 @@ async function bootstrapDriverService() {
         startShareTripsWatcher();
         startActiveRideListener();
         startIncomingRideListener();
-        startLocationTracking();
+        if (currentRideId || (currentUser?.driverAvailability === "searching")) {
+            startLocationTracking();
+        } else {
+            stopDriverTracking();
+            ensureMap(lastPosition || getInitialDriverLocation()).catch(() => {});
+        }
         hidePageLoader({ force: true });
         hideInitialLoader();
     } catch (error) {
@@ -4701,47 +4716,50 @@ function updateDriverAvailabilityUI(statusOverride) {
     }
 }
 
+let isTogglingOnlineStatus = false;
+
 async function toggleDriverOnlineStatus(targetStatus) {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser || isTogglingOnlineStatus) return;
+    isTogglingOnlineStatus = true;
     const prevStatus = currentUser?.driverAvailability || "offline";
     const prevDesired = currentUser?.desiredAvailability || "offline";
 
-    // 1. Instant Optimistic UI Update (0ms latency)
-    if (currentUser) {
-        currentUser.driverAvailability = targetStatus;
-        currentUser.desiredAvailability = targetStatus === "offline" ? "offline" : "online";
-        cacheProfile(currentUser);
-    }
-    updateDriverAvailabilityUI(targetStatus);
-
-    if (targetStatus === "searching") {
-        pollDriverNearbyDemand();
-        if (!demandPollInterval) {
-            demandPollInterval = setInterval(pollDriverNearbyDemand, 30000);
-        }
-        startLocationTracking();
-        setTimeout(() => {
-            registerDriverPushToken(db, currentUser?.uid).catch((error) => {
-                console.warn("Driver push token registration failed:", error);
-            });
-        }, 0);
-    } else {
-        if (locationWatchId !== null) {
-            if (typeof locationWatchId === "number") {
-                navigator.geolocation.clearWatch(locationWatchId);
-            }
-            locationWatchId = null;
-        }
-        stopDriverTracking();
-        if (demandPollInterval) {
-            clearInterval(demandPollInterval);
-            demandPollInterval = null;
-        }
-        hideDriverDemandChip();
-    }
-
-    // 2. Fast background sync
     try {
+        // 1. Instant Optimistic UI Update (0ms latency)
+        if (currentUser) {
+            currentUser.driverAvailability = targetStatus;
+            currentUser.desiredAvailability = targetStatus === "offline" ? "offline" : "online";
+            cacheProfile(currentUser);
+        }
+        updateDriverAvailabilityUI(targetStatus);
+
+        if (targetStatus === "searching") {
+            pollDriverNearbyDemand();
+            if (!demandPollInterval) {
+                demandPollInterval = setInterval(pollDriverNearbyDemand, 30000);
+            }
+            startLocationTracking();
+            setTimeout(() => {
+                registerDriverPushToken(db, currentUser?.uid).catch((error) => {
+                    console.warn("Driver push token registration failed:", error);
+                });
+            }, 0);
+        } else {
+            if (locationWatchId !== null) {
+                if (typeof locationWatchId === "number") {
+                    navigator.geolocation.clearWatch(locationWatchId);
+                }
+                locationWatchId = null;
+            }
+            stopDriverTracking();
+            if (demandPollInterval) {
+                clearInterval(demandPollInterval);
+                demandPollInterval = null;
+            }
+            hideDriverDemandChip();
+        }
+
+        // 2. Fast background sync
         const locationData = lastPosition ? { lat: lastPosition.lat, lng: lastPosition.lng } : null;
         await updateDriverAvailabilityThroughBackend(targetStatus, locationData);
     } catch (err) {
@@ -4754,6 +4772,8 @@ async function toggleDriverOnlineStatus(targetStatus) {
         }
         updateDriverAvailabilityUI(prevStatus);
         await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
+    } finally {
+        isTogglingOnlineStatus = false;
     }
 }
 
@@ -4801,6 +4821,10 @@ window.addEventListener('online', () => {
 // when app is restored from background or every 20 minutes during long active tracking sessions.
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden && auth.currentUser) {
+        const isOffline = (currentUser?.driverAvailability || "offline") === "offline";
+        if (!currentRideId && isOffline) {
+            return;
+        }
         auth.currentUser.getIdToken().then((token) => {
             if (token) {
                 updateDriverTrackingState({
@@ -4818,6 +4842,10 @@ document.addEventListener('visibilitychange', () => {
 setInterval(async () => {
     try {
         if (!auth.currentUser) return;
+        const isOffline = (currentUser?.driverAvailability || "offline") === "offline";
+        if (!currentRideId && isOffline) {
+            return;
+        }
         const freshToken = await auth.currentUser.getIdToken();
         if (freshToken) {
             updateDriverTrackingState({

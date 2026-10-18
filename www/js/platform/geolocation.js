@@ -100,13 +100,22 @@ export function normalizeApiBaseUrl(url) {
  * On native Android, starts the foreground service with persistent notification.
  * On Web/Desktop, establishes watchPosition and locks screen wake lock.
  */
+let isDriverTrackingRunning = false;
+
 export function startDriverTracking({ state = "on_duty", rideId = "", authToken = "", refreshToken = "", apiBaseUrl = "", onLocation, onError }) {
+    if (state === "offline") {
+        stopDriverTracking();
+        return null;
+    }
+
     const isNativeAndroid = Boolean(window.LiphtUpNativeStatus?.startDriverTracking);
     let nativeStarted = false;
+    isDriverTrackingRunning = true;
 
     if (isNativeAndroid) {
         try {
             window.onNativeLocationUpdate = (payload) => {
+                if (!isDriverTrackingRunning) return;
                 if (!payload || !Number.isFinite(Number(payload.lat)) || !Number.isFinite(Number(payload.lng))) return;
                 const rawHeading = (payload.heading != null && payload.heading !== "null") ? Number(payload.heading) : null;
                 const heading = (Number.isFinite(rawHeading) && rawHeading >= 0 && rawHeading <= 360) ? rawHeading : null;
@@ -176,6 +185,13 @@ export function startDriverTracking({ state = "on_duty", rideId = "", authToken 
  * Updates active driver tracking state (e.g. transitioning from on_duty to active_ride).
  */
 export function updateDriverTrackingState({ state = "on_duty", rideId = "", authToken = "", refreshToken = "", apiBaseUrl = "" }) {
+    if (state === "offline") {
+        stopDriverTracking();
+        return;
+    }
+    if (!isDriverTrackingRunning) {
+        return;
+    }
     if (window.LiphtUpNativeStatus?.updateTrackingState) {
         try {
             const config = {
@@ -197,6 +213,7 @@ export function updateDriverTrackingState({ state = "on_duty", rideId = "", auth
  * Stops driver tracking completely (stops Android foreground service and clears watches).
  */
 export function stopDriverTracking() {
+    isDriverTrackingRunning = false;
     if (window.LiphtUpNativeStatus?.stopDriverTracking) {
         try {
             window.LiphtUpNativeStatus.stopDriverTracking();
@@ -220,8 +237,11 @@ export function stopDriverTracking() {
  * Checks if native tracking service is currently running.
  */
 export function isDriverTrackingActive() {
+    if (!isDriverTrackingRunning) {
+        return false;
+    }
     if (window.LiphtUpNativeStatus?.isTrackingActive) {
-        return window.LiphtUpNativeStatus.isTrackingActive();
+        return Boolean(window.LiphtUpNativeStatus.isTrackingActive());
     }
     return fallbackWatchId !== null;
 }

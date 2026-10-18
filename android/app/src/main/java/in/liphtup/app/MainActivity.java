@@ -86,6 +86,9 @@ public class MainActivity extends BridgeActivity {
                         .putString("user_role", role.trim().toLowerCase())
                         .apply();
                 android.util.Log.d("MainActivity", "User role set to: " + role);
+                if (role.trim().isEmpty()) {
+                    stopDriverTracking();
+                }
             }
 
             @JavascriptInterface
@@ -148,6 +151,10 @@ public class MainActivity extends BridgeActivity {
                     Intent serviceIntent = new Intent(MainActivity.this, DriverLocationService.class);
                     serviceIntent.setAction(DriverLocationService.ACTION_STOP);
                     startService(serviceIntent);
+                    android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+                    if (nm != null) {
+                        nm.cancel(DriverLocationService.NOTIFICATION_ID);
+                    }
                 } catch (Exception e) {
                     android.util.Log.e("MainActivity", "Failed to stop driver tracking service", e);
                 }

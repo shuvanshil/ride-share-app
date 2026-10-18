@@ -186,6 +186,7 @@ function selectRideService(serviceType) {
     if (availWrapper) availWrapper.classList.remove('d-none');
     findRideBtn.innerText = `${t('services.confirm', 'Confirm')} ${service.shortName} · ₹${fare}`;
     findRideBtn.disabled = false;
+    window.dispatchEvent(new CustomEvent('ride-service-selected', { detail: { serviceType, service: window.selectedRideService } }));
 }
 
 function renderFareOptions(quote) {
@@ -216,6 +217,7 @@ function renderFareOptions(quote) {
 function resetFareOptions() {
     if (serviceSelectionLocked) return;
     window.selectedRideService = null;
+    window.dispatchEvent(new CustomEvent('ride-service-selected', { detail: { serviceType: null, service: null } }));
     serviceOptions.classList.add('d-none');
     const shareExplainer = document.getElementById('share-info-explainer');
     if (shareExplainer) shareExplainer.classList.add('d-none');

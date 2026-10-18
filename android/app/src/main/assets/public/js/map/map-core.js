@@ -1,7 +1,7 @@
 import { db } from '../platform/firebase-init.js';
 import { calculateFareOptions, isDistanceServiceable, isNightFareTime, MAX_SERVICEABLE_DISTANCE_KM } from '../shared/fare-policy.js';
 import { showAlert } from '../shared/dialog.js';
-import { getCurrentPosition } from '../platform/geolocation.js';
+import { getCurrentPosition, watchPosition, clearWatch } from '../platform/geolocation.js';
 import {
     collection,
     onSnapshot,
@@ -1041,6 +1041,46 @@ function addGoogleMapStyles() {
         .passenger-recenter-btn:active {
             transform: scale(0.95);
         }
+
+        .vehicle-cluster-marker {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: #ffffff;
+            border: 2px solid #ffffff;
+            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.45);
+            cursor: pointer;
+            transition: transform 160ms ease, box-shadow 160ms ease;
+            user-select: none;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .vehicle-cluster-marker:hover,
+        .vehicle-cluster-marker:focus {
+            transform: scale(1.1);
+            box-shadow: 0 6px 18px rgba(5, 150, 105, 0.6);
+            outline: none;
+        }
+
+        .vehicle-cluster-count {
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .vehicle-cluster-label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            opacity: 0.9;
+            letter-spacing: 0.3px;
+        }
     `;
     document.head.appendChild(style);
 }
@@ -1140,6 +1180,79 @@ class RotatingVehicleMarker {
     setLiveTracked(live) {
         this.element.classList.toggle("is-live-tracked", Boolean(live));
     }
+}
+
+class VehicleClusterMarkerOverlay {
+    constructor({ map, position, count = 1, onClusterClick = null }) {
+        const maps = getGoogleMaps();
+        this.position = googleLatLngLiteral(position);
+        this.count = count;
+        this.onClusterClick = onClusterClick;
+        this.currentMap = map;
+        this.overlay = maps?.OverlayView ? new maps.OverlayView() : null;
+        this.element = document.createElement("button");
+        this.element.type = "button";
+        this.element.className = "vehicle-cluster-marker";
+        this.element.setAttribute("aria-label", `${count} available rides in this area`);
+        this.element.innerHTML = `
+            <span class="vehicle-cluster-count">${count}</span>
+            <span class="vehicle-cluster-label">rides</span>
+        `;
+        this.element.style.position = "absolute";
+        this.element.style.pointerEvents = "auto";
+        this.element.style.willChange = "transform";
+        this.element.style.visibility = "hidden";
+        this.element.style.zIndex = "800";
+        this.element.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (typeof this.onClusterClick === "function") {
+                this.onClusterClick(this.position);
+            }
+        });
+
+        if (this.overlay) {
+            this.overlay.onAdd = () => {
+                this.overlay.getPanes()?.overlayMouseTarget.appendChild(this.element);
+            };
+            this.overlay.draw = () => this.draw();
+            this.overlay.onRemove = () => {
+                this.element.style.visibility = "hidden";
+                this.element.remove();
+            };
+            this.overlay.setMap(map);
+        }
+    }
+
+    draw() {
+        if (!this.overlay) return;
+        const projection = this.overlay.getProjection();
+        if (!projection || !this.position) return;
+        const maps = getGoogleMaps();
+        const point = projection.fromLatLngToDivPixel(new maps.LatLng(this.position.lat, this.position.lng));
+        if (!point) return;
+        this.element.style.transform = `translate(${point.x - 22}px, ${point.y - 22}px)`;
+        this.element.style.visibility = "visible";
+    }
+
+    setMap(map) {
+        if (this.currentMap === map) return;
+        this.currentMap = map;
+        if (!map) {
+            this.element.style.visibility = "hidden";
+        }
+        if (this.overlay) {
+            this.overlay.setMap(map);
+        }
+    }
+}
+
+let activeClusterMarkers = [];
+
+function clearClusterMarkers() {
+    activeClusterMarkers.forEach((cluster) => {
+        cluster.setMap(null);
+    });
+    activeClusterMarkers = [];
 }
 
 function makeMarker(options) {
@@ -1630,11 +1743,44 @@ function ensurePassengerRecenterButton(hostElement) {
 }
 
 
+let passengerInitialDiscoveryFitComplete = false;
+
+function maybeFitDiscoveryViewport(eligibleMarkerList) {
+    if (passengerInitialDiscoveryFitComplete || !window.mapInstance || !window.google?.maps) return;
+    if (assignedDriverTrackingDriverId) return;
+    if (!eligibleMarkerList || eligibleMarkerList.length === 0) return;
+
+    const center = { lat: Number(userLatitude || 23.8315), lng: Number(userLongitude || 91.2868) };
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend(center);
+
+    const closestDrivers = eligibleMarkerList.slice(0, 8);
+    closestDrivers.forEach((driver) => {
+        if (driver.raw) bounds.extend(driver.raw);
+    });
+
+    passengerInitialDiscoveryFitComplete = true;
+
+    window.mapInstance.fitBounds(bounds, { top: 60, right: 40, bottom: 90, left: 40 });
+
+    window.google.maps.event.addListenerOnce(window.mapInstance, "idle", () => {
+        const zoom = window.mapInstance?.getZoom?.();
+        if (zoom != null) {
+            if (zoom < 12.5) {
+                window.mapInstance.setZoom(12.5);
+            } else if (zoom > 16) {
+                window.mapInstance.setZoom(16);
+            }
+        }
+    });
+}
+
 function syncGlobalDriverMarkerVisibility() {
     if (!window.mapInstance) return;
 
     if (assignedDriverTrackingDriverId) {
-        // When a specific driver has been assigned, hide all other global vehicle icons
+        // When a specific driver has been assigned, hide all other global vehicle icons and clusters
+        clearClusterMarkers();
         globalDriverMarkers.forEach((existing) => {
             existing.marker?.setMap?.(null);
         });
@@ -1646,48 +1792,144 @@ function syncGlobalDriverMarkerVisibility() {
 
     const center = { lat: Number(userLatitude || 23.8315), lng: Number(userLongitude || 91.2868) };
     const markerList = [];
+    const activeServiceId = (window.selectedRideService?.id || "").toLowerCase();
 
     globalDriverMarkers.forEach((existing, driverId) => {
-        const pos = existing.marker?.getPosition?.();
-        let dist = 999999;
-        if (pos) {
-            dist = calculateDistanceMeters(center, { lat: pos.lat(), lng: pos.lng() });
+        const raw = existing.rawPosition || (existing.marker?.getPosition ? { lat: existing.marker.getPosition().lat(), lng: existing.marker.getPosition().lng() } : null);
+        if (!raw || !Number.isFinite(raw.lat) || !Number.isFinite(raw.lng)) return;
+        const dist = calculateDistanceMeters(center, raw);
+
+        // Discovery radius limit (12km)
+        if (dist > 12000) return;
+
+        const vehicleType = (existing.vehicleType || "auto").toLowerCase();
+
+        // Apply service filter if selected:
+        if (activeServiceId === "bike") {
+            if (vehicleType.includes("auto") || vehicleType.includes("rickshaw") || vehicleType.includes("tuk")) {
+                return;
+            }
+        } else if (activeServiceId === "auto" || activeServiceId === "share") {
+            if (!vehicleType.includes("auto") && !vehicleType.includes("rickshaw") && !vehicleType.includes("tuk")) {
+                return;
+            }
         }
+
         markerList.push({
             driverId,
             existing,
             dist,
-            vehicleType: (existing.vehicleType || "auto").toLowerCase()
+            vehicleType,
+            raw
         });
     });
 
     // Sort available drivers by proximity to user location
     markerList.sort((a, b) => a.dist - b.dist);
 
-    let autoCount = 0;
-    let bikeCount = 0;
-    const MAX_AUTOS = 4;
-    const MAX_BIKES = 3;
+    const currentZoom = window.mapInstance.getZoom?.() ?? 15;
 
-    markerList.forEach(({ existing, vehicleType }) => {
-        let shouldShow = false;
-        if (vehicleType.includes("auto") || vehicleType.includes("rickshaw") || vehicleType.includes("tuk")) {
-            if (autoCount < MAX_AUTOS) {
-                shouldShow = true;
-                autoCount++;
+    // At low zoom (<= 13): render clusters
+    // At street zoom (>= 14): render individual markers with spiderfying
+    if (currentZoom <= 13) {
+        clearClusterMarkers();
+
+        const CLUSTER_DISTANCE_METERS = 1500;
+        const clusters = [];
+
+        markerList.forEach((item) => {
+            let placed = false;
+            for (const cluster of clusters) {
+                if (calculateDistanceMeters(cluster.center, item.raw) <= CLUSTER_DISTANCE_METERS) {
+                    cluster.items.push(item);
+                    const total = cluster.items.length;
+                    cluster.center = {
+                        lat: (cluster.center.lat * (total - 1) + item.raw.lat) / total,
+                        lng: (cluster.center.lng * (total - 1) + item.raw.lng) / total
+                    };
+                    placed = true;
+                    break;
+                }
             }
-        } else {
-            if (bikeCount < MAX_BIKES) {
-                shouldShow = true;
-                bikeCount++;
+            if (!placed) {
+                clusters.push({
+                    center: { lat: item.raw.lat, lng: item.raw.lng },
+                    items: [item]
+                });
             }
-        }
-        const targetMap = shouldShow ? window.mapInstance : null;
-        if (existing.currentMap !== targetMap) {
-            existing.currentMap = targetMap;
-            existing.marker?.setMap?.(targetMap);
-        }
-    });
+        });
+
+        const clusteredDriverIds = new Set();
+        clusters.forEach((cluster) => {
+            if (cluster.items.length > 1) {
+                cluster.items.forEach((item) => clusteredDriverIds.add(item.driverId));
+                const clusterOverlay = new VehicleClusterMarkerOverlay({
+                    map: window.mapInstance,
+                    position: cluster.center,
+                    count: cluster.items.length,
+                    onClusterClick: (pos) => {
+                        if (window.mapInstance) {
+                            const targetZoom = Math.min((window.mapInstance.getZoom() || 13) + 2, 16);
+                            window.mapInstance.setZoom(targetZoom);
+                            window.mapInstance.panTo(pos);
+                        }
+                    }
+                });
+                activeClusterMarkers.push(clusterOverlay);
+            }
+        });
+
+        markerList.forEach(({ driverId, existing, raw }) => {
+            if (clusteredDriverIds.has(driverId)) {
+                if (existing.currentMap !== null) {
+                    existing.currentMap = null;
+                    existing.marker?.setMap?.(null);
+                }
+            } else {
+                existing.marker?.setPosition?.(raw);
+                if (existing.currentMap !== window.mapInstance) {
+                    existing.currentMap = window.mapInstance;
+                    existing.marker?.setMap?.(window.mapInstance);
+                }
+            }
+        });
+
+        const visibleMarkerIds = new Set(markerList.map((m) => m.driverId));
+        globalDriverMarkers.forEach((existing, driverId) => {
+            if (!visibleMarkerIds.has(driverId)) {
+                if (existing.currentMap !== null) {
+                    existing.currentMap = null;
+                    existing.marker?.setMap?.(null);
+                }
+            }
+        });
+    } else {
+        clearClusterMarkers();
+
+        const visibleDriverIds = new Set(markerList.map((m) => m.driverId));
+
+        markerList.forEach(({ driverId, existing, raw }) => {
+            const adjustedPos = adjustForMarkerOverlap(raw, existing.heading, driverId, visibleDriverIds);
+            existing.marker?.setPosition?.(adjustedPos);
+
+            const targetMap = window.mapInstance;
+            if (existing.currentMap !== targetMap) {
+                existing.currentMap = targetMap;
+                existing.marker?.setMap?.(targetMap);
+            }
+        });
+
+        globalDriverMarkers.forEach((existing, driverId) => {
+            if (!visibleDriverIds.has(driverId)) {
+                if (existing.currentMap !== null) {
+                    existing.currentMap = null;
+                    existing.marker?.setMap?.(null);
+                }
+            }
+        });
+    }
+
+    maybeFitDiscoveryViewport(markerList);
 
     if (vehicleLegendElement) {
         vehicleLegendElement.classList.remove("d-none");
@@ -1697,6 +1939,7 @@ function syncGlobalDriverMarkerVisibility() {
 function setGlobalDriverMarkerVisibility(driverId, existing) {
     syncGlobalDriverMarkerVisibility();
 }
+window.syncGlobalDriverMarkerVisibility = syncGlobalDriverMarkerVisibility;
 
 const PASSENGER_MAX_PLAUSIBLE_SPEED_MPS = 45; // ~162 km/h
 const PASSENGER_OUTLIER_CONFIRM_RADIUS_METERS = 60;
@@ -1759,7 +2002,7 @@ function filterAssignedDriverPositionOutlier(rawPosition, nowMs, sourceTimestamp
     return lastKnown;
 }
 
-function adjustForMarkerOverlap(position, heading, driverId = "") {
+function adjustForMarkerOverlap(position, heading, driverId = "", visibleDriverIds = null) {
     if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return position;
 
     // Never displace the assigned driver's vehicle marker during live tracking
@@ -1770,14 +2013,14 @@ function adjustForMarkerOverlap(position, heading, driverId = "") {
     let adjustedLat = position.lat;
     let adjustedLng = position.lng;
 
-    // 1. Dispersion / De-conflict against other co-located idle vehicle markers on the map
+    // Dispersion / De-conflict against other co-located idle vehicle markers on the map
     if (driverId && globalDriverMarkers.size > 1) {
-        const CO_LOCATED_RADIUS_METERS = 28;
-        const DISPERSION_RADIUS_METERS = 14;
+        const CO_LOCATED_RADIUS_METERS = 35;
         const nearbyIds = [];
 
         globalDriverMarkers.forEach((otherData, otherId) => {
             if (otherId === driverId) return;
+            if (visibleDriverIds && !visibleDriverIds.has(otherId)) return;
             const raw = otherData.rawPosition;
             if (!raw || !Number.isFinite(raw.lat) || !Number.isFinite(raw.lng)) return;
             if (calculateDistanceMeters(position, raw) <= CO_LOCATED_RADIUS_METERS) {
@@ -1787,14 +2030,34 @@ function adjustForMarkerOverlap(position, heading, driverId = "") {
 
         if (!nearbyIds.includes(driverId)) nearbyIds.push(driverId);
 
-        if (nearbyIds.length > 1) {
+        const n = nearbyIds.length;
+        if (n > 1) {
             nearbyIds.sort(); // Stable deterministic ordering to eliminate jitter
             const index = nearbyIds.indexOf(driverId);
             if (index >= 0) {
-                const angle = (index / nearbyIds.length) * 2 * Math.PI;
+                let dispersionRadiusMeters;
+                let angle;
+
+                if (n <= 8) {
+                    // Single ring for up to 8 co-located drivers
+                    dispersionRadiusMeters = 24 + n * 2;
+                    angle = (index / n) * 2 * Math.PI;
+                } else {
+                    // Multi-ring concentric spiderfying for >8 co-located drivers
+                    if (index < 6) {
+                        dispersionRadiusMeters = 28;
+                        angle = (index / 6) * 2 * Math.PI;
+                    } else {
+                        const outerTotal = n - 6;
+                        const outerIndex = index - 6;
+                        dispersionRadiusMeters = 54;
+                        angle = (outerIndex / outerTotal) * 2 * Math.PI + (Math.PI / outerTotal);
+                    }
+                }
+
                 const earthRadius = 6371000;
-                const deltaLat = (DISPERSION_RADIUS_METERS * Math.cos(angle) / earthRadius) * (180 / Math.PI);
-                const deltaLng = (DISPERSION_RADIUS_METERS * Math.sin(angle) / (earthRadius * Math.cos(position.lat * Math.PI / 180))) * (180 / Math.PI);
+                const deltaLat = (dispersionRadiusMeters * Math.cos(angle) / earthRadius) * (180 / Math.PI);
+                const deltaLng = (dispersionRadiusMeters * Math.sin(angle) / (earthRadius * Math.cos(position.lat * Math.PI / 180))) * (180 / Math.PI);
                 adjustedLat += deltaLat;
                 adjustedLng += deltaLng;
             }
@@ -1947,6 +2210,10 @@ function updateVehicleMarkerLegend() {
 }
 
 function clearPickupMarker() {
+    if (passengerLocationAnimFrame) {
+        cancelAnimationFrame(passengerLocationAnimFrame);
+        passengerLocationAnimFrame = null;
+    }
     if (userMarker) {
         if (typeof userMarker.setMap === "function") {
             userMarker.setMap(null);
@@ -2246,6 +2513,181 @@ function addPickupMarker(coords) {
     }
 }
 
+let passengerLocationWatchId = null;
+let passengerLocationAnimFrame = null;
+let passengerLastAcceptedPos = null;
+let passengerLastAcceptedTimestamp = 0;
+let passengerLastAccurateFixAt = 0;
+let passengerPendingJumpOutlier = null;
+let passengerFollowMode = false;
+let isCustomPickupSelected = false;
+
+function isValidCoordinate(lat, lng) {
+    return Number.isFinite(lat) && Number.isFinite(lng)
+        && lat >= -90 && lat <= 90
+        && lng >= -180 && lng <= 180
+        && (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001);
+}
+
+function startPassengerLocationWatcher() {
+    if (passengerLocationWatchId != null) return;
+
+    try {
+        passengerLocationWatchId = watchPosition(
+            (position) => {
+                handlePassengerLocationUpdate(position);
+            },
+            (error) => {
+                console.warn("[map] Passenger location watch error:", error);
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 10000
+            }
+        );
+    } catch (err) {
+        console.warn("[map] Failed to start passenger location watcher:", err);
+    }
+}
+
+function stopPassengerLocationWatcher() {
+    if (passengerLocationWatchId != null) {
+        clearWatch(passengerLocationWatchId);
+        passengerLocationWatchId = null;
+    }
+    if (passengerLocationAnimFrame) {
+        cancelAnimationFrame(passengerLocationAnimFrame);
+        passengerLocationAnimFrame = null;
+    }
+    passengerPendingJumpOutlier = null;
+}
+
+function handlePassengerLocationUpdate(position) {
+    if (!position || !position.coords) return;
+
+    const lat = Number(position.coords.latitude);
+    const lng = Number(position.coords.longitude);
+    const accuracy = Number(position.coords.accuracy) || 0;
+    const timestamp = Number(position.timestamp) || Date.now();
+    const now = Date.now();
+
+    // 1. Validate coordinate ranges
+    if (!isValidCoordinate(lat, lng)) {
+        return;
+    }
+
+    // 2. Reject stale out-of-order readings
+    if (passengerLastAcceptedTimestamp > 0 && timestamp < passengerLastAcceptedTimestamp) {
+        return;
+    }
+
+    // 3. Accuracy filter: if accuracy > 100m and we had a fix with accuracy < 50m within last 30s
+    if (accuracy > 100 && (now - passengerLastAccurateFixAt) < 30000) {
+        return;
+    }
+
+    const currentTarget = { lat, lng };
+
+    // 4. Speed jump filter: reject implausible speed jumps (> 55 m/s)
+    if (passengerLastAcceptedPos) {
+        const elapsedSec = Math.max(0.2, (timestamp - passengerLastAcceptedTimestamp) / 1000);
+        const jumpDistance = calculateDistanceMeters(passengerLastAcceptedPos, currentTarget);
+        const impliedSpeed = jumpDistance / elapsedSec;
+
+        if (impliedSpeed > 55) {
+            if (passengerPendingJumpOutlier &&
+                calculateDistanceMeters(passengerPendingJumpOutlier, currentTarget) <= 40) {
+                // Confirmed second reading: accept teleporation / jump
+                passengerPendingJumpOutlier = null;
+            } else {
+                passengerPendingJumpOutlier = currentTarget;
+                return;
+            }
+        } else {
+            passengerPendingJumpOutlier = null;
+        }
+    }
+
+    passengerLastAcceptedTimestamp = timestamp;
+    passengerLastAcceptedPos = currentTarget;
+    if (accuracy > 0 && accuracy < 50) {
+        passengerLastAccurateFixAt = now;
+    }
+
+    // Preserve chosen pickup location during map pick or when custom pickup address was selected
+    if (pickupMapPickMode) {
+        return;
+    }
+    if (isCustomPickupSelected && !assignedDriverTrackingDriverId) {
+        return;
+    }
+
+    animatePassengerMarker(currentTarget);
+}
+
+function animatePassengerMarker(targetPos) {
+    if (!userMarker) {
+        addPickupMarker(targetPos);
+        userLatitude = targetPos.lat;
+        userLongitude = targetPos.lng;
+        return;
+    }
+
+    const currentPos = userMarker.getPosition?.();
+    const startLat = currentPos ? (typeof currentPos.lat === "function" ? currentPos.lat() : Number(currentPos.lat)) : targetPos.lat;
+    const startLng = currentPos ? (typeof currentPos.lng === "function" ? currentPos.lng() : Number(currentPos.lng)) : targetPos.lng;
+
+    const dist = calculateDistanceMeters({ lat: startLat, lng: startLng }, targetPos);
+    if (dist < 0.5) {
+        userMarker.setPosition(targetPos);
+        userLatitude = targetPos.lat;
+        userLongitude = targetPos.lng;
+        return;
+    }
+
+    if (passengerLocationAnimFrame) {
+        cancelAnimationFrame(passengerLocationAnimFrame);
+        passengerLocationAnimFrame = null;
+    }
+
+    const durationMs = 600;
+    const startTime = performance.now();
+
+    const step = (time) => {
+        const progress = Math.min(1, (time - startTime) / durationMs);
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        const currentLat = startLat + (targetPos.lat - startLat) * eased;
+        const currentLng = startLng + (targetPos.lng - startLng) * eased;
+        const interp = { lat: currentLat, lng: currentLng };
+
+        userMarker.setPosition(interp);
+        userLatitude = currentLat;
+        userLongitude = currentLng;
+
+        if (progress < 1) {
+            passengerLocationAnimFrame = requestAnimationFrame(step);
+        } else {
+            passengerLocationAnimFrame = null;
+            userMarker.setPosition(targetPos);
+            userLatitude = targetPos.lat;
+            userLongitude = targetPos.lng;
+        }
+    };
+
+    passengerLocationAnimFrame = requestAnimationFrame(step);
+
+    // Decoupled camera: only pan if explicitly in follow mode
+    if (passengerFollowMode && window.mapInstance) {
+        window.mapInstance.panTo(googleLatLngLiteral(targetPos));
+    }
+}
+
+window.startPassengerLocationWatcher = startPassengerLocationWatcher;
+window.stopPassengerLocationWatcher = stopPassengerLocationWatcher;
+window.handlePassengerLocationUpdate = handlePassengerLocationUpdate;
+
 function inferDriverVehicleType(driver) {
     const text = [
         driver.vehicle_type,
@@ -2520,6 +2962,7 @@ function removeGlobalDriverMarker(driverId) {
 }
 
 function clearGlobalDriverMarkers() {
+    clearClusterMarkers();
     Array.from(globalDriverMarkers.keys()).forEach(removeGlobalDriverMarker);
 }
 
@@ -2935,6 +3378,7 @@ function startGlobalDriverPresenceListener() {
 }
 
 async function refreshLivePickupAfterMapReady(initialCoords) {
+    isCustomPickupSelected = false;
     const coords = await getUserLocation();
     const pickupInput = document.getElementById("pickup-input");
     const label = coords.label || pickupInput?.value || "Current location";
@@ -2990,6 +3434,10 @@ export async function initializeMapEngine() {
             globalDriversUnsubscribe();
             globalDriversUnsubscribe = null;
         }
+        stopPassengerLocationWatcher();
+        clearClusterMarkers();
+        passengerInitialDiscoveryFitComplete = false;
+        isCustomPickupSelected = false;
         clearGlobalDriverMarkers();
         clearActiveDriverMarker();
         clearRouteAndDestination();
@@ -3028,11 +3476,13 @@ export async function initializeMapEngine() {
         });
         window.mapInstance.addListener("zoom_changed", () => {
             if (assignedDriverTrackingDriverId) setPassengerMapInteracted(true);
+            syncGlobalDriverMarkerVisibility();
         });
 
         setupFareEngineListeners();
         setupPickupSearchListeners();
         startGlobalDriverPresenceListener();
+        startPassengerLocationWatcher();
         updateVehicleMarkerLegend();
         window.dispatchEvent(new CustomEvent("map-engine-ready", {
             detail: { pickup: { lat: coords.lat, lng: coords.lng } }
@@ -3167,6 +3617,7 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
             if (!resolved) return;
 
             cancelCenterMapPick();
+            isCustomPickupSelected = true;
             const existingDestination = window.selectedDestination;
             userLatitude = resolved.lat;
             userLongitude = resolved.lng;
@@ -3280,6 +3731,7 @@ async function completePickupMapPick(lat, lng) {
 
     const pickMode = pickupMapPickMode;
     pickupMapPickMode = null;
+    isCustomPickupSelected = true;
 
     const result = await reverseGeocodeLocation(lat, lng);
     const pickup = {
@@ -3317,6 +3769,7 @@ export async function useCurrentPickupLocation() {
     const pickupInput = document.getElementById("pickup-input");
     if (!pickupInput || pickupInput.readOnly) return;
     cancelCenterMapPick();
+    isCustomPickupSelected = false;
 
     if (pickupSearchTimer) clearTimeout(pickupSearchTimer);
     if (pickupSearchAbortController) {
@@ -4509,3 +4962,22 @@ try {
 } catch (e) {
     console.warn("Auto start global driver listener skipped:", e);
 }
+
+window.addEventListener("user-logged-out", () => {
+    isCustomPickupSelected = false;
+    stopPassengerLocationWatcher();
+    clearClusterMarkers();
+    clearGlobalDriverMarkers();
+});
+
+window.addEventListener("ride-service-selected", () => {
+    syncGlobalDriverMarkerVisibility();
+});
+
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        stopPassengerLocationWatcher();
+    } else if (window.mapInstance) {
+        startPassengerLocationWatcher();
+    }
+});

@@ -177,10 +177,73 @@ public class DriverLocationService extends Service implements LocationListener {
         apiBaseUrl = normalizeApiBaseUrl(prefs.getString("api_base_url", DEFAULT_API_BASE_URL));
     }
 
+    private void stopTrackingAndForeground(boolean clearPersistedState) {
+        isServiceRunning = false;
+        dynamicNotificationText = null;
+        if (wakeLock != null && wakeLock.isHeld()) {
+            try {
+                wakeLock.release();
+            } catch (Exception ignored) {}
+        }
+        if (locationManager != null) {
+            try {
+                locationManager.removeUpdates(this);
+            } catch (Exception ignored) {}
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+            } else {
+                stopForeground(true);
+            }
+        } catch (Exception ignored) {}
+        if (notificationManager != null) {
+            try {
+                notificationManager.cancel(NOTIFICATION_ID);
+            } catch (Exception ignored) {}
+        }
+        if (clearPersistedState) {
+            try {
+                getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
+                        .putString("tracking_state", "offline")
+                        .putString("ride_id", "")
+                        .putString("auth_token", "")
+                        .putString("refresh_token", "")
+                        .apply();
+                trackingState = "offline";
+                activeRideId = "";
+                authToken = "";
+                refreshToken = "";
+            } catch (Exception ignored) {}
+        }
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        ensureWakeLockAcquired();
         if (intent == null) {
+            // Service recreated by Android system after memory reclamation or restart.
+            // Check if there was an active ride in progress that requires safety tracking to resume.
+            SharedPreferences prefs = getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE);
+            String savedState = prefs.getString("tracking_state", "");
+            String savedRideId = prefs.getString("ride_id", "");
+            String savedToken = prefs.getString("auth_token", "");
+            boolean isActiveRide = "active_ride".equalsIgnoreCase(savedState) && !savedRideId.trim().isEmpty() && !savedToken.trim().isEmpty();
+
+            if (!isActiveRide) {
+                // If not an active ride, driver is either offline or availability tracking must NOT resume automatically.
+                Log.i(TAG, "Recreated with null intent and no active ride; shutting down background tracking.");
+                stopTrackingAndForeground(false);
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+
+            // Resume safety tracking for active ride
+            trackingState = savedState;
+            activeRideId = savedRideId;
+            authToken = savedToken;
+            refreshToken = prefs.getString("refresh_token", "");
+            apiBaseUrl = normalizeApiBaseUrl(prefs.getString("api_base_url", DEFAULT_API_BASE_URL));
+            ensureWakeLockAcquired();
             startForegroundWithNotification();
             requestLocationUpdates();
             return START_STICKY;
@@ -188,8 +251,8 @@ public class DriverLocationService extends Service implements LocationListener {
 
         String action = intent.getAction();
         if (ACTION_STOP.equals(action)) {
-            Log.d(TAG, "Stopping driver background location service.");
-            dynamicNotificationText = null;
+            Log.d(TAG, "Stopping driver background location service via ACTION_STOP.");
+            stopTrackingAndForeground(true);
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -222,6 +285,24 @@ public class DriverLocationService extends Service implements LocationListener {
                 apiBaseUrl = normalizeApiBaseUrl(url);
             }
         }
+
+        // If tracking state is explicitly offline, stop tracking immediately and dismiss notification
+        if ("offline".equalsIgnoreCase(trackingState)) {
+            Log.d(TAG, "Driver tracking state is offline; stopping service and dismissing notification.");
+            stopTrackingAndForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        // If auth token is missing and no active ride, cannot track availability
+        if ((authToken == null || authToken.trim().isEmpty()) && !"active_ride".equalsIgnoreCase(trackingState)) {
+            Log.w(TAG, "No valid auth token for driver tracking; stopping service.");
+            stopTrackingAndForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        ensureWakeLockAcquired();
 
         // Persist parameters for restart resilience
         getSharedPreferences("liphtup_driver_tracking", MODE_PRIVATE).edit()
@@ -673,19 +754,9 @@ public class DriverLocationService extends Service implements LocationListener {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        stopTrackingAndForeground(false);
         if (activeInstance == this) {
             activeInstance = null;
-        }
-        isServiceRunning = false;
-        if (wakeLock != null && wakeLock.isHeld()) {
-            try {
-                wakeLock.release();
-            } catch (Exception ignored) {}
-        }
-        if (locationManager != null) {
-            try {
-                locationManager.removeUpdates(this);
-            } catch (Exception ignored) {}
         }
         networkExecutor.shutdown();
         Log.d(TAG, "Driver location service destroyed.");

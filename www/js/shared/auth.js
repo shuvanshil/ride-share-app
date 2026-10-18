@@ -194,12 +194,16 @@ function bootstrapFromCache() {
     dispatchSessionReady(cachedProfile);
 }
 
+import { stopDriverTracking } from '../platform/geolocation.js';
+
 bootstrapFromCache();
 
 document.getElementById('logout-btn')?.addEventListener('click', async () => {
     try {
         showPageLoader("Logging out...");
         clearCachedProfile();
+        stopDriverTracking();
+        window.dispatchEvent(new CustomEvent('user-logged-out'));
         if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
             window.LiphtUpNative.setUserRole("");
         }
@@ -220,6 +224,8 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
         clearCachedProfile();
+        stopDriverTracking();
+        window.dispatchEvent(new CustomEvent('user-logged-out'));
         if (window.LiphtUpNative && typeof window.LiphtUpNative.setUserRole === 'function') {
             window.LiphtUpNative.setUserRole("");
         }

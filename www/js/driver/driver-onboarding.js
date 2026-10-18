@@ -21,6 +21,7 @@ import {
     stopRideRequestRing
 } from '../shared/messaging.js';
 import { unregisterDevicePushToken } from '../platform/notifications.js';
+import { stopDriverTracking } from '../platform/geolocation.js';
 import { driverStatusManager } from './driver-status-manager.js';
 import { paymentReminderManager } from './driver-payment-reminder.js';
 import { renderDriverFareQr } from '../shared/upi-qr-helper.js';
@@ -644,6 +645,7 @@ function stopPresenceTracking() {
         navigator.geolocation.clearWatch(driverPresenceWatchId);
         driverPresenceWatchId = null;
     }
+    stopDriverTracking();
     releaseWakeLock();
 }
 

@@ -1,9 +1,11 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { registerSignOutHook } from '../shared/auth.js';
+import { stopDriverTracking } from '../platform/geolocation.js';
 
 export async function markCurrentDriverOffline() {
     try {
+        stopDriverTracking();
         const firebaseUser = auth.currentUser;
         if (!firebaseUser) return;
 
