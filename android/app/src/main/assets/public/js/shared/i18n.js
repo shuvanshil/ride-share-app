@@ -3,7 +3,7 @@
  * Compatible with ES Modules & Traditional Script Tags
  */
 
-import { TRANSLATIONS, TRANSLATIONS_VERSION } from './translations.js?v=20261015-v1';
+import { TRANSLATIONS, TRANSLATIONS_VERSION } from './translations.js?v=20261019-v1';
 
 const STORAGE_LANG_KEY = 'LIPHTUP_LANG';
 const STORAGE_VERSION_KEY = 'LIPHTUP_I18N_VERSION';

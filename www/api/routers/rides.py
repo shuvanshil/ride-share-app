@@ -16,6 +16,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.auth import current_user
 from ..core.config import get_env
+from ..core.distance_reconciliation import (
+    reconcile_ride_distance,
+    ReconciliationResult,
+    STATUS_AUTO_ACCEPTED,
+    STATUS_AUTO_RESOLVED,
+    STATUS_UNDER_REVIEW,
+)
 from ..core.errors import ApiError
 from ..core.failures import report_backend_failure
 from ..core.fare_policy import (
@@ -862,6 +869,9 @@ def _history_update(ride_id: str, ride: dict[str, Any]) -> dict[str, Any]:
         "fare_amount": float(ride.get("fare") or 0),
         "quoted_fare_amount": float(ride.get("quoted_fare") or ride.get("fare_original") or ride.get("fare") or 0),
         "fare_adjustment": fare_adj,
+        "distance_status": ride.get("distance_status") or "zero",
+        "counted_distance_km": round(float(ride.get("counted_distance_km") or 0.0), 3),
+        "distance_reconciliation": ride.get("distance_reconciliation") or {},
         "trip_status": "cancelled_by_passenger",
         "final_status": "cancelled",
         "cancelled_by": "passenger",
@@ -909,6 +919,9 @@ def _driver_history_update(ride_id: str, ride: dict[str, Any], status: str) -> d
         "fare_amount": float(ride.get("fare") or 0),
         "quoted_fare_amount": float(ride.get("quoted_fare") or ride.get("fare_original") or ride.get("fare") or 0),
         "fare_adjustment": fare_adj,
+        "distance_status": ride.get("distance_status") or "zero",
+        "counted_distance_km": round(float(ride.get("counted_distance_km") or 0.0), 3),
+        "distance_reconciliation": ride.get("distance_reconciliation") or {},
         "trip_status": status,
         "final_status": "completed" if completed else "cancelled" if cancelled else "verified",
         "cancelled_by": "driver" if cancelled else "",
@@ -1566,6 +1579,83 @@ def transition_driver_ride(
         ride_ref = db.collection("rides").document(clean_ride_id)
         history_ref = db.collection("tripHistory").document(clean_ride_id)
         user_ref = db.collection("users").document(uid)
+
+        # Pre-compute distance reconciliation before transaction defensively
+        pre_reconciliation: Optional[ReconciliationResult] = None
+        if action in {"complete", "cancel", "skip"}:
+            try:
+                pre_snap = ride_ref.get()
+                pre_ride = pre_snap.to_dict() or {} if pre_snap.exists else {}
+                onboard = bool(pre_ride.get("pinVerifiedAt") or pre_ride.get("status") in {"started", "en_route"})
+                if action == "skip" or (action == "cancel" and not onboard):
+                    pre_reconciliation = ReconciliationResult(
+                        status=STATUS_AUTO_RESOLVED,
+                        final_km=0.0,
+                        provisional_km=0.0,
+                        method="CANCELLED_BEFORE_PICKUP",
+                        reason_codes=["BEFORE_PICKUP"],
+                        evidence={"onboard": False, "action": action},
+                    )
+                else:
+                    fare_adj_pre = _driver_fare_adjustment(pre_ride, action)
+                    p_km = max(0.0, _finite_float(pre_ride.get("distance_km")))
+                    t_km = max(0.0, _finite_float(fare_adj_pre.get("travelled_after_pickup_km")))
+                    c0_km = max(0.0, _finite_float(fare_adj_pre.get("charged_distance_km")))
+                    extra_km = _finite_float(fare_adj_pre.get("extra_dropoff_distance_km"))
+
+                    pickup_time = pre_ride.get("pinVerifiedAt") or pre_ride.get("startedAt")
+                    trip_d = None
+                    if pickup_time:
+                        p_sec = _timestamp_seconds(pickup_time)
+                        if p_sec is not None:
+                            trip_d = max(0.0, (datetime.now(timezone.utc).timestamp() - p_sec) / 60.0)
+
+                    p_dur = _finite_float(pre_ride.get("duration_minutes") or pre_ride.get("durationMinutes"))
+                    if p_dur <= 0:
+                        p_dur = None
+
+                    drop_dist_m = None
+                    if fare_adj_pre.get("distance_to_drop_km") is not None and (pre_ride.get("drop_lat") or pre_ride.get("dropLat")):
+                        drop_dist_m = round(_finite_float(fare_adj_pre.get("distance_to_drop_km")) * 1000.0, 1)
+
+                    last_loc = pre_ride.get("driverLocationUpdatedAt") or pre_ride.get("lastLocationAt")
+                    last_age = None
+                    if last_loc:
+                        l_sec = _timestamp_seconds(last_loc)
+                        if l_sec is not None:
+                            last_age = max(0.0, datetime.now(timezone.utc).timestamp() - l_sec)
+
+                    n_samp = pre_ride.get("breadcrumb_count") or pre_ride.get("n_samples")
+                    cov = pre_ride.get("coverage")
+                    m_gap = pre_ride.get("max_gap_s")
+
+                    rec_inputs = {
+                        "P": p_km,
+                        "T": t_km,
+                        "C0": c0_km,
+                        "extra_past_drop_km": extra_km,
+                        "D": trip_d,
+                        "PD": p_dur,
+                        "n_samples": n_samp,
+                        "coverage": cov,
+                        "max_gap_s": m_gap,
+                        "last_sample_age_s": last_age,
+                        "final_dist_to_drop_m": drop_dist_m,
+                        "terminated_by": "driver_complete" if action == "complete" else "driver_cancel",
+                        "passenger_confirmed": pre_ride.get("passenger_confirmed"),
+                        "mock_location": pre_ride.get("mock_location") or pre_ride.get("is_mock"),
+                    }
+                    pre_reconciliation = reconcile_ride_distance(rec_inputs)
+            except Exception as exc:
+                pre_reconciliation = ReconciliationResult(
+                    status=STATUS_UNDER_REVIEW,
+                    final_km=None,
+                    provisional_km=0.0,
+                    method="INTERNAL_ERROR",
+                    reason_codes=["INTERNAL_ERROR"],
+                    evidence={"error": str(exc)},
+                )
+
         transaction = db.transaction()
         result: dict[str, Any] = {}
 
@@ -1588,6 +1678,10 @@ def transition_driver_ride(
                     result["status"] = current_status
                     return
                 if action == "cancel" and current_status in {"cancelled", "cancelled_by_driver", "cancelled_by_passenger"}:
+                    result.update(ride)
+                    result["status"] = current_status
+                    return
+                if action == "complete" and current_status == "completed":
                     result.update(ride)
                     result["status"] = current_status
                     return
@@ -1701,6 +1795,77 @@ def transition_driver_ride(
                 })
             elif action == "mark_paid":
                 updates.update({"payment_status": "paid", "payment_confirmed_by": uid, "paymentConfirmedAt": fb_firestore.SERVER_TIMESTAMP})
+
+            if action in {"complete", "cancel", "skip"}:
+                already_counted = bool(ride.get("distance_status") or current_status in {"completed", "cancelled", "cancelled_by_driver", "cancelled_by_passenger", "no_show"})
+                if not already_counted:
+                    rec = pre_reconciliation
+                    if rec is None:
+                        rec = ReconciliationResult(
+                            status=STATUS_UNDER_REVIEW,
+                            final_km=None,
+                            provisional_km=max(0.0, float(fare_adjustment.get("charged_distance_km", 0.0))) if 'fare_adjustment' in locals() else 0.0,
+                            method="INTERNAL_ERROR",
+                            reason_codes=["INTERNAL_ERROR"],
+                            evidence={"fallback": True},
+                        )
+
+                    day_key = _kolkata_day_str()
+                    daily_stat_ref, _ = _daily_stats_ref(db, uid, day=day_key)
+                    daily_doc_id = f"{uid}_{day_key}"
+
+                    if rec.status in {STATUS_AUTO_ACCEPTED, STATUS_AUTO_RESOLVED}:
+                        final_km_val = float(rec.final_km or 0.0)
+                        if final_km_val > 0:
+                            dist_status = "counted"
+                            counted_km = round(final_km_val, 3)
+                            tx.set(daily_stat_ref, {
+                                "driver_id": uid,
+                                "date": day_key,
+                                "distance_km": fb_firestore.Increment(counted_km),
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            }, merge=True)
+                            # lifetime_distance_km counts only from deployment onward. Do NOT backfill.
+                            tx.update(user_ref, {
+                                "lifetime_distance_km": fb_firestore.Increment(counted_km),
+                            })
+                        else:
+                            dist_status = "zero"
+                            counted_km = 0.0
+                    else:  # STATUS_UNDER_REVIEW
+                        dist_status = "under_review"
+                        counted_km = 0.0
+                        prov_km = round(float(rec.provisional_km), 3)
+                        review_ref = db.collection("distanceReviews").document(clean_ride_id)
+                        tx.set(review_ref, {
+                            "rideId": clean_ride_id,
+                            "driverId": uid,
+                            "dayKey": day_key,
+                            "dailyStatsDocId": daily_doc_id,
+                            "status": "PENDING",
+                            "provisional_km": prov_km,
+                            "planned_km": round(float(ride.get("distance_km") or 0.0), 3),
+                            "travelled_km": round(float(fare_adjustment.get("travelled_after_pickup_km", 0.0) if 'fare_adjustment' in locals() else 0.0), 3),
+                            "reason_codes": rec.reason_codes,
+                            "evidence": rec.evidence,
+                            "created_at": fb_firestore.SERVER_TIMESTAMP,
+                            "version": 1,
+                        })
+                        tx.set(daily_stat_ref, {
+                            "driver_id": uid,
+                            "date": day_key,
+                            "under_review_km": fb_firestore.Increment(prov_km),
+                            "under_review_count": fb_firestore.Increment(1),
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        }, merge=True)
+
+                    updates["distance_status"] = dist_status
+                    updates["counted_distance_km"] = counted_km
+                    updates["distance_reconciliation"] = rec.to_dict()
+                    result["distance_status"] = dist_status
+                    result["counted_distance_km"] = counted_km
+                    result["distance_reconciliation"] = rec.to_dict()
+
             tx.update(ride_ref, updates)
 
             parent_trip_id = pre_parent_trip_id
@@ -1762,13 +1927,10 @@ def transition_driver_ride(
             if action in {"complete", "cancel", "mark_paid"}:
                 tx.set(history_ref, _driver_history_update(clean_ride_id, {**ride, **result}, next_status), merge=True)
             if action == "complete":
-                actual_dist_km = max(0.0, float(fare_adjustment.get("charged_distance_km", 0.0)))
                 user_updates: dict[str, Any] = {
                     "lifetime_earnings": fb_firestore.Increment(float(final_fare_val)),
                     "total_completed_trips": fb_firestore.Increment(1),
                 }
-                if actual_dist_km > 0:
-                    user_updates["lifetime_distance_km"] = fb_firestore.Increment(round(actual_dist_km, 3))
                 tx.update(user_ref, user_updates)
             if ride.get("share_enabled"):
                 share_ref = db.collection("tripShareView").document(clean_ride_id)
@@ -1880,13 +2042,10 @@ def transition_driver_ride(
                     )
                 except Exception:
                     pass
-            actual_dist_km = max(0.0, float(result.get("fare_adjustment", {}).get("charged_distance_km", 0.0)))
             daily_increments: dict[str, Any] = {
                 "completed_rides": 1,
                 "earnings": float(result.get("fare") or 0),
             }
-            if actual_dist_km > 0:
-                daily_increments["distance_km"] = round(actual_dist_km, 3)
             _bump_daily_stats(db, uid, daily_increments)
             try:
                 from ..services.db import record_financial_ledger_entry
@@ -2855,23 +3014,175 @@ def cancel_passenger_ride(
 
             driver_id = str(ride.get("driver_id") or ride.get("driverId") or "").strip()
 
-            updates: dict[str, Any] = {
-                "status": "cancelled_by_passenger",
-                "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
-                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-            }
-
-            # If passenger was onboard, calculate partial fare adjustment
-            if ride.get("pinVerifiedAt"):
+            # Pre-compute distance reconciliation before transaction defensively
+            onboard = bool(ride.get("pinVerifiedAt") or ride.get("status") in {"started", "en_route"})
+            fare_adj = None
+            if onboard:
                 try:
                     fare_adj = _driver_fare_adjustment(ride, "cancel")
+                    p_km = max(0.0, _finite_float(ride.get("distance_km")))
+                    t_km = max(0.0, _finite_float(fare_adj.get("travelled_after_pickup_km")))
+                    c0_km = max(0.0, _finite_float(fare_adj.get("charged_distance_km")))
+                    extra_km = _finite_float(fare_adj.get("extra_dropoff_distance_km"))
+
+                    pickup_time = ride.get("pinVerifiedAt") or ride.get("startedAt")
+                    trip_d = None
+                    if pickup_time:
+                        p_sec = _timestamp_seconds(pickup_time)
+                        if p_sec is not None:
+                            trip_d = max(0.0, (datetime.now(timezone.utc).timestamp() - p_sec) / 60.0)
+
+                    p_dur = _finite_float(ride.get("duration_minutes") or ride.get("durationMinutes"))
+                    if p_dur <= 0:
+                        p_dur = None
+
+                    drop_dist_m = None
+                    if fare_adj.get("distance_to_drop_km") is not None and (ride.get("drop_lat") or ride.get("dropLat")):
+                        drop_dist_m = round(_finite_float(fare_adj.get("distance_to_drop_km")) * 1000.0, 1)
+
+                    last_loc = ride.get("driverLocationUpdatedAt") or ride.get("lastLocationAt")
+                    last_age = None
+                    if last_loc:
+                        l_sec = _timestamp_seconds(last_loc)
+                        if l_sec is not None:
+                            last_age = max(0.0, datetime.now(timezone.utc).timestamp() - l_sec)
+
+                    rec_inputs = {
+                        "P": p_km,
+                        "T": t_km,
+                        "C0": c0_km,
+                        "extra_past_drop_km": extra_km,
+                        "D": trip_d,
+                        "PD": p_dur,
+                        "n_samples": ride.get("breadcrumb_count") or ride.get("n_samples"),
+                        "coverage": ride.get("coverage"),
+                        "max_gap_s": ride.get("max_gap_s"),
+                        "last_sample_age_s": last_age,
+                        "final_dist_to_drop_m": drop_dist_m,
+                        "terminated_by": "passenger_cancel",
+                        "passenger_confirmed": ride.get("passenger_confirmed"),
+                        "mock_location": ride.get("mock_location") or ride.get("is_mock"),
+                    }
+                    reconciliation = reconcile_ride_distance(rec_inputs)
+                except Exception as exc:
+                    reconciliation = ReconciliationResult(
+                        status=STATUS_UNDER_REVIEW,
+                        final_km=None,
+                        provisional_km=c0_km if 'c0_km' in locals() else 0.0,
+                        method="INTERNAL_ERROR",
+                        reason_codes=["INTERNAL_ERROR"],
+                        evidence={"error": str(exc)},
+                    )
+            else:
+                reconciliation = ReconciliationResult(
+                    status=STATUS_AUTO_RESOLVED,
+                    final_km=0.0,
+                    provisional_km=0.0,
+                    method="CANCELLED_BEFORE_PICKUP",
+                    reason_codes=["BEFORE_PICKUP"],
+                    evidence={"onboard": False, "action": "passenger_cancel"},
+                )
+
+            transaction = db.transaction()
+            tx_updates: dict[str, Any] = {}
+
+            def cancel_transaction(tx):
+                snap = ride_ref.get(transaction=tx)
+                if not snap.exists:
+                    return
+                tx_ride = snap.to_dict() or {}
+                if tx_ride.get("status") in {"completed", "cancelled", "cancelled_by_passenger", "cancelled_by_driver", "no_show"} or tx_ride.get("distance_status"):
+                    tx_updates["status"] = tx_ride.get("status")
+                    return
+
+                updates: dict[str, Any] = {
+                    "status": "cancelled_by_passenger",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                }
+                if onboard and fare_adj:
                     updates["fare"] = fare_adj["final_fare"]
                     updates["fare_adjustment"] = fare_adj
                     updates["fareFinalizedAt"] = fb_firestore.SERVER_TIMESTAMP
-                except Exception:
-                    pass
 
-            ride_ref.update(updates)
+                day_key = _kolkata_day_str()
+                if driver_id and onboard:
+                    daily_stat_ref, _ = _daily_stats_ref(db, driver_id, day=day_key)
+                    daily_doc_id = f"{driver_id}_{day_key}"
+
+                    if reconciliation.status in {STATUS_AUTO_ACCEPTED, STATUS_AUTO_RESOLVED}:
+                        final_km_val = float(reconciliation.final_km or 0.0)
+                        if final_km_val > 0:
+                            dist_status = "counted"
+                            counted_km = round(final_km_val, 3)
+                            tx.set(daily_stat_ref, {
+                                "driver_id": driver_id,
+                                "date": day_key,
+                                "distance_km": fb_firestore.Increment(counted_km),
+                                "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                            }, merge=True)
+                            # lifetime_distance_km counts only from deployment onward. Do NOT backfill.
+                            user_drv_ref = db.collection("users").document(driver_id)
+                            tx.set(user_drv_ref, {
+                                "lifetime_distance_km": fb_firestore.Increment(counted_km),
+                            }, merge=True)
+                        else:
+                            dist_status = "zero"
+                            counted_km = 0.0
+                    else:  # STATUS_UNDER_REVIEW
+                        dist_status = "under_review"
+                        counted_km = 0.0
+                        prov_km = round(float(reconciliation.provisional_km), 3)
+                        review_ref = db.collection("distanceReviews").document(clean_ride_id)
+                        tx.set(review_ref, {
+                            "rideId": clean_ride_id,
+                            "driverId": driver_id,
+                            "dayKey": day_key,
+                            "dailyStatsDocId": daily_doc_id,
+                            "status": "PENDING",
+                            "provisional_km": prov_km,
+                            "planned_km": round(float(tx_ride.get("distance_km") or 0.0), 3),
+                            "travelled_km": round(float(fare_adj.get("travelled_after_pickup_km", 0.0) if fare_adj else 0.0), 3),
+                            "reason_codes": reconciliation.reason_codes,
+                            "evidence": reconciliation.evidence,
+                            "created_at": fb_firestore.SERVER_TIMESTAMP,
+                            "version": 1,
+                        })
+                        tx.set(daily_stat_ref, {
+                            "driver_id": driver_id,
+                            "date": day_key,
+                            "under_review_km": fb_firestore.Increment(prov_km),
+                            "under_review_count": fb_firestore.Increment(1),
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        }, merge=True)
+
+                    updates["distance_status"] = dist_status
+                    updates["counted_distance_km"] = counted_km
+                    updates["distance_reconciliation"] = reconciliation.to_dict()
+                else:
+                    updates["distance_status"] = "zero"
+                    updates["counted_distance_km"] = 0.0
+                    updates["distance_reconciliation"] = reconciliation.to_dict()
+
+                tx.update(ride_ref, updates)
+
+                if onboard or tx_ride.get("pinVerifiedAt"):
+                    history_ref = db.collection("tripHistory").document(clean_ride_id)
+                    tx.set(history_ref, _history_update(clean_ride_id, {**tx_ride, **updates}), merge=True)
+
+                tx_updates.update(updates)
+
+            try:
+                fb_firestore.transactional(cancel_transaction)(transaction)
+            except AttributeError as ae:
+                if "_rollback" in str(ae) or "commit" in str(ae):
+                    cancel_transaction(transaction)
+                else:
+                    raise
+            if tx_updates.get("status") and tx_updates.get("status") != "cancelled_by_passenger":
+                return {"ok": True, "rideId": clean_ride_id, "status": tx_updates.get("status")}
+
+            updates = tx_updates
 
             pending_id = ride.get("pendingRequestId") or ride.get("pending_request_id")
             if pending_id:
@@ -2995,9 +3306,6 @@ def cancel_passenger_ride(
                     pass
 
             try:
-                if ride.get("pinVerifiedAt"):
-                    history_ref = db.collection("tripHistory").document(clean_ride_id)
-                    history_ref.set(_history_update(clean_ride_id, {**ride, **updates}), merge=True)
                 if ride.get("share_enabled"):
                     db.collection("tripShareView").document(clean_ride_id).delete()
             except Exception:
@@ -3645,6 +3953,8 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
         lifetime_earnings = float(profile.get("lifetime_earnings") or 0)
         lifetime_distance = float(profile.get("lifetime_distance_km") or 0.0)
         today_distance = float(daily.get("distance_km") or 0.0)
+        today_under_review_km = float(daily.get("under_review_km") or 0.0)
+        today_under_review_count = int(daily.get("under_review_count") or 0)
 
         return {
             "ok": True,
@@ -3654,6 +3964,8 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
                 "completedRides": completed_today,
                 "declinedRides": declined_today,
                 "distanceKm": round(today_distance, 2),
+                "underReviewKm": round(today_under_review_km, 2),
+                "underReviewCount": today_under_review_count,
                 "onlineHours": round(float(daily.get("online_seconds") or 0) / 3600, 2),
                 "acceptanceRate": round(completed_today / decided_today, 2) if decided_today else None,
             },

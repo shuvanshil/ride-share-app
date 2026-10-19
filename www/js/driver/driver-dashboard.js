@@ -12,6 +12,34 @@ function formatRupees(value) {
     return Number.isFinite(amount) ? `Rs ${Math.round(amount)}` : "Rs 0";
 }
 
+function formatDistance(value, options = {}) {
+    try {
+        const isLifetime = typeof options === 'boolean' ? options : Boolean(options && options.isLifetime);
+        const km = Number(value);
+        if (!Number.isFinite(km) || km <= 0) {
+            return "0 km";
+        }
+        if (km < 1) {
+            const meters = Math.round((km * 1000) / 10) * 10;
+            if (meters <= 0) {
+                return "0 km";
+            }
+            if (meters >= 1000) {
+                return isLifetime
+                    ? `${(1).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
+                    : "1.0 km";
+            }
+            return `${meters} m`;
+        }
+        if (isLifetime) {
+            return `${km.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+        }
+        return `${km.toFixed(1)} km`;
+    } catch (_) {
+        return "0 km";
+    }
+}
+
 function escapeHtml(text) {
     return String(text ?? "").replace(/[&<>"']/g, (ch) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -19,13 +47,41 @@ function escapeHtml(text) {
 }
 
 function renderDashboard(data) {
-    document.getElementById('stat-today-earnings').innerText = formatRupees(data.today.earnings);
-    document.getElementById('stat-today-completed').innerText = data.today.completedRides;
-    document.getElementById('stat-pending-trips').innerText = data.pendingTrips.count;
-    document.getElementById('stat-online-hours').innerText = `${data.today.onlineHours.toFixed(1)} h`;
+    document.getElementById('stat-today-earnings').innerText = formatRupees(data?.today?.earnings);
+    document.getElementById('stat-today-completed').innerText = data?.today?.completedRides ?? 0;
+    document.getElementById('stat-pending-trips').innerText = data?.pendingTrips?.count ?? 0;
+    document.getElementById('stat-online-hours').innerText = `${Number(data?.today?.onlineHours || 0).toFixed(1)} h`;
 
-    document.getElementById('stat-lifetime-earnings').innerText = formatRupees(data.performance.lifetimeEarnings);
-    document.getElementById('stat-lifetime-trips').innerText = data.performance.lifetimeCompletedTrips;
+    try {
+        const distEl = document.getElementById('stat-today-distance');
+        if (distEl) {
+            distEl.innerText = formatDistance(data?.today?.distanceKm);
+        }
+        const distRevEl = document.getElementById('stat-today-distance-review');
+        if (distRevEl) {
+            const urCount = Number(data?.today?.underReviewCount || 0);
+            const urKm = Number(data?.today?.underReviewKm || 0);
+            if (urCount > 0 && urKm > 0) {
+                distRevEl.innerText = `(+${formatDistance(urKm)} review)`;
+                distRevEl.classList.remove('d-none');
+            } else {
+                distRevEl.classList.add('d-none');
+            }
+        }
+    } catch (e) {
+        console.error("Failed to render today distance:", e);
+    }
+
+    document.getElementById('stat-lifetime-earnings').innerText = formatRupees(data?.performance?.lifetimeEarnings);
+    document.getElementById('stat-lifetime-trips').innerText = data?.performance?.lifetimeCompletedTrips ?? 0;
+    try {
+        const lifeDistEl = document.getElementById('stat-lifetime-distance');
+        if (lifeDistEl) {
+            lifeDistEl.innerText = formatDistance(data?.performance?.lifetimeDistanceKm, { isLifetime: true });
+        }
+    } catch (e) {
+        console.error("Failed to render lifetime distance:", e);
+    }
     document.getElementById('stat-average-fare').innerText = formatRupees(data.performance.averageFare);
     document.getElementById('stat-acceptance-rate').innerText = data.today.acceptanceRate === null
         ? "No decisions yet today"

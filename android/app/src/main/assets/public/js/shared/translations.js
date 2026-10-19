@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20261015-v1";
+export const TRANSLATIONS_VERSION = "20261019-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -957,6 +957,10 @@ export const TRANSLATIONS = {
             "today": "Today",
             "todays_earnings": "Today's Earnings",
             "completed_rides": "Completed Rides",
+            "todays_distance": "Today's Distance",
+            "lifetime_distance": "Lifetime Distance",
+            "distance_under_review": "({km} km under review)",
+            "passenger_journey_only": "Confirmed passenger travel only",
             "pending_trips": "Pending Trips",
             "online_hours": "Online Hours",
             "current_trip": "Current Trip",
@@ -2144,6 +2148,10 @@ export const TRANSLATIONS = {
             "today": "আজ",
             "todays_earnings": "আজকের আয়",
             "completed_rides": "সম্পন্ন রাইড",
+            "todays_distance": "আজকের দূরত্ব",
+            "lifetime_distance": "সর্বমোট দূরত্ব",
+            "distance_under_review": "({km} কিমি পর্যালোচনাধীন)",
+            "passenger_journey_only": "কেবল যাত্রী বহনকালীন দূরত্ব",
             "pending_trips": "মুলতুবি ট্রিপ",
             "online_hours": "অনলাইন সময়",
             "current_trip": "বর্তমান ট্রিপ",

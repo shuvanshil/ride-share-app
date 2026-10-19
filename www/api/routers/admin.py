@@ -18,6 +18,7 @@ import hmac
 import logging
 from datetime import datetime, date, timedelta, timezone
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from firebase_admin import auth as fb_auth
@@ -4374,6 +4375,270 @@ def bulk_delete_notification_broadcasts(
             f"Bulk deleted {len(deleted_ids)} broadcast history records",
         )
     return {"ok": True, "deletedCount": len(deleted_ids), "deletedIds": deleted_ids}
+
+
+# ---------------------------------------------------------------------------
+# Distance Disparity Review & Resolution Endpoints (Backend-only)
+# ---------------------------------------------------------------------------
+
+KOLKATA_TZ = ZoneInfo("Asia/Kolkata")
+
+
+def _kolkata_day_str(moment: Optional[datetime] = None) -> str:
+    moment = moment or datetime.now(timezone.utc)
+    return moment.astimezone(KOLKATA_TZ).strftime("%Y-%m-%d")
+
+
+class DistanceReviewDecisionBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    decision: Optional[str] = None
+    approved_km: Optional[float] = None
+    note: Optional[str] = None
+
+
+@router.get("/distance-reviews")
+def list_distance_reviews(
+    status: Optional[str] = None,
+    driverId: Optional[str] = None,
+    driver_id: Optional[str] = None,
+    dayKey: Optional[str] = None,
+    fromDayKey: Optional[str] = None,
+    toDayKey: Optional[str] = None,
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    cursor: Optional[str] = None,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """List distance disparity reviews with filtering and pagination."""
+    db = _db()
+    limit = _clamp_limit(limit)
+    base = db.collection("distanceReviews")
+
+    target_driver = driverId or driver_id
+    if status:
+        base = base.where("status", "==", status.strip().upper())
+    if target_driver:
+        base = base.where("driverId", "==", target_driver.strip())
+    if dayKey:
+        base = base.where("dayKey", "==", dayKey.strip())
+    else:
+        if fromDayKey:
+            base = base.where("dayKey", ">=", fromDayKey.strip())
+        if toDayKey:
+            base = base.where("dayKey", "<=", toDayKey.strip())
+
+    try:
+        base_ordered = base.order_by("created_at", direction=fb_firestore.Query.DESCENDING)
+        items, next_cursor = _paginate(base_ordered, cursor, limit, "distanceReviews")
+    except Exception:
+        try:
+            base_ordered = base.order_by("rideId", direction=fb_firestore.Query.DESCENDING)
+            items, next_cursor = _paginate(base_ordered, cursor, limit, "distanceReviews")
+        except Exception:
+            items, next_cursor = _paginate(base, cursor, limit, "distanceReviews")
+
+    return {
+        "ok": True,
+        "reviews": items,
+        "items": items,
+        "nextCursor": next_cursor,
+        "next_cursor": next_cursor,
+    }
+
+
+@router.get("/distance-reviews/{ride_id}")
+def get_distance_review_detail(
+    ride_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Get full details of a distance review, including ride, driver, and evidence."""
+    clean_id = str(ride_id).strip()[:160]
+    db = _db()
+    snap = db.collection("distanceReviews").document(clean_id).get()
+    if not snap.exists:
+        raise ApiError("Distance review not found.", 404)
+    review_data = snap.to_dict() or {}
+    review_data["id"] = snap.id
+
+    ride_snap = db.collection("rides").document(clean_id).get()
+    ride_data = ride_snap.to_dict() if ride_snap.exists else None
+
+    driver_id = str(review_data.get("driverId") or "")
+    driver_data = None
+    if driver_id:
+        driver_snap = db.collection("users").document(driver_id).get()
+        if driver_snap.exists:
+            driver_data = driver_snap.to_dict() or {}
+            driver_data["id"] = driver_snap.id
+
+    daily_doc_id = str(review_data.get("dailyStatsDocId") or "")
+    daily_stats = None
+    if daily_doc_id:
+        daily_snap = db.collection("driverDailyStats").document(daily_doc_id).get()
+        if daily_snap.exists:
+            daily_stats = daily_snap.to_dict() or {}
+            daily_stats["id"] = daily_snap.id
+
+    return {
+        "ok": True,
+        "review": review_data,
+        "ride": ride_data,
+        "driver": driver_data,
+        "dailyStats": daily_stats,
+    }
+
+
+@router.post("/distance-reviews/{ride_id}/decision")
+def decide_distance_review(
+    ride_id: str,
+    body: DistanceReviewDecisionBody,
+    admin_user: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Execute an admin distance disparity decision (approve/decline) in one atomic transaction."""
+    clean_id = str(ride_id).strip()[:160]
+    decision = str(body.decision or "").strip().lower()
+    if decision not in {"approve", "decline"}:
+        raise ApiError("Decision must be 'approve' or 'decline'.", 422)
+
+    note = str(body.note or "").strip()
+    if not note or len(note) > 500:
+        raise ApiError("Note is required (1-500 characters).", 422)
+
+    db = _db()
+    review_ref = db.collection("distanceReviews").document(clean_id)
+    result_holder: dict[str, Any] = {}
+    transaction = db.transaction()
+
+    @fb_firestore.transactional
+    def decision_transaction(tx):
+        review_snap = review_ref.get(transaction=tx)
+        if not review_snap.exists:
+            raise ApiError("Distance review not found.", 404)
+        review = review_snap.to_dict() or {}
+        current_status = str(review.get("status") or "").upper()
+
+        P = float(review.get("planned_km") or 0.0)
+        prov_km = float(review.get("provisional_km") or 0.0)
+
+        if decision == "approve":
+            if body.approved_km is not None:
+                decided_km = float(body.approved_km)
+            else:
+                decided_km = prov_km
+            max_allowed = min(300.0, max(3.0 * P, P + 10.0))
+            if decided_km < 0.0 or decided_km > max_allowed or decided_km > 300.0:
+                raise ApiError(f"approved_km must be between 0 and {max_allowed:.2f} km.", 422)
+        else:
+            decided_km = 0.0
+
+        # Check for idempotency or conflict on already-decided review
+        if current_status != "PENDING":
+            if decision == "approve" and current_status == "APPROVED" and abs(float(review.get("decided_km") or 0.0) - decided_km) < 1e-3:
+                result_holder.update({
+                    "ok": True,
+                    "rideId": clean_id,
+                    "status": "APPROVED",
+                    "decided_km": decided_km,
+                    "decided_by": review.get("decided_by"),
+                    "message": "Decision already applied.",
+                })
+                return
+            if decision == "decline" and current_status == "DECLINED":
+                result_holder.update({
+                    "ok": True,
+                    "rideId": clean_id,
+                    "status": "DECLINED",
+                    "decided_km": 0.0,
+                    "decided_by": review.get("decided_by"),
+                    "message": "Decision already applied.",
+                })
+                return
+            raise ApiError("This review has already been decided with a conflicting decision.", 409)
+
+        admin_identity = str(admin_user.get("email") or admin_user.get("uid") or "admin")
+        daily_doc_id = str(review.get("dailyStatsDocId") or f"{review.get('driverId')}_{review.get('dayKey')}")
+        daily_ref = db.collection("driverDailyStats").document(daily_doc_id)
+        daily_snap = daily_ref.get(transaction=tx)
+        daily_data = daily_snap.to_dict() or {} if daily_snap.exists else {}
+
+        orig_ur_km = float(daily_data.get("under_review_km") or 0.0)
+        orig_ur_count = int(daily_data.get("under_review_count") or 0)
+        new_ur_km = max(0.0, round(orig_ur_km - prov_km, 3))
+        new_ur_count = max(0, orig_ur_count - 1)
+
+        daily_updates: dict[str, Any] = {
+            "under_review_km": new_ur_km,
+            "under_review_count": new_ur_count,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        if decision == "approve" and decided_km > 0:
+            curr_dist = float(daily_data.get("distance_km") or 0.0)
+            daily_updates["distance_km"] = round(curr_dist + decided_km, 3)
+
+        tx.set(daily_ref, daily_updates, merge=True)
+
+        if decision == "approve" and decided_km > 0:
+            driver_ref = db.collection("users").document(str(review.get("driverId")))
+            # lifetime_distance_km counts only from deployment onward. Do NOT backfill.
+            tx.set(driver_ref, {"lifetime_distance_km": fb_firestore.Increment(round(decided_km, 3))}, merge=True)
+
+        after_day_close = (review.get("dayKey") != _kolkata_day_str())
+        adj_ref = daily_ref.collection("adjustments").document(clean_id)
+        tx.set(adj_ref, {
+            "rideId": clean_id,
+            "decision": decision,
+            "decided_km": round(decided_km, 3),
+            "admin": admin_identity,
+            "timestamp": fb_firestore.SERVER_TIMESTAMP,
+            "note": note,
+            "after_day_close": after_day_close,
+        })
+
+        new_status = "APPROVED" if decision == "approve" else "DECLINED"
+        tx.update(review_ref, {
+            "status": new_status,
+            "decided_by": admin_identity,
+            "decided_at": fb_firestore.SERVER_TIMESTAMP,
+            "decided_km": round(decided_km, 3),
+            "note": note,
+            "updated_at": fb_firestore.SERVER_TIMESTAMP,
+        })
+
+        new_dist_status = "counted" if decision == "approve" and decided_km > 0 else ("zero" if decision == "approve" else "declined")
+        hist_ref = db.collection("tripHistory").document(clean_id)
+        r_ref = db.collection("rides").document(clean_id)
+        status_updates = {
+            "distance_status": new_dist_status,
+            "counted_distance_km": round(decided_km, 3),
+            "distance_reviewed_at": fb_firestore.SERVER_TIMESTAMP,
+            "distance_reviewed_by": admin_identity,
+            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+        }
+        tx.set(hist_ref, status_updates, merge=True)
+        tx.set(r_ref, status_updates, merge=True)
+
+        result_holder.update({
+            "ok": True,
+            "rideId": clean_id,
+            "status": new_status,
+            "decided_km": round(decided_km, 3),
+            "decided_by": admin_identity,
+        })
+
+    decision_transaction(transaction)
+
+    write_audit_log(
+        admin_user,
+        "distance_review.decision",
+        "distanceReview",
+        clean_id,
+        {},
+        {"decision": decision, "decided_km": result_holder.get("decided_km"), "note": note},
+        f"Admin {admin_user.get('email') or 'admin'} decided review {clean_id}: {decision} ({result_holder.get('decided_km')} km)",
+    )
+
+    return result_holder
+
 
 
 

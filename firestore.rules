@@ -136,6 +136,18 @@ service cloud.firestore {
           || ('driverId' in resource.data && resource.data.driverId == request.auth.uid)
           || isAdmin());
       allow create, update, delete: if false;
+
+      match /adjustments/{adjId} {
+        allow read: if signedIn()
+          && (isAdmin()
+            || (get(/databases/$(database)/documents/driverDailyStats/$(statId)).data.driver_id == request.auth.uid)
+            || (get(/databases/$(database)/documents/driverDailyStats/$(statId)).data.driverId == request.auth.uid));
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /distanceReviews/{reviewId} {
+      allow read, write: if false;
     }
 
     // Feature 3 (live trip sharing): a sanitized, contact-free mirror of one
