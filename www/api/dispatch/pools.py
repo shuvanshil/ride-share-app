@@ -303,6 +303,8 @@ class DispatchPoolManager:
                 seats_val = int(d.get("seatsFree") if d.get("seatsFree") is not None else (d.get("seats_free") or 1))
                 route_val = d.get("routeStops") or d.get("route") or []
 
+                is_fee_restr = bool(d.get("is_fee_restricted") or (d.get("metadata") or {}).get("is_fee_restricted"))
+
                 drivers.append(
                     DriverEntry(
                         id=str(d.get("id") or doc.id),
@@ -317,6 +319,7 @@ class DispatchPoolManager:
                         version=int(d.get("version") or 1),
                         vehicle_type=str(d.get("vehicle_type") or "auto"),
                         is_approved=bool(d.get("is_approved", True)),
+                        is_fee_restricted=is_fee_restr,
                         metadata=d.get("metadata") or {},
                     )
                 )

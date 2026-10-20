@@ -282,7 +282,7 @@ class PaymentReminderManager {
             const token = await getAuthToken();
             if (!token) return;
 
-            const response = await fetch('/api/account/driver-payments/status', {
+            const response = await fetch('/api/fees/summary', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Accept': 'application/json'
@@ -291,27 +291,36 @@ class PaymentReminderManager {
 
             if (!response.ok) return;
             const data = await response.json();
-            const reminder = data.reminder;
+            if (!data.ok) return;
 
-            if (!reminder) return;
-
-            // Evaluate eligibility
-            if (reminder.eligible && reminder.type) {
-                // If local snooze is still active, verify with authoritative server state
-                if (this.isLocallySnoozed(reminder.type) && reminder.isSnoozed) {
-                    this.hideModal();
-                    return;
-                }
-                this.showModal(reminder);
-            } else {
-                // If modal is open but driver is no longer eligible (e.g. paid, verified, under review), hide it
-                this.hideModal();
-
-                // If snooze is active on server, schedule timer to wake up when snooze expires
-                if (reminder.isSnoozed && reminder.snoozedUntil) {
-                    this.scheduleSnoozeTimer(reminder.snoozedUntil);
-                }
+            let reminder = null;
+            if (data.restriction && data.restriction.is_restricted) {
+                reminder = {
+                    eligible: true,
+                    type: 'overdue',
+                    amount: ((data.restriction.overdue_paise || 0) / 100).toFixed(2),
+                    reason: data.restriction.reason,
+                };
+            } else if (data.deadline_modal && data.deadline_modal.show) {
+                reminder = {
+                    eligible: true,
+                    type: 'deadline',
+                    amount: (data.deadline_modal.actionable_balance_inr || 0).toFixed(2),
+                    remaining_hours: data.deadline_modal.remaining_hours,
+                    deadline: data.deadline_modal.deadline,
+                };
             }
+
+            if (!reminder || !reminder.eligible) {
+                this.hideModal();
+                return;
+            }
+
+            if (this.isLocallySnoozed(reminder.type)) {
+                this.hideModal();
+                return;
+            }
+            this.showModal(reminder);
         } catch (err) {
             console.warn('[payment-reminder] check error:', err);
         } finally {
@@ -411,12 +420,22 @@ class PaymentReminderManager {
         const declinedTitle = t('payment_reminder.declined_title', "Action Needed for Your Service Payment");
         const declinedNotice = t('payment_reminder.declined_notice', "Dear Driver, your recent service payment could not be approved. Please visit your payment page to review its current status and any feedback provided by our team. You can then make the necessary corrections and submit your payment again. Thank you for your patience and understanding.");
 
+        const deadlineTitle = "Weekly Platform Fee Deadline Reminder";
+        const deadlineNotice = `Dear Driver, your weekly platform fee of ₹${reminder.amount || '0'} is due this ${reminder.deadline || 'Sunday 11:59 PM'} (${reminder.remaining_hours || 0}h remaining). Please complete your payment before the deadline to avoid service interruption.`;
+
         const remindLaterText = t('payment_reminder.remind_later', "Remind me later");
         const payNowText = t('payment_reminder.pay_now', "Pay now");
         const reviewPaymentText = t('payment_reminder.review_payment', "Review payment");
 
-        const titleText = isDeclined ? declinedTitle : overdueTitle;
-        const noticeText = isDeclined ? declinedNotice : overdueNotice;
+        let titleText = overdueTitle;
+        let noticeText = overdueNotice;
+        if (isDeclined) {
+            titleText = declinedTitle;
+            noticeText = declinedNotice;
+        } else if (type === 'deadline') {
+            titleText = deadlineTitle;
+            noticeText = deadlineNotice;
+        }
         const primaryText = isDeclined ? reviewPaymentText : payNowText;
         const primaryBtnClass = isDeclined ? 'pr-btn-declined-primary' : 'pr-btn-primary';
 

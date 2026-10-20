@@ -6,6 +6,8 @@ import { storage, ref, getDownloadURL, listAll } from '../../js/platform/firebas
 let cachedPayments = [];
 let cachedPauseConfig = null;
 let cachedDriversList = [];
+let cachedDistanceReviews = [];
+let currentDistReviewAction = null;
 
 async function withButtonSpinner(btn, actionFn) {
     if (!btn) return actionFn();
@@ -36,24 +38,81 @@ export async function loadAdminPayments() {
         cachedPayments = data.payments || [];
         cachedPauseConfig = data.pauseConfig || null;
 
+        // Fetch Phase 2 Fee Batches and merge into cachedPayments
+        try {
+            const batchRes = await adminGet('/fee-batches');
+            const feeBatches = batchRes.batches || [];
+            feeBatches.forEach(b => {
+                const allocs = b.allocations || [];
+                const bBatchId = b.batchId || b.id;
+                allocs.forEach(a => {
+                    const aFeeId = a.fee_id || a.feeId || a.id;
+                    const rawStatus = (a.status || 'PENDING').toLowerCase();
+                    let normStatus = 'submitted';
+                    if (rawStatus === 'approved') normStatus = 'approved';
+                    else if (rawStatus === 'declined') normStatus = 'declined';
+                    else normStatus = 'submitted';
+
+                    cachedPayments.push({
+                        paymentId: `${bBatchId}_${aFeeId}`,
+                        batchId: bBatchId,
+                        feeId: aFeeId,
+                        driverId: b.uid,
+                        driverName: b.driverName || b.driver_name || 'Driver',
+                        driverPhone: b.driverPhone || b.driver_phone || '',
+                        weekId: a.serviceDate || bBatchId,
+                        weekLabel: `Service Day ${a.serviceDate || ''}`,
+                        amount: ((a.amount_paise || 0) / 100),
+                        status: normStatus,
+                        rawStatus: a.status || 'PENDING',
+                        paymentMethod: b.paymentMethod || b.payment_method || 'upi',
+                        paymentReference: b.paymentReference || b.payment_reference || 'Daily fee payment',
+                        proofDownloadUrl: b.proofDownloadUrl || b.proof_download_url || b.screenshot_url || b.screenshot_path,
+                        proofStoragePath: b.proofStoragePath || b.screenshot_path,
+                        submittedAt: b.created_at,
+                        verifiedAt: a.decided_at,
+                        verifiedByAdminEmail: a.decided_by,
+                        declineReason: a.note,
+                        isFeeBatchAllocation: true,
+                        batchAllocations: allocs,
+                    });
+                });
+            });
+        } catch (bErr) {
+            console.warn("Could not load fee batches:", bErr);
+        }
+
         // Render Pause Strip
         renderAdminPauseStrip(cachedPauseConfig);
 
         // Update KPI strip
         const summary = data.summary || {};
+        const pendingAllocCount = cachedPayments.filter(p => p.status === 'submitted' || p.status === 'under_review').length;
         const pendingEl = document.getElementById('admin-kpi-pending-count');
         const approvedEl = document.getElementById('admin-kpi-approved-count');
         const declinedEl = document.getElementById('admin-kpi-declined-count');
         const badgeEl = document.getElementById('admin-payments-nav-badge');
 
-        if (pendingEl) pendingEl.innerText = summary.pendingCount || 0;
+        if (pendingEl) pendingEl.innerText = pendingAllocCount;
         if (approvedEl) approvedEl.innerText = summary.approvedCount || 0;
         if (declinedEl) declinedEl.innerText = summary.declinedCount || 0;
 
         if (badgeEl) {
-            const pending = summary.pendingCount || 0;
-            badgeEl.innerText = `(${pending})`;
-            badgeEl.classList.toggle('d-none', pending === 0);
+            badgeEl.innerText = `(${pendingAllocCount})`;
+            badgeEl.classList.toggle('d-none', pendingAllocCount === 0);
+        }
+
+        // Update Distance Reviews count badge
+        try {
+            const distRes = await adminGet('/distance-reviews?status=PENDING&limit=100');
+            const distItems = distRes.reviews || distRes.items || [];
+            const distBadge = document.getElementById('admin-distance-reviews-badge');
+            if (distBadge) {
+                distBadge.innerText = distItems.length;
+                distBadge.classList.toggle('d-none', distItems.length === 0);
+            }
+        } catch (dErr) {
+            console.warn("Could not load distance reviews badge:", dErr);
         }
 
         renderPaymentsTable();
@@ -365,6 +424,89 @@ async function openVerifyProofModal(paymentId) {
     } else {
         await tryStoragePathFallback();
     }
+
+    // Render batch allocations if available
+    const allocContainer = document.getElementById('verify-modal-allocations-container');
+    if (allocContainer) {
+        if (payment.isFeeBatchAllocation && payment.batchAllocations && payment.batchAllocations.length > 0) {
+            allocContainer.classList.remove('d-none');
+            allocContainer.innerHTML = `
+                <div class="fw-bold small text-secondary mb-2">Batch Day Allocations (${payment.batchAllocations.length}):</div>
+                <div class="list-group list-group-flush border rounded mb-2">
+                    ${payment.batchAllocations.map(al => {
+                        const alFeeId = al.fee_id || al.feeId;
+                        const alAmt = ((al.amount_paise || 0) / 100).toFixed(2);
+                        const alRaw = (al.status || 'PENDING').toUpperCase();
+                        let bClass = 'bg-warning-lt text-warning';
+                        if (alRaw === 'APPROVED') bClass = 'bg-success-lt text-success';
+                        else if (alRaw === 'DECLINED') bClass = 'bg-danger-lt text-danger';
+
+                        const isPending = alRaw === 'PENDING';
+                        return `
+                            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                                <div>
+                                    <div class="fw-bold text-dark">${al.serviceDate || alFeeId}</div>
+                                    <div class="text-secondary small">₹${alAmt}</div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge ${bClass} fw-bold">${alRaw}</span>
+                                    ${isPending ? `
+                                        <button type="button" class="btn btn-sm btn-outline-success btn-batch-alloc-approve p-1" data-batch-id="${payment.batchId}" data-fee-id="${alFeeId}" title="Approve day ${al.serviceDate || alFeeId}">
+                                            <i class="ti ti-check"></i> Approve
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger btn-batch-alloc-decline p-1" data-batch-id="${payment.batchId}" data-fee-id="${alFeeId}" title="Decline day ${al.serviceDate || alFeeId}">
+                                            <i class="ti ti-x"></i> Decline
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+
+            allocContainer.querySelectorAll('.btn-batch-alloc-approve').forEach(b => {
+                b.addEventListener('click', () => handleApproveAllocation(b.dataset.batchId, b.dataset.feeId, b));
+            });
+            allocContainer.querySelectorAll('.btn-batch-alloc-decline').forEach(b => {
+                b.addEventListener('click', () => handleDeclineAllocation(b.dataset.batchId, b.dataset.feeId, b));
+            });
+        } else {
+            allocContainer.classList.add('d-none');
+            allocContainer.innerHTML = '';
+        }
+    }
+}
+
+async function handleApproveAllocation(batchId, feeId, btn) {
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost(`/fee-batches/${batchId}/allocations/${feeId}/decision`, { decision: "approve" });
+            showToast(`Allocation ${feeId} approved!`, "success");
+            closeVerifyProofModal();
+            await loadAdminPayments();
+        } catch (e) {
+            showToast(e.message || "Failed to approve allocation", "error");
+        }
+    });
+}
+
+async function handleDeclineAllocation(batchId, feeId, btn) {
+    const reason = prompt("Enter decline reason for this allocation:", "Payment could not be verified by accounts team.");
+    if (reason === null) return;
+    await withButtonSpinner(btn, async () => {
+        try {
+            await adminPost(`/fee-batches/${batchId}/allocations/${feeId}/decision`, {
+                decision: "decline",
+                note: (reason || "").trim() || "Declined by admin"
+            });
+            showToast(`Allocation ${feeId} declined.`, "warning");
+            closeVerifyProofModal();
+            await loadAdminPayments();
+        } catch (e) {
+            showToast(e.message || "Failed to decline allocation", "error");
+        }
+    });
 }
 
 function closeVerifyProofModal() {
@@ -380,10 +522,17 @@ function closeVerifyProofModal() {
 async function handleModalApprovePayment(btn) {
     if (!activeVerifyingPaymentId) return;
     const paymentId = activeVerifyingPaymentId;
+    const payment = cachedPayments.find(p => p.paymentId === paymentId);
 
     await withButtonSpinner(btn, async () => {
         try {
-            await adminPost(`/driver-payments/${paymentId}/approve`);
+            if (payment && payment.isFeeBatchAllocation) {
+                await adminPost(`/fee-batches/${payment.batchId}/allocations/${payment.feeId}/decision`, {
+                    decision: "approve"
+                });
+            } else {
+                await adminPost(`/driver-payments/${paymentId}/approve`);
+            }
             showToast("Payment approved and verified successfully!", "success");
             closeVerifyProofModal();
             await loadAdminPayments();
@@ -397,12 +546,20 @@ async function handleModalApprovePayment(btn) {
 async function handleModalDeclinePayment(btn) {
     if (!activeVerifyingPaymentId) return;
     const paymentId = activeVerifyingPaymentId;
+    const payment = cachedPayments.find(p => p.paymentId === paymentId);
     const reasonInput = document.getElementById('verify-modal-decline-reason');
     const reason = (reasonInput?.value || "Payment could not be verified by accounts team.").trim();
 
     await withButtonSpinner(btn, async () => {
         try {
-            await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
+            if (payment && payment.isFeeBatchAllocation) {
+                await adminPost(`/fee-batches/${payment.batchId}/allocations/${payment.feeId}/decision`, {
+                    decision: "decline",
+                    note: reason
+                });
+            } else {
+                await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
+            }
             showToast("Payment submission declined.", "warning");
             closeVerifyProofModal();
             await loadAdminPayments();
@@ -414,7 +571,8 @@ async function handleModalDeclinePayment(btn) {
 }
 
 async function handleApprovePayment(paymentId, btn) {
-    const confirmed = await showTablerConfirm("Are you sure you want to APPROVE this driver's weekly fee payment?", {
+    const payment = cachedPayments.find(p => p.paymentId === paymentId);
+    const confirmed = await showTablerConfirm("Are you sure you want to APPROVE this payment allocation?", {
         title: "Approve Payment",
         variant: "success",
         confirmText: "Approve Payment"
@@ -423,7 +581,13 @@ async function handleApprovePayment(paymentId, btn) {
 
     await withButtonSpinner(btn, async () => {
         try {
-            await adminPost(`/driver-payments/${paymentId}/approve`);
+            if (payment && payment.isFeeBatchAllocation) {
+                await adminPost(`/fee-batches/${payment.batchId}/allocations/${payment.feeId}/decision`, {
+                    decision: "approve"
+                });
+            } else {
+                await adminPost(`/driver-payments/${paymentId}/approve`);
+            }
             showToast("Payment approved successfully!", "success");
             await loadAdminPayments();
         } catch (error) {
@@ -434,17 +598,294 @@ async function handleApprovePayment(paymentId, btn) {
 }
 
 async function handleDeclinePayment(paymentId, btn) {
+    const payment = cachedPayments.find(p => p.paymentId === paymentId);
     const reason = prompt("Enter decline reason for driver (optional):", "Payment could not be verified by accounts team.");
     if (reason === null) return;
 
     await withButtonSpinner(btn, async () => {
         try {
-            await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
+            if (payment && payment.isFeeBatchAllocation) {
+                await adminPost(`/fee-batches/${payment.batchId}/allocations/${payment.feeId}/decision`, {
+                    decision: "decline",
+                    note: reason
+                });
+            } else {
+                await adminPost(`/driver-payments/${paymentId}/decline`, { declineReason: reason });
+            }
             showToast("Payment submission declined.", "warning");
             await loadAdminPayments();
         } catch (error) {
             console.error("Error declining payment:", error);
             showToast(error.message || "Could not decline payment", "error");
+        }
+    });
+}
+
+
+
+// ============ DISTANCE CONFLICT REVIEWS ============
+
+export async function loadAdminDistanceReviews() {
+    const container = document.getElementById('admin-dist-reviews-table-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="card shadow-xs border-0 text-center py-5">
+            <div class="spinner-border text-primary mx-auto mb-2" role="status"></div>
+            <div class="text-secondary small">Loading distance disparity reviews...</div>
+        </div>
+    `;
+
+    const statusFilter = document.getElementById('admin-dist-review-status-filter')?.value || '';
+    try {
+        const query = statusFilter ? `?status=${encodeURIComponent(statusFilter)}&limit=100` : '?limit=100';
+        const data = await adminGet(`/distance-reviews${query}`);
+        cachedDistanceReviews = data.reviews || data.items || [];
+
+        // Update badge
+        const pendingCount = cachedDistanceReviews.filter(r => (r.status || '').toUpperCase() === 'PENDING').length;
+        const distBadge = document.getElementById('admin-distance-reviews-badge');
+        if (distBadge) {
+            distBadge.innerText = pendingCount;
+            distBadge.classList.toggle('d-none', pendingCount === 0);
+        }
+
+        renderDistanceReviewsTable();
+    } catch (error) {
+        console.error("Error loading distance reviews:", error);
+        container.innerHTML = `<div class="card shadow-xs border-0 text-center py-4 text-danger">Error loading distance disparity reviews: ${error.message}</div>`;
+    }
+}
+
+export function renderDistanceReviewsTable() {
+    const container = document.getElementById('admin-dist-reviews-table-container');
+    if (!container) return;
+
+    const statusFilter = document.getElementById('admin-dist-review-status-filter')?.value || '';
+    const searchVal = document.getElementById('admin-dist-review-search')?.value?.toLowerCase().trim() || '';
+
+    let filtered = cachedDistanceReviews.filter(r => {
+        if (statusFilter && (r.status || '').toUpperCase() !== statusFilter.toUpperCase()) return false;
+        if (searchVal) {
+            const rideId = (r.rideId || r.id || '').toLowerCase();
+            const driverId = (r.driverId || '').toLowerCase();
+            const dayKey = (r.dayKey || '').toLowerCase();
+            if (!rideId.includes(searchVal) && !driverId.includes(searchVal) && !dayKey.includes(searchVal)) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div class="card shadow-xs border-0 text-center py-5">
+                <i class="ti ti-route text-secondary display-6 mb-2"></i>
+                <div class="fw-bold">No distance conflict reviews found</div>
+                <div class="text-secondary small">There are currently no distance disparity items matching the selected criteria.</div>
+            </div>
+        `;
+        return;
+    }
+
+    const rowsHtml = filtered.map(r => {
+        const plannedKm = Number(r.planned_km || 0);
+        const provKm = Number(r.provisional_km || 0);
+        const diffKm = provKm - plannedKm;
+        const diffSign = diffKm >= 0 ? '+' : '';
+        const status = (r.status || 'PENDING').toUpperCase();
+
+        let statusBadge = '';
+        if (status === 'PENDING') {
+            statusBadge = '<span class="badge bg-warning-lt text-warning fw-bold">PENDING REVIEW</span>';
+        } else if (status === 'APPROVED') {
+            const decidedKm = Number(r.decided_km || 0).toFixed(2);
+            statusBadge = `<span class="badge bg-success-lt text-success fw-bold">APPROVED (${decidedKm} km)</span>`;
+        } else {
+            statusBadge = '<span class="badge bg-danger-lt text-danger fw-bold">DECLINED (0 km)</span>';
+        }
+
+        let actionsHtml = '';
+        if (status === 'PENDING') {
+            actionsHtml = `
+                <div class="d-flex flex-wrap gap-1">
+                    <button class="btn btn-sm btn-outline-primary btn-dist-action" data-ride-id="${r.rideId}" data-action="approve_estimated" title="Approve estimated planned distance">
+                        <i class="ti ti-check me-1"></i>Approve Est. (${plannedKm.toFixed(1)} km)
+                    </button>
+                    <button class="btn btn-sm btn-outline-success btn-dist-action" data-ride-id="${r.rideId}" data-action="approve_counter" title="Approve driver GPS counter distance">
+                        <i class="ti ti-check-double me-1"></i>Approve Counter (${provKm.toFixed(1)} km)
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger btn-dist-action" data-ride-id="${r.rideId}" data-action="decline" title="Decline entire distance disparity (0 km)">
+                        <i class="ti ti-x me-1"></i>Decline (0 km)
+                    </button>
+                </div>
+            `;
+        } else {
+            actionsHtml = `
+                <div class="small">
+                    <span class="text-secondary">Decided by:</span> <strong>${r.decided_by || 'Admin'}</strong>
+                    ${r.note ? `<br><span class="text-muted fst-italic">"${r.note}"</span>` : ''}
+                </div>
+            `;
+        }
+
+        return `
+            <tr>
+                <td>
+                    <strong class="text-dark font-monospace">${r.rideId}</strong><br>
+                    <small class="text-secondary"><i class="ti ti-calendar me-1"></i>${r.dayKey || '--'}</small>
+                </td>
+                <td>
+                    <span class="font-monospace small text-primary">${r.driverId}</span>
+                </td>
+                <td>
+                    <span class="fw-bold">${plannedKm.toFixed(2)} km</span>
+                </td>
+                <td>
+                    <span class="fw-bold">${provKm.toFixed(2)} km</span>
+                </td>
+                <td>
+                    <span class="badge ${diffKm > 0 ? 'bg-danger-lt text-danger' : 'bg-info-lt text-info'} fw-bold">
+                        ${diffSign}${diffKm.toFixed(2)} km
+                    </span>
+                </td>
+                <td>${statusBadge}</td>
+                <td>${actionsHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="card shadow-xs border-0">
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table table-striped table-hover m-0">
+                    <thead>
+                        <tr>
+                            <th>Ride &amp; Service Day</th>
+                            <th>Driver UID</th>
+                            <th>Estimated Distance</th>
+                            <th>Counter Distance</th>
+                            <th>Disparity</th>
+                            <th>Status</th>
+                            <th>Decision Actions / Audit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    // Bind action buttons
+    container.querySelectorAll('.btn-dist-action').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const rideId = btn.dataset.rideId;
+            const action = btn.dataset.action;
+            const review = cachedDistanceReviews.find(r => r.rideId === rideId);
+            if (review) {
+                openDistanceDecisionModal(review, action);
+            }
+        });
+    });
+}
+
+function openDistanceDecisionModal(review, actionType) {
+    const modal = document.getElementById('admin-dist-review-decision-modal');
+    if (!modal) return;
+
+    const titleEl = document.getElementById('dist-review-modal-title');
+    const descEl = document.getElementById('dist-review-modal-desc');
+    const noteEl = document.getElementById('dist-review-note-input');
+    const plannedKm = Number(review.planned_km || 0);
+    const provKm = Number(review.provisional_km || 0);
+
+    if (actionType === 'approve_estimated') {
+        currentDistReviewAction = {
+            rideId: review.rideId,
+            decision: 'approve',
+            approved_km: plannedKm
+        };
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="ti ti-check me-2 text-primary"></i>Approve Estimated Distance (${plannedKm.toFixed(2)} km)`;
+        }
+        if (descEl) {
+            descEl.innerHTML = `You are approving the <strong>Estimated Planned Distance</strong> of <strong>${plannedKm.toFixed(2)} km</strong> for Ride <code>${review.rideId}</code> (Driver <code>${review.driverId}</code>, Day: ${review.dayKey}). The daily fee will be reconciled to this distance.`;
+        }
+        if (noteEl) noteEl.value = `Approved estimated planned distance of ${plannedKm.toFixed(2)} km.`;
+    } else if (actionType === 'approve_counter') {
+        currentDistReviewAction = {
+            rideId: review.rideId,
+            decision: 'approve',
+            approved_km: provKm
+        };
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="ti ti-check-double me-2 text-success"></i>Approve Counter Distance (${provKm.toFixed(2)} km)`;
+        }
+        if (descEl) {
+            descEl.innerHTML = `You are approving the <strong>Driver GPS Counter Distance</strong> of <strong>${provKm.toFixed(2)} km</strong> for Ride <code>${review.rideId}</code> (Driver <code>${review.driverId}</code>, Day: ${review.dayKey}). The daily fee will be reconciled to this distance.`;
+        }
+        if (noteEl) noteEl.value = `Approved driver GPS counter distance of ${provKm.toFixed(2)} km.`;
+    } else {
+        currentDistReviewAction = {
+            rideId: review.rideId,
+            decision: 'decline',
+            approved_km: 0.0
+        };
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="ti ti-x me-2 text-danger"></i>Decline Entire Distance`;
+        }
+        if (descEl) {
+            descEl.innerHTML = `You are declining the distance for Ride <code>${review.rideId}</code> (billable km = 0). This ride distance will not accrue platform fees.`;
+        }
+        if (noteEl) noteEl.value = `Declined distance disparity; zero billable distance.`;
+    }
+
+    modal.style.display = 'block';
+    modal.classList.remove('d-none');
+    modal.classList.add('show');
+}
+
+function closeDistanceDecisionModal() {
+    const modal = document.getElementById('admin-dist-review-decision-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('d-none');
+        modal.classList.remove('show');
+    }
+    currentDistReviewAction = null;
+}
+
+async function handleConfirmDistanceDecision(btn) {
+    if (!currentDistReviewAction) return;
+
+    const noteEl = document.getElementById('dist-review-note-input');
+    const note = (noteEl?.value || '').trim();
+    if (!note || note.length > 500) {
+        showToast("Please provide an admin audit note (1–500 characters).", "warning");
+        noteEl?.focus();
+        return;
+    }
+
+    await withButtonSpinner(btn, async () => {
+        try {
+            const payload = {
+                decision: currentDistReviewAction.decision,
+                note: note
+            };
+            if (currentDistReviewAction.decision === 'approve') {
+                payload.approved_km = currentDistReviewAction.approved_km;
+            }
+
+            await adminPost(`/distance-reviews/${currentDistReviewAction.rideId}/decision`, payload);
+            showToast("Distance review decision applied and fee reconciled successfully!", "success");
+            closeDistanceDecisionModal();
+            await loadAdminDistanceReviews();
+            await loadAdminPayments();
+        } catch (error) {
+            console.error("Error confirming distance review decision:", error);
+            showToast(error.message || "Failed to submit distance review decision.", "error");
         }
     });
 }
@@ -551,9 +992,56 @@ async function fetchDriversList() {
             const uid = d.uid || d.id;
             return `<option value="${uid}">${name} (${phone})</option>`;
         }).join('');
+
+        if (!select.dataset.boundChange) {
+            select.dataset.boundChange = 'true';
+            select.addEventListener('change', onManualPayDriverChange);
+        }
     } catch (error) {
         console.error("Error loading drivers for manual payment:", error);
         select.innerHTML = '<option value="">Error loading drivers list</option>';
+    }
+}
+
+async function onManualPayDriverChange() {
+    const select = document.getElementById('manual-pay-driver-select');
+    const duesInfo = document.getElementById('manual-pay-driver-dues-info');
+    const amountInput = document.getElementById('manual-pay-amount-input');
+    const uid = select?.value;
+    if (!uid) {
+        if (duesInfo) duesInfo.classList.add('d-none');
+        if (amountInput) amountInput.value = '';
+        return;
+    }
+    if (duesInfo) {
+        duesInfo.classList.remove('d-none');
+        duesInfo.className = 'alert alert-info py-2 px-3 small mb-3';
+        duesInfo.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Fetching driver platform fee balance...';
+    }
+    try {
+        const sum = await adminGet(`/drivers/${encodeURIComponent(uid)}/fees-summary`);
+        const payable = Number(sum.payable_inr || 0);
+        const overdue = Number(sum.overdue_inr || 0);
+        const openDays = (sum.fees || []).filter(f => (f.status || '').toUpperCase() !== 'PAID');
+        if (duesInfo) {
+            if (payable > 0) {
+                const overdueStr = overdue > 0 ? ` <span class="text-danger fw-bold">(Includes ₹${overdue.toFixed(2)} overdue)</span>` : '';
+                duesInfo.className = 'alert alert-warning py-2 px-3 small mb-3';
+                duesInfo.innerHTML = `<strong>Total Payable: ₹${payable.toFixed(2)}</strong> across ${openDays.length} day(s).${overdueStr}`;
+            } else {
+                duesInfo.className = 'alert alert-success py-2 px-3 small mb-3';
+                duesInfo.innerHTML = `<i class="ti ti-check me-1"></i>Driver has zero outstanding platform fees.`;
+            }
+        }
+        if (amountInput) {
+            amountInput.value = payable > 0 ? payable : '';
+        }
+    } catch (e) {
+        console.warn("Could not fetch driver fee summary:", e);
+        if (duesInfo) {
+            duesInfo.className = 'alert alert-secondary py-2 px-3 small mb-3';
+            duesInfo.innerText = 'Could not load current dues; enter amount manually.';
+        }
     }
 }
 
@@ -562,6 +1050,14 @@ function openManualPayModal() {
     if (!modal) return;
 
     fetchDriversList();
+    const duesInfo = document.getElementById('manual-pay-driver-dues-info');
+    if (duesInfo) {
+        duesInfo.classList.add('d-none');
+        duesInfo.innerHTML = '';
+    }
+    const amountInput = document.getElementById('manual-pay-amount-input');
+    if (amountInput) amountInput.value = '';
+
     modal.style.display = 'block';
     modal.classList.remove('d-none');
 }
@@ -590,10 +1086,16 @@ async function handleSaveManualPayment(e) {
             return;
         }
 
+        const amtVal = amountInput && amountInput.value ? parseFloat(amountInput.value) : null;
+        if (amtVal !== null && (isNaN(amtVal) || amtVal <= 0)) {
+            showToast("Please enter a valid payment amount.", "warning");
+            return;
+        }
+
         const payload = {
             driverId: driverId,
             weekId: weekInput ? weekInput.value.trim() : null,
-            amount: amountInput ? parseFloat(amountInput.value) || 140 : 140,
+            amount: amtVal,
             paymentMethod: methodSelect ? methodSelect.value : 'cash',
             paymentReference: refInput ? refInput.value.trim() : 'Collected offline in cash'
         };
@@ -786,6 +1288,40 @@ export function initAdminPayments() {
     document.getElementById('manual-pay-close-btn')?.addEventListener('click', closeManualPayModal);
     document.getElementById('manual-pay-cancel-btn')?.addEventListener('click', closeManualPayModal);
     document.getElementById('admin-manual-pay-form')?.addEventListener('submit', handleSaveManualPayment);
+
+    // Sub-Tabs: Payment Submissions vs Distance Conflict Reviews
+    const tabSubmissions = document.getElementById('admin-tab-submissions');
+    const tabDistance = document.getElementById('admin-tab-distance-reviews');
+    const viewSubmissions = document.getElementById('admin-payments-submissions-view');
+    const viewDistance = document.getElementById('admin-payments-distance-reviews-view');
+
+    tabSubmissions?.addEventListener('click', () => {
+        tabSubmissions.classList.add('active');
+        tabDistance?.classList.remove('active');
+        viewSubmissions?.classList.remove('d-none');
+        viewDistance?.classList.add('d-none');
+    });
+
+    tabDistance?.addEventListener('click', () => {
+        tabDistance?.classList.add('active');
+        tabSubmissions?.classList.remove('active');
+        viewDistance?.classList.remove('d-none');
+        viewSubmissions?.classList.add('d-none');
+        loadAdminDistanceReviews();
+    });
+
+    // Distance Reviews Filters & Search
+    document.getElementById('admin-dist-review-status-filter')?.addEventListener('change', loadAdminDistanceReviews);
+    document.getElementById('admin-dist-review-search')?.addEventListener('input', renderDistanceReviewsTable);
+
+    // Distance Decision Modal Triggers
+    document.getElementById('dist-review-close-btn')?.addEventListener('click', closeDistanceDecisionModal);
+    document.getElementById('dist-review-cancel-btn')?.addEventListener('click', closeDistanceDecisionModal);
+    document.getElementById('admin-dist-review-decision-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'admin-dist-review-decision-modal') closeDistanceDecisionModal();
+    });
+    const distConfirmBtn = document.getElementById('dist-review-confirm-submit-btn');
+    distConfirmBtn?.addEventListener('click', () => handleConfirmDistanceDecision(distConfirmBtn));
 
     // Initialize Wallet Credit Admin UI
     initAdminWalletCredit();

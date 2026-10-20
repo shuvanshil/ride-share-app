@@ -3643,5 +3643,393 @@ body {
     gap: 8px;
 }
 
+/* Phase 2: Daily Fee Breakdown and Under Review Panels */
+.fee-breakdown-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 14px;
+}
+
+.fee-breakdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.fee-breakdown-header h4 {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 700;
+    color: #0F172A;
+}
+
+.fee-daily-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 10px;
+    border-radius: 10px;
+    border-bottom: 1px solid #F1F5F9;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.fee-daily-row:hover, .fee-daily-row:active {
+    background: #F8FAFC;
+}
+
+.fee-daily-date {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0F172A;
+}
+
+.fee-daily-meta {
+    font-size: 0.78rem;
+    color: #64748B;
+    margin-top: 2px;
+}
+
+.fee-daily-right {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.fee-daily-amount {
+    font-size: 0.94rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.fee-badge-paid {
+    background: #DCFCE7;
+    color: #15803D;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.fee-badge-unpaid {
+    background: #FEE2E2;
+    color: #B91C1C;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.fee-badge-review {
+    background: #DBEAFE;
+    color: #1E40AF;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.fee-badge-partial {
+    background: #FEF3C7;
+    color: #B45309;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.fee-under-review-card {
+    background: #FFFFFF;
+    border: 1.5px solid #F1F5F9;
+    border-radius: 18px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+    margin-top: 16px;
+    overflow: hidden;
+}
+
+.fee-under-review-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    cursor: pointer;
+    background: #FFFFFF;
+    user-select: none;
+}
+
+.fee-under-review-clock-wrap {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.fee-under-review-title {
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: #0F172A;
+    margin: 0;
+    line-height: 1.25;
+}
+
+.fee-under-review-sub {
+    font-size: 0.82rem;
+    color: #64748B;
+    margin-top: 3px;
+    line-height: 1.2;
+}
+
+.fee-under-review-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.fee-under-review-body {
+    padding: 0 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.fee-under-review-item-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.fee-under-review-item-card:hover {
+    background: #F8FAFC;
+    border-color: #CBD5E1;
+}
+
+.fee-item-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.fee-item-calendar-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: #EFF6FF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.fee-item-date {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #0F172A;
+    line-height: 1.2;
+}
+
+.fee-item-amt-dist {
+    font-size: 0.86rem;
+    color: #64748B;
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fee-item-amt-dist strong {
+    color: #0F172A;
+    font-weight: 700;
+}
+
+.fee-item-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fee-item-badge-review {
+    background: #FEF3C7;
+    color: #B45309;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+/* Step 2 Collapsible Daily Breakdown (Mockup 3) */
+.fee-breakdown-subtext {
+    font-size: 0.82rem;
+    color: #64748B;
+    margin: 2px 0 12px;
+    line-height: 1.35;
+}
+
+.fee-breakdown-table {
+    display: flex;
+    flex-direction: column;
+}
+
+.fee-breakdown-table-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #F8FAFC;
+}
+
+.fee-breakdown-day-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.fee-breakdown-day-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0F172A;
+    line-height: 1.2;
+}
+
+.fee-breakdown-day-date {
+    font-size: 0.78rem;
+    color: #64748B;
+    margin-top: 2px;
+}
+
+.fee-breakdown-dist-col {
+    font-size: 0.86rem;
+    color: #64748B;
+    margin-left: auto;
+    margin-right: 18px;
+}
+
+.fee-breakdown-fee-col {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0F172A;
+    text-align: right;
+    min-width: 48px;
+}
+
+.fee-breakdown-total-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0 6px;
+    margin-top: 6px;
+    border-top: 1px solid #E2E8F0;
+    font-weight: 700;
+}
+
+.fee-overdue-alert-pill {
+    background: #FEF2F2;
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+}
+
+.fee-overdue-alert-pill svg {
+    flex-shrink: 0;
+}
+
+.fee-overdue-alert-title {
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #DC2626;
+    line-height: 1.2;
+}
+
+.fee-overdue-alert-desc {
+    font-size: 0.78rem;
+    color: #DC2626;
+    margin-top: 2px;
+}
+
+.fee-per-day-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #1D68FE;
+    text-decoration: none;
+    margin-top: 12px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.fee-per-day-link:hover {
+    text-decoration: underline;
+}
+
+.fee-batch-item {
+    background: #FFFFFF;
+    border: 1px solid #BFDBFE;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.fee-batch-item:last-child {
+    margin-bottom: 0;
+}
+
+.fee-calc-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10005;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.fee-calc-modal-card {
+    background: #FFFFFF;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 440px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 20px;
+    position: relative;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 380px) {
+    .fee-page-wrap {
+        padding: 10px 12px 24px;
+    }
+    .fee-card-amount {
+        font-size: 1.8rem;
+    }
+    .fee-sheet-card {
+        padding: 10px 14px 24px;
+    }
+}
+
 
 

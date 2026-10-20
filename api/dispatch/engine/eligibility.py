@@ -34,6 +34,10 @@ def check_eligibility(
     if not driver.is_approved:
         return False, "driver_not_approved", 0.0
 
+    # 2b. Driver fee restriction check
+    if getattr(driver, "is_fee_restricted", False) or (driver.metadata and driver.metadata.get("is_fee_restricted")):
+        return False, "driver_fee_restricted", 0.0
+
     # 3. State checks: Only WAITING passengers and IDLE / SHARE_OPEN / SHARE drivers are visible
     if passenger.state != "WAITING":
         return False, f"passenger_not_waiting_{passenger.state}", 0.0

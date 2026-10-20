@@ -38,6 +38,7 @@ class DriverEntry:
     version: int = 1
     vehicle_type: str = "auto"               # bike | auto
     is_approved: bool = True
+    is_fee_restricted: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property

@@ -4385,8 +4385,8 @@ KOLKATA_TZ = ZoneInfo("Asia/Kolkata")
 
 
 def _kolkata_day_str(moment: Optional[datetime] = None) -> str:
-    moment = moment or datetime.now(timezone.utc)
-    return moment.astimezone(KOLKATA_TZ).strftime("%Y-%m-%d")
+    from ..core.service_day import service_date_str
+    return service_date_str(moment)
 
 
 class DistanceReviewDecisionBody(BaseModel):
@@ -4626,6 +4626,24 @@ def decide_distance_review(
         })
 
     decision_transaction(transaction)
+    
+    try:
+        from ..core.fee_engine import reconcile_fee_adjustment
+        rev_snap = review_ref.get()
+        if rev_snap.exists:
+            rev_data = rev_snap.to_dict() or {}
+            d_id = str(rev_data.get("driverId") or "")
+            d_day = str(rev_data.get("dayKey") or "")
+            if d_id and d_day:
+                reconcile_fee_adjustment(
+                    db,
+                    uid=d_id,
+                    service_date_val=d_day,
+                    source="admin_distance_approval",
+                    ride_id=clean_id,
+                )
+    except Exception as fee_reconcile_err:
+        logger.warning("Failed to reconcile fee adjustment for ride %s: %s", clean_id, fee_reconcile_err)
 
     write_audit_log(
         admin_user,

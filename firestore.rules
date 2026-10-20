@@ -332,6 +332,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Platform Fee System Collections: Internal backend access only
+    match /driverFees/{docId} {
+      allow read, write: if false;
+    }
+    match /driverFeeWeeks/{docId} {
+      allow read, write: if false;
+    }
+    match /feeState/{docId} {
+      allow read, write: if false;
+    }
+    match /feePaymentBatches/{docId} {
+      allow read, write: if false;
+    }
+    match /feeReminders/{docId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

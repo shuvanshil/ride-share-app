@@ -79,7 +79,7 @@ class AdminPauseRequest(BaseModel):
 class AdminRecordManualPaymentRequest(BaseModel):
     driverId: str
     weekId: Optional[str] = None
-    amount: Optional[float] = DEFAULT_WEEKLY_FEE
+    amount: Optional[float] = None
     paymentMethod: Optional[str] = "cash"
     paymentReference: Optional[str] = "Offline Cash Payment"
 
@@ -964,36 +964,37 @@ def admin_record_manual_payment(
     driver_uid = body.driverId.strip()
     profile = _get_driver_profile(db, driver_uid)
 
-    week_info = get_payment_week_info()
-    target_week_id = (body.weekId or week_info["weekId"]).strip()
     admin_email = admin_user.get("email") or admin_user.get("uid", "admin")
-
     now = get_ist_now()
 
-    # Check for existing payment for driver and week
-    existing_docs = list(
-        db.collection("driverPayments")
-        .where("driverId", "==", driver_uid)
-        .where("weekId", "==", target_week_id)
-        .stream()
+    # Determine amount
+    from ..core.fee_engine import get_driver_fee_summary, allocate_manual_fee_payment
+    fee_summary = get_driver_fee_summary(db, driver_uid)
+    amount_inr = body.amount
+    if amount_inr is None or amount_inr <= 0:
+        amount_inr = fee_summary.get("payable_inr") or 0.0
+
+    if amount_inr <= 0:
+        raise ApiError("No outstanding balance to pay for this driver. Please enter a valid payment amount.", 400)
+
+    payment_method = (body.paymentMethod or "cash").strip().lower()
+    payment_ref = (body.paymentReference or "Offline / Cash Payment").strip()
+
+    # Allocate across daily fees
+    fee_alloc_res = allocate_manual_fee_payment(
+        db=db,
+        uid=driver_uid,
+        amount_inr=amount_inr,
+        admin_user=admin_user,
+        payment_method=payment_method,
+        payment_reference=payment_ref,
     )
 
-    doc_ref = None
-    for doc_snap in existing_docs:
-        d_data = doc_snap.to_dict() or {}
-        if d_data.get("status") == "approved":
-            raise ApiError(
-                f"Driver already has an approved payment record for week {target_week_id}.", 409
-            )
-        # If there is a pending submission for this week, update it. Declined records remain in history.
-        if d_data.get("status") in ("submitted", "under_review"):
-            doc_ref = doc_snap.reference
-
-
-    if not doc_ref:
-        doc_id = f"pymt_manual_{driver_uid}_{target_week_id}_{int(now.timestamp() * 1000)}"
-        doc_ref = db.collection("driverPayments").document(doc_id)
-
+    # Also keep legacy driverPayments record for compatibility with existing admin payment tables
+    week_info = get_payment_week_info()
+    target_week_id = (body.weekId or week_info["weekId"]).strip()
+    doc_id = f"pymt_manual_{driver_uid}_{target_week_id}_{int(now.timestamp() * 1000)}"
+    doc_ref = db.collection("driverPayments").document(doc_id)
 
     payload = {
         "driverId": driver_uid,
@@ -1001,19 +1002,19 @@ def admin_record_manual_payment(
         "driverPhone": profile.get("phone", ""),
         "weekId": target_week_id,
         "weekLabel": f"Week {target_week_id}",
-        "amount": body.amount or DEFAULT_WEEKLY_FEE,
+        "amount": amount_inr,
         "currency": "INR",
         "submittedAt": now,
         "status": "approved",
-        "paymentReference": (body.paymentReference or "Offline / Cash Payment").strip(),
-        "paymentMethod": (body.paymentMethod or "cash").strip().lower(),
+        "paymentReference": payment_ref,
+        "paymentMethod": payment_method,
         "isManualRecord": True,
         "verifiedAt": now,
         "verifiedByAdminUid": admin_user.get("uid"),
         "verifiedByAdminEmail": admin_email,
         "declineReason": None,
+        "batchId": fee_alloc_res.get("batchId"),
     }
-
     doc_ref.set(payload, merge=True)
 
     write_audit_log(
@@ -1023,16 +1024,18 @@ def admin_record_manual_payment(
         target_id=doc_ref.id,
         after={
             "driverId": driver_uid,
-            "weekId": target_week_id,
-            "amount": body.amount,
-            "paymentMethod": body.paymentMethod,
+            "amount": amount_inr,
+            "paymentMethod": payment_method,
+            "allocated_inr": fee_alloc_res.get("allocated_inr"),
+            "allocations": fee_alloc_res.get("allocations"),
         },
     )
 
     return {
         "ok": True,
-        "message": "Manual offline payment recorded and approved successfully.",
+        "message": f"Manual offline payment of ₹{amount_inr:.2f} recorded and allocated successfully.",
         "payment": _format_payment_doc(doc_ref.id, payload),
+        "feeAllocations": fee_alloc_res,
     }
 
 
@@ -1082,7 +1085,7 @@ def admin_approve_driver_payment(
         db,
         payment_data.get("driverId"),
         "approved",
-        payment_data.get("amount", DEFAULT_WEEKLY_FEE),
+        payment_data.get("amount", 0.0),
     )
 
     updated_data = {**payment_data, **updates}
@@ -1137,7 +1140,7 @@ def admin_decline_driver_payment(
         db,
         payment_data.get("driverId"),
         "declined",
-        payment_data.get("amount", DEFAULT_WEEKLY_FEE),
+        payment_data.get("amount", 0.0),
         reason=decline_reason,
     )
 
@@ -1234,6 +1237,31 @@ def admin_cleanup_payment_storage(
                 except Exception:
                     pass
 
+    # Also scan feePaymentBatches
+    try:
+        batch_docs = list(db.collection("feePaymentBatches").stream())
+        for b_snap in batch_docs:
+            b_val = b_snap.to_dict() or {}
+            raw_path = b_val.get("proofStoragePath") or b_val.get("screenshot_path")
+            if raw_path:
+                clean_path = raw_path.replace("gs://", "").lstrip("/")
+                if not clean_path.startswith("payment-proofs/"):
+                    try:
+                        b = bucket.blob(clean_path)
+                        if b.exists() and b.name not in [x.name for x in matched_blobs] and b.name not in [x.name for x in firestore_additional_blobs]:
+                            b_dt = b.time_created or b.updated
+                            b_utc = b_dt.astimezone(datetime.timezone.utc) if b_dt else None
+                            if start_dt and b_utc and b_utc < start_dt:
+                                continue
+                            if end_dt and b_utc and b_utc > end_dt:
+                                continue
+                            firestore_additional_blobs.append(b)
+                            total_bytes += (b.size or 0)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
     all_target_blobs = matched_blobs + firestore_additional_blobs
 
     deleted_count = 0
@@ -1301,13 +1329,35 @@ def admin_reset_all_driver_payments(
         doc.reference.delete()
         deleted_count += 1
 
+    fee_colls = ["driverFees", "driverFeeWeeks", "feeState", "feePaymentBatches", "feeReminders"]
+    for c_name in fee_colls:
+        try:
+            for d in db.collection(c_name).stream():
+                # Delete subcollections if any
+                try:
+                    if c_name == "driverFees":
+                        for sub_d in d.reference.collection("adjustments").stream():
+                            sub_d.reference.delete()
+                    elif c_name == "feePaymentBatches":
+                        for sub_d in d.reference.collection("allocations").stream():
+                            sub_d.reference.delete()
+                except Exception:
+                    pass
+                d.reference.delete()
+                deleted_count += 1
+        except Exception:
+            pass
+
     now = get_ist_now()
+    from ..core.service_day import service_date_str
+    curr_serv_d = service_date_str(now)
     week_info = get_payment_week_info()
     admin_email = admin_user.get("email") or admin_user.get("uid", "admin")
 
     # Set system-wide reset anchor so all drivers start fresh from current week with 0 dues
     reset_payload = {
         "resetAt": now,
+        "resetServiceDate": curr_serv_d,
         "resetWeekId": week_info["weekId"],
         "baseWeekId": week_info["weekId"],
         "baseMondayStart": week_info.get("mondayStart"),
@@ -1321,7 +1371,7 @@ def admin_reset_all_driver_payments(
         action="driver_payments_reset_all",
         target_type="driverPayments",
         target_id="ALL",
-        notes=f"Deleted {deleted_count} payment records. Reset all drivers to current week {week_info['weekId']} with zero dues.",
+        notes=f"Deleted {deleted_count} payment records. Reset all drivers to current service day {curr_serv_d} with zero dues.",
     )
 
     return {

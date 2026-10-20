@@ -637,8 +637,8 @@ def _build_driver_availability_updates(
 
 
 def _kolkata_day_str(moment: Optional[datetime] = None) -> str:
-    moment = moment or datetime.now(timezone.utc)
-    return moment.astimezone(KOLKATA_TZ).strftime("%Y-%m-%d")
+    from ..core.service_day import service_date_str
+    return service_date_str(moment)
 
 
 def _daily_stats_ref(db, uid: str, day: Optional[str] = None):
@@ -760,6 +760,13 @@ def _available_drivers(db, pickup_lat: float, pickup_lng: float, vehicle_type: s
             or _driver_type(driver) != vehicle_type
         ):
             continue
+        try:
+            from ..core.fee_engine import get_driver_fee_summary
+            fee_sum = get_driver_fee_summary(db, uid)
+            if (fee_sum.get("restriction") or {}).get("is_restricted"):
+                continue
+        except Exception:
+            pass
         candidates.append({
             "uid": uid,
             "distance": _haversine_km(pickup_lat, pickup_lng, float(lat), float(lng)),
@@ -1012,6 +1019,13 @@ async def create_passenger_ride(
                     drv_lng = drv_loc.get("lng")
                     if drv_lat is None or drv_lng is None:
                         continue
+                    try:
+                        from ..core.fee_engine import get_driver_fee_summary
+                        fee_sum = get_driver_fee_summary(db, driver_id)
+                        if (fee_sum.get("restriction") or {}).get("is_restricted"):
+                            continue
+                    except Exception:
+                        pass
 
                     pickup_dist_m = (
                         _haversine_km(
@@ -2123,12 +2137,17 @@ def transition_driver_ride(
                 try:
                     availability_status = "offline"
                     if str(profile.get("desiredAvailability") or "").strip().lower() != "offline" and str(profile.get("driverAvailability") or "").strip().lower() != "offline":
-                        availability_status = "searching"
+                        from ..core.fee_engine import get_driver_fee_summary
+                        fee_sum = get_driver_fee_summary(db, uid)
+                        if (fee_sum.get("restriction") or {}).get("is_restricted"):
+                            availability_status = "offline"
+                        else:
+                            availability_status = "searching"
                     update_driver_presence_synchronized(
                         db,
                         uid,
                         availability=availability_status,
-                        desired_availability=profile.get("desiredAvailability"),
+                        desired_availability="offline" if availability_status == "offline" else profile.get("desiredAvailability"),
                         profile_data={**profile, "uid": uid},
                     )
                     if availability_status == "searching":
@@ -2295,6 +2314,24 @@ def update_driver_availability(
             raise ApiError("Cannot go offline while a shared trip is active.", 400)
         if has_other_rides and status == "offline":
             raise ApiError("Cannot go offline while an active ride is in progress.", 400)
+        if status != "offline":
+            from ..core.fee_engine import get_driver_fee_summary
+            from ..core.service_day import paise_to_rupees_float
+            fee_sum = get_driver_fee_summary(db, uid)
+            res_info = fee_sum.get("restriction") or {}
+            if res_info.get("is_restricted"):
+                ov_paise = int(res_info.get("overdue_paise") or 0)
+                raise ApiError(
+                    res_info.get("reason") or "Your account is restricted due to overdue platform fees. Please pay now to go online.",
+                    403,
+                    details={
+                        "restricted": True,
+                        "reason": "fee_restricted",
+                        "overdue_paise": ov_paise,
+                        "overdue_inr": paise_to_rupees_float(ov_paise),
+                        "action": "pay_now",
+                    },
+                )
         _accumulate_online_seconds(db, uid, profile.get("lastSeenAt"), status != "offline")
         update_driver_presence_synchronized(
             db,
@@ -3375,6 +3412,29 @@ def accept_driver_ride(
         driver_type = _driver_type(profile)
         if driver_type not in RIDE_SERVICES:
             raise ApiError("Your registered vehicle type is missing.", 403)
+
+        try:
+            from ..core.fee_engine import get_driver_fee_summary
+            from ..core.service_day import paise_to_rupees_float
+            fee_sum = get_driver_fee_summary(db, uid)
+            res_info = fee_sum.get("restriction") or {}
+            if res_info.get("is_restricted"):
+                ov_paise = int(res_info.get("overdue_paise") or 0)
+                raise ApiError(
+                    res_info.get("reason") or "Cannot accept rides while account has overdue platform fees. Please pay now.",
+                    403,
+                    details={
+                        "restricted": True,
+                        "reason": "fee_restricted",
+                        "overdue_paise": ov_paise,
+                        "overdue_inr": paise_to_rupees_float(ov_paise),
+                        "action": "pay_now",
+                    },
+                )
+        except ApiError:
+            raise
+        except Exception as fee_err:
+            logger.warning(f"Error checking fee restriction for driver {uid}: {fee_err}")
 
         active = (
             db.collection("rides")
