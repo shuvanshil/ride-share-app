@@ -146,44 +146,32 @@
                     </svg>
                 </div>
                 <div id="fee-verified-details-body" class="mt-3">
-                    <div class="fee-breakdown-row">
-                        <span data-i18n="driver.this_week_fee">This week’s fee</span>
-                        <strong id="fee-verified-base-amount">₹0</strong>
-                    </div>
-                    <div id="fee-verified-overdue-row" class="fee-breakdown-row d-none">
-                        <span data-i18n="driver.previous_overdue">Previous overdue</span>
-                        <strong id="fee-verified-overdue-amount">₹0</strong>
+                    <div id="fee-verified-days-list">
+                        <!-- Populated dynamically by JS: Monday fee was: ₹X ... -->
                     </div>
                     <div class="fee-breakdown-row total-row">
-                        <span data-i18n="driver.total_paid">Total paid</span>
+                        <span data-i18n="driver.total_paid_so_far">Total paid so far</span>
                         <strong id="fee-verified-total-amount">₹0</strong>
                     </div>
-                    <div class="fee-success-pill">
+                    <div id="fee-verified-success-pill" class="fee-success-pill">
                         <div class="fee-success-pill-icon">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="20 6 9 17 4 12"></polyline>
                             </svg>
                         </div>
                         <div class="fee-success-pill-text">
-                            <strong data-i18n="driver.payment_successful">Payment successful</strong>
-                            <p class="mb-0" data-i18n="driver.account_active_thanks">Thank you for keeping your account active.</p>
+                            <strong id="fee-verified-pill-title" data-i18n="driver.payment_successful">Payment successful</strong>
+                            <p id="fee-verified-pill-sub" class="mb-0" data-i18n="driver.account_active_thanks">Thank you for keeping your account active.</p>
                         </div>
                     </div>
                 </div>
-            </section>
-
-            <!-- Next Week Card -->
-            <section id="fee-next-week-card" class="fee-next-week-card">
-                <h4 data-i18n="driver.next_week">Next week</h4>
-                <p id="fee-next-week-dates" class="mb-1">--</p>
-                <p id="fee-next-week-fee" class="mb-0">₹1 per km based on daily distance</p>
             </section>
 
             <!-- Recent Payments Card -->
             <section id="fee-recent-card" class="fee-recent-card">
                 <div class="fee-recent-header">
                     <h4 data-i18n="driver.recent_payments">Recent payments</h4>
-                    <button id="fee-recent-view-all-btn" type="button" class="fee-recent-view-all" data-i18n="driver.view_all_link">View all &gt;</button>
+                    <button id="fee-recent-view-all-btn" type="button" class="fee-recent-view-all" data-i18n="driver.view_all_link">View all</button>
                 </div>
                 <div id="fee-recent-list">
                     <!-- Populated by JS -->

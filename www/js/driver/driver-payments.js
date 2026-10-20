@@ -47,12 +47,11 @@ const verifiedSectionsWrap = document.getElementById('fee-verified-sections-wrap
 const verifiedDetailsToggle = document.getElementById('fee-verified-details-toggle');
 const verifiedDetailsBody = document.getElementById('fee-verified-details-body');
 const verifiedChevron = document.getElementById('fee-verified-chevron');
-const verifiedBaseAmount = document.getElementById('fee-verified-base-amount');
-const verifiedOverdueRow = document.getElementById('fee-verified-overdue-row');
-const verifiedOverdueAmount = document.getElementById('fee-verified-overdue-amount');
+const verifiedDaysList = document.getElementById('fee-verified-days-list');
 const verifiedTotalAmount = document.getElementById('fee-verified-total-amount');
-const nextWeekDates = document.getElementById('fee-next-week-dates');
-const nextWeekFee = document.getElementById('fee-next-week-fee');
+const verifiedSuccessPill = document.getElementById('fee-verified-success-pill');
+const verifiedPillTitle = document.getElementById('fee-verified-pill-title');
+const verifiedPillSub = document.getElementById('fee-verified-pill-sub');
 const recentList = document.getElementById('fee-recent-list');
 const recentViewAllBtn = document.getElementById('fee-recent-view-all-btn');
 
@@ -197,14 +196,21 @@ function renderPaymentPage(data) {
     currentBaseFee = baseFee;
     currentOverdueAmount = overdueAmount;
 
-    // Determine normalized current state: 'due', 'submitted', 'approved', 'declined', 'paused'
+    // Determine normalized current state: 'due', 'submitted', 'approved', 'declined', 'paused', 'no_dues'
+    const hasPaidFees = (data.fees || []).some(f => (f.paid_paise || 0) > 0);
+    const hasApprovedHistory = (data.history || []).some(h => h.status === 'approved');
+
     let state = 'due';
     if (isPaused) {
         state = 'paused';
     } else if (isRestricted) {
         state = 'declined';
     } else if (totalAmount === 0 && underReviewPaise === 0) {
-        state = 'approved';
+        if (hasPaidFees || hasApprovedHistory) {
+            state = 'approved';
+        } else {
+            state = 'no_dues';
+        }
     } else if (totalAmount === 0 && underReviewPaise > 0) {
         state = 'submitted';
     } else {
@@ -242,10 +248,10 @@ function renderPaymentPage(data) {
     // 5. Step 3: Payment verified
     renderStep3(state, data);
 
-    // 6. Verified Extensions
-    if (state === 'approved') {
+    // 6. Verified / Clear Extensions
+    if (state === 'approved' || state === 'no_dues') {
         verifiedSectionsWrap?.classList.remove('d-none');
-        renderVerifiedSections(data, baseFee, totalAmount, overdueAmount);
+        renderVerifiedSections(data, baseFee, totalAmount, overdueAmount, data.history || [], activeSub, state);
     } else {
         verifiedSectionsWrap?.classList.add('d-none');
     }
@@ -271,6 +277,15 @@ function renderStatusBanner(state, totalAmount, activeSub, pauseMessage) {
         `;
         bannerTitleEl.innerText = t('driver.status_verified_title', 'Payment verified');
         bannerDescEl.innerText = t('driver.status_verified_desc', "Your payment has been confirmed. You're all set for this week.");
+    } else if (state === 'no_dues') {
+        bannerEl.classList.add('verified');
+        bannerIconWrapEl.innerHTML = `
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+        `;
+        bannerTitleEl.innerText = t('driver.no_payment_due_title', 'No payment due');
+        bannerDescEl.innerText = t('driver.no_payment_due_sub', "You have no outstanding fees. You're all clear to drive.");
     } else if (state === 'submitted') {
         bannerEl.classList.add('submitted');
         bannerIconWrapEl.innerHTML = `
@@ -330,9 +345,9 @@ function renderTimelineNodes(state) {
         `;
     }
 
-    // Step 2: completed when approved, active (blue dot) otherwise
+    // Step 2: completed when approved or no_dues, active (blue dot) otherwise
     if (node2) {
-        if (state === 'approved') {
+        if (state === 'approved' || state === 'no_dues') {
             node2.className = 'fee-node completed';
             node2.innerHTML = `
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -345,9 +360,9 @@ function renderTimelineNodes(state) {
         }
     }
 
-    // Step 3: completed when approved, pending (gray ring) otherwise
+    // Step 3: completed when approved or no_dues, pending (gray ring) otherwise
     if (node3) {
-        if (state === 'approved') {
+        if (state === 'approved' || state === 'no_dues') {
             node3.className = 'fee-node completed';
             node3.innerHTML = `
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -370,6 +385,17 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, data) {
             <div class="fee-step-card green-bg">
                 <h4 class="fee-step-title">${t('driver.step_under_review', '2. Under review')}</h4>
                 <p class="fee-step-subtitle">${t('driver.step_review_done', 'Your payment has been reviewed.')}</p>
+            </div>
+        `;
+        return;
+    }
+
+    if (state === 'no_dues') {
+        // No dues / reset state
+        step2Wrapper.innerHTML = `
+            <div class="fee-step-card green-bg">
+                <h4 class="fee-step-title text-success">${t('driver.no_payment_due_step_title', '2. No payment due')}</h4>
+                <p class="fee-step-subtitle">${t('driver.no_payment_due_step_sub', 'You have no outstanding fees for this week.')}</p>
             </div>
         `;
         return;
@@ -589,6 +615,13 @@ function renderStep3(state, activeSub) {
                 <p class="fee-step-subtitle">${t('driver.paid_on', 'Paid on {date}', { date: paidTimeStr })}</p>
             </div>
         `;
+    } else if (state === 'no_dues') {
+        step3Wrapper.innerHTML = `
+            <div class="fee-step-card green-bg">
+                <h4 class="fee-step-title text-success">${t('driver.account_in_good_standing', '3. Account in good standing')}</h4>
+                <p class="fee-step-subtitle">${t('driver.account_in_good_standing_sub', 'Your account is active with zero pending fees.')}</p>
+            </div>
+        `;
     } else {
         step3Wrapper.innerHTML = `
             <div class="fee-step-card gray-bg">
@@ -599,16 +632,93 @@ function renderStep3(state, activeSub) {
     }
 }
 
-function renderVerifiedSections(duesSummary, baseFee, totalAmount, overdueAmount, history, activeSub) {
-    // Breakdown
-    if (verifiedBaseAmount) verifiedBaseAmount.innerText = `₹${baseFee}`;
-    if (verifiedTotalAmount) verifiedTotalAmount.innerText = `₹${totalAmount}`;
+function renderVerifiedSections(duesSummary, baseFee, totalAmount, overdueAmount, history = [], activeSub = null, state = 'approved') {
+    const fees = Array.isArray(duesSummary?.fees) ? duesSummary.fees : [];
+    const daysList = document.getElementById('fee-verified-days-list');
+    const totalAmountEl = document.getElementById('fee-verified-total-amount');
 
-    if (overdueAmount > 0) {
-        verifiedOverdueRow?.classList.remove('d-none');
-        if (verifiedOverdueAmount) verifiedOverdueAmount.innerText = `₹${overdueAmount}`;
+    // Build day fee map from duesSummary.fees
+    const feeByDate = {};
+    let totalPaidPaise = 0;
+    fees.forEach(f => {
+        if (f.serviceDate) {
+            feeByDate[f.serviceDate] = f;
+        }
+        totalPaidPaise += (f.paid_paise || 0);
+    });
+
+    function getDayInfo(dateStr) {
+        if (!dateStr || dateStr === '--') return { name: '', shortDate: '' };
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            const dayIdx = d.getDay();
+            const daysEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const opt = { day: 'numeric', month: 'short' };
+            return {
+                name: t(`driver.${dayKeys[dayIdx]}`, daysEn[dayIdx]),
+                shortDate: d.toLocaleDateString('en-US', opt)
+            };
+        }
+        return { name: dateStr, shortDate: '' };
+    }
+
+    let rowsHtml = '';
+    if (fees.length > 0) {
+        const sortedFees = [...fees].sort((a, b) => String(a.serviceDate || '').localeCompare(String(b.serviceDate || '')));
+        sortedFees.forEach(f => {
+            const info = getDayInfo(f.serviceDate);
+            const feeVal = ((f.fee_paise || 0) / 100);
+            const feeFormatted = (f.fee_paise % 100 === 0) ? (f.fee_paise / 100).toString() : feeVal.toFixed(2);
+            const dayLabel = t('driver.day_fee_was', '{day} fee was', { day: info.name });
+            rowsHtml += `
+                <div class="fee-breakdown-row">
+                    <span>${dayLabel}</span>
+                    <strong>₹${feeFormatted}</strong>
+                </div>
+            `;
+        });
     } else {
-        verifiedOverdueRow?.classList.add('d-none');
+        const now = new Date();
+        const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
+        const mon = new Date(now);
+        mon.setDate(now.getDate() - dayOfWeek);
+        mon.setHours(0, 0, 0, 0);
+
+        const daysEn = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+        for (let i = 0; i <= dayOfWeek; i++) {
+            const dName = t(`driver.${dayKeys[i]}`, daysEn[i]);
+            const dayLabel = t('driver.day_fee_was', '{day} fee was', { day: dName });
+            rowsHtml += `
+                <div class="fee-breakdown-row">
+                    <span>${dayLabel}</span>
+                    <strong>₹0</strong>
+                </div>
+            `;
+        }
+    }
+
+    if (daysList) {
+        daysList.innerHTML = rowsHtml;
+    }
+
+    const totalPaidInr = (totalPaidPaise % 100 === 0) ? (totalPaidPaise / 100).toString() : (totalPaidPaise / 100).toFixed(2);
+    if (totalAmountEl) {
+        totalAmountEl.innerText = `₹${totalPaidInr}`;
+    }
+
+    // Success pill / All clear pill
+    const pillTitle = document.getElementById('fee-verified-pill-title');
+    const pillSub = document.getElementById('fee-verified-pill-sub');
+    if (totalPaidPaise > 0 || state === 'approved') {
+        if (pillTitle) pillTitle.innerText = t('driver.payment_successful', 'Payment successful');
+        if (pillSub) pillSub.innerText = t('driver.account_active_thanks', 'Thank you for keeping your account active.');
+    } else {
+        if (pillTitle) pillTitle.innerText = t('driver.all_clear_title', 'All clear');
+        if (pillSub) pillSub.innerText = t('driver.all_clear_sub', 'Your account is active and in good standing.');
     }
 
     // Toggle Payment details
@@ -622,18 +732,9 @@ function renderVerifiedSections(duesSummary, baseFee, totalAmount, overdueAmount
         };
     }
 
-    // Next week card
-    const upcoming = duesSummary.upcomingWeek || {};
-    if (nextWeekDates && upcoming.dueDateLabel) {
-        nextWeekDates.innerText = `Due: ${upcoming.dueDateLabel}`;
-    }
-    if (nextWeekFee && upcoming.amount) {
-        nextWeekFee.innerText = `Expected fee: ₹${upcoming.amount}`;
-    }
-
     // Recent payments list (up to 3 items)
     if (recentList) {
-        const approvedHistory = history.filter(h => h.status === 'approved');
+        const approvedHistory = (Array.isArray(history) ? history : []).filter(h => h.status === 'approved');
         if (!approvedHistory.length) {
             recentList.innerHTML = `<p class="small text-muted mb-0">No past verified payments recorded.</p>`;
         } else {
@@ -1124,43 +1225,72 @@ async function handleScreenshotSelected(event) {
 // -------------------------------------------------------------
 // History Modal
 // -------------------------------------------------------------
+let historyDisplayLimit = 10;
+
+function renderHistoryModalList(history) {
+    const fullHistoryList = document.getElementById('py-full-history-list');
+    if (!fullHistoryList) return;
+
+    const historyArr = Array.isArray(history) ? history : [];
+    if (!historyArr.length) {
+        fullHistoryList.innerHTML = `<p class="text-center text-muted py-4">${t('driver.no_payment_records', 'No payment records found.')}</p>`;
+        return;
+    }
+
+    const visibleItems = historyArr.slice(0, historyDisplayLimit);
+    let html = visibleItems.map(item => {
+        let badgeClass = 'text-warning';
+        let statusLabel = t('driver.step_under_review', 'Under review');
+        if (item.status === 'approved') {
+            badgeClass = 'text-success';
+            statusLabel = t('driver.step_payment_verified', 'Payment verified');
+        } else if (item.status === 'declined') {
+            badgeClass = 'text-danger';
+            statusLabel = t('driver.status_declined', 'Payment declined');
+        }
+
+        const subDate = item.submittedAt ? formatFullDateTime(item.submittedAt) : '--';
+        return `
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                <div>
+                    <strong class="d-block text-dark" style="font-size: 0.9rem;">${item.weekLabel || item.weekId}</strong>
+                    <small class="text-muted">${subDate}</small>
+                    ${item.declineReason ? `<div class="small text-danger mt-1">${t('driver.reason', 'Reason')}: ${item.declineReason}</div>` : ''}
+                </div>
+                <div class="text-end">
+                    <strong class="d-block" style="font-size: 0.95rem;">₹${item.amount || 0}</strong>
+                    <span class="small fw-bold ${badgeClass}">${statusLabel}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (historyArr.length > historyDisplayLimit) {
+        html += `
+            <div class="text-center pt-3 pb-2" id="py-load-more-wrap">
+                <button id="py-load-more-btn" type="button" class="btn btn-outline-primary btn-sm px-4 fw-bold">
+                    ${t('driver.load_more_10', 'Load more 10')}
+                </button>
+            </div>
+        `;
+    }
+
+    fullHistoryList.innerHTML = html;
+
+    const loadMoreBtn = document.getElementById('py-load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => {
+            historyDisplayLimit += 10;
+            renderHistoryModalList(historyArr);
+        });
+    }
+}
+
 function openHistoryModal() {
     if (!currentPaymentData) return;
     const history = currentPaymentData.history || [];
-
-    if (fullHistoryList) {
-        if (!history.length) {
-            fullHistoryList.innerHTML = `<p class="text-center text-muted py-4">${t('driver.no_payment_records', 'No payment records found.')}</p>`;
-        } else {
-            fullHistoryList.innerHTML = history.map(item => {
-                let badgeClass = 'text-warning';
-                let statusLabel = t('driver.step_under_review', 'Under review');
-                if (item.status === 'approved') {
-                    badgeClass = 'text-success';
-                    statusLabel = t('driver.step_payment_verified', 'Payment verified');
-                } else if (item.status === 'declined') {
-                    badgeClass = 'text-danger';
-                    statusLabel = t('driver.status_declined', 'Payment declined');
-                }
-
-                const subDate = item.submittedAt ? formatFullDateTime(item.submittedAt) : '--';
-                return `
-                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                        <div>
-                            <strong class="d-block text-dark" style="font-size: 0.9rem;">${item.weekLabel || item.weekId}</strong>
-                            <small class="text-muted">${subDate}</small>
-                            ${item.declineReason ? `<div class="small text-danger mt-1">${t('driver.reason', 'Reason')}: ${item.declineReason}</div>` : ''}
-                        </div>
-                        <div class="text-end">
-                            <strong class="d-block" style="font-size: 0.95rem;">₹${item.amount || 0}</strong>
-                            <span class="small fw-bold ${badgeClass}">${statusLabel}</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-    }
-
+    historyDisplayLimit = 10;
+    renderHistoryModalList(history);
     historyModal?.classList.remove('d-none');
 }
 

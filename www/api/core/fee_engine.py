@@ -517,6 +517,70 @@ def get_driver_fee_summary(
         and (overdue_paise > 0 or any(_to_ist_datetime(f["due_at"]) == next_deadline_dt for f in fees_list if f["remaining_paise"] > 0))
     )
 
+    # Complete payment history list for driver
+    payment_history: List[Dict[str, Any]] = []
+    try:
+        all_batch_snaps = list(
+            db.collection(COLLECTION_FEE_PAYMENT_BATCHES)
+            .where("uid", "==", uid)
+            .stream()
+        )
+        for b_snap in all_batch_snaps:
+            b_data = b_snap.to_dict() or {}
+            b_id = b_snap.id
+            alloc_snaps = list(b_snap.reference.collection("allocations").stream())
+            b_status = str(b_data.get("status") or "PENDING").upper()
+            alloc_statuses = [str((a.to_dict() or {}).get("status") or "").upper() for a in alloc_snaps]
+
+            final_status = "submitted"
+            if alloc_statuses and all(s == "APPROVED" for s in alloc_statuses):
+                final_status = "approved"
+            elif any(s == "DECLINED" for s in alloc_statuses):
+                final_status = "declined"
+            elif b_status == "DECIDED":
+                final_status = "approved"
+
+            decline_reasons = [(a.to_dict() or {}).get("note") for a in alloc_snaps if (a.to_dict() or {}).get("note")]
+
+            payment_history.append({
+                "id": b_id,
+                "batchId": b_id,
+                "weekLabel": f"Fee Payment #{b_id[:6]}",
+                "weekId": b_id,
+                "amount": paise_to_rupees_float(int(b_data.get("total_paise") or 0)),
+                "amount_paise": int(b_data.get("total_paise") or 0),
+                "status": final_status,
+                "submittedAt": b_data.get("created_at"),
+                "verifiedAt": b_data.get("decided_at") or b_data.get("created_at"),
+                "declineReason": decline_reasons[0] if decline_reasons else None,
+                "proofDownloadUrl": b_data.get("proofDownloadUrl"),
+            })
+    except Exception:
+        pass
+
+    try:
+        legacy_snaps = list(
+            db.collection("driverPayments")
+            .where("driverId", "==", uid)
+            .stream()
+        )
+        for l_snap in legacy_snaps:
+            l_data = l_snap.to_dict() or {}
+            payment_history.append({
+                "id": l_snap.id,
+                "weekLabel": l_data.get("weekLabel") or l_data.get("weekId") or "Weekly Fee",
+                "weekId": l_data.get("weekId"),
+                "amount": float(l_data.get("amount") or 0),
+                "status": l_data.get("status", "approved"),
+                "submittedAt": l_data.get("submittedAt"),
+                "verifiedAt": l_data.get("verifiedAt"),
+                "declineReason": l_data.get("declineReason"),
+            })
+    except Exception:
+        pass
+
+    payment_history.sort(key=lambda x: str(x.get("submittedAt") or ""), reverse=True)
+
     deadline_label = "Sunday 11:59 PM IST"
     deadline_modal_obj = {
         "show": show_deadline_modal,
@@ -551,6 +615,7 @@ def get_driver_fee_summary(
         "fees": fees_list,
         "under_review_batches": under_review_batches,
         "under_review_items": under_review_items,
+        "history": payment_history,
     }
 
 
