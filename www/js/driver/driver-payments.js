@@ -818,6 +818,7 @@ function renderDailyBreakdown(fees) {
             const d = row.getAttribute('data-date');
             if (d && d !== '--') openCalculationModal(d);
         });
+    });
 }
 
 // -------------------------------------------------------------
