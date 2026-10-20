@@ -343,6 +343,7 @@ def reconcile_fee_adjustment(
                 "billed_distance_m": new_billed_m,
                 "distance_km": dist_km,
                 "remaining_paise": new_rem,
+                "status": fee_status(new_fee_paise, p_paise, r_paise),
                 "updated_at": get_ist_now().isoformat(),
             })
             _update_week_aggregate_tx(txn, db, uid, w_id, fee_paise_delta=delta_paise)
@@ -530,31 +531,59 @@ def get_driver_fee_summary(
             b_id = b_snap.id
             alloc_snaps = list(b_snap.reference.collection("allocations").stream())
             b_status = str(b_data.get("status") or "PENDING").upper()
-            alloc_statuses = [str((a.to_dict() or {}).get("status") or "").upper() for a in alloc_snaps]
+            if alloc_snaps:
+                for a_s in alloc_snaps:
+                    a_data = a_s.to_dict() or {}
+                    a_id = a_s.id
+                    a_fee_id = a_data.get("fee_id") or a_id
+                    a_raw = str(a_data.get("status") or "PENDING").upper()
+                    if a_raw == "APPROVED":
+                        alloc_status = "approved"
+                    elif a_raw == "DECLINED":
+                        alloc_status = "declined"
+                    elif b_status == "DECIDED":
+                        alloc_status = "approved"
+                    else:
+                        alloc_status = "submitted"
 
-            final_status = "submitted"
-            if alloc_statuses and all(s == "APPROVED" for s in alloc_statuses):
-                final_status = "approved"
-            elif any(s == "DECLINED" for s in alloc_statuses):
-                final_status = "declined"
-            elif b_status == "DECIDED":
-                final_status = "approved"
+                    s_date_str = a_data.get("serviceDate") or ""
+                    try:
+                        s_dt = _to_date(s_date_str)
+                        week_label = f"Daily Fee ({s_dt.strftime('%d %b %Y')})"
+                    except Exception:
+                        week_label = f"Daily Fee ({s_date_str})" if s_date_str else f"Fee Payment #{b_id[:6]}"
 
-            decline_reasons = [(a.to_dict() or {}).get("note") for a in alloc_snaps if (a.to_dict() or {}).get("note")]
-
-            payment_history.append({
-                "id": b_id,
-                "batchId": b_id,
-                "weekLabel": f"Fee Payment #{b_id[:6]}",
-                "weekId": b_id,
-                "amount": paise_to_rupees_float(int(b_data.get("total_paise") or 0)),
-                "amount_paise": int(b_data.get("total_paise") or 0),
-                "status": final_status,
-                "submittedAt": b_data.get("created_at"),
-                "verifiedAt": b_data.get("decided_at") or b_data.get("created_at"),
-                "declineReason": decline_reasons[0] if decline_reasons else None,
-                "proofDownloadUrl": b_data.get("proofDownloadUrl"),
-            })
+                    alloc_amt_paise = int(a_data.get("amount_paise") or 0)
+                    payment_history.append({
+                        "id": f"{b_id}_{a_fee_id}",
+                        "batchId": b_id,
+                        "feeId": a_fee_id,
+                        "serviceDate": s_date_str,
+                        "weekLabel": week_label,
+                        "weekId": s_date_str or b_id,
+                        "amount": paise_to_rupees_float(alloc_amt_paise),
+                        "amount_paise": alloc_amt_paise,
+                        "status": alloc_status,
+                        "submittedAt": a_data.get("created_at") or b_data.get("created_at"),
+                        "verifiedAt": a_data.get("decided_at") or b_data.get("decided_at") or b_data.get("created_at"),
+                        "declineReason": a_data.get("note"),
+                        "proofDownloadUrl": b_data.get("proofDownloadUrl"),
+                    })
+            else:
+                b_amt = paise_to_rupees_float(int(b_data.get("total_paise") or 0))
+                payment_history.append({
+                    "id": b_id,
+                    "batchId": b_id,
+                    "weekLabel": f"Fee Payment #{b_id[:6]}",
+                    "weekId": b_id,
+                    "amount": b_amt,
+                    "amount_paise": int(b_data.get("total_paise") or 0),
+                    "status": "approved" if b_status == "DECIDED" else "submitted",
+                    "submittedAt": b_data.get("created_at"),
+                    "verifiedAt": b_data.get("decided_at") or b_data.get("created_at"),
+                    "declineReason": None,
+                    "proofDownloadUrl": b_data.get("proofDownloadUrl"),
+                })
     except Exception:
         pass
 
