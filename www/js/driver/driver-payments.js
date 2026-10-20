@@ -42,16 +42,25 @@ const step1Dates = document.getElementById('fee-step-1-dates');
 const step2Wrapper = document.getElementById('fee-step-2-wrapper');
 const step3Wrapper = document.getElementById('fee-step-3-wrapper');
 
-// Verified Extensions
-const verifiedSectionsWrap = document.getElementById('fee-verified-sections-wrap');
-const verifiedDetailsToggle = document.getElementById('fee-verified-details-toggle');
-const verifiedDetailsBody = document.getElementById('fee-verified-details-body');
-const verifiedChevron = document.getElementById('fee-verified-chevron');
-const verifiedDaysList = document.getElementById('fee-verified-days-list');
-const verifiedTotalAmount = document.getElementById('fee-verified-total-amount');
-const verifiedSuccessPill = document.getElementById('fee-verified-success-pill');
-const verifiedPillTitle = document.getElementById('fee-verified-pill-title');
-const verifiedPillSub = document.getElementById('fee-verified-pill-sub');
+// Unified Payment Details & Recent Elements
+const paymentDetailsCard = document.getElementById('fee-payment-details-card');
+const paymentDetailsToggle = document.getElementById('fee-payment-details-toggle');
+const paymentDetailsBody = document.getElementById('fee-payment-details-body');
+const paymentDetailsChevron = document.getElementById('fee-payment-details-chevron');
+const weekRangeHeader = document.getElementById('fee-week-range-header');
+const weekDaysList = document.getElementById('fee-week-days-list');
+const summaryTotalPaid = document.getElementById('fee-summary-total-paid');
+const summaryUnderReviewRow = document.getElementById('fee-summary-under-review-row');
+const summaryUnderReviewLabel = document.getElementById('fee-summary-under-review-label');
+const summaryUnderReviewAmount = document.getElementById('fee-summary-under-review-amount');
+const summaryRemaining = document.getElementById('fee-summary-remaining');
+const lastVerifiedCard = document.getElementById('fee-last-verified-card');
+const lastVerifiedText = document.getElementById('fee-last-verified-text');
+const underReviewCard = document.getElementById('fee-under-review-card');
+const underReviewCardToggle = document.getElementById('fee-under-review-card-toggle');
+const underReviewCardTitle = document.getElementById('fee-under-review-card-title');
+const underReviewCardBody = document.getElementById('fee-under-review-card-body');
+const underReviewCardChevron = document.getElementById('fee-under-review-card-chevron');
 const recentList = document.getElementById('fee-recent-list');
 const recentViewAllBtn = document.getElementById('fee-recent-view-all-btn');
 
@@ -93,14 +102,91 @@ function formatErrorMessage(errData, fallback = 'An error occurred') {
     return fallback;
 }
 
-// Format date helper
+// Format date helpers
+function parseYMD(dateStr) {
+    if (!dateStr) return null;
+    const parts = String(dateStr).slice(0, 10).split('-');
+    if (parts.length === 3) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    }
+    return new Date(dateStr);
+}
+
 function formatShortDate(dateStr) {
     if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
+    const d = parseYMD(dateStr);
+    if (!d || isNaN(d.getTime())) return dateStr;
     const day = d.getDate();
     const month = d.toLocaleString('en-US', { month: 'short' });
     return `${day} ${month}`;
+}
+
+function formatShortMonth(dateStr) {
+    if (!dateStr) return '';
+    const d = parseYMD(dateStr);
+    if (!d || isNaN(d.getTime())) return '';
+    return d.toLocaleString('en-US', { month: 'short' });
+}
+
+function getWeekDaysIST(serverNowStr) {
+    let now;
+    if (serverNowStr) {
+        now = new Date(serverNowStr);
+    } else {
+        now = new Date();
+    }
+    // Shift to IST (UTC+05:30)
+    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istMs = utcMs + (5.5 * 3600 * 1000);
+    const istDate = new Date(istMs);
+
+    const year = istDate.getFullYear();
+    const month = istDate.getMonth();
+    const date = istDate.getDate();
+    const dayOfWeek = istDate.getDay(); // 0 is Sun, 1 is Mon...
+    const monDiff = (dayOfWeek + 6) % 7; // Mon is 0
+
+    const days = [];
+    const shortDaysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const shortDayKeys = ['mon_short', 'tue_short', 'wed_short', 'thu_short', 'fri_short', 'sat_short', 'sun_short'];
+    const fullDayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(year, month, date - monDiff + i);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+        days.push({
+            dateStr: dateStr,
+            year: yyyy,
+            month: d.getMonth(),
+            dayNum: d.getDate(),
+            shortDayKey: shortDayKeys[i],
+            fullDayKey: fullDayKeys[i],
+            defaultShortName: shortDaysEn[i]
+        });
+    }
+    return days;
+}
+
+function isDayClosedIST(dateStr, serverNowStr) {
+    if (!dateStr) return false;
+    let now;
+    if (serverNowStr) {
+        now = new Date(serverNowStr);
+    } else {
+        now = new Date();
+    }
+    // A service day for dateStr closes at 20:00:00 IST on that date (14:30:00 UTC)
+    const closeTimeUtc = new Date(`${dateStr}T14:30:00.000Z`).getTime();
+    return now.getTime() >= closeTimeUtc;
+}
+
+function formatDayWithDate(dayObj) {
+    const shortDayName = t(`driver.${dayObj.shortDayKey}`, dayObj.defaultShortName);
+    const shortMonth = formatShortMonth(dayObj.dateStr);
+    return `${shortDayName}, ${dayObj.dayNum} ${shortMonth}`;
 }
 
 function formatFullDateTime(dateStr) {
@@ -226,41 +312,48 @@ function renderPaymentPage(data) {
     // 2. Render Timeline Axis Nodes
     renderTimelineNodes(state);
 
-    // 3. Step 1: This week
-    if (step1Dates) {
-        if (data.week_label) {
-            step1Dates.innerText = data.week_label;
-        } else {
-            const now = new Date();
-            const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
-            const mon = new Date(now);
-            mon.setDate(now.getDate() - dayOfWeek);
-            const sun = new Date(mon);
-            sun.setDate(mon.getDate() + 6);
-            const opt = { day: 'numeric', month: 'short' };
-            step1Dates.innerText = `${mon.toLocaleDateString('en-US', opt)} – ${sun.toLocaleDateString('en-US', opt)}`;
+    // 3. Step 1: Remaining / This week range
+    const weekDays = getWeekDaysIST(data.server_now);
+    const monDay = weekDays[0];
+    const sunDay = weekDays[6];
+    const weekRangeStr = `${formatShortDate(monDay.dateStr)} – ${formatShortDate(sunDay.dateStr)}`;
+    const weekSubtext = t('driver.this_week_range', 'This week ({range})', { range: weekRangeStr });
+
+    const closedUnpaidDates = [];
+    weekDays.forEach(day => {
+        if (isDayClosedIST(day.dateStr, data.server_now)) {
+            const fee = (data.fees || []).find(f => f.serviceDate === day.dateStr);
+            if (fee && (fee.remaining_paise || 0) > 0) {
+                closedUnpaidDates.push(day.dateStr);
+            }
         }
+    });
+
+    let remainingHeading = '';
+    if (closedUnpaidDates.length > 0) {
+        const firstD = closedUnpaidDates[0];
+        const lastD = closedUnpaidDates[closedUnpaidDates.length - 1];
+        const rangeStr = firstD === lastD ? formatShortDate(firstD) : `${formatShortDate(firstD)} – ${formatShortDate(lastD)}`;
+        remainingHeading = t('driver.remaining_range', 'Remaining: {range}', { range: rangeStr });
+    } else {
+        remainingHeading = t('driver.remaining_none', 'Remaining: None');
     }
 
-    // 4. Step 2: Under review
+    const step1Title = document.getElementById('fee-step-1-title');
+    if (step1Title) step1Title.innerText = `1. ${remainingHeading}`;
+    if (step1Dates) step1Dates.innerText = weekSubtext;
+
+    // 4. Step 2: Under review / Due / Completed
     renderStep2(state, totalAmount, overdueAmount, baseFee, data);
 
     // 5. Step 3: Payment verified
     renderStep3(state, data);
 
-    // 6. Verified / Clear Extensions
-    if (state === 'approved' || state === 'no_dues') {
-        verifiedSectionsWrap?.classList.remove('d-none');
-        renderVerifiedSections(data, baseFee, totalAmount, overdueAmount, data.history || [], activeSub, state);
-    } else {
-        verifiedSectionsWrap?.classList.add('d-none');
-    }
+    // 6. Render Unified Payment Details (shown on ALL states)
+    renderUnifiedPaymentDetails(data, weekDays);
 
-    // 7. Render Under Review Panel (collapsible, hidden if 0)
-    renderUnderReviewPanel(data);
-
-    // 8. Render Daily Breakdown
-    renderDailyBreakdown(data.fees || []);
+    // 7. Render Recent Payments
+    renderRecentPayments(data.history || []);
 }
 
 function renderStatusBanner(state, totalAmount, activeSub, pauseMessage) {
@@ -632,294 +725,237 @@ function renderStep3(state, activeSub) {
     }
 }
 
-function renderVerifiedSections(duesSummary, baseFee, totalAmount, overdueAmount, history = [], activeSub = null, state = 'approved') {
-    const fees = Array.isArray(duesSummary?.fees) ? duesSummary.fees : [];
-    const daysList = document.getElementById('fee-verified-days-list');
-    const totalAmountEl = document.getElementById('fee-verified-total-amount');
+// -------------------------------------------------------------
+// Unified Payment Details Section (Mockup Matching)
+// -------------------------------------------------------------
+function renderUnifiedPaymentDetails(data, weekDays) {
+    const listEl = document.getElementById('fee-week-days-list');
+    const weekHeaderEl = document.getElementById('fee-week-range-header');
+    const summaryTotalPaid = document.getElementById('fee-summary-total-paid');
+    const summaryUnderReviewRow = document.getElementById('fee-summary-under-review-row');
+    const summaryUnderReviewLabel = document.getElementById('fee-summary-under-review-label');
+    const summaryUnderReviewAmount = document.getElementById('fee-summary-under-review-amount');
+    const summaryRemaining = document.getElementById('fee-summary-remaining');
+    const lastVerifiedCard = document.getElementById('fee-last-verified-card');
+    const lastVerifiedText = document.getElementById('fee-last-verified-text');
+    const underReviewCard = document.getElementById('fee-under-review-card');
+    const underReviewCardTitle = document.getElementById('fee-under-review-card-title');
+    const underReviewCardBody = document.getElementById('fee-under-review-card-body');
 
-    // Build day fee map from duesSummary.fees
-    const feeByDate = {};
-    let totalPaidPaise = 0;
-    fees.forEach(f => {
-        if (f.serviceDate) {
-            feeByDate[f.serviceDate] = f;
-        }
-        totalPaidPaise += (f.paid_paise || 0);
-    });
+    if (!listEl) return;
 
-    function getDayInfo(dateStr) {
-        if (!dateStr || dateStr === '--') return { name: '', shortDate: '' };
-        const parts = dateStr.split('-');
-        if (parts.length === 3) {
-            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-            const dayIdx = d.getDay();
-            const daysEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-            const opt = { day: 'numeric', month: 'short' };
-            return {
-                name: t(`driver.${dayKeys[dayIdx]}`, daysEn[dayIdx]),
-                shortDate: d.toLocaleDateString('en-US', opt)
-            };
-        }
-        return { name: dateStr, shortDate: '' };
+    const monDay = weekDays[0];
+    const sunDay = weekDays[6];
+    const weekRangeStr = `${formatShortDate(monDay.dateStr)} – ${formatShortDate(sunDay.dateStr)}`;
+    if (weekHeaderEl) {
+        weekHeaderEl.innerText = t('driver.this_week_range', 'This week ({range})', { range: weekRangeStr });
     }
 
-    let rowsHtml = '';
-    if (fees.length > 0) {
-        const sortedFees = [...fees].sort((a, b) => String(a.serviceDate || '').localeCompare(String(b.serviceDate || '')));
-        sortedFees.forEach(f => {
-            const info = getDayInfo(f.serviceDate);
-            const feeVal = ((f.fee_paise || 0) / 100);
-            const feeFormatted = (f.fee_paise % 100 === 0) ? (f.fee_paise / 100).toString() : feeVal.toFixed(2);
-            const dayLabel = t('driver.day_fee_was', '{day} fee was', { day: info.name });
-            rowsHtml += `
-                <div class="fee-breakdown-row">
-                    <span>${dayLabel}</span>
-                    <strong>₹${feeFormatted}</strong>
-                </div>
-            `;
-        });
-    } else {
-        const now = new Date();
-        const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
-        const mon = new Date(now);
-        mon.setDate(now.getDate() - dayOfWeek);
-        mon.setHours(0, 0, 0, 0);
+    // 1. Generate 7 day rows
+    let html = '';
+    const fees = Array.isArray(data?.fees) ? data.fees : [];
 
-        const daysEn = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    weekDays.forEach(day => {
+        const isClosed = isDayClosedIST(day.dateStr, data.server_now);
+        const dayLabel = formatDayWithDate(day);
+        const fee = fees.find(f => f.serviceDate === day.dateStr);
 
-        for (let i = 0; i <= dayOfWeek; i++) {
-            const dName = t(`driver.${dayKeys[i]}`, daysEn[i]);
-            const dayLabel = t('driver.day_fee_was', '{day} fee was', { day: dName });
-            rowsHtml += `
-                <div class="fee-breakdown-row">
-                    <span>${dayLabel}</span>
-                    <strong>₹0</strong>
-                </div>
-            `;
-        }
-    }
+        let distText = '—';
+        let badgeHtml = '';
+        let amountText = '—';
+        let isClickable = false;
 
-    if (daysList) {
-        daysList.innerHTML = rowsHtml;
-    }
+        if (!isClosed) {
+            // Not closed yet (e.g. today before 8PM or future days of week)
+            badgeHtml = `<span class="badge" style="background: #F1F5F9; color: #64748B; font-size: 0.74rem; font-weight: 600; border-radius: 9999px; padding: 4px 9px;">${t('driver.not_due_yet', 'Not due yet')}</span>`;
+        } else if (fee) {
+            const distKm = typeof fee.distance_km === 'number' ? fee.distance_km.toFixed(1) : (fee.distance_km || '0.0');
+            distText = `${distKm} km`;
+            isClickable = true;
 
-    const totalPaidInr = (totalPaidPaise % 100 === 0) ? (totalPaidPaise / 100).toString() : (totalPaidPaise / 100).toFixed(2);
-    if (totalAmountEl) {
-        totalAmountEl.innerText = `₹${totalPaidInr}`;
-    }
+            const isPaid = (fee.status || '').toUpperCase() === 'PAID' || ((fee.remaining_paise || 0) === 0 && (fee.review_paise || 0) === 0 && (fee.paid_paise || 0) > 0);
+            const isUnderReview = (fee.status || '').toUpperCase() === 'UNDER_REVIEW' || (fee.review_paise || 0) > 0;
+            const feeInr = Math.round((fee.fee_paise || 0) / 100);
 
-    // Success pill / All clear pill
-    const pillTitle = document.getElementById('fee-verified-pill-title');
-    const pillSub = document.getElementById('fee-verified-pill-sub');
-    if (totalPaidPaise > 0 || state === 'approved') {
-        if (pillTitle) pillTitle.innerText = t('driver.payment_successful', 'Payment successful');
-        if (pillSub) pillSub.innerText = t('driver.account_active_thanks', 'Thank you for keeping your account active.');
-    } else {
-        if (pillTitle) pillTitle.innerText = t('driver.all_clear_title', 'All clear');
-        if (pillSub) pillSub.innerText = t('driver.all_clear_sub', 'Your account is active and in good standing.');
-    }
-
-    // Toggle Payment details
-    if (verifiedDetailsToggle && verifiedDetailsBody) {
-        verifiedDetailsToggle.onclick = () => {
-            const isHidden = verifiedDetailsBody.classList.contains('d-none');
-            verifiedDetailsBody.classList.toggle('d-none', !isHidden);
-            if (verifiedChevron) {
-                verifiedChevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
-            }
-        };
-    }
-
-    // Recent payments list (up to 3 items)
-    if (recentList) {
-        const approvedHistory = (Array.isArray(history) ? history : []).filter(h => h.status === 'approved');
-        if (!approvedHistory.length) {
-            recentList.innerHTML = `<p class="small text-muted mb-0">No past verified payments recorded.</p>`;
-        } else {
-            recentList.innerHTML = approvedHistory.slice(0, 3).map(item => {
-                const itemDate = item.verifiedAt ? formatShortDate(item.verifiedAt) : (item.submittedAt ? formatShortDate(item.submittedAt) : '');
-                return `
-                    <div class="fee-recent-item">
-                        <div>
-                            <div class="fee-recent-item-dates">${item.weekLabel || item.weekId}</div>
-                            <div class="fee-recent-item-amount">₹${item.amount || 0}</div>
-                        </div>
-                        <div class="text-end">
-                            <span class="fee-recent-item-badge">Paid</span>
-                            <div class="small text-muted mt-1" style="font-size: 0.72rem;">${itemDate}</div>
-                        </div>
-                    </div>
+            if (isPaid) {
+                badgeHtml = `
+                    <span class="badge" style="background: #DCFCE7; color: #15803D; font-size: 0.74rem; font-weight: 700; border-radius: 9999px; padding: 4px 9px; display: inline-flex; align-items: center; gap: 4px;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        ${t('driver.paid_badge', 'Paid')}
+                    </span>
                 `;
-            }).join('');
-        }
-    }
-}
-
-// -------------------------------------------------------------
-// Under Review Payments Panel (Collapsible, hidden if 0)
-// -------------------------------------------------------------
-function renderUnderReviewPanel(data) {
-    const panel = document.getElementById('fee-under-review-panel');
-    const body = document.getElementById('fee-under-review-body');
-    const chevron = document.getElementById('fee-under-review-chevron');
-    const toggle = document.getElementById('fee-under-review-toggle');
-    if (!panel || !body) return;
-
-    // Extract items or batches
-    const items = (data && data.under_review_items) ? data.under_review_items : (Array.isArray(data) ? [] : []);
-    const batches = (data && data.under_review_batches) ? data.under_review_batches : (Array.isArray(data) ? data : []);
-
-    // "Also note that only display this Under review payments section if there is any such listing available, if not, no need to show the section at all."
-    if (items.length === 0 && batches.length === 0) {
-        panel.classList.add('d-none');
-        return;
-    }
-
-    panel.classList.remove('d-none');
-
-    let html = '';
-    if (items.length > 0) {
-        items.forEach(it => {
-            const dateStr = it.formatted_date || it.serviceDate || '--';
-            const amt = Math.round(it.amount_inr || (it.amount_paise / 100));
-            const km = typeof it.distance_km === 'number' ? it.distance_km.toFixed(1) : (it.distance_km || '0.0');
-            html += `
-                <div class="fee-under-review-item-card" data-date="${it.serviceDate || ''}" role="button" tabindex="0">
-                    <div class="fee-item-left">
-                        <div class="fee-item-calendar-icon">
-                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                                <line x1="16" y1="2" x2="16" y2="6"></line>
-                                <line x1="8" y1="2" x2="8" y2="6"></line>
-                                <line x1="3" y1="10" x2="21" y2="10"></line>
-                            </svg>
-                        </div>
-                        <div>
-                            <div class="fee-item-date">${dateStr}</div>
-                            <div class="fee-item-amt-dist">
-                                <strong>₹${amt}</strong>
-                                <span>${km} km</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="fee-item-right">
-                        <span class="fee-item-badge-review">${t('driver.under_review_badge', 'Under review')}</span>
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="9 18 15 12 9 6"></polyline>
+                amountText = `₹${feeInr}`;
+            } else if (isUnderReview) {
+                badgeHtml = `
+                    <span class="badge" style="background: #FEF3C7; color: #B45309; font-size: 0.74rem; font-weight: 700; border-radius: 9999px; padding: 4px 9px; display: inline-flex; align-items: center; gap: 4px;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
                         </svg>
-                    </div>
-                </div>
-            `;
-        });
-    } else {
-        batches.forEach(b => {
-            const dateStr = b.created_at ? new Date(b.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '--';
-            const amt = Math.round(b.total_inr || (b.total_paise / 100));
-            html += `
-                <div class="fee-under-review-item-card" role="button" tabindex="0">
-                    <div class="fee-item-left">
-                        <div class="fee-item-calendar-icon">
-                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                                <line x1="16" y1="2" x2="16" y2="6"></line>
-                                <line x1="8" y1="2" x2="8" y2="6"></line>
-                                <line x1="3" y1="10" x2="21" y2="10"></line>
-                            </svg>
-                        </div>
-                        <div>
-                            <div class="fee-item-date">${dateStr}</div>
-                            <div class="fee-item-amt-dist">
-                                <strong>₹${amt}</strong>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="fee-item-right">
-                        <span class="fee-item-badge-review">${t('driver.under_review_badge', 'Under review')}</span>
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                    </div>
-                </div>
-            `;
-        });
-    }
-    body.innerHTML = html;
-
-    body.querySelectorAll('.fee-under-review-item-card').forEach(card => {
-        card.addEventListener('click', () => {
-            const d = card.getAttribute('data-date');
-            if (d && d !== '--') openCalculationModal(d);
-        });
-    });
-
-    if (toggle && !toggle.dataset.bound) {
-        toggle.dataset.bound = 'true';
-        toggle.addEventListener('click', () => {
-            const isHidden = body.classList.contains('d-none');
-            body.classList.toggle('d-none', !isHidden);
-            if (chevron) {
-                chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+                        ${t('driver.under_review_badge', 'Under review')}
+                    </span>
+                `;
+                amountText = `₹${feeInr}`;
+            } else {
+                const remInr = Math.round((fee.remaining_paise || 0) / 100);
+                badgeHtml = `
+                    <span class="badge" style="background: #FEE2E2; color: #B91C1C; font-size: 0.74rem; font-weight: 700; border-radius: 9999px; padding: 4px 9px;">
+                        ${t('driver.unpaid_badge', 'Unpaid')}
+                    </span>
+                `;
+                amountText = `₹${remInr}`;
             }
-        });
-    }
-}
-
-// -------------------------------------------------------------
-// Daily Fee Breakdown
-// -------------------------------------------------------------
-function renderDailyBreakdown(fees) {
-    const list = document.getElementById('fee-daily-list');
-    if (!list) return;
-
-    if (!fees || fees.length === 0) {
-        list.innerHTML = `<div class="text-center text-muted small py-3">No closed service days yet.</div>`;
-        return;
-    }
-
-    let html = '';
-    fees.forEach(f => {
-        const sDate = f.serviceDate || '--';
-        const distKm = typeof f.distance_km === 'number' ? f.distance_km.toFixed(1) : (f.distance_km || '0.0');
-        const feeInr = ((f.fee_paise || 0) / 100).toFixed(2);
-        const remInr = ((f.remaining_paise || 0) / 100).toFixed(2);
-        const st = (f.status || 'unpaid').toUpperCase();
-
-        let badgeClass = 'fee-badge-unpaid';
-        let badgeLabel = 'Unpaid';
-        if (st === 'PAID') {
-            badgeClass = 'fee-badge-paid';
-            badgeLabel = 'Paid';
-        } else if (st === 'UNDER_REVIEW') {
-            badgeClass = 'fee-badge-review';
-            badgeLabel = 'Under Review';
-        } else if (st === 'PARTIAL' || st === 'PARTIALLY_PAID') {
-            badgeClass = 'fee-badge-partial';
-            badgeLabel = `Due ₹${remInr}`;
+        } else {
+            // Closed with 0 km
+            distText = '0.0 km';
+            badgeHtml = `<span class="badge" style="background: #F1F5F9; color: #64748B; font-size: 0.74rem; font-weight: 600; border-radius: 9999px; padding: 4px 9px;">₹0</span>`;
+            amountText = '₹0';
         }
+
+        const cursorStyle = isClickable ? 'cursor: pointer;' : 'cursor: default;';
+        const clickAttr = isClickable ? `role="button" tabindex="0" data-date="${day.dateStr}" class="fee-day-click-row"` : '';
+        const arrowSpan = isClickable ? `<span class="text-secondary ms-1 fw-bold" style="font-size: 0.9rem;">&gt;</span>` : '';
 
         html += `
-            <div class="fee-daily-row" data-date="${sDate}" tabindex="0" role="button">
+            <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="${cursorStyle}" ${clickAttr}>
                 <div>
-                    <div class="fee-daily-date">${formatShortDate(sDate)}</div>
-                    <div class="fee-daily-meta">${distKm} km driven • <span class="text-primary">${t('driver.view_calculation', 'View calculation')}</span></div>
+                    <div class="fw-semibold text-dark" style="font-size: 0.88rem;">${dayLabel}</div>
+                    <div class="text-secondary small" style="font-size: 0.78rem;">${distText}</div>
                 </div>
-                <div class="fee-daily-right">
-                    <span class="fee-daily-amount">₹${feeInr}</span>
-                    <span class="${badgeClass}">${badgeLabel}</span>
+                <div class="d-flex align-items-center gap-3">
+                    ${badgeHtml}
+                    <div class="d-flex align-items-center text-dark fw-bold" style="font-size: 0.92rem; min-width: 44px; justify-content: flex-end;">
+                        <span>${amountText}</span>
+                        ${arrowSpan}
+                    </div>
                 </div>
             </div>
         `;
     });
-    list.innerHTML = html;
 
-    list.querySelectorAll('.fee-daily-row').forEach(row => {
+    listEl.innerHTML = html;
+
+    listEl.querySelectorAll('.fee-day-click-row').forEach(row => {
         row.addEventListener('click', () => {
             const d = row.getAttribute('data-date');
-            if (d && d !== '--') openCalculationModal(d);
+            if (d) openCalculationModal(d);
         });
     });
+
+    // 2. Summary Rows
+    const totalPaidPaise = fees.reduce((sum, f) => sum + (f.paid_paise || 0), 0);
+    const totalPaidInr = Math.round(totalPaidPaise / 100);
+    if (summaryTotalPaid) summaryTotalPaid.innerText = `₹${totalPaidInr}`;
+
+    const underReviewFees = fees.filter(f => (f.review_paise || 0) > 0 || (f.status || '').toUpperCase() === 'UNDER_REVIEW');
+    const underReviewTotalPaise = fees.reduce((sum, f) => sum + (f.review_paise || 0), 0);
+    if (underReviewTotalPaise > 0) {
+        summaryUnderReviewRow?.classList.remove('d-none');
+        const count = underReviewFees.length;
+        const countKey = count === 1 ? 'driver.under_review_days_count' : 'driver.under_review_days_count_plural';
+        const defaultText = count === 1 ? `Under review (1 day)` : `Under review (${count} days)`;
+        if (summaryUnderReviewLabel) summaryUnderReviewLabel.innerText = t(countKey, defaultText, { days: count });
+        if (summaryUnderReviewAmount) summaryUnderReviewAmount.innerText = `₹${Math.round(underReviewTotalPaise / 100)}`;
+    } else {
+        summaryUnderReviewRow?.classList.add('d-none');
+    }
+
+    const remainingThisWeekPaise = fees.filter(f => weekDays.some(wd => wd.dateStr === f.serviceDate)).reduce((sum, f) => sum + (f.remaining_paise || 0), 0);
+    if (summaryRemaining) summaryRemaining.innerText = `₹${Math.round(remainingThisWeekPaise / 100)}`;
+
+    // 3. Last Payment Verified Card
+    const approvedHistory = (data.history || []).filter(h => h.status === 'approved');
+    if (approvedHistory.length > 0) {
+        lastVerifiedCard?.classList.remove('d-none');
+        const latest = approvedHistory[0];
+        const vDate = latest.verifiedAt ? new Date(latest.verifiedAt) : (latest.submittedAt ? new Date(latest.submittedAt) : new Date());
+        const dayIdx = vDate.getDay();
+        const fullDayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        const fullDaysEn = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const dayName = t(`driver.${fullDayKeys[dayIdx]}`, fullDaysEn[dayIdx]);
+        const shortDate = formatShortDate(vDate.toISOString());
+        const amount = Math.round(latest.amount || 0);
+
+        if (lastVerifiedText) {
+            lastVerifiedText.innerText = t('driver.last_payment_verified_desc', 'Your payment for {day}, {date} (₹{amount}) has been verified.', {
+                day: dayName,
+                date: shortDate,
+                amount: amount
+            });
+        }
+    } else {
+        lastVerifiedCard?.classList.add('d-none');
+    }
+
+    // 4. Under review payments sub-card
+    const underReviewItems = data.under_review_items || [];
+    if (underReviewItems.length > 0) {
+        underReviewCard?.classList.remove('d-none');
+        if (underReviewCardTitle) {
+            underReviewCardTitle.innerText = t('driver.under_review_payments_count', 'Under review payments ({count})', { count: underReviewItems.length });
+        }
+        if (underReviewCardBody) {
+            underReviewCardBody.innerHTML = underReviewItems.map(item => {
+                const sDate = item.serviceDate || item.formatted_date || '--';
+                const distKm = item.distance_km !== undefined ? (typeof item.distance_km === 'number' ? item.distance_km.toFixed(1) : item.distance_km) : '0.0';
+                const amt = Math.round(item.amount_inr || (item.amount_paise ? item.amount_paise / 100 : 0));
+                return `
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom fee-under-review-row" data-date="${sDate}" role="button" tabindex="0" style="cursor: pointer;">
+                        <div>
+                            <div class="fw-semibold text-dark" style="font-size: 0.88rem;">${formatShortDate(sDate)}</div>
+                            <div class="text-secondary small" style="font-size: 0.78rem;">${distKm} km • ₹${amt}</div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge" style="background: #FEF3C7; color: #B45309; font-size: 0.72rem; font-weight: 700; border-radius: 9999px; padding: 3px 8px;">
+                                ${t('driver.under_review_badge', 'Under review')}
+                            </span>
+                            <span class="text-secondary ms-1 fw-bold">&gt;</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            underReviewCardBody.querySelectorAll('.fee-under-review-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const d = row.getAttribute('data-date');
+                    if (d && d !== '--') openCalculationModal(d);
+                });
+            });
+        }
+    } else {
+        underReviewCard?.classList.add('d-none');
+    }
+}
+
+// -------------------------------------------------------------
+// Recent Payments List
+// -------------------------------------------------------------
+function renderRecentPayments(history) {
+    const listEl = document.getElementById('fee-recent-list');
+    if (!listEl) return;
+
+    const approvedHistory = (Array.isArray(history) ? history : []).filter(h => h.status === 'approved');
+    if (!approvedHistory.length) {
+        listEl.innerHTML = `<p class="small text-muted mb-0">No past verified payments recorded.</p>`;
+    } else {
+        listEl.innerHTML = approvedHistory.slice(0, 3).map(item => {
+            const itemDate = item.verifiedAt ? formatShortDate(item.verifiedAt) : (item.submittedAt ? formatShortDate(item.submittedAt) : '');
+            return `
+                <div class="fee-recent-item">
+                    <div>
+                        <div class="fee-recent-item-dates">${item.weekLabel || item.weekId}</div>
+                        <div class="fee-recent-item-amount">₹${item.amount || 0}</div>
+                    </div>
+                    <div class="text-end">
+                        <span class="fee-recent-item-badge">Paid</span>
+                        <div class="small text-muted mt-1" style="font-size: 0.72rem;">${itemDate}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 }
 
 // -------------------------------------------------------------
@@ -1326,6 +1362,36 @@ function setupEventListeners() {
     });
 
     screenshotFileInput?.addEventListener('change', handleScreenshotSelected);
+
+    // Toggle Unified Payment details
+    const detailsToggle = document.getElementById('fee-payment-details-toggle');
+    const detailsBody = document.getElementById('fee-payment-details-body');
+    const detailsChevron = document.getElementById('fee-payment-details-chevron');
+    if (detailsToggle && detailsBody && !detailsToggle.dataset.bound) {
+        detailsToggle.dataset.bound = 'true';
+        detailsToggle.addEventListener('click', () => {
+            const isHidden = detailsBody.classList.contains('d-none');
+            detailsBody.classList.toggle('d-none', !isHidden);
+            if (detailsChevron) {
+                detailsChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+        });
+    }
+
+    // Toggle Under review sub-card
+    const underReviewToggle = document.getElementById('fee-under-review-card-toggle');
+    const underReviewBody = document.getElementById('fee-under-review-card-body');
+    const underReviewChevron = document.getElementById('fee-under-review-card-chevron');
+    if (underReviewToggle && underReviewBody && !underReviewToggle.dataset.bound) {
+        underReviewToggle.dataset.bound = 'true';
+        underReviewToggle.addEventListener('click', () => {
+            const isHidden = underReviewBody.classList.contains('d-none');
+            underReviewBody.classList.toggle('d-none', !isHidden);
+            if (underReviewChevron) {
+                underReviewChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+        });
+    }
 
     recentViewAllBtn?.addEventListener('click', openHistoryModal);
     historyModalCloseBtn?.addEventListener('click', closeHistoryModal);
