@@ -232,11 +232,115 @@ function hideLanguageSwitchSpinner() {
     }
 }
 
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=in.liphtup.app';
+
 /**
- * Renders the sleek Language Switcher Pill (Matching User Demo Design).
+ * Checks if the current execution environment is inside the native Capacitor Android app.
+ * Returns true only for the native app; returns false for standard web browsers (mobile and desktop).
  */
-export function renderLanguageSwitcher(container) {
+export function isCapacitorApp() {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('preview_app') === '1') return true;
+        if (urlParams.get('preview_web') === '1') return false;
+
+        if (typeof window.Capacitor !== 'undefined' && typeof window.Capacitor.isNativePlatform === 'function') {
+            return window.Capacitor.isNativePlatform();
+        }
+        if (window.location.protocol === 'capacitor:') {
+            return true;
+        }
+        if (navigator.userAgent && navigator.userAgent.indexOf('Capacitor') !== -1) {
+            return true;
+        }
+        if (typeof window.LiphtUpNative !== 'undefined' || typeof window.LiphtUpNativeStatus !== 'undefined') {
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
+/**
+ * Returns true if the current page should display the Google Play Store button pill
+ * when accessed on the web version.
+ * Target pages:
+ * - Passenger home page ('/', '/index.html')
+ * - Passenger services page ('/services.html', '/services')
+ * - Passenger history page ('/history.html', '/history')
+ * - Driver home page ('/driver.html', '/driver')
+ * - Driver services page ('/driver-service.html', '/driver-service')
+ * - Driver history / dashboard ('/driver-dashboard.html', '/driver-dashboard')
+ * 
+ * Specifically excludes profile, login, and signup pages (language pill is kept).
+ */
+export function isPlayStorePillPage() {
+    try {
+        const path = (window.location.pathname || '').toLowerCase();
+        if (path.includes('profile') || path.includes('login') || path.includes('signup')) {
+            return false;
+        }
+        const segments = path.replace(/\/+$/, '').split('/');
+        const page = segments.pop() || '';
+
+        return (
+            page === '' ||
+            page === 'index' ||
+            page === 'index.html' ||
+            page === 'services' ||
+            page === 'services.html' ||
+            page === 'history' ||
+            page === 'history.html' ||
+            page === 'driver' ||
+            page === 'driver.html' ||
+            page === 'driver-service' ||
+            page === 'driver-service.html' ||
+            page === 'driver-dashboard' ||
+            page === 'driver-dashboard.html'
+        );
+    } catch (e) {}
+    return false;
+}
+
+/**
+ * Renders the sleek "Get it on Google Play" button pill for the web version.
+ */
+export function renderGooglePlayBadge(container) {
     if (!container) return;
+    container.innerHTML = `
+        <div class="google-play-pill-wrap">
+            <a href="${PLAY_STORE_URL}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="play-store-pill-btn"
+               aria-label="Get it on Google Play">
+                <img src="assets/branding/google-play-badge.png"
+                     alt="Get it on Google Play"
+                     class="play-store-badge-img"
+                     width="121"
+                     height="36"
+                     loading="eager"
+                     decoding="async">
+            </a>
+        </div>
+    `;
+}
+
+/**
+ * Renders the Header Action Pill:
+ * - On Web version for designated pages: "Get it on Google Play" button pill.
+ * - In Capacitor Native App (or profile/login/signup): Sleek Language Switcher Pill.
+ */
+export function renderLanguageSwitcher(container, options = {}) {
+    if (!container) return;
+
+    const forceLanguage = options.forceLanguage === true;
+    const forcePlayStore = options.forcePlayStore === true;
+    const isNative = isCapacitorApp();
+
+    if (!isNative && !forceLanguage && (forcePlayStore || isPlayStorePillPage())) {
+        renderGooglePlayBadge(container);
+        return;
+    }
 
     container.innerHTML = `
         <div class="lang-switcher-pill-wrap">
@@ -301,6 +405,28 @@ export function renderLanguageSwitcher(container) {
     }
 }
 
+/**
+ * Automatically initializes header pills on standard containers across all pages.
+ */
+export function autoInitHeaderPill() {
+    const selector = [
+        '#home-lang-switcher',
+        '#services-lang-switcher',
+        '#history-lang-switcher',
+        '#driver-lang-switcher',
+        '#driver-service-lang-switcher',
+        '#driver-dashboard-lang-switcher',
+        '[data-header-lang-pill]'
+    ].join(',');
+
+    document.querySelectorAll(selector).forEach(el => {
+        if (!el.dataset.pillInitialized) {
+            el.dataset.pillInitialized = 'true';
+            renderLanguageSwitcher(el);
+        }
+    });
+}
+
 function updateSwitcherUI() {
     document.querySelectorAll('.lang-switcher-pill-wrap').forEach(wrap => {
         const primary = wrap.querySelector('.lang-label-primary');
@@ -333,11 +459,16 @@ try {
 
 document.documentElement.lang = currentLang;
 
-// Translate DOM on ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => translateDOM(document));
-} else {
+// Translate DOM & initialize header pill on ready
+function onDomReady() {
     translateDOM(document);
+    autoInitHeaderPill();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onDomReady);
+} else {
+    onDomReady();
 }
 
 // Global window reference for legacy non-module scripts
@@ -346,5 +477,10 @@ window.LiphtUpI18n = {
     getCurrentLanguage,
     setLanguage,
     translateDOM,
-    renderLanguageSwitcher
+    renderLanguageSwitcher,
+    renderGooglePlayBadge,
+    autoInitHeaderPill,
+    isCapacitorApp,
+    isPlayStorePillPage,
+    PLAY_STORE_URL
 };
