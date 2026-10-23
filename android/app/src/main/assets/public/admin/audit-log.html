@@ -1888,38 +1888,178 @@
         </div>
     </div>
 
-    <!-- Modal: Assign Admin / Manager Role -->
+    <!-- Modal: Assign Admin / Manager Role (Image 2 Redesign) -->
     <div id="admin-assign-role-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
-        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
-            <div class="modal-content shadow-lg border-0">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold">
-                        <i class="ti ti-user-plus me-2 text-primary"></i>Assign Administrative Role
-                    </h5>
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" style="max-width: 820px;">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-header border-bottom py-3 px-4">
+                    <div>
+                        <h5 class="modal-title fw-bold d-flex align-items-center" style="font-size: 1.15rem;">
+                            <span class="avatar avatar-sm bg-blue-lt text-primary rounded me-2"><i class="ti ti-user-plus"></i></span>
+                            Assign Administrative Role
+                        </h5>
+                        <div class="text-secondary small mt-1">Invite an existing LiphtUp user to become an Administrator or Manager. A 10-character code will be generated for the user to verify.</div>
+                    </div>
                     <button id="assign-role-close-btn" type="button" class="btn-close" aria-label="Close"></button>
                 </div>
-                <form id="admin-assign-role-form">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label required fw-bold">Select User Account</label>
-                            <select id="assign-role-user-select" class="form-select" required>
-                                <option value="">Loading eligible users...</option>
-                            </select>
-                            <div class="form-text">Choose a Firebase user account to grant administrative access.</div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label required fw-bold">Role to Assign</label>
-                            <select id="assign-role-select" class="form-select" required>
-                                <option value="admin" selected>Admin (Full Operational Access)</option>
-                                <option value="manager">Manager (Restricted Access)</option>
-                            </select>
+
+                <div class="modal-body p-4">
+                    <!-- SECTION 1: Invite Admins or Managers -->
+                    <div class="card border rounded-3 mb-4 shadow-none">
+                        <div class="card-body p-3 p-md-4">
+                            <h6 class="fw-bold mb-1 text-dark" style="font-size: 1rem;">Invite Admins or Managers</h6>
+                            <p class="text-secondary small mb-3">Enter the user's registered email and select the role you want to assign. We'll verify the account and generate a one-time code.</p>
+
+                            <form id="admin-invite-code-form">
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-7">
+                                        <label for="invite-admin-email" class="form-label required fw-bold small mb-1">User Email Address</label>
+                                        <div class="input-icon">
+                                            <span class="input-icon-addon"><i class="ti ti-mail text-muted"></i></span>
+                                            <input type="email" id="invite-admin-email" class="form-control" placeholder="Enter the user's registered LiphtUp email" required autocomplete="off">
+                                        </div>
+                                        <div class="form-text text-secondary" style="font-size: 0.75rem;">We will check if a user exists with this email, and that their account is active and verified.</div>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <label for="invite-admin-role" class="form-label required fw-bold small mb-1">Role to Assign</label>
+                                        <select id="invite-admin-role" class="form-select" required>
+                                            <option value="admin" selected>Administrator (Full Operational Access)</option>
+                                            <option value="manager">Manager (Restricted Access)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-info py-2 px-3 small d-flex align-items-center gap-2 mb-3 rounded-2">
+                                    <i class="ti ti-info-circle fs-3 text-primary flex-shrink-0"></i>
+                                    <div>A 10-character code will be generated and shown once. You must securely share this code with the user.</div>
+                                </div>
+
+                                <div class="d-flex justify-content-end">
+                                    <button type="submit" id="btn-generate-invite-code" class="btn btn-primary px-3 d-inline-flex align-items-center gap-2">
+                                        <i class="ti ti-key"></i> Generate Invitation Code
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-                    <div class="modal-footer d-flex gap-2">
-                        <button type="button" id="assign-role-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
-                        <button type="submit" id="assign-role-submit-btn" class="btn btn-primary flex-fill">Grant Role</button>
+
+                    <!-- SECTION 2: Verified Users Awaiting Approval -->
+                    <div class="card border rounded-3 shadow-none">
+                        <div class="card-body p-3 p-md-4">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <h6 class="fw-bold text-dark m-0 d-flex align-items-center gap-2" style="font-size: 1rem;">
+                                    <i class="ti ti-users text-primary"></i> Verified Users Awaiting Approval
+                                    <span id="modal-awaiting-approval-count" class="badge bg-secondary-lt text-secondary rounded-pill">0</span>
+                                </h6>
+                            </div>
+                            <p class="text-secondary small mb-3">These users have entered their invitation code and verified their identity. Review and approve or reject their requested role.</p>
+
+                            <div id="modal-awaiting-approval-wrap">
+                                <div class="text-center py-4 text-muted small">Loading verified requests...</div>
+                            </div>
+                        </div>
                     </div>
-                </form>
+                </div>
+
+                <div class="modal-footer border-top py-2 px-4 d-flex justify-content-end">
+                    <button type="button" id="assign-role-cancel-btn" class="btn btn-outline-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Display Generated Code Once -->
+    <div id="admin-code-display-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.6); z-index: 1080;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold d-flex align-items-center">
+                        <span class="avatar avatar-sm bg-success-lt text-success rounded me-2"><i class="ti ti-key"></i></span>
+                        <span id="display-code-modal-title">Invitation Code Generated</span>
+                    </h5>
+                    <button id="code-display-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 text-center">
+                    <p class="text-secondary small mb-3">
+                        A one-time 10-character code has been generated for <strong id="display-code-target-email" class="text-dark"></strong> to request the <strong id="display-code-target-role" class="text-dark"></strong> role.
+                    </p>
+
+                    <div class="p-3 bg-light border rounded-3 mb-3">
+                        <div class="text-muted small mb-1">One-Time Invitation Code</div>
+                        <div id="display-invitation-code-val" class="font-monospace fw-bold text-primary" style="font-size: 1.8rem; letter-spacing: 3px;">
+                            XXXX-XXXX-XX
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning py-2 px-3 small text-start mb-3">
+                        <i class="ti ti-alert-triangle me-1 text-warning"></i>
+                        <strong>Important:</strong> This code is shown only once and cannot be retrieved again. Securely send it to the user. They must sign in and verify it at <code class="text-dark">/authPermissions</code> within 7 days.
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="button" id="btn-copy-invitation-code" class="btn btn-primary flex-fill d-flex align-items-center justify-content-center gap-1">
+                            <i class="ti ti-copy"></i> Copy Code
+                        </button>
+                        <button type="button" id="btn-done-invitation-code" class="btn btn-outline-secondary flex-fill">
+                            Done
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Revoke Invitation Confirmation -->
+    <div id="admin-revoke-invitation-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.6); z-index: 1080;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 460px;">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold text-danger d-flex align-items-center">
+                        <i class="ti ti-alert-circle me-2"></i> Revoke this invitation?
+                    </h5>
+                    <button id="revoke-invitation-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-secondary mb-3" style="font-size: 0.95rem;">
+                        You are about to revoke the invitation for <strong id="revoke-modal-target-email" class="text-dark"></strong> to become a <span id="revoke-modal-target-role" class="fw-bold text-dark"></span>. The invitation code will immediately become invalid and cannot be used again.
+                    </p>
+
+                    <div class="mb-3">
+                        <label for="revoke-modal-reason-input" class="form-label small text-muted">Reason for revocation (optional)</label>
+                        <input type="text" id="revoke-modal-reason-input" class="form-control" placeholder="e.g. Issued by mistake / candidate declined">
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-2 px-3 d-flex gap-2">
+                    <button type="button" id="revoke-invitation-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
+                    <button type="button" id="btn-confirm-revoke-invitation" class="btn btn-danger flex-fill">Revoke Invitation</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Downgrade Administrator Confirmation -->
+    <div id="admin-downgrade-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.6); z-index: 1080;">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 460px;">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold text-warning d-flex align-items-center">
+                        <i class="ti ti-user-down me-2"></i> Downgrade Administrator?
+                    </h5>
+                    <button id="downgrade-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <p class="text-secondary mb-3" style="font-size: 0.95rem;">
+                        You are about to change <strong id="downgrade-modal-target-email" class="text-dark"></strong> from Administrator to Manager. Administrator-only permissions will be removed immediately.
+                    </p>
+                    <div class="mb-3">
+                        <label for="downgrade-modal-reason-input" class="form-label small text-muted">Reason for downgrade (optional)</label>
+                        <input type="text" id="downgrade-modal-reason-input" class="form-control" placeholder="e.g. Transitioning responsibilities">
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-2 px-3 d-flex gap-2">
+                    <button type="button" id="downgrade-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
+                    <button type="button" id="btn-confirm-downgrade" class="btn btn-warning flex-fill">Confirm Downgrade</button>
+                </div>
             </div>
         </div>
     </div>

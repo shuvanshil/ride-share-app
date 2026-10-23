@@ -278,6 +278,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Administrative Invitations & Role Requests:
+    // Admin read only; client direct writes strictly prohibited.
+    match /adminInvitations/{invitationId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /adminRoleRequests/{requestId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     // Ride Operations Audit Trail:
     // Admin read only; writes managed by FastAPI Admin SDK.
     match /ride_audits/{auditId} {

@@ -15,6 +15,14 @@
       "destination": "/api/index"
     },
     {
+      "source": "/authPermissions",
+      "destination": "/authPermissions.html"
+    },
+    {
+      "source": "/authPermissions/",
+      "destination": "/authPermissions.html"
+    },
+    {
       "source": "/admin-access-denied",
       "destination": "/admin-access-denied"
     },

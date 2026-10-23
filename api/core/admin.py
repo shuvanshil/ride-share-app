@@ -4,6 +4,10 @@ actions get written to the audit trail.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
+import secrets
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -13,6 +17,30 @@ from firebase_admin import firestore as fb_firestore
 from .auth import verify_firebase_token
 from .errors import ApiError
 from .firebase import get_admin_app
+
+INVITATION_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def generate_invitation_code(length: int = 10) -> str:
+    """Generate a cryptographically secure alphanumeric invitation code avoiding ambiguous chars."""
+    return "".join(secrets.choice(INVITATION_CODE_ALPHABET) for _ in range(length))
+
+
+def clean_invitation_code(code: str) -> str:
+    """Normalize invitation code by removing hyphens/spaces and converting to uppercase."""
+    return "".join(ch for ch in str(code or "").upper() if ch.isalnum())
+
+
+def hash_invitation_code(code: str) -> str:
+    """Compute HMAC-SHA256 digest of normalized invitation code."""
+    cleaned = clean_invitation_code(code)
+    secret = (
+        os.environ.get("ADMIN_INVITATION_SECRET")
+        or os.environ.get("ADMIN_BOOTSTRAP_SECRET")
+        or "liphtup-invitation-secure-salt-2026"
+    )
+    return hmac.new(secret.encode("utf-8"), cleaned.encode("utf-8"), hashlib.sha256).hexdigest()
+
 
 
 def get_user_admin_role(uid: str, email: str = "") -> str:
