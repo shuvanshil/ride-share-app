@@ -126,24 +126,101 @@
 .back-to-console-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     border: 0;
-    height: 40px;
-    padding: 0 16px;
-    border-radius: 8px;
-    background: var(--gy-green);
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--lu-green, #1A7A2E);
     color: #fff;
-    font-weight: 800;
-    font-size: 13px;
-    box-shadow: 0 6px 16px rgba(26, 122, 46, 0.28);
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 1;
+    box-shadow: 0 2px 8px rgba(26, 122, 46, 0.2);
+    flex-shrink: 0;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+@media (max-width: 380px) {
+    .back-to-console-btn {
+        height: 28px;
+        padding: 0 9px;
+        font-size: 11px;
+    }
 }
 
 .back-to-console-btn .webicon {
     color: #fff;
-    width: 16px;
-    height: 16px;
-    margin-right: 6px;
+    width: 14px;
+    height: 14px;
+    margin-right: 5px;
 }
 
 .back-to-console-btn:active {
     transform: scale(0.97);
+}
+
+/* Driver Dashboard Header & Logo Uniformity */
+.driver-dashboard-root .app-bar {
+    min-height: 58px;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100vw;
+    overflow: hidden;
+    background: #ffffff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+@media (max-width: 380px) {
+    .driver-dashboard-root .app-bar {
+        padding-left: 10px;
+        padding-right: 10px;
+        gap: 6px;
+    }
+}
+
+.driver-dashboard-root .brand-logo {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 95px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+}
+
+.driver-dashboard-root .brand-logo img {
+    height: 28px !important;
+    max-height: 28px !important;
+    width: auto !important;
+    max-width: 95px !important;
+    object-fit: contain !important;
+    transform: none !important;
+    display: block !important;
+}
+
+@media (max-width: 380px) {
+    .driver-dashboard-root .brand-logo img {
+        height: 26px !important;
+        max-height: 26px !important;
+        max-width: 82px !important;
+    }
+}
+
+#dashboard-welcome-name {
+    display: block;
+    margin-top: 2px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
 }

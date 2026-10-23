@@ -4702,6 +4702,9 @@ function updateDriverAvailabilityUI(statusOverride) {
         }
     }
 
+    const listeningIndicator = document.getElementById("driver-service-listening-indicator");
+    if (listeningIndicator) listeningIndicator.classList.toggle("d-none", isOffline);
+
     const statusPill = document.getElementById("driver-service-live-pill");
     if (statusPill) {
         statusPill.dataset.state = isOffline ? "loading" : "ready";
