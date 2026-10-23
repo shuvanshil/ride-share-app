@@ -533,29 +533,26 @@ function buildInvitationMessage(code, role) {
 
     return `Hello,
 
-Your request for **${roleTitle} access to LiphtUp** has been initiated. Before the role can be granted, we need to verify your identity and obtain final approval from the Super Admin.
+Your request for ${roleTitle} access to LiphtUp has been initiated. Before the role can be granted, we need to verify your identity and obtain final approval from the Super Admin.
 
-### Your Invitation Code
+Your Invitation Code:
+${formattedCode}
 
-**\`${formattedCode}\`**
-
-### How to verify your invitation
-
-1. **Copy the invitation code** exactly as shown above.
+How to verify your invitation:
+1. Copy the invitation code exactly as shown above.
 2. Visit https://liphtup.in/authPermissions
 3. Log in to your existing LiphtUp account, if you haven't already.
-4. Enter the invitation code and click **Verify Invitation Code**.
+4. Enter the invitation code and click Verify Invitation Code.
 5. Once your identity is verified, your request will be forwarded to the Super Admin for final approval.
 
-### What happens next?
-
+What happens next?
 Your administrative permissions will remain inactive until the Super Admin approves your request. Once approved, you will be able to access the relevant Admin/Manager panel according to your assigned role.
 
-**Important:** This code is intended only for you. Please do not share it with anyone other than the authorized recipient of this invitation, and complete the verification before the code expires.
+Important: This code is intended only for you. Please do not share it with anyone other than the authorized recipient of this invitation, and complete the verification before the code expires.
 
 Thank you for being part of LiphtUp!
 
-**LiphtUp Team**`;
+LiphtUp Team`;
 }
 
 // Display Generated Code Modal
