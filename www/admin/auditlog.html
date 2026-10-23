@@ -1968,42 +1968,59 @@
         </div>
     </div>
 
-    <!-- Modal: Display Generated Code Once -->
+    <!-- Modal: Display Generated Code Once with Shareable Message -->
     <div id="admin-code-display-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.6); z-index: 1080;">
-        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" style="max-width: 620px;">
             <div class="modal-content shadow-lg border-0 rounded-3">
-                <div class="modal-header border-bottom py-3">
+                <div class="modal-header border-bottom py-3 px-4">
                     <h5 class="modal-title fw-bold d-flex align-items-center">
                         <span class="avatar avatar-sm bg-success-lt text-success rounded me-2"><i class="ti ti-key"></i></span>
                         <span id="display-code-modal-title">Invitation Code Generated</span>
                     </h5>
                     <button id="code-display-close-btn" type="button" class="btn-close" aria-label="Close"></button>
                 </div>
-                <div class="modal-body p-4 text-center">
+                <div class="modal-body p-4">
                     <p class="text-secondary small mb-3">
                         A one-time 10-character code has been generated for <strong id="display-code-target-email" class="text-dark"></strong> to request the <strong id="display-code-target-role" class="text-dark"></strong> role.
                     </p>
 
-                    <div class="p-3 bg-light border rounded-3 mb-3">
-                        <div class="text-muted small mb-1">One-Time Invitation Code</div>
-                        <div id="display-invitation-code-val" class="font-monospace fw-bold text-primary" style="font-size: 1.8rem; letter-spacing: 3px;">
-                            XXXX-XXXX-XX
+                    <!-- Code Highlight Box -->
+                    <div class="p-3 bg-light border rounded-3 mb-3 d-flex flex-column flex-sm-row align-items-center justify-content-between gap-3">
+                        <div>
+                            <div class="text-muted small">One-Time Invitation Code</div>
+                            <div id="display-invitation-code-val" class="font-monospace fw-bold text-primary" style="font-size: 1.6rem; letter-spacing: 2px;">
+                                XXXX-XXXX-XX
+                            </div>
+                        </div>
+                        <button type="button" id="btn-copy-invitation-code" class="btn btn-outline-primary btn-sm px-3 d-inline-flex align-items-center gap-1">
+                            <i class="ti ti-copy"></i> Copy Code
+                        </button>
+                    </div>
+
+                    <!-- Shareable Invitation Message with Top-Right Copy Button -->
+                    <div class="card border rounded-3 mb-3 shadow-none">
+                        <div class="card-header bg-light py-2 px-3 border-bottom d-flex align-items-center justify-content-between">
+                            <span class="fw-bold text-dark small d-flex align-items-center gap-1">
+                                <i class="ti ti-message-share text-primary"></i> Invitation Message for User
+                            </span>
+                            <button type="button" id="btn-copy-invitation-message" class="btn btn-primary btn-sm px-2 py-1 d-inline-flex align-items-center gap-1" style="font-size: 0.78rem;">
+                                <i class="ti ti-copy"></i> Copy Message
+                            </button>
+                        </div>
+                        <div class="card-body p-2">
+                            <textarea id="display-invitation-message-text" class="form-control font-monospace text-dark border-0 p-2" rows="10" readonly style="font-size: 0.8rem; line-height: 1.45; background: #fafafa; resize: vertical;"></textarea>
                         </div>
                     </div>
 
-                    <div class="alert alert-warning py-2 px-3 small text-start mb-3">
+                    <div class="alert alert-warning py-2 px-3 small text-start mb-0">
                         <i class="ti ti-alert-triangle me-1 text-warning"></i>
-                        <strong>Important:</strong> This code is shown only once and cannot be retrieved again. Securely send it to the user. They must sign in and verify it at <code class="text-dark">/authPermissions</code> within 7 days.
+                        <strong>Important:</strong> This code is shown only once and cannot be retrieved again. Send this message to the user securely. They must sign in and verify it at <code class="text-dark">https://liphtup.in/authPermissions</code> within 7 days.
                     </div>
-
-                    <div class="d-flex gap-2">
-                        <button type="button" id="btn-copy-invitation-code" class="btn btn-primary flex-fill d-flex align-items-center justify-content-center gap-1">
-                            <i class="ti ti-copy"></i> Copy Code
-                        </button>
-                        <button type="button" id="btn-done-invitation-code" class="btn btn-outline-secondary flex-fill">
-                            Done
-                        </button>
-                    </div>
+                </div>
+                <div class="modal-footer border-top py-2 px-4 d-flex justify-content-end">
+                    <button type="button" id="btn-done-invitation-code" class="btn btn-secondary px-4">
+                        Done
+                    </button>
                 </div>
             </div>
         </div>

@@ -527,6 +527,37 @@ function closeAssignRoleModal() {
     }
 }
 
+function buildInvitationMessage(code, role) {
+    const roleTitle = (role || "Admin").toLowerCase() === "manager" ? "Manager" : "Administrator";
+    const formattedCode = code.length === 10 ? `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}` : code;
+
+    return `Hello,
+
+Your request for **${roleTitle} access to LiphtUp** has been initiated. Before the role can be granted, we need to verify your identity and obtain final approval from the Super Admin.
+
+### Your Invitation Code
+
+**\`${formattedCode}\`**
+
+### How to verify your invitation
+
+1. **Copy the invitation code** exactly as shown above.
+2. Visit https://liphtup.in/authPermissions
+3. Log in to your existing LiphtUp account, if you haven't already.
+4. Enter the invitation code and click **Verify Invitation Code**.
+5. Once your identity is verified, your request will be forwarded to the Super Admin for final approval.
+
+### What happens next?
+
+Your administrative permissions will remain inactive until the Super Admin approves your request. Once approved, you will be able to access the relevant Admin/Manager panel according to your assigned role.
+
+**Important:** This code is intended only for you. Please do not share it with anyone other than the authorized recipient of this invitation, and complete the verification before the code expires.
+
+Thank you for being part of LiphtUp!
+
+**LiphtUp Team**`;
+}
+
 // Display Generated Code Modal
 function showGeneratedCodeModal(code, email, role, isPromotion = false) {
     const modal = $("admin-code-display-modal");
@@ -538,6 +569,7 @@ function showGeneratedCodeModal(code, email, role, isPromotion = false) {
     const emailEl = $("display-code-target-email");
     const roleEl = $("display-code-target-role");
     const valEl = $("display-invitation-code-val");
+    const msgEl = $("display-invitation-message-text");
 
     if (titleEl) titleEl.textContent = isPromotion ? "Promotion Code Generated" : "Invitation Code Generated";
     if (emailEl) emailEl.textContent = email;
@@ -545,6 +577,9 @@ function showGeneratedCodeModal(code, email, role, isPromotion = false) {
     if (valEl) {
         valEl.textContent = formattedCode;
         valEl.dataset.rawCode = code;
+    }
+    if (msgEl) {
+        msgEl.value = buildInvitationMessage(code, role);
     }
 
     modal.classList.remove("d-none");
@@ -687,6 +722,27 @@ export function initPermissionsModal() {
                 toast("Invitation code copied to clipboard!", "success");
             } catch (_) {
                 toast("Could not copy automatically. Please copy the code manually.", "info");
+            }
+        }
+    });
+
+    // Copy Shareable Invitation Message Button
+    $("btn-copy-invitation-message")?.addEventListener("click", async () => {
+        const msgEl = $("display-invitation-message-text");
+        const copyBtn = $("btn-copy-invitation-message");
+        const textToCopy = msgEl?.value || "";
+
+        if (textToCopy && navigator.clipboard) {
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+                if (copyBtn) {
+                    const originalText = copyBtn.innerHTML;
+                    copyBtn.innerHTML = `<i class="ti ti-check"></i> Copied!`;
+                    setTimeout(() => { if (copyBtn) copyBtn.innerHTML = originalText; }, 2000);
+                }
+                toast("Invitation message copied to clipboard!", "success");
+            } catch (_) {
+                toast("Could not copy automatically. Please copy the message manually.", "info");
             }
         }
     });
