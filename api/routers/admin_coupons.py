@@ -39,6 +39,7 @@ class CreateCouponRequest(BaseModel):
     eligibilityCategory: Optional[str] = Field(default="all_passengers")
     minRidesRequired: Optional[int] = Field(default=0, ge=0)
     eligibleGender: Optional[str] = Field(default="all")
+    allowedPassengerIds: Optional[List[str]] = None
     restrictedPassengerIds: Optional[List[str]] = Field(default_factory=list)
     description: Optional[str] = Field(default="", max_length=300)
     status: Optional[str] = Field(default="active", pattern="^(active|inactive)$")
@@ -50,6 +51,7 @@ class UpdateCouponRequest(BaseModel):
     eligibilityCategory: Optional[str] = None
     minRidesRequired: Optional[int] = Field(default=None, ge=0)
     eligibleGender: Optional[str] = None
+    allowedPassengerIds: Optional[List[str]] = None
     restrictedPassengerIds: Optional[List[str]] = None
 
 
@@ -122,7 +124,8 @@ async def list_admin_coupons(
             "eligibilityCategory": data.get("eligibilityCategory", "all_passengers"),
             "minRidesRequired": int(data.get("minRidesRequired") or data.get("min_rides") or 0),
             "eligibleGender": str(data.get("eligibleGender") or "all").lower(),
-            "restrictedPassengerIds": data.get("restrictedPassengerIds") or [],
+            "allowedPassengerIds": data.get("allowedPassengerIds") if data.get("allowedPassengerIds") is not None else (data.get("restrictedPassengerIds") or []),
+            "restrictedPassengerIds": data.get("allowedPassengerIds") if data.get("allowedPassengerIds") is not None else (data.get("restrictedPassengerIds") or []),
             "description": data.get("description", ""),
             "isDeletable": data.get("isDeletable", data.get("source") != "default"),
             "redemptionsCount": redemptions_count,
@@ -178,6 +181,9 @@ async def create_admin_coupon(
         gender = "all"
     min_rides = max(0, int(payload.minRidesRequired or 0))
 
+    raw_allowed = payload.allowedPassengerIds if payload.allowedPassengerIds is not None else (payload.restrictedPassengerIds or [])
+    cleaned_allowed = [str(u).strip() for u in raw_allowed if str(u).strip()]
+
     coupon_doc = {
         "couponId": coupon_id,
         "code": payload.code.strip().upper(),
@@ -190,7 +196,8 @@ async def create_admin_coupon(
         "eligibilityCategory": payload.eligibilityCategory or "all_passengers",
         "minRidesRequired": min_rides,
         "eligibleGender": gender,
-        "restrictedPassengerIds": [str(u).strip() for u in (payload.restrictedPassengerIds or []) if str(u).strip()],
+        "allowedPassengerIds": cleaned_allowed,
+        "restrictedPassengerIds": cleaned_allowed,
         "description": payload.description or "",
         "usageLimitPerPassenger": 1,
         "isDeletable": True,
@@ -257,8 +264,11 @@ async def update_admin_coupon(
             updates["eligibleGender"] = "others"
         elif g in ("all", "male", "female"):
             updates["eligibleGender"] = g
-    if payload.restrictedPassengerIds is not None:
-        updates["restrictedPassengerIds"] = [str(u).strip() for u in payload.restrictedPassengerIds if str(u).strip()]
+    if payload.allowedPassengerIds is not None or payload.restrictedPassengerIds is not None:
+        raw_list = payload.allowedPassengerIds if payload.allowedPassengerIds is not None else (payload.restrictedPassengerIds or [])
+        cleaned_list = [str(u).strip() for u in raw_list if str(u).strip()]
+        updates["allowedPassengerIds"] = cleaned_list
+        updates["restrictedPassengerIds"] = cleaned_list
 
     doc_ref.update(updates)
 

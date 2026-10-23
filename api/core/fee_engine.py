@@ -666,15 +666,20 @@ def allocate_manual_fee_payment(
     uid: str,
     amount_inr: Optional[float] = None,
     amount_paise: Optional[int] = None,
+    selected_days: Optional[List[str]] = None,
+    driver_name: Optional[str] = None,
+    driver_phone: Optional[str] = None,
     admin_user: Optional[Dict[str, Any]] = None,
     payment_method: str = "cash",
     payment_reference: str = "Offline Cash Payment",
     admin_email: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Allocate an offline / manual payment across open fees chronologically.
+    """Allocate an offline / manual payment across open fees (or specific selected days).
 
     - Ensures fees generated up to closed date.
-    - Allocates paise to oldest unpaid/partially paid fees first.
+    - If selected_days is provided, allocates strictly to those selected serviceDates
+      and auto-assigns their dayIds ({uid}_{serviceDate}) and weekIds (week_id(serviceDate)).
+    - Otherwise allocates paise to oldest unpaid/partially paid fees first.
     - Updates fee docs and driverFeeWeeks atomically.
     - Creates an approved batch record in feePaymentBatches.
     """
@@ -688,7 +693,23 @@ def allocate_manual_fee_payment(
     # Sort chronologically
     fee_snaps.sort(key=lambda s: str((s.to_dict() or {}).get("serviceDate") or ""))
 
-    if amount_paise is not None:
+    cleaned_selected_days = [str(d).strip() for d in (selected_days or []) if str(d).strip()]
+    if cleaned_selected_days:
+        selected_set = set(cleaned_selected_days)
+        fee_snaps = [
+            s for s in fee_snaps
+            if str((s.to_dict() or {}).get("serviceDate") or "").strip() in selected_set
+        ]
+        # Auto-compute total strictly from the selected days
+        amt_paise = sum(
+            remaining_paise(
+                int((s.to_dict() or {}).get("fee_paise") or 0),
+                int((s.to_dict() or {}).get("paid_paise") or 0),
+                int((s.to_dict() or {}).get("review_paise") or 0),
+            )
+            for s in fee_snaps
+        )
+    elif amount_paise is not None:
         amt_paise = int(amount_paise)
     elif amount_inr is not None:
         amt_paise = int(round(amount_inr * 100))
@@ -727,17 +748,21 @@ def allocate_manual_fee_payment(
         new_paid = p_paise + alloc
         new_rem = remaining_paise(f_paise, new_paid, r_paise)
         new_st = fee_status(f_paise, new_paid, r_paise)
+        s_date = f_data.get("serviceDate")
+        w_id = f_data.get("weekId") or (week_id(s_date) if s_date else None)
 
         tx = db.transaction()
 
         def _alloc_tx(txn: Any) -> None:
-            txn.update(f_snap.reference, {
+            update_fields: Dict[str, Any] = {
                 "paid_paise": new_paid,
                 "remaining_paise": new_rem,
                 "status": new_st,
                 "updated_at": now_str,
-            })
-            w_id = f_data.get("weekId") or week_id(f_data.get("serviceDate"))
+            }
+            if w_id and not f_data.get("weekId"):
+                update_fields["weekId"] = w_id
+            txn.update(f_snap.reference, update_fields)
             if w_id:
                 _update_week_aggregate_tx(txn, db, uid, w_id, paid_paise_delta=alloc)
 
@@ -745,11 +770,13 @@ def allocate_manual_fee_payment(
         rem_to_allocate -= alloc
         allocated_items.append({
             "fee_id": f_snap.id,
-            "serviceDate": f_data.get("serviceDate"),
+            "dayId": f_snap.id,
+            "weekId": w_id,
+            "serviceDate": s_date,
             "amount_paise": alloc,
             "amount_inr": paise_to_rupees_float(alloc),
             "status": "APPROVED",
-            "decided_by": admin_email,
+            "decided_by": adm_email,
             "decided_at": now_str,
             "note": f"Manual offline recording ({payment_reference})",
         })
@@ -761,6 +788,8 @@ def allocate_manual_fee_payment(
     batch_payload = {
         "batchId": batch_id,
         "uid": uid,
+        "driverName": driver_name or "Driver",
+        "driverPhone": driver_phone or "",
         "idempotency_key": f"manual_{batch_id}",
         "total_paise": total_allocated,
         "total_inr": paise_to_rupees_float(total_allocated),
@@ -776,6 +805,21 @@ def allocate_manual_fee_payment(
     batch_ref.set(batch_payload)
     for a_item in allocated_items:
         batch_ref.collection("allocations").document(a_item["fee_id"]).set(a_item)
+
+    # Re-evaluate restriction and lift if no longer overdue
+    try:
+        all_fees_after = [
+            s.to_dict() or {}
+            for s in db.collection(COLLECTION_DRIVER_FEES).where("uid", "==", uid).stream()
+        ]
+        rest = evaluate_fee_restriction(all_fees_after, get_ist_now())
+        if not rest.get("restricted"):
+            db.collection("users").document(uid).set(
+                {"paymentRestricted": False, "feeOverdueRestricted": False},
+                merge=True,
+            )
+    except Exception:
+        pass
 
     return {
         "ok": True,

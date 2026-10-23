@@ -206,9 +206,10 @@ function renderCouponsTable() {
         const minRides = Number(coupon.minRidesRequired || 0);
         const gender = (coupon.eligibleGender || "all").toLowerCase();
 
-        const restrictionsCount = (coupon.restrictedPassengerIds || []).length;
-        const restrictionsBadge = restrictionsCount > 0
-            ? `<span class="badge bg-warning-lt" title="${coupon.restrictedPassengerIds.join(', ')}">${restrictionsCount} User(s) Restricted</span>`
+        const allowedIds = coupon.allowedPassengerIds || coupon.restrictedPassengerIds || [];
+        const allowedCount = allowedIds.length;
+        const restrictionsBadge = allowedCount > 0
+            ? `<span class="badge bg-success-lt text-success" title="${allowedIds.join(', ')}">${allowedCount} User(s) Allowed</span>`
             : `<span class="badge bg-light text-muted">All Users</span>`;
 
         return `
@@ -257,7 +258,7 @@ function renderCouponsTable() {
                             ${isActive ? '<i class="ti ti-power me-1"></i>Deactivate' : '<i class="ti ti-check me-1"></i>Activate'}
                         </button>
                         ${!isDefault ? `
-                            <button class="btn btn-sm btn-outline-primary btn-edit-coupon" data-id="${coupon.couponId}" title="Edit coupon criteria and restricted passengers">
+                            <button class="btn btn-sm btn-outline-primary btn-edit-coupon" data-id="${coupon.couponId}" title="Edit coupon criteria and allowed passengers">
                                 <i class="ti ti-edit"></i>
                             </button>
                         ` : ''}
@@ -370,7 +371,7 @@ function handleAddRestrictedPassenger() {
     if (!uid) return;
 
     if (currentRestrictedPassengers.has(uid)) {
-        toast("Passenger is already added to restrictions", "info");
+        toast("Passenger is already in the allowed list", "info");
         return;
     }
 
@@ -391,8 +392,8 @@ function renderPassengerChips() {
 
     const count = currentRestrictedPassengers.size;
     if (countBadge) {
-        countBadge.textContent = count > 0 ? `${count} passenger(s) restricted` : "0 selected (All passengers)";
-        countBadge.className = count > 0 ? "badge bg-warning-lt text-warning" : "badge bg-secondary-lt";
+        countBadge.textContent = count > 0 ? `${count} passenger(s) allowed` : "0 selected (All passengers)";
+        countBadge.className = count > 0 ? "badge bg-success-lt text-success" : "badge bg-secondary-lt";
     }
 
     if (hiddenInput) {
@@ -400,7 +401,7 @@ function renderPassengerChips() {
     }
 
     if (count === 0) {
-        container.innerHTML = `<span class="text-secondary small fst-italic p-1" id="restricted-passengers-empty-hint">No passengers restricted. Coupon is available to all qualifying passengers.</span>`;
+        container.innerHTML = `<span class="text-secondary small fst-italic p-1" id="restricted-passengers-empty-hint">No specific passengers selected. Coupon is available to all qualifying passengers.</span>`;
         return;
     }
 
@@ -473,9 +474,9 @@ async function openCreateCouponModal(couponToEdit = null, triggerBtn = null) {
         if (genderSelect) genderSelect.value = (couponToEdit.eligibleGender || "all").toLowerCase();
         if (descInput) descInput.value = couponToEdit.description || "";
 
-        // Populate restricted passenger chips
-        const restricted = couponToEdit.restrictedPassengerIds || [];
-        restricted.forEach(uid => {
+        // Populate allowed passenger chips
+        const allowed = couponToEdit.allowedPassengerIds || couponToEdit.restrictedPassengerIds || [];
+        allowed.forEach(uid => {
             const passenger = cachedPassengers.find(p => (p.uid || p.id || p.userId) === uid);
             const label = passenger ? `${passenger.name || 'Passenger'} (${passenger.phone || uid})` : uid;
             currentRestrictedPassengers.set(uid, label);
@@ -531,7 +532,7 @@ async function handleCreateCouponSubmit(e) {
     const minRidesRequired = parseInt(document.getElementById("input-coupon-min-rides")?.value || "0", 10) || 0;
     const eligibleGender = (document.getElementById("select-coupon-gender")?.value || "all").toLowerCase();
     const description = (document.getElementById("input-coupon-desc")?.value || "").trim();
-    const restrictedPassengerIds = Array.from(currentRestrictedPassengers.keys());
+    const allowedPassengerIds = Array.from(currentRestrictedPassengers.keys());
 
     const submitBtn = document.getElementById("btn-submit-create-coupon");
 
@@ -541,7 +542,8 @@ async function handleCreateCouponSubmit(e) {
                 const payload = {
                     minRidesRequired,
                     eligibleGender,
-                    restrictedPassengerIds,
+                    allowedPassengerIds,
+                    restrictedPassengerIds: allowedPassengerIds,
                     description,
                 };
 
@@ -582,7 +584,8 @@ async function handleCreateCouponSubmit(e) {
                 eligibilityCategory,
                 minRidesRequired,
                 eligibleGender,
-                restrictedPassengerIds,
+                allowedPassengerIds,
+                restrictedPassengerIds: allowedPassengerIds,
                 description,
                 status: "active",
             };

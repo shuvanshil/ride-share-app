@@ -137,11 +137,11 @@
         <!-- Top Navbar Header -->
         <header class="navbar navbar-expand-md navbar-light d-print-none sticky-top bg-white border-bottom shadow-xs" style="z-index: 1030; height: 57px;">
             <div class="container-fluid px-3">
-                <button id="admin-sidebar-toggle" class="btn btn-ghost-secondary me-2 p-1" type="button" title="Toggle sidebar">
-                    <i class="ti ti-menu-2 fs-2 text-dark"></i>
+                <button id="admin-sidebar-toggle" class="btn btn-ghost-secondary me-2 p-1" type="button" title="Collapse sidebar" aria-expanded="true">
+                    <i id="admin-sidebar-toggle-icon" class="ti ti-layout-sidebar-left-collapse fs-2 text-dark"></i>
                 </button>
                 <span class="navbar-brand text-primary fw-bold fs-3 m-0 d-flex align-items-center">
-                    <img src="/assets/icons/liphtup-icon-192.png" alt="LiphtUp" style="height: 32px; width: 32px; object-fit: contain; border-radius: 6px;">
+                    <img src="/assets/branding/liphtup-admin-logo.png" alt="LiphtUp" style="height: 28px; width: auto; max-width: 120px; object-fit: contain; display: block;">
                     <span id="admin-header-role-badge" class="badge bg-purple-lt text-purple ms-2 fw-bold" style="font-size: 0.72rem;">Super Admin</span>
                 </span>
                 <div class="navbar-nav flex-row order-md-last ms-auto align-items-center gap-2">
@@ -178,7 +178,7 @@
 
         <div class="page-main d-flex flex-row flex-fill">
             <!-- Sidebar Navigation -->
-            <aside id="admin-sidebar" class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end shadow-xs">
+            <aside id="admin-sidebar" class="admin-sidebar navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end shadow-xs">
                 <div class="container-fluid px-2 d-flex flex-column h-100">
                     <div class="navbar-collapse collapse show flex-fill d-flex flex-column" id="sidebar-menu">
                         <ul class="navbar-nav pt-lg-3 w-100 gap-1 flex-fill">
@@ -347,10 +347,10 @@
                                             <span class="badge bg-primary text-white rounded-pill px-2 py-1 fs-5 ms-1" id="att-drivers-badge">0</span>
                                         </button>
 
-                                        <!-- 2. Payment Issues -->
+                                        <!-- 2. Unverified Payment Records -->
                                         <button type="button" class="btn btn-outline-warning bg-white shadow-xs d-none align-items-center gap-2 px-3 py-2 border rounded-pill text-start" id="att-payments-btn">
                                             <i class="ti ti-credit-card-off fs-2 text-warning"></i>
-                                            <span class="fs-4 fw-semibold text-dark"><span id="att-payments-count" class="fw-bold text-warning-emphasis">0</span> Payment issues</span>
+                                            <span class="fs-4 fw-semibold text-dark"><span id="att-payments-count" class="fw-bold text-warning-emphasis">0</span> Pending payments</span>
                                             <span class="badge bg-warning text-dark rounded-pill px-2 py-1 fs-5 ms-1" id="att-payments-badge">0</span>
                                         </button>
 
@@ -479,20 +479,24 @@
                             </div>
                         </div>
 
-                        <!-- Share Rides KPI Row -->
+                        <!-- Bike & Auto Rides Today + Pool Utilization Row -->
                         <div class="row row-cards mb-3">
                             <div class="col-sm-6 col-lg-6">
                                 <div class="card border-0 shadow-xs h-100 rounded-3">
                                     <div class="card-body p-3">
                                         <div class="d-flex align-items-center justify-content-between mb-2">
                                             <div class="d-flex align-items-center gap-2">
-                                                <span class="avatar avatar-md bg-teal-lt text-teal rounded-3"><i class="ti ti-share fs-2"></i></span>
+                                                <span class="avatar avatar-md bg-teal-lt text-teal rounded-3"><i class="ti ti-motorbike fs-2"></i></span>
                                                 <div>
-                                                    <div class="text-secondary small fw-medium">Total Share Rides</div>
-                                                    <div class="h1 mb-0 fw-bold text-dark" id="kpi-share-rides-value">--</div>
+                                                    <div class="text-secondary small fw-medium">Number of Bike and Auto rides</div>
+                                                    <div class="h2 mb-0 fw-bold text-dark d-flex align-items-center flex-wrap gap-3 mt-1">
+                                                        <span><i class="ti ti-car-suv text-teal me-1"></i>Auto: <span id="kpi-today-auto-rides">--</span></span>
+                                                        <span class="text-muted fw-normal">|</span>
+                                                        <span><i class="ti ti-motorbike text-azure me-1"></i>Bike / Scooty: <span id="kpi-today-bike-rides">--</span></span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <span class="badge bg-teal-lt text-teal small fw-bold">Share Auto</span>
+                                            <span class="badge bg-teal-lt text-teal small fw-bold">Today</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1743,7 +1747,7 @@
                                         <i class="ti ti-ticket text-primary"></i> Promotional Coupon Management
                                     </h2>
                                     <div class="text-secondary small">
-                                        Manage platform promotional discounts, eligibility categories, user restrictions, and driver wallet subsidies.
+                                        Manage platform promotional discounts, eligibility categories, allowed passengers, and driver wallet subsidies.
                                     </div>
                                 </div>
                                 <div class="col-auto ms-auto d-print-none">
@@ -1831,7 +1835,7 @@
                                             <th>Coupon Code</th>
                                             <th>Discount Value</th>
                                             <th>Eligibility Category</th>
-                                            <th>User Restrictions</th>
+                                            <th>Allowed Passengers</th>
                                             <th>Usage Stats</th>
                                             <th>Status</th>
                                             <th class="w-1">Actions</th>
@@ -1922,48 +1926,65 @@
 
     <!-- Modal: Record Payment Manually -->
     <div id="admin-manual-payment-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="manual-pay-modal-title" style="background: rgba(0, 0, 0, 0.5);">
-        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 480px;">
-            <div class="modal-content shadow-lg border-0">
-                <div class="modal-header">
-                    <h5 id="manual-pay-modal-title" class="modal-title fw-bold">
-                        <i class="ti ti-cash me-2 text-primary"></i>Record Offline Payment
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 500px;">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-header border-bottom">
+                    <h5 id="manual-pay-modal-title" class="modal-title fw-bold d-flex align-items-center">
+                        <span class="avatar avatar-xs bg-blue-lt text-primary rounded me-2"><i class="ti ti-cash"></i></span>
+                        Record Offline Payment
                     </h5>
                     <button id="manual-pay-close-btn" type="button" class="btn-close" aria-label="Close"></button>
                 </div>
                 <form id="admin-manual-pay-form">
                     <div class="modal-body">
                         <div class="mb-3">
-                            <label class="form-label required fw-bold">Select Driver</label>
+                            <label class="form-label required fw-bold mb-1">Select Driver</label>
                             <select id="manual-pay-driver-select" class="form-select" required>
                                 <option value="">Loading drivers list...</option>
                             </select>
                         </div>
+
+                        <!-- Pending Daily Payments Selector -->
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Payment Week ID</label>
-                            <input type="text" id="manual-pay-week-input" class="form-control" placeholder="e.g. 2026-W34 (leave blank for current week)">
-                        </div>
-                        <div class="row">
-                            <div class="col-6 mb-3">
-                                <label class="form-label required fw-bold">Amount (₹)</label>
-                                <input type="number" id="manual-pay-amount-input" class="form-control" value="140" required min="1">
+                            <label class="form-label fw-bold mb-0">Pending payments</label>
+                            <div class="text-secondary small mb-2">Select the days you want to record as paid.</div>
+
+                            <div id="manual-pay-days-list" class="border rounded-3 overflow-hidden bg-white" style="max-height: 220px; overflow-y: auto;">
+                                <div class="text-secondary small text-center py-4 px-3">
+                                    Select a driver above to view their pending daily fees.
+                                </div>
                             </div>
-                            <div class="col-6 mb-3">
-                                <label class="form-label fw-bold">Method</label>
-                                <select id="manual-pay-method-select" class="form-select">
-                                    <option value="cash" selected>Cash / Offline</option>
-                                    <option value="upi">UPI / Online</option>
-                                    <option value="bank_transfer">Bank Transfer</option>
-                                </select>
+
+                            <!-- Selected Days & Read-Only Auto-Calculated Total Summary -->
+                            <div id="manual-pay-selected-summary" class="border rounded-3 p-2 px-3 mt-2" style="background: #f8fafc;">
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <span class="text-secondary small fw-medium">Selected days (<span id="manual-pay-selected-count">0</span>)</span>
+                                    <span class="small text-secondary">Total amount: <strong class="text-dark fs-4" id="manual-pay-total-display">₹0</strong></span>
+                                </div>
+                                <div id="manual-pay-selected-pills" class="d-flex flex-wrap gap-1 pt-1">
+                                    <span class="text-secondary small fst-italic" style="font-size: 0.78rem !important;">No days added yet. Click "+ Add" on pending days above.</span>
+                                </div>
                             </div>
+                            <input type="hidden" id="manual-pay-amount-input" value="0">
                         </div>
+
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Payment Reference / Note</label>
-                            <input type="text" id="manual-pay-ref-input" class="form-control" value="Collected offline in cash" placeholder="Optional notes or receipt no.">
+                            <label class="form-label required fw-bold mb-1">Payment Method</label>
+                            <select id="manual-pay-method-select" class="form-select" required>
+                                <option value="cash" selected>Cash / Offline</option>
+                                <option value="upi">UPI / Online</option>
+                                <option value="bank_transfer">Bank Transfer</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-1">
+                            <label class="form-label fw-bold mb-1">Payment Reference / Note</label>
+                            <input type="text" id="manual-pay-ref-input" class="form-control" value="Collected offline in cash" placeholder="e.g. Collected offline in cash">
                         </div>
                     </div>
-                    <div class="modal-footer d-flex gap-2">
+                    <div class="modal-footer d-flex gap-2 bg-light-subtle">
                         <button type="button" id="manual-pay-cancel-btn" class="btn btn-outline-secondary flex-fill">Cancel</button>
-                        <button type="submit" id="manual-pay-submit-btn" class="btn btn-primary flex-fill">Record &amp; Approve Payment</button>
+                        <button type="submit" id="manual-pay-submit-btn" class="btn btn-primary flex-fill" disabled>Record &amp; Approve Payment</button>
                     </div>
                 </form>
             </div>
@@ -2384,7 +2405,7 @@
 
                         <div class="mb-3">
                             <div class="d-flex align-items-center justify-content-between mb-1">
-                                <label class="form-label fw-bold mb-0">Restricted Passengers (Optional)</label>
+                                <label class="form-label fw-bold mb-0">Allowed Passengers (Optional)</label>
                                 <span class="badge bg-secondary-lt" id="restricted-passengers-count-badge">0 selected (All passengers)</span>
                             </div>
                             <div class="input-group mb-2">
@@ -2398,8 +2419,9 @@
                             </div>
                             <!-- Interactive Added Passengers Chips Container -->
                             <div id="restricted-passengers-chips-container" class="border rounded p-2 d-flex flex-wrap gap-2 bg-light-subtle" style="min-height: 44px; max-height: 130px; overflow-y: auto;">
-                                <span class="text-secondary small fst-italic p-1" id="restricted-passengers-empty-hint">No passengers restricted. Coupon is available to all qualifying passengers.</span>
+                                <span class="text-secondary small fst-italic p-1" id="restricted-passengers-empty-hint">No specific passengers selected. Coupon is available to all qualifying passengers.</span>
                             </div>
+                            <small class="form-text text-muted d-block mt-1">If passengers are added here, <strong>only</strong> those selected passengers will be able to use this coupon. Leave empty to allow all qualifying passengers.</small>
                             <input type="hidden" id="input-coupon-users" value="">
                         </div>
                         <div class="mb-3">

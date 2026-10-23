@@ -1109,6 +1109,15 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
     today_km = round(sum(float(r.get("estimated_distance_km") or r.get("distance_km") or 0) for r in today_completed_docs), 2)
     avg_km = round(today_km / today_completed, 2) if today_completed > 0 else 0.0
 
+    today_auto_rides = 0
+    today_bike_rides = 0
+    for r in today_docs:
+        v_type = str(r.get("vehicle_type") or r.get("vehicleType") or r.get("ride_vehicle_type") or "").strip().lower()
+        if v_type == "auto":
+            today_auto_rides += 1
+        elif v_type in ("bike", "scooty", "scooter", "two_wheeler", "2w"):
+            today_bike_rides += 1
+
     yesterday_rides_docs = [_doc_dict(d) for d in _stream(rides_coll.where("createdAt", ">=", yesterday_start).where("createdAt", "<", today_start))]
     yesterday_rides_count = len(yesterday_rides_docs)
     rides_delta_percent = (
@@ -1127,7 +1136,34 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
         avg_riders_per_share_trip = 0.0
 
     # Attention items
-    pending_payments = _safe_count(db.collection("driverPayments").where("status", "==", "submitted"))
+    pending_payments = 0
+    try:
+        pending_batches_docs = list(_stream(db.collection("feePaymentBatches").where("status", "==", "PENDING")))
+        batch_ids_seen = set()
+        for b_doc in pending_batches_docs:
+            b_dict = _doc_dict(b_doc)
+            b_id = b_dict.get("batchId") or b_dict.get("_id")
+            if b_id:
+                batch_ids_seen.add(b_id)
+            try:
+                allocs = list(_stream(db.collection("feePaymentBatches").document(b_dict["_id"]).collection("allocations")))
+                if allocs:
+                    pending_payments += sum(1 for a in allocs if str((a.to_dict() or {}).get("status") or "PENDING").upper() == "PENDING")
+                else:
+                    pending_payments += int(b_dict.get("allocation_count") or 1)
+            except Exception:
+                pending_payments += int(b_dict.get("allocation_count") or 1)
+
+        legacy_submitted_docs = [
+            _doc_dict(d)
+            for d in _stream(db.collection("driverPayments").where("status", "in", ["submitted", "under_review", "pending_verification"]))
+        ]
+        for lp in legacy_submitted_docs:
+            if not lp.get("batchId") or lp.get("batchId") not in batch_ids_seen:
+                pending_payments += 1
+    except Exception:
+        pending_payments = _safe_count(db.collection("driverPayments").where("status", "==", "submitted"))
+
     open_sos = _safe_count(db.collection("sosAlerts").where("status", "==", "open"))
     open_reports = _safe_count(db.collection("safetyReports").where("status", "==", "open"))
 
@@ -1227,6 +1263,8 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             "completedRides": today_completed,
             "cancelledRides": today_cancelled,
             "activeRides": today_active,
+            "autoRides": today_auto_rides,
+            "bikeRides": today_bike_rides,
             "totalFareCollected": today_fare,
             "totalDistanceKm": today_km,
             "averageRideDistanceKm": avg_km,
@@ -1234,6 +1272,10 @@ def get_overview(admin_user: dict[str, Any] = Depends(require_admin)) -> dict[st
             "newDriversToday": new_drivers_today,
             "activeRidePassengerIds": list({r.get("passenger_id") for r in today_active_docs if r.get("passenger_id")}),
             "vsYesterdayPercent": rides_delta_percent,
+        },
+        "todayVehicleSplit": {
+            "autoRides": today_auto_rides,
+            "bikeRides": today_bike_rides,
         },
         "activeUsers": {
             "total": active_users_total,

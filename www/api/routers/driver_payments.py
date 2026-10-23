@@ -79,6 +79,7 @@ class AdminPauseRequest(BaseModel):
 class AdminRecordManualPaymentRequest(BaseModel):
     driverId: str
     weekId: Optional[str] = None
+    selectedDays: Optional[List[str]] = None
     amount: Optional[float] = None
     paymentMethod: Optional[str] = "cash"
     paymentReference: Optional[str] = "Offline Cash Payment"
@@ -970,12 +971,24 @@ def admin_record_manual_payment(
     # Determine amount
     from ..core.fee_engine import get_driver_fee_summary, allocate_manual_fee_payment
     fee_summary = get_driver_fee_summary(db, driver_uid)
+    selected_days = [str(d).strip() for d in (body.selectedDays or []) if str(d).strip()]
+
     amount_inr = body.amount
-    if amount_inr is None or amount_inr <= 0:
+    if selected_days:
+        selected_set = set(selected_days)
+        selected_paise = sum(
+            int(f.get("remaining_paise") or 0)
+            for f in (fee_summary.get("fees") or [])
+            if str(f.get("serviceDate") or "").strip() in selected_set
+            and str(f.get("status") or "").upper() not in ("PAID", "UNDER_REVIEW")
+        )
+        if selected_paise > 0:
+            amount_inr = selected_paise / 100.0
+    elif amount_inr is None or amount_inr <= 0:
         amount_inr = fee_summary.get("payable_inr") or 0.0
 
-    if amount_inr <= 0:
-        raise ApiError("No outstanding balance to pay for this driver. Please enter a valid payment amount.", 400)
+    if amount_inr is None or amount_inr <= 0:
+        raise ApiError("No outstanding balance to pay for the selected days.", 400)
 
     payment_method = (body.paymentMethod or "cash").strip().lower()
     payment_ref = (body.paymentReference or "Offline / Cash Payment").strip()
@@ -985,14 +998,22 @@ def admin_record_manual_payment(
         db=db,
         uid=driver_uid,
         amount_inr=amount_inr,
+        selected_days=selected_days if selected_days else None,
+        driver_name=profile.get("name", "Driver"),
+        driver_phone=profile.get("phone", ""),
         admin_user=admin_user,
         payment_method=payment_method,
         payment_reference=payment_ref,
     )
+    amount_inr = float(fee_alloc_res.get("allocated_inr") or amount_inr)
 
-    # Also keep legacy driverPayments record for compatibility with existing admin payment tables
+    # Auto-assign weekId from allocated items if not explicitly provided
+    alloc_items = fee_alloc_res.get("allocations") or []
+    auto_week_id = None
+    if alloc_items:
+        auto_week_id = alloc_items[-1].get("weekId")
     week_info = get_payment_week_info()
-    target_week_id = (body.weekId or week_info["weekId"]).strip()
+    target_week_id = (body.weekId or auto_week_id or week_info["weekId"]).strip()
     doc_id = f"pymt_manual_{driver_uid}_{target_week_id}_{int(now.timestamp() * 1000)}"
     doc_ref = db.collection("driverPayments").document(doc_id)
 
@@ -1002,6 +1023,8 @@ def admin_record_manual_payment(
         "driverPhone": profile.get("phone", ""),
         "weekId": target_week_id,
         "weekLabel": f"Week {target_week_id}",
+        "selectedDays": [a.get("serviceDate") for a in alloc_items if a.get("serviceDate")],
+        "dayIds": [a.get("dayId") or a.get("fee_id") for a in alloc_items if (a.get("dayId") or a.get("fee_id"))],
         "amount": amount_inr,
         "currency": "INR",
         "submittedAt": now,

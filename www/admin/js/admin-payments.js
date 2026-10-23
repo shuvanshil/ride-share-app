@@ -42,6 +42,10 @@ export async function loadAdminPayments() {
         try {
             const batchRes = await adminGet('/fee-batches');
             const feeBatches = batchRes.batches || [];
+            const seenBatchIds = new Set(feeBatches.map(b => b.batchId || b.id).filter(Boolean));
+            if (seenBatchIds.size > 0) {
+                cachedPayments = cachedPayments.filter(p => !p.batchId || !seenBatchIds.has(p.batchId));
+            }
             feeBatches.forEach(b => {
                 const allocs = b.allocations || [];
                 const bBatchId = b.batchId || b.id;
@@ -972,6 +976,28 @@ async function handleClearPauseSettings(btn) {
 
 // ============ RECORD MANUAL PAYMENT MODAL ============
 
+let manualPayPendingDays = [];
+let manualPaySelectedDays = new Set();
+
+function formatServiceDateShort(dateStr) {
+    if (!dateStr) return 'Unknown Day';
+    try {
+        const parts = String(dateStr).split('-');
+        if (parts.length === 3) {
+            const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+        }
+        return dateStr;
+    } catch (_) {
+        return dateStr;
+    }
+}
+
+function formatInrAmount(paise) {
+    const inr = Number(paise || 0) / 100;
+    return Number.isInteger(inr) ? `₹${inr}` : `₹${inr.toFixed(2)}`;
+}
+
 async function fetchDriversList() {
     const select = document.getElementById('manual-pay-driver-select');
     if (!select) return;
@@ -1003,44 +1029,154 @@ async function fetchDriversList() {
     }
 }
 
+function renderManualPayDaysUI() {
+    const listEl = document.getElementById('manual-pay-days-list');
+    const summaryEl = document.getElementById('manual-pay-selected-summary');
+    const countEl = document.getElementById('manual-pay-selected-count');
+    const totalEl = document.getElementById('manual-pay-total-display');
+    const pillsEl = document.getElementById('manual-pay-selected-pills');
+    const amountInput = document.getElementById('manual-pay-amount-input');
+    const submitBtn = document.getElementById('manual-pay-submit-btn');
+
+    if (!listEl) return;
+
+    if (!manualPayPendingDays.length) {
+        listEl.innerHTML = '<div class="p-3 text-center text-muted small">No unpaid or due days found for this driver.</div>';
+        if (summaryEl) summaryEl.classList.add('d-none');
+        if (amountInput) amountInput.value = '0';
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+    }
+
+    listEl.innerHTML = manualPayPendingDays.map(day => {
+        const sDate = day.serviceDate;
+        const isSelected = manualPaySelectedDays.has(sDate);
+        const label = formatServiceDateShort(sDate);
+        const distKm = ((Number(day.distance_m || 0)) / 1000).toFixed(1);
+        const amtStr = formatInrAmount(day.remaining_paise);
+
+        return `
+            <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom manual-pay-day-row" data-service-date="${sDate}" style="background:${isSelected ? '#f8fafc' : '#fff'};">
+                <div class="d-flex align-items-center gap-2">
+                    <input type="checkbox" class="form-check-input m-0 manual-pay-day-checkbox" data-service-date="${sDate}" ${isSelected ? 'checked' : ''} style="cursor:pointer;">
+                    <div class="ms-1">
+                        <div class="fw-semibold text-dark" style="font-size:0.9rem; line-height:1.2;">${label}</div>
+                        <div class="text-muted" style="font-size:0.78rem;">${distKm} km</div>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="fw-bold text-dark" style="font-size:0.95rem;">${amtStr}</span>
+                    ${isSelected
+                        ? `<button type="button" class="btn btn-sm btn-light border text-muted px-2 py-1 manual-pay-toggle-btn" data-service-date="${sDate}" style="min-width:68px; font-size:0.78rem;">Added</button>`
+                        : `<button type="button" class="btn btn-sm btn-outline-secondary px-2 py-1 manual-pay-toggle-btn" data-service-date="${sDate}" style="min-width:68px; font-size:0.78rem;"><i class="ti ti-plus me-1"></i>Add</button>`
+                    }
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    listEl.querySelectorAll('.manual-pay-day-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const sDate = e.target.getAttribute('data-service-date');
+            if (!sDate) return;
+            if (e.target.checked) manualPaySelectedDays.add(sDate);
+            else manualPaySelectedDays.delete(sDate);
+            renderManualPayDaysUI();
+        });
+    });
+
+    listEl.querySelectorAll('.manual-pay-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sDate = btn.getAttribute('data-service-date');
+            if (!sDate) return;
+            if (manualPaySelectedDays.has(sDate)) manualPaySelectedDays.delete(sDate);
+            else manualPaySelectedDays.add(sDate);
+            renderManualPayDaysUI();
+        });
+    });
+
+    const selectedItems = manualPayPendingDays.filter(d => manualPaySelectedDays.has(d.serviceDate));
+    const totalPaise = selectedItems.reduce((acc, d) => acc + Number(d.remaining_paise || 0), 0);
+    const totalInr = totalPaise / 100;
+
+    if (summaryEl) summaryEl.classList.remove('d-none');
+    if (countEl) countEl.textContent = String(selectedItems.length);
+    if (totalEl) totalEl.textContent = formatInrAmount(totalPaise);
+    if (amountInput) amountInput.value = totalInr > 0 ? String(totalInr) : '0';
+    if (submitBtn) submitBtn.disabled = selectedItems.length === 0 || totalPaise <= 0;
+
+    if (pillsEl) {
+        if (!selectedItems.length) {
+            pillsEl.innerHTML = '<span class="text-muted small fst-italic">Click "+ Add" on one or more pending days above to include them.</span>';
+        } else {
+            pillsEl.innerHTML = selectedItems.map(d => {
+                const label = formatServiceDateShort(d.serviceDate);
+                const amtStr = formatInrAmount(d.remaining_paise);
+                return `
+                    <span class="badge bg-white text-dark border d-inline-flex align-items-center gap-1 px-2 py-1" style="font-size:0.78rem; font-weight:500;">
+                        <span>${label} &middot; <strong>${amtStr}</strong></span>
+                        <a href="javascript:void(0)" class="text-muted ms-1 manual-pay-remove-pill" data-service-date="${d.serviceDate}" style="text-decoration:none; font-weight:bold;">&times;</a>
+                    </span>
+                `;
+            }).join('');
+
+            pillsEl.querySelectorAll('.manual-pay-remove-pill').forEach(rem => {
+                rem.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const sDate = rem.getAttribute('data-service-date');
+                    if (sDate) {
+                        manualPaySelectedDays.delete(sDate);
+                        renderManualPayDaysUI();
+                    }
+                });
+            });
+        }
+    }
+}
+
 async function onManualPayDriverChange() {
     const select = document.getElementById('manual-pay-driver-select');
     const duesInfo = document.getElementById('manual-pay-driver-dues-info');
+    const listEl = document.getElementById('manual-pay-days-list');
+    const summaryEl = document.getElementById('manual-pay-selected-summary');
     const amountInput = document.getElementById('manual-pay-amount-input');
+    const submitBtn = document.getElementById('manual-pay-submit-btn');
+
+    manualPayPendingDays = [];
+    manualPaySelectedDays.clear();
+
     const uid = select?.value;
     if (!uid) {
         if (duesInfo) duesInfo.classList.add('d-none');
+        if (listEl) listEl.innerHTML = '<div class="p-3 text-center text-muted small">Select a driver above to view pending daily fees.</div>';
+        if (summaryEl) summaryEl.classList.add('d-none');
         if (amountInput) amountInput.value = '';
+        if (submitBtn) submitBtn.disabled = true;
         return;
     }
-    if (duesInfo) {
-        duesInfo.classList.remove('d-none');
-        duesInfo.className = 'alert alert-info py-2 px-3 small mb-3';
-        duesInfo.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Fetching driver platform fee balance...';
+
+    if (duesInfo) duesInfo.classList.add('d-none');
+    if (listEl) {
+        listEl.innerHTML = '<div class="p-3 text-center text-muted small"><span class="spinner-border spinner-border-sm me-2"></span>Loading driver pending daily fees...</div>';
     }
+    if (summaryEl) summaryEl.classList.add('d-none');
+    if (submitBtn) submitBtn.disabled = true;
+
     try {
         const sum = await adminGet(`/drivers/${encodeURIComponent(uid)}/fees-summary`);
-        const payable = Number(sum.payable_inr || 0);
-        const overdue = Number(sum.overdue_inr || 0);
-        const openDays = (sum.fees || []).filter(f => (f.status || '').toUpperCase() !== 'PAID');
-        if (duesInfo) {
-            if (payable > 0) {
-                const overdueStr = overdue > 0 ? ` <span class="text-danger fw-bold">(Includes ₹${overdue.toFixed(2)} overdue)</span>` : '';
-                duesInfo.className = 'alert alert-warning py-2 px-3 small mb-3';
-                duesInfo.innerHTML = `<strong>Total Payable: ₹${payable.toFixed(2)}</strong> across ${openDays.length} day(s).${overdueStr}`;
-            } else {
-                duesInfo.className = 'alert alert-success py-2 px-3 small mb-3';
-                duesInfo.innerHTML = `<i class="ti ti-check me-1"></i>Driver has zero outstanding platform fees.`;
-            }
-        }
-        if (amountInput) {
-            amountInput.value = payable > 0 ? payable : '';
-        }
+        const allFees = sum.fees || [];
+        // Exclude days that are PAID or UNDER_REVIEW; only include days with remaining_paise > 0
+        manualPayPendingDays = allFees.filter(f => {
+            const st = String(f.status || '').toUpperCase();
+            const rem = Number(f.remaining_paise || 0);
+            return rem > 0 && st !== 'PAID' && st !== 'UNDER_REVIEW';
+        }).sort((a, b) => String(a.serviceDate || '').localeCompare(String(b.serviceDate || '')));
+
+        renderManualPayDaysUI();
     } catch (e) {
         console.warn("Could not fetch driver fee summary:", e);
-        if (duesInfo) {
-            duesInfo.className = 'alert alert-secondary py-2 px-3 small mb-3';
-            duesInfo.innerText = 'Could not load current dues; enter amount manually.';
+        if (listEl) {
+            listEl.innerHTML = '<div class="p-3 text-center text-danger small">Could not load pending daily fees for this driver.</div>';
         }
     }
 }
@@ -1049,14 +1185,25 @@ function openManualPayModal() {
     const modal = document.getElementById('admin-manual-payment-modal');
     if (!modal) return;
 
+    manualPayPendingDays = [];
+    manualPaySelectedDays.clear();
+
     fetchDriversList();
     const duesInfo = document.getElementById('manual-pay-driver-dues-info');
     if (duesInfo) {
         duesInfo.classList.add('d-none');
         duesInfo.innerHTML = '';
     }
+    const listEl = document.getElementById('manual-pay-days-list');
+    if (listEl) {
+        listEl.innerHTML = '<div class="p-3 text-center text-muted small">Select a driver above to view pending daily fees.</div>';
+    }
+    const summaryEl = document.getElementById('manual-pay-selected-summary');
+    if (summaryEl) summaryEl.classList.add('d-none');
     const amountInput = document.getElementById('manual-pay-amount-input');
     if (amountInput) amountInput.value = '';
+    const submitBtn = document.getElementById('manual-pay-submit-btn');
+    if (submitBtn) submitBtn.disabled = true;
 
     modal.style.display = 'block';
     modal.classList.remove('d-none');
@@ -1075,8 +1222,6 @@ async function handleSaveManualPayment(e) {
     const submitBtn = document.getElementById('manual-pay-submit-btn');
     await withButtonSpinner(submitBtn, async () => {
         const driverSelect = document.getElementById('manual-pay-driver-select');
-        const weekInput = document.getElementById('manual-pay-week-input');
-        const amountInput = document.getElementById('manual-pay-amount-input');
         const methodSelect = document.getElementById('manual-pay-method-select');
         const refInput = document.getElementById('manual-pay-ref-input');
 
@@ -1086,18 +1231,27 @@ async function handleSaveManualPayment(e) {
             return;
         }
 
-        const amtVal = amountInput && amountInput.value ? parseFloat(amountInput.value) : null;
-        if (amtVal !== null && (isNaN(amtVal) || amtVal <= 0)) {
-            showToast("Please enter a valid payment amount.", "warning");
+        const selectedDays = Array.from(manualPaySelectedDays);
+        if (!selectedDays.length) {
+            showToast("Please add at least one pending day to record payment.", "warning");
+            return;
+        }
+
+        const selectedItems = manualPayPendingDays.filter(d => manualPaySelectedDays.has(d.serviceDate));
+        const totalPaise = selectedItems.reduce((acc, d) => acc + Number(d.remaining_paise || 0), 0);
+        const totalInr = totalPaise / 100;
+
+        if (totalPaise <= 0) {
+            showToast("Selected days have zero payable amount.", "warning");
             return;
         }
 
         const payload = {
             driverId: driverId,
-            weekId: weekInput ? weekInput.value.trim() : null,
-            amount: amtVal,
+            selectedDays: selectedDays,
+            amount: totalInr,
             paymentMethod: methodSelect ? methodSelect.value : 'cash',
-            paymentReference: refInput ? refInput.value.trim() : 'Collected offline in cash'
+            paymentReference: (refInput && refInput.value.trim()) ? refInput.value.trim() : 'Collected offline in cash'
         };
 
         try {

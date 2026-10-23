@@ -215,10 +215,10 @@ def is_passenger_eligible_for_coupon(
             return False, "You have already used the WELCOME coupon 3 times."
         return False, "You have already used this coupon."
 
-    # User ID restriction (logical AND with category)
-    restricted_users = coupon.get("restrictedPassengerIds") or []
-    if restricted_users:
-        cleaned_allowed = [str(u).strip() for u in restricted_users if str(u).strip()]
+    # Allowed passengers whitelist (if specified, ONLY passengers in this list can use the coupon)
+    allowed_users = coupon.get("allowedPassengerIds") if coupon.get("allowedPassengerIds") is not None else (coupon.get("restrictedPassengerIds") or [])
+    if allowed_users:
+        cleaned_allowed = [str(u).strip() for u in allowed_users if str(u).strip()]
         if cleaned_allowed and clean_uid not in cleaned_allowed:
             return False, "This coupon is not available for your account."
 

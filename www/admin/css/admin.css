@@ -71,59 +71,134 @@ html, body {
 
 /* Sidebar positioning: Force sticky below header on desktop so header is never covered */
 @media (min-width: 992px) {
+    #admin-sidebar,
     .admin-sidebar,
     .navbar-vertical.navbar-expand-lg {
         position: sticky !important;
         top: 57px !important;
         height: calc(100vh - 57px) !important;
-        z-index: 1000 !important;
+        z-index: 1020 !important;
         overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    #admin-sidebar.is-collapsed,
+    .admin-sidebar.is-collapsed,
+    .navbar-vertical.navbar-expand-lg.is-collapsed {
+        overflow: visible !important;
     }
 }
 
+#admin-sidebar,
 .admin-sidebar {
     width: 240px;
+    min-width: 240px;
     flex-shrink: 0;
-    transition: width 0.2s ease-in-out, transform 0.2s ease-in-out;
+    transition: width 0.2s ease-in-out, min-width 0.2s ease-in-out, transform 0.2s ease-in-out;
 }
 
+#admin-sidebar.is-collapsed,
 .admin-sidebar.is-collapsed,
 .navbar-vertical.navbar-expand-lg.is-collapsed {
-    width: 64px !important;
-    min-width: 64px !important;
+    width: 68px !important;
+    min-width: 68px !important;
+    max-width: 68px !important;
 }
 
-.admin-sidebar.is-collapsed .nav-link-title,
-.admin-sidebar.is-collapsed .nav-header,
-.admin-sidebar.is-collapsed #admin-safety-nav-badge,
-.admin-sidebar.is-collapsed #admin-payments-nav-badge,
-.admin-sidebar.is-collapsed #admin-sidebar-collapse-btn span {
+#admin-sidebar.is-collapsed > .container-fluid,
+#admin-sidebar.is-collapsed #sidebar-menu,
+#admin-sidebar.is-collapsed .navbar-nav,
+#admin-sidebar.is-collapsed .nav-item {
+    overflow: visible !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+}
+
+#admin-sidebar.is-collapsed .nav-header,
+#admin-sidebar.is-collapsed #admin-safety-nav-badge,
+#admin-sidebar.is-collapsed #admin-payments-nav-badge,
+#admin-sidebar.is-collapsed #admin-reports-nav-badge,
+#admin-sidebar.is-collapsed .admin-nav-inline-spinner {
     display: none !important;
 }
 
-.admin-sidebar.is-collapsed #admin-sidebar-collapse-btn {
+#admin-sidebar.is-collapsed .admin-nav-item,
+#admin-sidebar.is-collapsed #admin-sidebar-collapse-btn {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
     justify-content: center !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-}
-
-.admin-sidebar.is-collapsed #admin-sidebar-collapse-btn i {
-    transform: rotate(180deg);
-}
-
-.admin-sidebar.is-collapsed .admin-nav-item {
-    justify-content: center !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
+    width: 44px !important;
+    height: 44px !important;
+    margin: 2px auto !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
     text-align: center !important;
 }
 
-.admin-sidebar.is-collapsed .admin-nav-item i {
-    margin-right: 0 !important;
-    font-size: 1.3rem;
+#admin-sidebar.is-collapsed .admin-nav-item i,
+#admin-sidebar.is-collapsed .admin-nav-item .nav-link-icon,
+#admin-sidebar.is-collapsed #admin-sidebar-collapse-btn i {
+    margin: 0 !important;
+    font-size: 1.35rem !important;
+    line-height: 1 !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+}
+
+#admin-sidebar.is-collapsed #admin-sidebar-collapse-btn i {
+    transform: rotate(180deg);
+}
+
+/* Floating hover tooltip for collapsed sidebar items */
+#admin-sidebar.is-collapsed .admin-nav-item .nav-link-title,
+#admin-sidebar.is-collapsed #admin-sidebar-collapse-btn .nav-link-title {
+    display: block !important;
+    position: absolute !important;
+    left: calc(100% + 12px) !important;
+    top: 50% !important;
+    transform: translateY(-50%) translateX(-4px) !important;
+    background: #1e293b !important;
+    color: #ffffff !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    line-height: 1.2 !important;
+    padding: 6px 12px !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22) !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease !important;
+    z-index: 2050 !important;
+}
+
+#admin-sidebar.is-collapsed .admin-nav-item .nav-link-title::before,
+#admin-sidebar.is-collapsed #admin-sidebar-collapse-btn .nav-link-title::before {
+    content: "";
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent #1e293b transparent transparent;
+}
+
+#admin-sidebar.is-collapsed .admin-nav-item:hover .nav-link-title,
+#admin-sidebar.is-collapsed .admin-nav-item:focus-visible .nav-link-title,
+#admin-sidebar.is-collapsed #admin-sidebar-collapse-btn:hover .nav-link-title,
+#admin-sidebar.is-collapsed #admin-sidebar-collapse-btn:focus-visible .nav-link-title {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: translateY(-50%) translateX(0) !important;
 }
 
 @media (max-width: 991.98px) {
+    #admin-sidebar,
     .admin-sidebar {
         position: fixed;
         left: 0;
@@ -133,6 +208,7 @@ html, body {
         transform: translateX(-100%);
         transition: transform 0.2s ease-in-out;
     }
+    #admin-sidebar.is-open,
     .admin-sidebar.is-open {
         transform: translateX(0);
     }

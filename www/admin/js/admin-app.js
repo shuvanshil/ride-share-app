@@ -1,4 +1,4 @@
-import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken, beginAdminBusy, clearAdminCache } from "./admin-api.js?v=2.7.0";
+import { watchAdminAuth, loginAdmin, logoutAdmin, adminGet, adminPatch, adminPost, adminDelete, refreshAdminToken, beginAdminBusy, setActiveAdminSectionBusy, clearAdminCache } from "./admin-api.js?v=2.7.0";
 import { showTablerConfirm, showTablerPrompt } from "./admin-confirm.js?v=2.7.0";
 import { DataTable } from "./data-table.js?v=2.7.0";
 import { showReadOnlyDrawer, showFormDrawer, closeDrawer } from "./admin-drawer.js?v=2.7.0";
@@ -118,13 +118,13 @@ function parseRequestedAdminRoute(pathname = window.location.pathname) {
     if (!clean || clean === "/admin" || clean === "/admin/index") {
         return { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
     }
-    const match = clean.match(/^\/admin\/([^/?#]+)/i);
+    const match = clean.match(/^\/admin\/([^/?#]+)/i) || clean.match(/^\/([^/?#]+)$/i);
     if (!match) {
         return { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
     }
     const rawSlug = decodeURIComponent(match[1]).trim();
     const lookup = rawSlug.toLowerCase();
-    if (lookup === "index") {
+    if (lookup === "index" || lookup === "admin") {
         return { isRoot: true, section: "dashboard", rawSlug: "", isKnown: true };
     }
     const mapped = SLUG_TO_SECTION[lookup];
@@ -134,6 +134,12 @@ function parseRequestedAdminRoute(pathname = window.location.pathname) {
         rawSlug,
         isKnown: Boolean(mapped),
     };
+}
+
+function getInitialBusyLabelForRoute() {
+    const req = parseRequestedAdminRoute();
+    const title = SECTION_TITLES[req.section] || "Dashboard";
+    return `Loading ${title}...`;
 }
 
 function getCanonicalAdminPath(section) {
@@ -411,9 +417,15 @@ async function bootstrapAuthenticatedShell(result) {
     sessionStorage.setItem("admin_session_active", "true");
     localStorage.setItem("admin_session_active", "true");
     applyRolePermissions(result.role, result);
-    showOnly(shell);
 
     const targetSection = resolveInitialAuthorizedSection();
+    currentSection = targetSection;
+    setActiveAdminSectionBusy(targetSection, SECTION_TITLES[targetSection] || "Section");
+    document.querySelectorAll(".admin-nav-item").forEach((b) => b.classList.toggle("active", b.dataset.section === targetSection));
+    document.querySelectorAll(".admin-section").forEach((s) => s.classList.toggle("d-none", s.id !== `section-${targetSection}`));
+    syncSidebarCollapseUI();
+    showOnly(shell);
+
     initAdminPayments();
     initAdminWalletCredit();
     initLiveRidesEvents();
@@ -482,7 +494,7 @@ watchAdminAuth(async (user) => {
     }
     showOnly(authGateScreen);
     try {
-        const result = await adminGet("/verify", {}, { showBusy: true, busyLabel: "Verifying admin permissions..." });
+        const result = await adminGet("/verify", {}, { showBusy: true, busyLabel: getInitialBusyLabelForRoute() });
         await bootstrapAuthenticatedShell(result);
     } catch (error) {
         isAdminAuthenticated = false;
@@ -739,9 +751,31 @@ $("admin-feed-close")?.addEventListener("click", () => {
     panel.classList.remove("show");
 });
 
-// Sidebar collapse button handler
+// Sidebar collapse state & toggle button synchronization
+function syncSidebarCollapseUI() {
+    const sidebar = $("admin-sidebar");
+    const toggleBtn = $("admin-sidebar-toggle");
+    const collapseBtn = $("admin-sidebar-collapse-btn");
+    if (!sidebar) return;
+
+    const isCollapsed = sidebar.classList.contains("is-collapsed");
+    if (toggleBtn) {
+        toggleBtn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+        toggleBtn.title = isCollapsed ? "Expand sidebar" : "Collapse sidebar";
+        toggleBtn.innerHTML = isCollapsed
+            ? `<i id="admin-sidebar-toggle-icon" class="ti ti-layout-sidebar-left-expand fs-2 text-primary"></i>`
+            : `<i id="admin-sidebar-toggle-icon" class="ti ti-layout-sidebar-left-collapse fs-2 text-dark"></i>`;
+    }
+    if (collapseBtn) {
+        const labelSpan = collapseBtn.querySelector(".nav-link-title");
+        if (labelSpan) labelSpan.textContent = isCollapsed ? "Expand" : "Collapse";
+        collapseBtn.title = isCollapsed ? "Expand sidebar" : "Collapse sidebar";
+    }
+}
+
 $("admin-sidebar-collapse-btn")?.addEventListener("click", () => {
     $("admin-sidebar")?.classList.toggle("is-collapsed");
+    syncSidebarCollapseUI();
 });
 
 // ---------------------------------------------------------------------
@@ -754,11 +788,11 @@ function setSubpageLoadingState(section, isLoading) {
     const loaderEl = $("admin-subpage-loader");
     const loaderTextEl = $("admin-subpage-loader-text");
     const title = SECTION_TITLES[section] || "Section";
-    if (loaderEl) {
-        if (isLoading) {
+    if (loaderEl && (isLoading || section === currentSection)) {
+        if (isLoading && section === currentSection) {
             if (loaderTextEl) loaderTextEl.textContent = `Loading ${title}...`;
             loaderEl.classList.remove("d-none");
-        } else {
+        } else if (!isLoading && section === currentSection) {
             loaderEl.classList.add("d-none");
         }
     }
@@ -796,6 +830,7 @@ async function activateAdminSection(name, { updateUrl = true, replaceUrl = false
     currentSection = name;
     const pageTitle = SECTION_TITLES[name] || "Dashboard";
     document.title = `${pageTitle} · LiphtUp Admin Console`;
+    setActiveAdminSectionBusy(name, pageTitle);
 
     const canonicalPath = getCanonicalAdminPath(name);
     if (updateUrl && window.location.pathname !== canonicalPath) {
@@ -850,10 +885,12 @@ window.addEventListener("popstate", () => {
 
 $("admin-sidebar-toggle")?.addEventListener("click", () => {
     const sidebar = $("admin-sidebar");
+    if (!sidebar) return;
     if (window.innerWidth < 992) {
         sidebar.classList.toggle("is-open");
     } else {
         sidebar.classList.toggle("is-collapsed");
+        syncSidebarCollapseUI();
     }
 });
 
@@ -870,7 +907,7 @@ async function loadSection(name) {
     if (name === "live-rides") {
         initLiveRidesEvents();
         setSubpageLoadingState(name, true);
-        const doneBusy = beginAdminBusy(`Loading ${title}...`);
+        const doneBusy = beginAdminBusy(`Loading ${title}...`, { section: name, isSectionLoad: true });
         try {
             await loadLiveRides();
         } finally {
@@ -881,11 +918,14 @@ async function loadSection(name) {
         return;
     }
 
-    if (loadedSections.has(name)) return;
+    if (loadedSections.has(name)) {
+        setSubpageLoadingState(name, false);
+        return;
+    }
     loadedSections.add(name);
 
     setSubpageLoadingState(name, true);
-    const doneBusy = beginAdminBusy(`Loading ${title}...`);
+    const doneBusy = beginAdminBusy(`Loading ${title}...`, { section: name, isSectionLoad: true });
     try {
         if (name === "dashboard") await loadDashboard();
         else if (name === "drivers") await loadDrivers(true);
@@ -1370,12 +1410,14 @@ function setDashboardLoadingSpinners() {
     if ($("kpi-active-passengers")) $("kpi-active-passengers").innerHTML = subSpinner;
     if ($("kpi-active-drivers")) $("kpi-active-drivers").innerHTML = subSpinner;
 
-    // 4. Driver Availability Card
+    // 4. Driver Availability Card & Today Bike/Auto Rides
     if ($("kpi-driver-availability-value")) $("kpi-driver-availability-value").innerHTML = spinner;
     if ($("kpi-driver-availability-delta")) $("kpi-driver-availability-delta").innerHTML = `<span class="text-secondary small">Loading...</span>`;
     if ($("kpi-drivers-online")) $("kpi-drivers-online").innerHTML = subSpinner;
     if ($("kpi-drivers-busy")) $("kpi-drivers-busy").innerHTML = subSpinner;
     if ($("kpi-drivers-offline")) $("kpi-drivers-offline").innerHTML = subSpinner;
+    if ($("kpi-today-auto-rides")) $("kpi-today-auto-rides").innerHTML = subSpinner;
+    if ($("kpi-today-bike-rides")) $("kpi-today-bike-rides").innerHTML = subSpinner;
 
     // 5. Driver Donut Stats
     if ($("donut-total-count")) $("donut-total-count").innerHTML = subSpinner;
@@ -1567,11 +1609,21 @@ async function loadDashboard() {
         if (driversBusy) driversBusy.textContent = busyCount;
         if (driversOffline) driversOffline.textContent = offlineCount;
 
-        // Bind Share KPI Cards
+        // Bind Bike & Auto Rides Today + Pool Utilization KPI Cards
+        const todayAutoEl = $("kpi-today-auto-rides");
+        const todayBikeEl = $("kpi-today-bike-rides");
         const shareRidesVal = $("kpi-share-rides-value");
         const shareAvgVal = $("kpi-share-avg-riders-value");
+        if (todayAutoEl) todayAutoEl.textContent = data.today?.autoRides ?? data.todayVehicleSplit?.auto ?? 0;
+        if (todayBikeEl) todayBikeEl.textContent = data.today?.bikeRides ?? data.todayVehicleSplit?.bike ?? 0;
         if (shareRidesVal) shareRidesVal.textContent = data.share?.totalShareRides ?? 0;
         if (shareAvgVal) shareAvgVal.textContent = Number(data.share?.avgRidersPerShareTrip ?? 0).toFixed(1);
+
+        const navPayBadge = $("admin-payments-nav-badge");
+        if (navPayBadge) {
+            navPayBadge.textContent = pendingPayments > 0 ? `${pendingPayments}` : "0";
+            navPayBadge.classList.toggle("d-none", pendingPayments === 0);
+        }
 
         // 4. Second Row Charts
         renderRideActivityChart(data.rideActivity || {}, currentChartTimeframe);

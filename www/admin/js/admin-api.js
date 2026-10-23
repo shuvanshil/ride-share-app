@@ -58,25 +58,55 @@ async function handleResponse(response) {
 const cache = new Map(); // url -> {data, at}
 const CACHE_TTL_MS = 15000;
 
-let activeBusyCount = 0;
+let activeBusyOps = [];
+let currentBusySection = "";
+let busyOpSeq = 0;
 
-export function beginAdminBusy(label = "Processing action...") {
-    activeBusyCount += 1;
+function syncBusyIndicatorUI() {
     const topBar = document.getElementById("admin-top-loading-bar");
     const pill = document.getElementById("admin-global-busy-indicator");
     const textEl = document.getElementById("admin-global-busy-text");
-    if (textEl && label) textEl.textContent = label;
-    topBar?.classList.add("is-active");
-    pill?.classList.add("is-active");
+    if (activeBusyOps.length > 0) {
+        const latest = activeBusyOps[activeBusyOps.length - 1];
+        if (textEl && latest.label) textEl.textContent = latest.label;
+        topBar?.classList.add("is-active");
+        pill?.classList.add("is-active");
+    } else {
+        topBar?.classList.remove("is-active");
+        pill?.classList.remove("is-active");
+    }
+}
+
+export function setActiveAdminSectionBusy(sectionName, sectionTitle = "Section") {
+    const prevSection = currentBusySection;
+    currentBusySection = String(sectionName || "");
+    if (prevSection && prevSection !== currentBusySection) {
+        activeBusyOps = activeBusyOps.filter((op) => !op.section || op.section === currentBusySection);
+    }
+    const textEl = document.getElementById("admin-global-busy-text");
+    const subLoaderTextEl = document.getElementById("admin-subpage-loader-text");
+    const pageSpecificLabel = `Loading ${sectionTitle}...`;
+    if (activeBusyOps.length > 0) {
+        activeBusyOps.forEach((op) => {
+            if (op.isSectionLoad) op.label = pageSpecificLabel;
+        });
+    }
+    if (textEl) textEl.textContent = pageSpecificLabel;
+    if (subLoaderTextEl) subLoaderTextEl.textContent = pageSpecificLabel;
+    syncBusyIndicatorUI();
+}
+
+export function beginAdminBusy(label = "Processing action...", { section = "", isSectionLoad = false } = {}) {
+    const id = ++busyOpSeq;
+    const effectiveSection = section || currentBusySection;
+    activeBusyOps.push({ id, label, section: effectiveSection, isSectionLoad });
+    syncBusyIndicatorUI();
     let ended = false;
     return () => {
         if (ended) return;
         ended = true;
-        activeBusyCount = Math.max(0, activeBusyCount - 1);
-        if (activeBusyCount === 0) {
-            topBar?.classList.remove("is-active");
-            pill?.classList.remove("is-active");
-        }
+        activeBusyOps = activeBusyOps.filter((op) => op.id !== id);
+        syncBusyIndicatorUI();
     };
 }
 
