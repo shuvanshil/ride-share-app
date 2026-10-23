@@ -707,12 +707,14 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(15000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
-        const error = new Error(data.error || "Could not update driver availability.");
+        const error = new Error(data.error || data.detail || "Could not update driver availability.");
         error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        error.status = response.status;
+        error.details = data.details || null;
         throw error;
     }
     return data;
@@ -1993,7 +1995,11 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
         }
 
         if (checked) {
-            startDriverPresenceTracking();
+            try {
+                startDriverPresenceTracking();
+            } catch (err) {
+                console.warn("Driver presence tracking startup error:", err);
+            }
             setTimeout(() => {
                 registerDriverPushToken(db, currentUser?.uid).catch((error) => {
                     console.warn("Driver push token registration failed:", error);
@@ -2008,7 +2014,11 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
                 }
             }).catch(() => {});
 
-            initDriverJobsStream();
+            try {
+                initDriverJobsStream();
+            } catch (err) {
+                console.warn("Driver jobs stream startup error:", err);
+            }
         } else {
             stopRideRequestRing();
             stopPresenceTracking();
@@ -2025,7 +2035,10 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
             cacheProfile(currentUser);
         }
         updateDutySwitchUi();
-        await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
+        const displayMsg = (error?.message && error.message !== "Failed to fetch" && !error.backendUnavailable)
+            ? error.message
+            : t('driver.update_status_network_failed', "Could not update online status. Check your connection.");
+        await showAlert(displayMsg);
     } finally {
         isDutySwitchTransitioning = false;
         switchInput.dataset.busy = "false";

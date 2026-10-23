@@ -9,7 +9,8 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import APIRouter, Depends, Query, Request
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from firebase_admin import firestore as fb_firestore
 from firebase_admin import messaging as fb_messaging
 from pydantic import BaseModel, ConfigDict, Field
@@ -65,6 +66,7 @@ from ..dispatch.runner import (
 )
 
 router = APIRouter(prefix="/rides", tags=["rides"])
+logger = logging.getLogger(__name__)
 
 def _dispatch_with_fallback(
     db: Any,
@@ -2286,6 +2288,7 @@ def expand_passenger_dispatch(
 @router.post("/driver-availability")
 def update_driver_availability(
     body: DriverAvailabilityBody,
+    background_tasks: BackgroundTasks,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Update driver availability and presence with server-owned identity fields."""
@@ -2353,20 +2356,27 @@ def update_driver_availability(
         except Exception:
             pass
         if status == "searching":
-            try:
-                activate_due_scheduled_requests(db)
-            except Exception as sched_err:
-                logger.warning("Error activating scheduled requests on driver online: %s", sched_err)
-            try:
-                _dispatch_with_fallback(
-                    db, uid, profile, {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
-                )
-            except Exception as disp_err:
-                logger.warning("Error running dispatch fallback on driver online: %s", disp_err)
+            eff_loc = {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
+
+            def _post_online_dispatch(db_inst, driver_uid, driver_prof, driver_loc):
+                try:
+                    activate_due_scheduled_requests(db_inst)
+                except Exception as sched_err:
+                    logger.warning("Error activating scheduled requests on driver online: %s", sched_err)
+                try:
+                    _dispatch_with_fallback(db_inst, driver_uid, driver_prof, driver_loc)
+                except Exception as disp_err:
+                    logger.warning("Error running dispatch fallback on driver online: %s", disp_err)
+
+            if background_tasks is not None:
+                background_tasks.add_task(_post_online_dispatch, db, uid, profile, eff_loc)
+            else:
+                _post_online_dispatch(db, uid, profile, eff_loc)
         return {"ok": True, "status": status}
     except ApiError:
         raise
     except Exception as error:  # noqa: BLE001
+        logger.exception("Could not update driver availability: %s", error)
         raise ApiError("Could not update driver availability.", 503)
 
 

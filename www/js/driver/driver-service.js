@@ -4774,7 +4774,10 @@ async function toggleDriverOnlineStatus(targetStatus) {
             cacheProfile(currentUser);
         }
         updateDriverAvailabilityUI(prevStatus);
-        await showAlert(t('driver.update_status_network_failed', "Could not update online status. Check your connection."));
+        const displayMsg = (err?.message && err.message !== "Failed to fetch" && !err.backendUnavailable)
+            ? err.message
+            : t('driver.update_status_network_failed', "Could not update online status. Check your connection.");
+        await showAlert(displayMsg);
     } finally {
         isTogglingOnlineStatus = false;
     }
