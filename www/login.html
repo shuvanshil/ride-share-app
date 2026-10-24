@@ -245,6 +245,12 @@
                 <p id="phase4-sub" class="wizard-subtitle" data-i18n="auth.create_account_sub">Fill in your details to get started.</p>
 
                 <!-- Avatar Upload Row with Compression -->
+                <div class="mb-1">
+                    <label class="wizard-field-label mb-0">
+                        <span data-i18n="auth.profile_photo">Profile photo</span>
+                        <span class="text-muted fw-normal small" data-i18n="auth.optional">(Optional)</span>
+                    </label>
+                </div>
                 <div class="wizard-avatar-row">
                     <div id="avatar-preview-wrap" class="wizard-avatar-preview" tabindex="0" role="button" aria-label="Upload profile photo">
                         <img id="avatar-img" class="wizard-avatar-img" alt="Avatar preview">
@@ -271,7 +277,7 @@
 
                 <!-- Full Name -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" for="reg-name" data-i18n="auth.full_name">Full Name</label>
+                    <label class="wizard-field-label" for="reg-name"><span data-i18n="auth.full_name">Full Name</span> <span class="text-danger">*</span></label>
                     <div class="gy-input-wrapper">
                         <input id="reg-name" class="gy-input" type="text" placeholder="Enter your full name" autocomplete="name" required>
                     </div>
@@ -290,7 +296,7 @@
 
                 <!-- Password -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" for="reg-password" data-i18n="auth.password_label">Password</label>
+                    <label class="wizard-field-label" for="reg-password"><span data-i18n="auth.password_label">Password</span> <span class="text-danger">*</span></label>
                     <div class="gy-input-wrapper">
                         <input id="reg-password" class="gy-input" type="password" placeholder="Create a password" autocomplete="new-password" required minlength="6" data-password-toggle-initialized="true">
                         <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
@@ -303,7 +309,7 @@
 
                 <!-- Gender -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" data-i18n="auth.gender">Gender</label>
+                    <label class="wizard-field-label"><span data-i18n="auth.gender">Gender</span> <span class="text-danger">*</span></label>
                     <div class="wizard-gender-cards">
                         <button type="button" class="wizard-gender-card active" data-gender="Male">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="5"/><path d="M19 5l-5.4 5.4"/><path d="M15 5h4v4"/></svg>
@@ -348,7 +354,7 @@
 
                 <!-- Vehicle Type -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" data-i18n="auth.vehicle_type">Vehicle Type</label>
+                    <label class="wizard-field-label"><span data-i18n="auth.vehicle_type">Vehicle Type</span> <span class="text-danger">*</span></label>
                     <div class="wizard-vehicle-cards">
                         <button type="button" class="wizard-vehicle-card active" data-vehicle="bike">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>
@@ -364,7 +370,7 @@
 
                 <!-- Vehicle Registration Number -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" for="driver-vehicle-number" data-i18n="auth.vehicle_number">Vehicle Number</label>
+                    <label class="wizard-field-label" for="driver-vehicle-number"><span data-i18n="auth.vehicle_number">Vehicle Number</span> <span class="text-danger">*</span></label>
                     <div class="gy-input-wrapper">
                         <input id="driver-vehicle-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR01AB1234" autocomplete="off" required>
                     </div>
@@ -372,7 +378,7 @@
 
                 <!-- Vehicle Model -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" for="driver-vehicle-model" data-i18n="auth.vehicle_model">Vehicle Model</label>
+                    <label class="wizard-field-label" for="driver-vehicle-model"><span data-i18n="auth.vehicle_model">Vehicle Model</span> <span class="text-danger">*</span></label>
                     <div class="gy-input-wrapper">
                         <input id="driver-vehicle-model" class="gy-input" type="text" placeholder="e.g. Hero Splendor or Bajaj RE" autocomplete="off" required>
                     </div>
@@ -380,7 +386,7 @@
 
                 <!-- Driving Licence Number -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" for="driver-license-number" data-i18n="auth.licence_number">Licence Number</label>
+                    <label class="wizard-field-label" for="driver-license-number"><span data-i18n="auth.licence_number">Licence Number</span> <span class="text-danger">*</span></label>
                     <div class="gy-input-wrapper">
                         <input id="driver-license-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR0120200001234" autocomplete="off" required>
                     </div>
@@ -388,7 +394,7 @@
 
                 <!-- UPI ID -->
                 <div class="wizard-form-group">
-                    <label class="wizard-field-label" for="driver-upi-id" data-i18n="auth.upi_id">UPI ID for Earnings</label>
+                    <label class="wizard-field-label" for="driver-upi-id"><span data-i18n="auth.upi_id">UPI ID for Earnings</span> <span class="text-danger">*</span></label>
                     <div class="gy-input-wrapper">
                         <input id="driver-upi-id" class="gy-input" type="text" placeholder="e.g. name@upi" autocomplete="off" required>
                     </div>
@@ -397,7 +403,7 @@
                 <!-- Agreement -->
                 <label class="wizard-agreement-row">
                     <input id="driver-agreement" type="checkbox" class="wizard-agreement-checkbox" required>
-                    <span data-i18n="auth.driver_terms_agree">I agree to LiphtUp's Terms &amp; Conditions &amp; Privacy Policy.</span>
+                    <span><span data-i18n="auth.driver_terms_agree">I agree to LiphtUp's Terms &amp; Conditions &amp; Privacy Policy.</span> <span class="text-danger">*</span></span>
                 </label>
 
                 <div class="mt-3">

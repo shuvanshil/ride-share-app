@@ -536,8 +536,26 @@ async function handlePhoneInputEvaluation() {
 async function handlePhase2Submit() {
     clearInlineError(2);
     const rawPhone = phoneInput.value.replace(/\D/g, "");
-    const formatted = formatPhone(rawPhone);
 
+    if (!rawPhone || rawPhone.length === 0) {
+        showInlineError(2, t('auth.err_missing_phone', "Enter your mobile number first."));
+        phoneInput.focus();
+        return;
+    }
+
+    if (rawPhone.length !== 10) {
+        showInlineError(2, t('auth.mobile_number_ten_digits', "Mobile number must be 10 digits."));
+        phoneInput.focus();
+        return;
+    }
+
+    if (!/^[6-9]/.test(rawPhone)) {
+        showInlineError(2, t('auth.mobile_number_start_digit', "Mobile number must start with 6, 7, 8, or 9."));
+        phoneInput.focus();
+        return;
+    }
+
+    const formatted = formatPhone(rawPhone);
     if (!formatted) {
         showInlineError(2, t('auth.enter_valid_phone', "Enter a valid 10-digit Indian mobile number."));
         phoneInput.focus();
@@ -605,7 +623,13 @@ async function loginWithPassword() {
     const password = (loginPasswordInput?.value || "").trim();
 
     if (!formattedPhone) {
-        showInlineError(2, t('auth.enter_valid_phone', "Enter a valid 10-digit Indian mobile number."));
+        if (!rawPhone || rawPhone.length === 0) {
+            showInlineError(2, t('auth.err_missing_phone', "Enter your mobile number first."));
+        } else if (rawPhone.length !== 10) {
+            showInlineError(2, t('auth.mobile_number_ten_digits', "Mobile number must be 10 digits."));
+        } else {
+            showInlineError(2, t('auth.enter_valid_phone', "Enter a valid 10-digit Indian mobile number."));
+        }
         phoneInput.focus();
         return;
     }
