@@ -3300,69 +3300,140 @@ select.gy-input:focus {
     }
 }
 
-/* Trust Badge Row */
-.auth-trust-row {
+/* Switch Account Pill Button */
+.wizard-switch-wrap {
     display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 4px;
+    margin-bottom: 6px;
+}
+
+.wizard-switch-account-btn {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 16px;
-    padding: 14px 16px;
-    background: #F8FAFC;
-    border-radius: 16px;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    background: #F1F5F9;
     border: 1px solid #E2E8F0;
-    margin-top: 24px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 180ms ease;
+    text-decoration: none;
+    line-height: 1.2;
 }
 
-.auth-trust-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    text-align: left;
-}
-
-.auth-trust-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: #E8F9EE;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.wizard-switch-account-btn svg {
+    color: #00B83F;
     flex-shrink: 0;
 }
 
-.auth-trust-text {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.25;
+.wizard-switch-account-btn:hover {
+    background: #E8F9EE;
+    color: #009E36;
+    border-color: #A7F3D0;
 }
 
-.auth-trust-text strong {
-    font-size: 0.8rem;
-    color: #0F172A;
-    font-weight: 700;
+.wizard-switch-account-btn:active {
+    transform: scale(0.97);
 }
 
-.auth-trust-text small {
-    font-size: 0.72rem;
-    color: #64748B;
-    font-weight: 500;
-}
-
-.auth-trust-divider {
-    width: 1px;
-    height: 28px;
-    background: #CBD5E1;
-}
-
-@media (max-width: 400px) {
-    .auth-trust-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
+/* Enhanced Mobile Responsiveness across all Phases */
+@media (max-width: 480px) {
+    .wizard-card {
+        padding: 20px 16px 18px;
+        border-radius: 20px;
     }
-    .auth-trust-divider {
-        display: none;
+    .wizard-brand-block {
+        margin-bottom: 12px;
+    }
+    .wizard-brand-logo {
+        height: 42px;
+        max-height: 46px;
+    }
+    .wizard-title {
+        font-size: 1.32rem;
+    }
+    .wizard-subtitle {
+        font-size: 0.88rem;
+    }
+    .gy-btn-wizard-primary,
+    .gy-btn-wizard-secondary {
+        min-height: 50px;
+        font-size: 0.95rem;
+        padding: 0 38px;
+    }
+    .gy-btn-wizard-primary > svg:last-child,
+    .gy-btn-wizard-secondary > svg:last-child {
+        right: 14px;
+    }
+    .wizard-otp-grid {
+        gap: 6px;
+    }
+    .wizard-otp-box {
+        height: 50px;
+        font-size: 1.25rem;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 375px) {
+    .wizard-card {
+        padding: 16px 14px 16px;
+        border-radius: 16px;
+    }
+    .wizard-title {
+        font-size: 1.22rem;
+    }
+    .wizard-tagline {
+        font-size: 0.8rem;
+    }
+    .gy-btn-wizard-primary,
+    .gy-btn-wizard-secondary {
+        min-height: 48px;
+        font-size: 0.88rem;
+        padding: 0 32px;
+    }
+    .gy-btn-wizard-primary > svg:last-child,
+    .gy-btn-wizard-secondary > svg:last-child {
+        right: 12px;
+    }
+    .wizard-otp-grid {
+        gap: 4px;
+    }
+    .wizard-otp-box {
+        height: 44px;
+        font-size: 1.15rem;
+        border-radius: 10px;
+    }
+    .wizard-gender-cards,
+    .wizard-vehicle-cards {
+        gap: 6px;
+    }
+    .wizard-gender-card {
+        min-height: 44px;
+        font-size: 0.82rem;
+        padding: 0 4px;
+    }
+    .wizard-vehicle-card {
+        min-height: 64px;
+        font-size: 0.8rem;
+        padding: 6px 4px;
+    }
+    .wizard-phone-card {
+        min-height: 48px;
+        padding: 0 10px;
+    }
+    .wizard-phone-input {
+        font-size: 0.95rem;
+    }
+    .wizard-switch-account-btn {
+        font-size: 0.78rem;
+        padding: 5px 12px;
     }
 }
 

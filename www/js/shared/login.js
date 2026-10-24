@@ -243,6 +243,8 @@ function updateWelcomeScreenRememberedAccounts() {
 
     const p = getRememberedAccount('passenger');
     if (phase1ContinueLabel) {
+        // Strip data-i18n so external translateDOM calls cannot overwrite dynamic name state
+        phase1ContinueLabel.removeAttribute('data-i18n');
         if (p && p.name) {
             phase1ContinueLabel.textContent = t('auth.continue_as', 'Continue as {name}').replace('{name}', p.name);
             if (phase1PassengerSwitchWrap) phase1PassengerSwitchWrap.classList.remove('d-none');
@@ -254,6 +256,8 @@ function updateWelcomeScreenRememberedAccounts() {
 
     const d = getRememberedAccount('driver');
     if (phase1DriverSignupLabel) {
+        // Strip data-i18n so external translateDOM calls cannot overwrite dynamic name state
+        phase1DriverSignupLabel.removeAttribute('data-i18n');
         if (d && d.name) {
             phase1DriverSignupLabel.textContent = t('auth.continue_as', 'Continue as {name}').replace('{name}', d.name);
             if (phase1DriverSwitchWrap) phase1DriverSwitchWrap.classList.remove('d-none');
@@ -1728,9 +1732,19 @@ setupPasswordToggles();
 initEventListeners();
 fetchOtpConfig();
 updateWelcomeScreenRememberedAccounts();
-window.addEventListener('language-changed', () => {
-    updateWelcomeScreenRememberedAccounts();
-});
+
+// Robust listeners to ensure remembered buttons always render regardless of script load order or caching
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', updateWelcomeScreenRememberedAccounts);
+}
+window.addEventListener('pageshow', updateWelcomeScreenRememberedAccounts);
+window.addEventListener('languageChanged', updateWelcomeScreenRememberedAccounts);
+window.addEventListener('language-changed', updateWelcomeScreenRememberedAccounts);
+
+if (typeof window !== 'undefined') {
+    window.LiphtUpAuth = window.LiphtUpAuth || {};
+    window.LiphtUpAuth.updateWelcomeScreenRememberedAccounts = updateWelcomeScreenRememberedAccounts;
+}
 
 // URL Query Param Routing
 const urlParams = new URLSearchParams(window.location.search);
