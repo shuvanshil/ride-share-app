@@ -359,3 +359,176 @@ def test_check_phone_returns_role_and_synthetic_email(monkeypatch) -> None:
     assert data["role"] == "driver"
     assert data["email"] == "919876543210@user.liphtup.in"
 
+
+
+def test_session_returns_seven_day_expiry(monkeypatch) -> None:
+    import time
+    from api.core.auth import current_user
+    app.dependency_overrides[current_user] = lambda: {
+        "uid": "usr_test_sess",
+        "email": "test@liphtup.com",
+        "phone_number": "+919876543210",
+        "email_verified": True,
+        "iat": int(time.time()),
+    }
+    class MockDoc:
+        exists = False
+        def to_dict(self):
+            return {}
+
+    class MockCollection:
+        def document(self, doc_id):
+            return self
+        def get(self):
+            return MockDoc()
+        def set(self, data, merge=False):
+            pass
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/auth/session")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["user"]["uid"] == "usr_test_sess"
+        assert "lastMeaningfulActivityAt" in data
+        assert "expiresAt" in data
+        diff_ms = data["expiresAt"] - data["lastMeaningfulActivityAt"]
+        # Exactly 7 days (604,800,000 ms)
+        assert abs(diff_ms - 7 * 24 * 3600 * 1000) < 5000
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_session_expired_after_seven_days_inactivity(monkeypatch) -> None:
+    import time
+    from datetime import datetime, timezone, timedelta
+    from api.core.auth import current_user
+    app.dependency_overrides[current_user] = lambda: {
+        "uid": "usr_test_expired",
+        "email": "test@liphtup.com",
+        "phone_number": "+919876543210",
+        "email_verified": True,
+        "iat": int(time.time()),
+    }
+    eight_days_ago = datetime.now(timezone.utc) - timedelta(days=8)
+
+    class MockDoc:
+        exists = True
+        def to_dict(self):
+            return {
+                "uid": "usr_test_expired",
+                "lastActivityAt": eight_days_ago,
+                "isRevoked": False,
+            }
+
+    class MockCollection:
+        def document(self, doc_id):
+            return self
+        def get(self):
+            return MockDoc()
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/auth/session")
+        assert response.status_code == 401
+        data = response.json()
+        assert "7 days of inactivity" in (data.get("error") or data.get("detail") or "")
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_logout_revokes_session(monkeypatch) -> None:
+    import time
+    from api.core.auth import current_user
+    app.dependency_overrides[current_user] = lambda: {
+        "uid": "usr_test_logout",
+        "email": "test@liphtup.com",
+        "phone_number": "+919876543210",
+        "email_verified": True,
+        "iat": int(time.time()),
+    }
+    saved_state = {}
+
+    class MockCollection:
+        def document(self, doc_id):
+            return self
+        def set(self, data, merge=False):
+            saved_state.update(data)
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    revoked_uids = []
+    class MockAuthModule:
+        @staticmethod
+        def revoke_refresh_tokens(uid, app=None):
+            revoked_uids.append(uid)
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+    monkeypatch.setattr("api.routers.auth.fb_auth", MockAuthModule)
+
+    client = TestClient(app)
+    try:
+        response = client.post("/api/auth/logout")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert "usr_test_logout" in revoked_uids
+        assert saved_state.get("isRevoked") is True
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_activity_renews_session_deadline(monkeypatch) -> None:
+    import time
+    from api.core.auth import current_user
+    app.dependency_overrides[current_user] = lambda: {
+        "uid": "usr_test_activity",
+        "email": "test@liphtup.com",
+        "phone_number": "+919876543210",
+        "email_verified": True,
+        "iat": int(time.time()),
+    }
+    saved_state = {}
+
+    class MockCollection:
+        def document(self, doc_id):
+            return self
+        def set(self, data, merge=False):
+            saved_state.update(data)
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+
+    client = TestClient(app)
+    try:
+        response = client.post("/api/auth/activity")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert "lastMeaningfulActivityAt" in data
+        assert "expiresAt" in data
+        assert saved_state.get("isRevoked") is False
+    finally:
+        app.dependency_overrides.pop(current_user, None)

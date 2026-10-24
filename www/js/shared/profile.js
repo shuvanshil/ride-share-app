@@ -5,6 +5,7 @@ import { showAlert, showConfirm } from './dialog.js';
 import { hideInitialLoader } from './loading.js';
 import { unregisterDevicePushToken } from '../platform/notifications.js';
 import { t } from './i18n.js';
+import { forgetRememberedAccount } from './remembered-accounts.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 const APP_SHARE_URL = "https://liphtup.in/";
@@ -628,6 +629,16 @@ function setDeleteState(isDeleting) {
 async function logoutCurrentUser() {
     window.LiphtUpLoading?.showPageLoader?.(t('common.logging_out', "Logging out..."));
     try {
+        const user = auth.currentUser;
+        if (user) {
+            const token = await user.getIdToken().catch(() => null);
+            if (token) {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => {});
+            }
+        }
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
         await unregisterDevicePushToken().catch(() => {});
         await signOut(auth);
@@ -676,6 +687,9 @@ async function deleteAccount(event) {
         }
 
         sessionStorage.removeItem(PROFILE_CACHE_KEY);
+        if (currentProfile?.role) {
+            forgetRememberedAccount(currentProfile.role);
+        }
         saveNotice.innerText = t('profile.account_deleted', "Account deleted");
         showSaveNotice();
         try {

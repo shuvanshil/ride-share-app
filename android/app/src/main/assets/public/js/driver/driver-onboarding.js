@@ -1936,6 +1936,16 @@ addOptionalClickListener('driver-earnings-btn', () => {
 addOptionalClickListener('logout-btn-review', async () => {
     window.LiphtUpLoading?.showPageLoader?.("Logging out...");
     try {
+        const user = auth.currentUser;
+        if (user) {
+            const token = await user.getIdToken().catch(() => null);
+            if (token) {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => {});
+            }
+        }
         clearCachedProfile();
         await unregisterDevicePushToken().catch(() => {});
         await setDriverAvailability("offline").catch(() => {});
@@ -2068,6 +2078,16 @@ addOptionalClickListener('close-driver-payment-icon-btn', () => {
 
 addOptionalClickListener('logout-btn', async () => {
     try {
+        const user = auth.currentUser;
+        if (user) {
+            const token = await user.getIdToken().catch(() => null);
+            if (token) {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => {});
+            }
+        }
         clearCachedProfile();
         await unregisterDevicePushToken().catch(() => {});
         await setDriverAvailability("offline").catch(() => {});

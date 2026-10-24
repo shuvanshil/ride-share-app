@@ -5,6 +5,7 @@ import { showAlert } from './dialog.js';
 import { hideInitialLoader, showPageLoader, hidePageLoader } from './loading.js';
 
 import { unregisterDevicePushToken } from '../platform/notifications.js';
+import { saveRememberedAccount, cleanupExpiredRememberedAccounts } from './remembered-accounts.js';
 
 const PROFILE_CACHE_KEY = "liphtup_user_profile";
 let sessionReadyDispatched = false;
@@ -20,6 +21,21 @@ export function registerSignOutHook(fn) {
 
 registerSignOutHook(async () => {
     await unregisterDevicePushToken().catch(() => {});
+});
+
+registerSignOutHook(async () => {
+    try {
+        const user = auth.currentUser;
+        if (user) {
+            const token = await user.getIdToken().catch(() => null);
+            if (token) {
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => {});
+            }
+        }
+    } catch (e) {}
 });
 
 /**
@@ -165,6 +181,19 @@ function dispatchSessionReady(profile) {
         navigator.serviceWorker.controller.postMessage({ type: 'SET_USER_ROLE', role: role });
     }
     window.dispatchEvent(new CustomEvent('user-session-ready', { detail: profile }));
+    if (profile) {
+        saveRememberedAccount(profile);
+    }
+    if (auth.currentUser) {
+        auth.currentUser.getIdToken().then((token) => {
+            if (token) {
+                fetch('/api/auth/activity', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => {});
+            }
+        }).catch(() => {});
+    }
 
     // Only hide if we aren't mid-redirect
     const isCurrent = window.isCurrentPage || ((p) => window.location.pathname.includes(p));

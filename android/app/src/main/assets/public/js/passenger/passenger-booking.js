@@ -288,6 +288,16 @@ function setupSideDrawer(profile) {
 
         window.LiphtUpLoading?.showPageLoader?.(t('common.logging_out', "Logging out..."));
         try {
+            const user = auth.currentUser;
+            if (user) {
+                const token = await user.getIdToken().catch(() => null);
+                if (token) {
+                    await fetch('/api/auth/logout', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }).catch(() => {});
+                }
+            }
             sessionStorage.clear();
             await signOut(auth);
         } catch (err) {

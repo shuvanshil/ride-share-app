@@ -1,14 +1,18 @@
 """Authentication/session endpoints used during the Firebase migration."""
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends
 
-from ..core.auth import current_user
+from ..core.auth import current_user, SEVEN_DAYS_SECONDS
+from ..core.errors import ApiError
 from ..core.firebase import fb_auth, fb_firestore, get_admin_app
 from ..core.otp import normalize_phone
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -16,17 +20,95 @@ class CheckPhoneBody(BaseModel):
     phone: Optional[str] = None
 
 
+@router.post("/logout")
+def logout(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Revoke user refresh tokens server-side and mark session revoked in Firestore."""
+    uid = user.get("uid", "")
+    if uid:
+        try:
+            app = get_admin_app()
+            # 1. Revoke Firebase refresh tokens server-side
+            fb_auth.revoke_refresh_tokens(uid, app=app)
+            # 2. Mark session revoked in Firestore
+            db = fb_firestore.client(app)
+            now_ts = datetime.now(timezone.utc)
+            db.collection("userSessions").document(uid).set({
+                "uid": uid,
+                "revokedAt": now_ts,
+                "isRevoked": True,
+                "lastActivityAt": now_ts,
+            }, merge=True)
+        except Exception as e:
+            logger.warning("Error revoking session for %s: %s", uid, e)
+    return {"ok": True, "message": "Logged out and session revoked successfully."}
+
+
 @router.get("/session")
 def session(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    """Return the verified Firebase identity without exposing the token."""
+    """Return the verified Firebase identity, validate 7-day inactivity, and return authoritative expiry."""
+    uid = user.get("uid", "")
+    app = get_admin_app()
+    db = fb_firestore.client(app)
+
+    now = datetime.now(timezone.utc)
+    now_epoch = int(now.timestamp())
+    sess_ref = db.collection("userSessions").document(uid)
+    snap = sess_ref.get()
+
+    if getattr(snap, "exists", False) and hasattr(snap, "to_dict"):
+        data = snap.to_dict() or {}
+        last_act = data.get("lastActivityAt")
+        if last_act:
+            last_epoch = int(last_act.timestamp()) if hasattr(last_act, "timestamp") else int(last_act or 0)
+            if last_epoch > 1e11:
+                last_epoch = int(last_epoch / 1000)
+            if last_epoch > 0 and (now_epoch - last_epoch) > SEVEN_DAYS_SECONDS:
+                raise ApiError("Session expired due to 7 days of inactivity. Please login again.", 401)
+
+    expires_at_epoch = now_epoch + SEVEN_DAYS_SECONDS
+    sess_ref.set({
+        "uid": uid,
+        "lastActivityAt": now,
+        "expiresAt": datetime.fromtimestamp(expires_at_epoch, timezone.utc),
+        "isRevoked": False,
+    }, merge=True)
+
     return {
         "ok": True,
         "user": {
-            "uid": user.get("uid", ""),
+            "uid": uid,
             "email": user.get("email", ""),
             "phone": user.get("phone_number", ""),
             "emailVerified": bool(user.get("email_verified", False)),
         },
+        "lastMeaningfulActivityAt": now_epoch * 1000,
+        "expiresAt": expires_at_epoch * 1000,
+    }
+
+
+@router.post("/activity")
+def activity(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Renew authoritative 7-day inactivity deadline on meaningful activity."""
+    uid = user.get("uid", "")
+    app = get_admin_app()
+    db = fb_firestore.client(app)
+
+    now = datetime.now(timezone.utc)
+    now_epoch = int(now.timestamp())
+    sess_ref = db.collection("userSessions").document(uid)
+    expires_at_epoch = now_epoch + SEVEN_DAYS_SECONDS
+
+    sess_ref.set({
+        "uid": uid,
+        "lastActivityAt": now,
+        "expiresAt": datetime.fromtimestamp(expires_at_epoch, timezone.utc),
+        "isRevoked": False,
+    }, merge=True)
+
+    return {
+        "ok": True,
+        "lastMeaningfulActivityAt": now_epoch * 1000,
+        "expiresAt": expires_at_epoch * 1000,
     }
 
 
@@ -122,4 +204,3 @@ async def check_phone(body: CheckPhoneBody) -> dict[str, Any]:
         return {"ok": True, "exists": False, "phone": phone}
     except Exception as e:
         return {"ok": True, "exists": False, "phone": phone, "warning": str(e)}
-

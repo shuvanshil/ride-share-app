@@ -12,6 +12,12 @@ import {
 import { showAlert as showAppAlert } from './dialog.js';
 import { hideInitialLoader } from './loading.js';
 import { t } from './i18n.js';
+import {
+    getRememberedAccount,
+    saveRememberedAccount,
+    forgetRememberedAccount,
+    cleanupExpiredRememberedAccounts
+} from './remembered-accounts.js';
 
 // =============================================================================
 // Constants & State
@@ -50,7 +56,14 @@ const backBtn = document.getElementById('wizard-back-btn');
 
 // Phase 1 Elements
 const phase1ContinueBtn = document.getElementById('phase1-continue-btn');
+const phase1ContinueLabel = document.getElementById('phase1-continue-label');
+const phase1PassengerSwitchWrap = document.getElementById('phase1-passenger-switch-wrap');
+const phase1SwitchPassengerBtn = document.getElementById('phase1-switch-passenger-btn');
+
 const phase1DriverSignupBtn = document.getElementById('phase1-driver-signup-btn');
+const phase1DriverSignupLabel = document.getElementById('phase1-driver-signup-label');
+const phase1DriverSwitchWrap = document.getElementById('phase1-driver-switch-wrap');
+const phase1SwitchDriverBtn = document.getElementById('phase1-switch-driver-btn');
 
 // Phase 2 Elements
 const phoneInput = document.getElementById('wizard-phone');
@@ -200,6 +213,32 @@ function formatCountdownTime(seconds) {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+function updateWelcomeScreenRememberedAccounts() {
+    cleanupExpiredRememberedAccounts();
+
+    const p = getRememberedAccount('passenger');
+    if (phase1ContinueLabel) {
+        if (p && p.name) {
+            phase1ContinueLabel.textContent = t('auth.continue_as', 'Continue as {name}').replace('{name}', p.name);
+            if (phase1PassengerSwitchWrap) phase1PassengerSwitchWrap.classList.remove('d-none');
+        } else {
+            phase1ContinueLabel.textContent = t('auth.btn_continue_mobile', 'Continue with mobile number');
+            if (phase1PassengerSwitchWrap) phase1PassengerSwitchWrap.classList.add('d-none');
+        }
+    }
+
+    const d = getRememberedAccount('driver');
+    if (phase1DriverSignupLabel) {
+        if (d && d.name) {
+            phase1DriverSignupLabel.textContent = t('auth.continue_as', 'Continue as {name}').replace('{name}', d.name);
+            if (phase1DriverSwitchWrap) phase1DriverSwitchWrap.classList.remove('d-none');
+        } else {
+            phase1DriverSignupLabel.textContent = t('auth.btn_driver_signup', 'Captain / Driver Signup');
+            if (phase1DriverSwitchWrap) phase1DriverSwitchWrap.classList.add('d-none');
+        }
+    }
+}
+
 // =============================================================================
 // Phase Transition Controller & Guards
 // =============================================================================
@@ -233,7 +272,9 @@ function goToPhase(targetPhase) {
     }
 
     // Phase-specific setup
-    if (targetPhase === 2) {
+    if (targetPhase === 1) {
+        updateWelcomeScreenRememberedAccounts();
+    } else if (targetPhase === 2) {
         if (phoneInput) {
             setTimeout(() => phoneInput.focus(), 80);
         }
@@ -1418,6 +1459,9 @@ function cacheUserProfile(profile) {
 }
 
 function routeToHome(profile) {
+    if (profile) {
+        saveRememberedAccount(profile);
+    }
     cacheUserProfile(profile);
     const urlParams = new URLSearchParams(window.location.search);
     let pendingRideId = urlParams.get('rideId');
@@ -1463,15 +1507,86 @@ function initEventListeners() {
 
     // Phase 1
     if (phase1ContinueBtn) {
-        phase1ContinueBtn.addEventListener('click', () => {
+        phase1ContinueBtn.addEventListener('click', async () => {
             authIntent = "passenger";
-            goToPhase(2);
+            const remembered = getRememberedAccount('passenger');
+            if (remembered && remembered.phone) {
+                // If there's an already active user session matching this account, restore it
+                if (auth.currentUser && auth.currentUser.uid === remembered.uid) {
+                    try {
+                        const snap = await getDoc(doc(db, "users", remembered.uid));
+                        if (snap.exists()) {
+                            routeToHome(snap.data());
+                            return;
+                        }
+                    } catch (e) {}
+                }
+                phoneInput.value = remembered.phone.replace(/^\+91/, "");
+                goToPhase(2);
+                await handlePhoneInputEvaluation();
+                showPhase2Notice(t('auth.welcome_back_user', 'Welcome back, {name}! Enter your password to continue.').replace('{name}', remembered.name));
+                if (loginPasswordInput) {
+                    setTimeout(() => loginPasswordInput.focus(), 100);
+                }
+            } else {
+                phoneInput.value = "";
+                existingAccountData = null;
+                goToPhase(2);
+            }
         });
     }
+
+    if (phase1SwitchPassengerBtn) {
+        phase1SwitchPassengerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            forgetRememberedAccount('passenger');
+            if (phoneInput && authIntent === 'passenger') {
+                phoneInput.value = "";
+                existingAccountData = null;
+            }
+            updateWelcomeScreenRememberedAccounts();
+        });
+    }
+
     if (phase1DriverSignupBtn) {
-        phase1DriverSignupBtn.addEventListener('click', () => {
+        phase1DriverSignupBtn.addEventListener('click', async () => {
             authIntent = "driver";
-            goToPhase(2);
+            const remembered = getRememberedAccount('driver');
+            if (remembered && remembered.phone) {
+                // If there's an already active user session matching this account, restore it
+                if (auth.currentUser && auth.currentUser.uid === remembered.uid) {
+                    try {
+                        const snap = await getDoc(doc(db, "users", remembered.uid));
+                        if (snap.exists()) {
+                            routeToHome(snap.data());
+                            return;
+                        }
+                    } catch (e) {}
+                }
+                phoneInput.value = remembered.phone.replace(/^\+91/, "");
+                goToPhase(2);
+                await handlePhoneInputEvaluation();
+                showPhase2Notice(t('auth.welcome_back_user', 'Welcome back, {name}! Enter your password to continue.').replace('{name}', remembered.name));
+                if (loginPasswordInput) {
+                    setTimeout(() => loginPasswordInput.focus(), 100);
+                }
+            } else {
+                phoneInput.value = "";
+                existingAccountData = null;
+                goToPhase(2);
+            }
+        });
+    }
+
+    if (phase1SwitchDriverBtn) {
+        phase1SwitchDriverBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            forgetRememberedAccount('driver');
+            if (phoneInput && authIntent === 'driver') {
+                phoneInput.value = "";
+                existingAccountData = null;
+            }
+            updateWelcomeScreenRememberedAccounts();
         });
     }
 
@@ -1552,6 +1667,10 @@ setupInteractiveCards();
 setupPasswordToggles();
 initEventListeners();
 fetchOtpConfig();
+updateWelcomeScreenRememberedAccounts();
+window.addEventListener('language-changed', () => {
+    updateWelcomeScreenRememberedAccounts();
+});
 
 // URL Query Param Routing
 const urlParams = new URLSearchParams(window.location.search);
