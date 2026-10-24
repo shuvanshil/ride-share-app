@@ -469,6 +469,11 @@ function updatePhase2UI() {
 
     // Existing account handling
     const isDriverAccount = existingAccountData.role === "driver";
+    const remembered = getRememberedAccount(authIntent);
+    const rawVal = phoneInput ? phoneInput.value.replace(/\D/g, "") : "";
+    const welcomeName = (remembered && remembered.phone && remembered.phone.replace(/\D/g, "").endsWith(rawVal))
+        ? remembered.name
+        : (existingAccountData.name || null);
 
     if (authIntent === "driver" && !isDriverAccount) {
         // Existing passenger wanting to register as driver
@@ -481,13 +486,19 @@ function updatePhase2UI() {
         }
     } else if (isDriverAccount) {
         // Existing driver account
-        showPhase2Notice(t('auth.existing_driver_account_notice', "Captain / Driver account found. Enter your password to log in."));
+        const noticeMsg = welcomeName
+            ? t('auth.welcome_back_user', "Welcome back, {name}! Enter your password to continue.").replace('{name}', welcomeName)
+            : t('auth.existing_driver_account_notice', "Captain / Driver account found. Enter your password to log in.");
+        showPhase2Notice(noticeMsg);
         if (phase2PasswordContainer) phase2PasswordContainer.classList.remove('d-none');
         if (phase2LoginBtn) phase2LoginBtn.classList.remove('d-none');
         if (phase2ContinueBtn) phase2ContinueBtn.classList.add('d-none');
         if (loginPasswordInput) setTimeout(() => loginPasswordInput.focus(), 60);
     } else {
         // Existing passenger account normal login
+        if (welcomeName) {
+            showPhase2Notice(t('auth.welcome_back_user', "Welcome back, {name}! Enter your password to continue.").replace('{name}', welcomeName));
+        }
         if (phase2PasswordContainer) phase2PasswordContainer.classList.remove('d-none');
         if (phase2LoginBtn) phase2LoginBtn.classList.remove('d-none');
         if (phase2ContinueBtn) phase2ContinueBtn.classList.add('d-none');

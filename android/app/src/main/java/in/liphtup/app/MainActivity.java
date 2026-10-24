@@ -127,6 +127,21 @@ public class MainActivity extends BridgeActivity {
             }
 
             @JavascriptInterface
+            public void setRememberedAccounts(String accountsJson) {
+                if (accountsJson == null) accountsJson = "";
+                getSharedPreferences("liphtup_prefs", MODE_PRIVATE)
+                        .edit()
+                        .putString("remembered_accounts", accountsJson)
+                        .apply();
+            }
+
+            @JavascriptInterface
+            public String getRememberedAccounts() {
+                return getSharedPreferences("liphtup_prefs", MODE_PRIVATE)
+                        .getString("remembered_accounts", "");
+            }
+
+            @JavascriptInterface
             public String consumePendingNotificationUrl() {
                 String url = pendingNotificationUrl;
                 pendingNotificationUrl = null;

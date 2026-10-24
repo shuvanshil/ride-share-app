@@ -19,15 +19,24 @@ export const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000; // 604,800,000 ms
  */
 export function getRememberedAccountsRaw() {
     try {
-        const raw = localStorage.getItem(REMEMBERED_ACCOUNTS_STORAGE_KEY);
+        let raw = localStorage.getItem(REMEMBERED_ACCOUNTS_STORAGE_KEY);
+        // Fallback to native SharedPreferences in Capacitor Android if localStorage is empty
+        if (!raw && typeof window !== "undefined" && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.getRememberedAccounts === "function") {
+            try {
+                raw = window.LiphtUpNativeStatus.getRememberedAccounts();
+                if (raw) {
+                    localStorage.setItem(REMEMBERED_ACCOUNTS_STORAGE_KEY, raw);
+                }
+            } catch (nativeErr) {}
+        }
         if (!raw) return { passenger: null, driver: null };
         const parsed = JSON.parse(raw);
-        if (typeof parsed !== "object" || parsed === null) {
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
             return { passenger: null, driver: null };
         }
         return {
-            passenger: parsed.passenger && typeof parsed.passenger === "object" ? parsed.passenger : null,
-            driver: parsed.driver && typeof parsed.driver === "object" ? parsed.driver : null,
+            passenger: parsed.passenger && typeof parsed.passenger === "object" && !Array.isArray(parsed.passenger) ? parsed.passenger : null,
+            driver: parsed.driver && typeof parsed.driver === "object" && !Array.isArray(parsed.driver) ? parsed.driver : null,
         };
     } catch (e) {
         console.warn("[remembered-accounts] Failed to read store:", e);
@@ -42,9 +51,11 @@ function saveRememberedAccountsRaw(data) {
     try {
         const payload = JSON.stringify(data);
         localStorage.setItem(REMEMBERED_ACCOUNTS_STORAGE_KEY, payload);
-        // Sync to Capacitor native bridge if supported
+        // Sync to Capacitor native bridge / SharedPreferences if supported
         if (typeof window !== "undefined" && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.setRememberedAccounts === "function") {
-            window.LiphtUpNativeStatus.setRememberedAccounts(payload);
+            try {
+                window.LiphtUpNativeStatus.setRememberedAccounts(payload);
+            } catch (nativeErr) {}
         }
     } catch (e) {
         console.warn("[remembered-accounts] Failed to write store:", e);

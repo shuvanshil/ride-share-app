@@ -398,6 +398,49 @@ console.log("=== STARTING REMEMBERED ACCOUNTS SIMULATION TESTS ===");
     console.log("✔ PASS: Explicit forget cleans up role-specifically without affecting other roles.");
 }
 
+// ---------------------------------------------------------------------------
+// TEST 10: Capacitor Android Native Bridge Fallback (localStorage wipe survival)
+// ---------------------------------------------------------------------------
+{
+    console.log("\n[Test 10] Testing Capacitor Android Native Bridge Fallback (localStorage wipe survival)...");
+    localStorage.clear();
+    const t0 = 1700000000000;
+
+    let nativeStoreJson = "";
+    global.window = {
+        LiphtUpNativeStatus: {
+            setRememberedAccounts(json) { nativeStoreJson = json; },
+            getRememberedAccounts() { return nativeStoreJson; }
+        }
+    };
+
+    saveRememberedAccount({
+        uid: "android_user_1",
+        name: "Debashis Roy",
+        phone: "+919988776655",
+        role: "passenger"
+    }, t0);
+
+    // Verify written to native storage bridge
+    assert.ok(nativeStoreJson.includes("Debashis Roy"), "Native bridge must receive remembered account JSON");
+
+    // Simulate complete Android WebView localStorage wipe (e.g. OS clear data or cache reset)
+    localStorage.clear();
+    assert.strictEqual(localStorage.getItem(REMEMBERED_ACCOUNTS_STORAGE_KEY), null);
+
+    // Read account: should automatically recover from native bridge SharedPreferences
+    const recovered = getRememberedAccount("passenger", t0);
+    assert.ok(recovered, "Must recover account from Android Native SharedPreferences");
+    assert.strictEqual(recovered.name, "Debashis Roy");
+    assert.strictEqual(recovered.phone, "+919988776655");
+
+    // Verify localStorage was re-hydrated
+    assert.ok(localStorage.getItem(REMEMBERED_ACCOUNTS_STORAGE_KEY), "localStorage must be re-hydrated from native bridge");
+
+    delete global.window;
+    console.log("✔ PASS: Capacitor Android native bridge safely recovers remembered accounts if WebView storage is cleared.");
+}
+
 console.log("\n========================================================");
-console.log("🎉 ALL 9 SIMULATION TEST SUITES PASSED FLAWLESSLY!");
+console.log("🎉 ALL 10 SIMULATION TEST SUITES PASSED FLAWLESSLY!");
 console.log("========================================================\n");

@@ -129,12 +129,14 @@ async def check_phone(body: CheckPhoneBody) -> dict[str, Any]:
         if getattr(index_snap, "exists", False):
             role = "passenger"
             email = ""
+            name = ""
             if hasattr(index_snap, "to_dict") and callable(index_snap.to_dict):
                 idx_data = index_snap.to_dict() or {}
                 role = idx_data.get("role")
                 email = idx_data.get("email") or ""
+                name = idx_data.get("name") or idx_data.get("displayName") or ""
                 uid = idx_data.get("uid")
-                if not role or not email:
+                if not role or not email or not name:
                     if uid:
                         u_snap = db.collection("users").document(uid).get()
                         if getattr(u_snap, "exists", False) and hasattr(u_snap, "to_dict"):
@@ -143,11 +145,13 @@ async def check_phone(body: CheckPhoneBody) -> dict[str, Any]:
                                 role = u_data.get("role")
                             if not email:
                                 email = u_data.get("email") or ""
+                            if not name:
+                                name = u_data.get("name") or u_data.get("displayName") or ""
                 if not role:
                     role = "passenger"
             if not email:
                 email = f"{phone.replace('+', '')}@user.liphtup.in"
-            return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email}
+            return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email, "name": name}
 
         # 2. Fast check in Firebase Auth
         auth_client = fb_auth.Client(app)
@@ -169,9 +173,10 @@ async def check_phone(body: CheckPhoneBody) -> dict[str, Any]:
                     u_dict = first.to_dict() or {}
                     role = u_dict.get("role") or "passenger"
                     email = u_dict.get("email") or ""
+                    name = u_dict.get("name") or u_dict.get("displayName") or ""
                 if not email:
                     email = f"{phone.replace('+', '')}@user.liphtup.in"
-                return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email}
+                return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email, "name": name}
 
             user_query_alt = db.collection("users").where("phone_number", "==", phone).limit(1).get()
             if hasattr(user_query_alt, "__len__") and len(user_query_alt) > 0:
@@ -182,9 +187,10 @@ async def check_phone(body: CheckPhoneBody) -> dict[str, Any]:
                     u_dict = first.to_dict() or {}
                     role = u_dict.get("role") or "passenger"
                     email = u_dict.get("email") or ""
+                    name = u_dict.get("name") or u_dict.get("displayName") or ""
                 if not email:
                     email = f"{phone.replace('+', '')}@user.liphtup.in"
-                return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email}
+                return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email, "name": name}
 
             user_query_camel = db.collection("users").where("phoneNumber", "==", phone).limit(1).get()
             if hasattr(user_query_camel, "__len__") and len(user_query_camel) > 0:
@@ -195,9 +201,10 @@ async def check_phone(body: CheckPhoneBody) -> dict[str, Any]:
                     u_dict = first.to_dict() or {}
                     role = u_dict.get("role") or "passenger"
                     email = u_dict.get("email") or ""
+                    name = u_dict.get("name") or u_dict.get("displayName") or ""
                 if not email:
                     email = f"{phone.replace('+', '')}@user.liphtup.in"
-                return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email}
+                return {"ok": True, "exists": True, "phone": phone, "role": role, "email": email, "name": name}
         except Exception:
             pass
 
