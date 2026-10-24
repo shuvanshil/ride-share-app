@@ -3,7 +3,10 @@ package in.liphtup.app;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
+import androidx.core.view.ViewCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -17,6 +20,32 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         PushNotificationService.createNotificationChannels(this);
         handleIncomingIntent(getIntent());
+
+        // Prevent native CoordinatorLayout / WebView parent from double-applying system window insets
+        // which introduces unwanted blank padding around the WebView edges on Android.
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().post(() -> {
+                try {
+                    WebView webView = getBridge().getWebView();
+                    if (webView != null) {
+                        webView.setPadding(0, 0, 0, 0);
+                        View parent = (View) webView.getParent();
+                        if (parent != null) {
+                            parent.setPadding(0, 0, 0, 0);
+                            ViewCompat.setOnApplyWindowInsetsListener(parent, (v, insets) -> {
+                                v.setPadding(0, 0, 0, 0);
+                                return insets;
+                            });
+                        }
+                        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, insets) -> {
+                            v.setPadding(0, 0, 0, 0);
+                            return insets;
+                        });
+                        webView.requestApplyInsets();
+                    }
+                } catch (Exception ignored) {}
+            });
+        }
 
         DriverLocationService.setLocationCallback((location, bearing, state, rideId) -> {
             if (getBridge() != null && getBridge().getWebView() != null) {

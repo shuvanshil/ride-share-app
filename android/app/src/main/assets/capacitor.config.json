@@ -35,6 +35,7 @@
   "android": {
     "allowMixedContent": false,
     "captureInput": true,
-    "webContentsDebuggingEnabled": false
+    "webContentsDebuggingEnabled": false,
+    "adjustMarginsForEdgeToEdge": "disable"
   }
 }
