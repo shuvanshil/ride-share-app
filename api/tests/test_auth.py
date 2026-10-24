@@ -329,3 +329,33 @@ def test_send_otp_blocks_existing_user_on_registration(monkeypatch) -> None:
     assert response.status_code == 409
     data = response.json()
     assert "already exists" in (data.get("detail") or data.get("error") or "")
+
+
+def test_check_phone_returns_role_and_synthetic_email(monkeypatch) -> None:
+    class MockIndexDoc:
+        exists = True
+        def to_dict(self):
+            return {"role": "driver", "uid": "driver-uid-1", "email": ""}
+
+    class MockCollection:
+        def document(self, phone):
+            return self
+        def get(self):
+            return MockIndexDoc()
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+
+    client = TestClient(app)
+    response = client.post("/api/auth/check-phone", json={"phone": "+919876543210"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["exists"] is True
+    assert data["role"] == "driver"
+    assert data["email"] == "919876543210@user.liphtup.in"
+

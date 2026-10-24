@@ -2843,22 +2843,26 @@ select.gy-input:focus {
     letter-spacing: normal;
 }
 
-/* Input Fields */
+/* Input Fields & Labels */
 .wizard-form-group {
     margin-bottom: 16px;
     text-align: left;
     width: 100%;
 }
 
+.wizard-field-label,
 .wizard-form-label {
     display: block;
-    font-size: 0.86rem;
-    font-weight: 600;
+    font-size: 0.88rem;
+    font-weight: 700;
     color: #1E293B;
     margin-bottom: 6px;
+    text-align: left;
 }
 
+.gy-input-wrapper,
 .wizard-input-box {
+    position: relative;
     display: flex;
     align-items: center;
     background: #FFFFFF;
@@ -2871,19 +2875,13 @@ select.gy-input:focus {
     box-sizing: border-box;
 }
 
+.gy-input-wrapper:focus-within,
 .wizard-input-box:focus-within {
     border-color: #00B83F;
     box-shadow: 0 0 0 3px rgba(0, 184, 63, 0.15);
 }
 
-.wizard-input-icon {
-    display: flex;
-    align-items: center;
-    color: #64748B;
-    margin-right: 12px;
-    flex-shrink: 0;
-}
-
+.gy-input,
 .wizard-input-control {
     border: none !important;
     outline: none !important;
@@ -2896,23 +2894,29 @@ select.gy-input:focus {
     padding: 0;
 }
 
+.gy-input::placeholder,
 .wizard-input-control::placeholder {
     color: #94A3B8;
     font-weight: 500;
 }
 
+.gy-password-toggle,
 .wizard-input-action {
     background: none;
     border: none;
-    padding: 4px;
+    padding: 6px;
     color: #64748B;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    margin-left: 8px;
+    border-radius: 8px;
+    transition: color 150ms ease;
 }
 
+.gy-password-toggle:hover,
 .wizard-input-action:hover {
     color: #0F172A;
 }
@@ -3273,6 +3277,72 @@ select.gy-input:focus {
     .wizard-otp-box {
         height: 50px;
         font-size: 1.25rem;
+    }
+}
+
+/* Trust Badge Row */
+.auth-trust-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 14px 16px;
+    background: #F8FAFC;
+    border-radius: 16px;
+    border: 1px solid #E2E8F0;
+    margin-top: 24px;
+}
+
+.auth-trust-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+}
+
+.auth-trust-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #E8F9EE;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.auth-trust-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+}
+
+.auth-trust-text strong {
+    font-size: 0.8rem;
+    color: #0F172A;
+    font-weight: 700;
+}
+
+.auth-trust-text small {
+    font-size: 0.72rem;
+    color: #64748B;
+    font-weight: 500;
+}
+
+.auth-trust-divider {
+    width: 1px;
+    height: 28px;
+    background: #CBD5E1;
+}
+
+@media (max-width: 400px) {
+    .auth-trust-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .auth-trust-divider {
+        display: none;
     }
 }
 

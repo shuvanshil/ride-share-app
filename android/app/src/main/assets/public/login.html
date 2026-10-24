@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="preload" href="css/bootstrap.min.css" as="style">
-    <link rel="preload" href="css/style.css?v=20261024-v3" as="style">
+    <link rel="preload" href="css/style.css?v=20261024-v4" as="style">
     <link rel="stylesheet" href="css/bootstrap.min.css" blocking="render">
-    <link rel="stylesheet" href="css/style.css?v=20261024-v3" blocking="render">
+    <link rel="stylesheet" href="css/style.css?v=20261024-v4" blocking="render">
     <script src="js/platform/native-bridge.js"></script>
     <script src="js/platform/routes.js" defer></script>
     <meta name="theme-color" content="#166534">
@@ -34,25 +34,16 @@
         <div style="margin-top:16px;font-family:sans-serif;font-weight:700;color:#166534;font-size:14px;letter-spacing:0.5px;">LiphtUp</div>
     </div>
 
-    <!-- Sticky Header Bar -->
-    <header class="app-bar auth-app-bar">
-        <div class="brand-logo">
-            <a href="index.html" class="d-inline-flex align-items-center text-decoration-none">
-                <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
-            </a>
-        </div>
-        <div id="auth-lang-switcher" class="app-bar-actions"></div>
-    </header>
-
     <main class="auth-container">
         <section class="wizard-card">
-            <!-- Header Navigation (Back button for phases 2-5) -->
+            <!-- Header Navigation: Back button on left, Language switcher on right -->
             <div class="wizard-header-nav">
                 <button id="wizard-back-btn" class="wizard-back-btn d-none" aria-label="Go back" type="button">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="m15 18-6-6 6-6"/>
                     </svg>
                 </button>
+                <div id="auth-lang-switcher" class="ms-auto"></div>
             </div>
 
             <!-- ========================================== -->
@@ -73,21 +64,32 @@
 
                 <div class="d-flex flex-column gap-2 mt-3">
                     <button id="phase1-continue-btn" class="gy-btn-wizard-primary" type="button">
-                        <span data-i18n="auth.btn_continue_mobile">Continue with mobile number</span>
+                        <div class="d-inline-flex align-items-center gap-2">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/>
+                                <path d="M12 18h.01"/>
+                            </svg>
+                            <span data-i18n="auth.btn_continue_mobile">Continue with mobile number</span>
+                        </div>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                            <path d="m9 18 6-6-6-6"/>
                         </svg>
                     </button>
 
                     <button id="phase1-driver-signup-btn" class="gy-btn-wizard-secondary" type="button">
-                        <span data-i18n="auth.btn_driver_signup">Captain / Driver Signup</span>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="m4.93 4.93 4.24 4.24"/>
-                            <path d="m14.83 9.17 4.24-4.24"/>
-                            <path d="m14.83 14.83 4.24 4.24"/>
-                            <path d="m9.17 14.83-4.24 4.24"/>
-                            <circle cx="12" cy="12" r="4"/>
+                        <div class="d-inline-flex align-items-center gap-2">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="m4.93 4.93 4.24 4.24"/>
+                                <path d="m14.83 9.17 4.24-4.24"/>
+                                <path d="m14.83 14.83 4.24 4.24"/>
+                                <path d="m9.17 14.83-4.24 4.24"/>
+                                <circle cx="12" cy="12" r="4"/>
+                            </svg>
+                            <span data-i18n="auth.btn_driver_signup">Captain / Driver Signup</span>
+                        </div>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m9 18 6-6-6-6"/>
                         </svg>
                     </button>
                 </div>
@@ -97,6 +99,11 @@
             <!-- PHASE 2: Mobile Number & Password Login -->
             <!-- ========================================== -->
             <div id="wizard-phase-2" class="wizard-phase">
+                <div class="wizard-brand-block">
+                    <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="wizard-brand-logo">
+                    <p class="wizard-tagline" data-i18n="auth.tagline">Your Local Ride Partner</p>
+                </div>
+
                 <div id="phase2-notice" class="wizard-notice-pill">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <span id="phase2-notice-text"></span>
@@ -128,7 +135,7 @@
                         <button id="phase2-forgot-password-link" type="button" class="btn btn-link p-0 text-decoration-none small text-success fw-bold" data-i18n="auth.forgot_password">Forgot password?</button>
                     </div>
                     <div class="gy-input-wrapper">
-                        <input id="wizard-login-password" class="gy-input" type="password" placeholder="Enter your password" autocomplete="current-password">
+                        <input id="wizard-login-password" class="gy-input" type="password" placeholder="Enter your password" autocomplete="current-password" data-password-toggle-initialized="true">
                         <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
                             <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                             <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
@@ -140,13 +147,13 @@
                     <button id="phase2-continue-btn" class="gy-btn-wizard-primary" type="button">
                         <span id="phase2-continue-label" data-i18n="auth.btn_continue">Continue</span>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                            <path d="m9 18 6-6-6-6"/>
                         </svg>
                     </button>
                     <button id="phase2-login-btn" class="gy-btn-wizard-primary d-none mt-2" type="button">
                         <span data-i18n="auth.btn_login_now">Login Now</span>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                            <path d="m9 18 6-6-6-6"/>
                         </svg>
                     </button>
                 </div>
@@ -156,6 +163,11 @@
             <!-- PHASE 3: OTP Verification -->
             <!-- ========================================== -->
             <div id="wizard-phase-3" class="wizard-phase">
+                <div class="wizard-brand-block">
+                    <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="wizard-brand-logo">
+                    <p class="wizard-tagline" data-i18n="auth.tagline">Your Local Ride Partner</p>
+                </div>
+
                 <div id="phase3-error" class="wizard-inline-error">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                     <span id="phase3-error-text"></span>
@@ -174,10 +186,10 @@
                         <span id="phase3-phone-display">+91 00000 00000</span>
                     </div>
                     <button id="phase3-edit-phone-btn" class="wizard-dest-edit-btn" type="button">
-                        <span data-i18n="auth.edit">Edit</span>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
                         </svg>
+                        <span data-i18n="auth.edit">Edit</span>
                     </button>
                 </div>
 
@@ -196,7 +208,7 @@
                     <span data-i18n="auth.didnt_receive_code">Didn't receive the code?</span>
                     <span id="phase3-resend-wrap">
                         <span data-i18n="auth.resend_in">Resend in</span>
-                        <span id="phase3-resend-timer" class="wizard-resend-countdown">60s</span>
+                        <span id="phase3-resend-timer" class="wizard-resend-countdown">00:60</span>
                     </span>
                     <button id="phase3-resend-btn" class="wizard-resend-btn d-none" type="button" data-i18n="auth.resend_otp">Resend OTP</button>
                 </div>
@@ -204,7 +216,7 @@
                 <button id="phase3-verify-btn" class="gy-btn-wizard-primary" type="button">
                     <span data-i18n="auth.btn_verify_otp">Verify OTP</span>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        <path d="m9 18 6-6-6-6"/>
                     </svg>
                 </button>
             </div>
@@ -213,6 +225,11 @@
             <!-- PHASE 4: Basic Profile Registration -->
             <!-- ========================================== -->
             <div id="wizard-phase-4" class="wizard-phase">
+                <div class="wizard-brand-block">
+                    <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="wizard-brand-logo">
+                    <p class="wizard-tagline" data-i18n="auth.tagline">Your Local Ride Partner</p>
+                </div>
+
                 <div id="phase4-error" class="wizard-inline-error">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                     <span id="phase4-error-text"></span>
@@ -249,7 +266,9 @@
                 <!-- Full Name -->
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="reg-name" data-i18n="auth.full_name">Full Name</label>
-                    <input id="reg-name" class="gy-input" type="text" placeholder="Enter your full name" autocomplete="name" required>
+                    <div class="gy-input-wrapper">
+                        <input id="reg-name" class="gy-input" type="text" placeholder="Enter your full name" autocomplete="name" required>
+                    </div>
                 </div>
 
                 <!-- Email (Optional) -->
@@ -258,14 +277,16 @@
                         <span data-i18n="auth.email_label">Email</span>
                         <span class="text-muted fw-normal small" data-i18n="auth.optional">(Optional)</span>
                     </label>
-                    <input id="reg-email" class="gy-input" type="email" placeholder="Enter your email address" autocomplete="email">
+                    <div class="gy-input-wrapper">
+                        <input id="reg-email" class="gy-input" type="email" placeholder="Enter your email address" autocomplete="email">
+                    </div>
                 </div>
 
                 <!-- Password -->
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="reg-password" data-i18n="auth.password_label">Password</label>
                     <div class="gy-input-wrapper">
-                        <input id="reg-password" class="gy-input" type="password" placeholder="Create a password" autocomplete="new-password" required minlength="6">
+                        <input id="reg-password" class="gy-input" type="password" placeholder="Create a password" autocomplete="new-password" required minlength="6" data-password-toggle-initialized="true">
                         <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
                             <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                             <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
@@ -298,7 +319,7 @@
                     <button id="phase4-submit-btn" class="gy-btn-wizard-primary" type="button">
                         <span id="phase4-submit-label" data-i18n="auth.btn_create_account">Create Account</span>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                            <path d="m9 18 6-6-6-6"/>
                         </svg>
                     </button>
                 </div>
@@ -338,25 +359,33 @@
                 <!-- Vehicle Registration Number -->
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="driver-vehicle-number" data-i18n="auth.vehicle_number">Vehicle Number</label>
-                    <input id="driver-vehicle-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR01AB1234" autocomplete="off" required>
+                    <div class="gy-input-wrapper">
+                        <input id="driver-vehicle-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR01AB1234" autocomplete="off" required>
+                    </div>
                 </div>
 
                 <!-- Vehicle Model -->
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="driver-vehicle-model" data-i18n="auth.vehicle_model">Vehicle Model</label>
-                    <input id="driver-vehicle-model" class="gy-input" type="text" placeholder="e.g. Hero Splendor or Bajaj RE" autocomplete="off" required>
+                    <div class="gy-input-wrapper">
+                        <input id="driver-vehicle-model" class="gy-input" type="text" placeholder="e.g. Hero Splendor or Bajaj RE" autocomplete="off" required>
+                    </div>
                 </div>
 
                 <!-- Driving Licence Number -->
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="driver-license-number" data-i18n="auth.licence_number">Licence Number</label>
-                    <input id="driver-license-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR0120200001234" autocomplete="off" required>
+                    <div class="gy-input-wrapper">
+                        <input id="driver-license-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR0120200001234" autocomplete="off" required>
+                    </div>
                 </div>
 
                 <!-- UPI ID -->
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="driver-upi-id" data-i18n="auth.upi_id">UPI ID for Earnings</label>
-                    <input id="driver-upi-id" class="gy-input" type="text" placeholder="e.g. name@upi" autocomplete="off" required>
+                    <div class="gy-input-wrapper">
+                        <input id="driver-upi-id" class="gy-input" type="text" placeholder="e.g. name@upi" autocomplete="off" required>
+                    </div>
                 </div>
 
                 <!-- Agreement -->
@@ -369,7 +398,7 @@
                     <button id="phase5-submit-btn" class="gy-btn-wizard-primary" type="button">
                         <span data-i18n="auth.create_driver_account">Create Account</span>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                            <path d="m9 18 6-6-6-6"/>
                         </svg>
                     </button>
                 </div>
@@ -379,6 +408,11 @@
             <!-- PHASE RESET: Create New Password -->
             <!-- ========================================== -->
             <div id="wizard-phase-reset" class="wizard-phase">
+                <div class="wizard-brand-block">
+                    <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="wizard-brand-logo">
+                    <p class="wizard-tagline" data-i18n="auth.tagline">Your Local Ride Partner</p>
+                </div>
+
                 <div id="reset-error" class="wizard-inline-error">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                     <span id="reset-error-text"></span>
@@ -390,7 +424,7 @@
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="reset-password" data-i18n="auth.password_label">New Password</label>
                     <div class="gy-input-wrapper">
-                        <input id="reset-password" class="gy-input" type="password" placeholder="Enter new password" autocomplete="new-password" required minlength="6">
+                        <input id="reset-password" class="gy-input" type="password" placeholder="Enter new password" autocomplete="new-password" required minlength="6" data-password-toggle-initialized="true">
                         <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
                             <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                             <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
@@ -401,7 +435,7 @@
                 <div class="wizard-form-group">
                     <label class="wizard-field-label" for="reset-confirm-password" data-i18n="profile.confirm_new_password">Confirm New Password</label>
                     <div class="gy-input-wrapper">
-                        <input id="reset-confirm-password" class="gy-input" type="password" placeholder="Confirm new password" autocomplete="new-password" required minlength="6">
+                        <input id="reset-confirm-password" class="gy-input" type="password" placeholder="Confirm new password" autocomplete="new-password" required minlength="6" data-password-toggle-initialized="true">
                         <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
                             <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                             <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
@@ -413,7 +447,7 @@
                     <button id="reset-submit-btn" class="gy-btn-wizard-primary" type="button">
                         <span data-i18n="profile.save_password">Save Password</span>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                            <path d="m9 18 6-6-6-6"/>
                         </svg>
                     </button>
                 </div>
@@ -460,12 +494,11 @@
     <script src="js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
-    <script type="module" src="js/shared/login.js?v=20261024-v3"></script>
-    <script type="module" src="js/shared/password-toggle.js"></script>
-    <script type="module" src="js/shared/i18n.js?v=20261024-v3"></script>
+    <script type="module" src="js/shared/login.js?v=20261024-v4"></script>
+    <script type="module" src="js/shared/i18n.js?v=20261024-v4"></script>
     <script type="module">
         import { renderLanguageSwitcher } from './js/shared/i18n.js';
-        renderLanguageSwitcher(document.getElementById('auth-lang-switcher'));
+        renderLanguageSwitcher(document.getElementById('auth-lang-switcher'), { forceLanguage: true });
     </script>
 </body>
 </html>

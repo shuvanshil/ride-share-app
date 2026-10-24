@@ -208,13 +208,14 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
             raise ApiError("An account already exists for this mobile number. Please login instead.", 409)
 
         base = _validate_base_profile(body.profile or {})
+        clean_phone = token_payload["phone"].replace("+", "")
+        effective_email = base["email"] or f"{clean_phone}@user.liphtup.in"
         create_user_kwargs: dict[str, Any] = {
             "password": password,
             "display_name": base["name"],
             "phone_number": token_payload["phone"],
+            "email": effective_email,
         }
-        if base["email"]:
-            create_user_kwargs["email"] = base["email"]
 
         user_record = auth_client.create_user(**create_user_kwargs)
         created_uid = user_record.uid
@@ -227,7 +228,7 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
         db.collection("phoneLoginIndex").document(token_payload["phone"]).set(
             {
                 "uid": created_uid,
-                "email": profile_data["email"],
+                "email": effective_email,
                 "role": "passenger",
                 "phone": token_payload["phone"],
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
@@ -433,11 +434,14 @@ async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
             }
 
+            clean_token_phone = token_phone.replace("+", "")
+            effective_email = email or existing_profile.get("email") or f"{clean_token_phone}@user.liphtup.in"
+
             user_ref.set(driver_updates, merge=True)
             db.collection("phoneLoginIndex").document(token_phone).set(
                 {
                     "uid": existing_uid,
-                    "email": driver_updates["email"],
+                    "email": effective_email,
                     "role": "driver",
                     "phone": token_phone,
                     "updatedAt": fb_firestore.SERVER_TIMESTAMP,
@@ -447,7 +451,10 @@ async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
 
             if password and len(password) >= 6:
                 try:
-                    auth_client.update_user(existing_uid, password=password, display_name=name)
+                    update_kwargs: dict[str, Any] = {"password": password, "display_name": name}
+                    if email:
+                        update_kwargs["email"] = email
+                    auth_client.update_user(existing_uid, **update_kwargs)
                 except Exception:
                     pass
 
@@ -463,13 +470,14 @@ async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
         if len(password) < 6:
             raise ApiError("Password must be at least 6 characters.", 400)
 
+        clean_token_phone = token_phone.replace("+", "")
+        effective_email = email or f"{clean_token_phone}@user.liphtup.in"
         create_user_kwargs: dict[str, Any] = {
             "password": password,
             "display_name": name,
             "phone_number": token_phone,
+            "email": effective_email,
         }
-        if email:
-            create_user_kwargs["email"] = email
 
         user_record = auth_client.create_user(**create_user_kwargs)
         created_uid = user_record.uid
@@ -510,7 +518,7 @@ async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
         db.collection("phoneLoginIndex").document(token_phone).set(
             {
                 "uid": created_uid,
-                "email": profile_data["email"],
+                "email": effective_email,
                 "role": "driver",
                 "phone": token_phone,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,

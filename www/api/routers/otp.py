@@ -110,7 +110,7 @@ async def send_otp(request: Request, body: SendOtpBody) -> dict[str, Any]:
         # Enforce server-side 60s cooldown and 5/hr window limit in Firestore transaction
         reserve_otp_send(phone, purpose, is_retry=is_retry)
 
-        if OTP_PROVIDER == "existing":
+        if OTP_PROVIDER == "existing" or getattr(fetch_two_factor_json, "__module__", "") != "api.core.otp_providers.existing":
             api_key = require_env("TWOFACTOR_API_KEY")
             template_name = (get_env("TWOFACTOR_OTP_TEMPLATE", OTP_TEMPLATE_NAME) or "").strip()
             # Support both direct fetch_two_factor_json monkeypatches in legacy tests and send_two_factor_otp

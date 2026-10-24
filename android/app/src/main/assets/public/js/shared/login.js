@@ -23,10 +23,10 @@ const ACTIVE_OTP_SESSION_KEY = "liphtup_active_otp_session";
 
 let currentPhase = 1;
 let authIntent = "passenger"; // "passenger" | "driver" | "reset"
+let requestedPhoneNumber = null;
 let verifiedPhoneNumber = null;
 let otpSessionId = null;
 let otpVerificationToken = null;
-let requestedPhoneNumber = null;
 let resendTimerId = null;
 let otpRequestInProgress = false;
 let loginFlowStarted = false;
@@ -194,10 +194,27 @@ function maskPhoneNumber(phoneNumber) {
     return `+91 ${national.slice(0, 5)} ${national.slice(5)}`;
 }
 
+function formatCountdownTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 // =============================================================================
-// Phase Transition Controller
+// Phase Transition Controller & Guards
 // =============================================================================
 function goToPhase(targetPhase) {
+    // Guards
+    if (targetPhase === 3 && !requestedPhoneNumber) {
+        targetPhase = 2;
+    } else if (targetPhase === 4 && (!verifiedPhoneNumber || !otpVerificationToken)) {
+        targetPhase = 2;
+    } else if (targetPhase === 5 && (authIntent !== "driver" || !verifiedPhoneNumber || !otpVerificationToken)) {
+        targetPhase = 4;
+    } else if (targetPhase === 'reset' && (!otpVerificationToken || authIntent !== "reset")) {
+        targetPhase = 2;
+    }
+
     clearInlineError(currentPhase);
     currentPhase = targetPhase;
 
@@ -229,6 +246,10 @@ function goToPhase(targetPhase) {
         if (otpBoxes[0]) {
             setTimeout(() => otpBoxes[0].focus(), 80);
         }
+        // Auto-trigger OTP send on Phase 3 entry if not already in flight or active
+        if (!otpSessionId && !otpRequestInProgress) {
+            sendOTP();
+        }
     } else if (targetPhase === 4) {
         if (phase4SubmitLabel) {
             if (authIntent === "driver") {
@@ -256,6 +277,12 @@ function handleBackNavigation() {
     if (currentPhase === 2) {
         goToPhase(1);
     } else if (currentPhase === 3) {
+        // Invalidate OTP context and go to Phase 2 to edit number
+        clearResendTimer();
+        clearActiveOtpSession();
+        otpSessionId = null;
+        verifiedPhoneNumber = null;
+        otpVerificationToken = null;
         goToPhase(2);
     } else if (currentPhase === 4) {
         goToPhase(3);
@@ -399,8 +426,9 @@ function updatePhase2UI() {
         return;
     }
 
-    // Existing account
+    // Existing account handling
     const isDriverAccount = existingAccountData.role === "driver";
+
     if (authIntent === "driver" && !isDriverAccount) {
         // Existing passenger wanting to register as driver
         showPhase2Notice(t('auth.existing_passenger_driver_notice', "Existing passenger account found. Verify your number to register as a Captain / Driver."));
@@ -408,16 +436,21 @@ function updatePhase2UI() {
         if (phase2LoginBtn) phase2LoginBtn.classList.add('d-none');
         if (phase2ContinueBtn) {
             phase2ContinueBtn.classList.remove('d-none');
-            phase2ContinueLabel.textContent = t('auth.btn_verify_and_continue', "Verify & Continue");
+            phase2ContinueLabel.textContent = t('auth.btn_continue', "Continue");
         }
-    } else {
-        // Normal password login (or existing driver logging in)
+    } else if (isDriverAccount) {
+        // Existing driver account
+        showPhase2Notice(t('auth.existing_driver_account_notice', "Captain / Driver account found. Enter your password to log in."));
         if (phase2PasswordContainer) phase2PasswordContainer.classList.remove('d-none');
         if (phase2LoginBtn) phase2LoginBtn.classList.remove('d-none');
         if (phase2ContinueBtn) phase2ContinueBtn.classList.add('d-none');
-        if (loginPasswordInput) {
-            setTimeout(() => loginPasswordInput.focus(), 60);
-        }
+        if (loginPasswordInput) setTimeout(() => loginPasswordInput.focus(), 60);
+    } else {
+        // Existing passenger account normal login
+        if (phase2PasswordContainer) phase2PasswordContainer.classList.remove('d-none');
+        if (phase2LoginBtn) phase2LoginBtn.classList.remove('d-none');
+        if (phase2ContinueBtn) phase2ContinueBtn.classList.add('d-none');
+        if (loginPasswordInput) setTimeout(() => loginPasswordInput.focus(), 60);
     }
 }
 
@@ -426,14 +459,79 @@ async function handlePhoneInputEvaluation() {
     phoneInput.value = rawVal;
     clearInlineError(2);
 
+    // If phone number is edited, clear password and invalidate previous OTP context
+    if (loginPasswordInput) loginPasswordInput.value = "";
+    verifiedPhoneNumber = null;
+    otpVerificationToken = null;
+    otpSessionId = null;
+    clearActiveOtpSession();
+    clearResendTimer();
+
     if (rawVal.length === 10) {
         const formatted = `+91${rawVal}`;
         const accountInfo = await checkPhoneAccount(formatted);
-        existingAccountData = accountInfo;
-        updatePhase2UI();
+        // Ensure input hasn't changed during fetch
+        if (phoneInput.value.replace(/\D/g, "") === rawVal) {
+            existingAccountData = accountInfo;
+            updatePhase2UI();
+        }
     } else {
         existingAccountData = null;
         updatePhase2UI();
+    }
+}
+
+async function handlePhase2Submit() {
+    clearInlineError(2);
+    const rawPhone = phoneInput.value.replace(/\D/g, "");
+    const formatted = formatPhone(rawPhone);
+
+    if (!formatted) {
+        showInlineError(2, t('auth.enter_valid_phone', "Enter a valid 10-digit Indian mobile number."));
+        phoneInput.focus();
+        return;
+    }
+
+    // If password container is visible, submit password login
+    if (phase2PasswordContainer && !phase2PasswordContainer.classList.contains('d-none')) {
+        loginWithPassword();
+        return;
+    }
+
+    // Ensure account evaluation has completed
+    phase2ContinueBtn.disabled = true;
+    phase2ContinueLabel.textContent = t('auth.checking_account', "Checking...");
+
+    try {
+        let accountInfo = existingAccountData;
+        if (!accountInfo) {
+            accountInfo = await checkPhoneAccount(formatted);
+            existingAccountData = accountInfo;
+        }
+
+        if (accountInfo.exists) {
+            const isDriver = accountInfo.role === "driver";
+            if (authIntent === "driver" && !isDriver) {
+                // Existing passenger registering as driver -> proceed to OTP verification
+                requestedPhoneNumber = formatted;
+                goToPhase(3);
+                return;
+            }
+            // Existing account with matching role -> reveal password login
+            updatePhase2UI();
+            if (loginPasswordInput) loginPasswordInput.focus();
+            return;
+        }
+
+        // New account -> proceed to Phase 3 OTP verification
+        requestedPhoneNumber = formatted;
+        goToPhase(3);
+    } catch (e) {
+        console.error("Phase 2 submission error:", e);
+        showInlineError(2, getAuthErrorMessage(e, "Could not verify phone. Please try again."));
+    } finally {
+        phase2ContinueBtn.disabled = false;
+        phase2ContinueLabel.textContent = t('auth.btn_continue', "Continue");
     }
 }
 
@@ -481,7 +579,6 @@ async function loginWithPassword() {
         }
 
         if (!email) {
-            // Synthetic email fallback matching registration logic
             email = `${formattedPhone.replace(/\D/g, "")}@user.liphtup.in`;
         }
 
@@ -544,7 +641,7 @@ function startResendTimer(initialSeconds = OTP_RESEND_DELAY_SECONDS) {
 
     if (phase3ResendWrap) phase3ResendWrap.classList.remove('d-none');
     if (phase3ResendBtn) phase3ResendBtn.classList.add('d-none');
-    if (phase3ResendTimer) phase3ResendTimer.textContent = `${secondsRemaining}s`;
+    if (phase3ResendTimer) phase3ResendTimer.textContent = formatCountdownTime(secondsRemaining);
 
     resendTimerId = setInterval(() => {
         secondsRemaining -= 1;
@@ -554,24 +651,26 @@ function startResendTimer(initialSeconds = OTP_RESEND_DELAY_SECONDS) {
             if (phase3ResendBtn) phase3ResendBtn.classList.remove('d-none');
             return;
         }
-        if (phase3ResendTimer) phase3ResendTimer.textContent = `${secondsRemaining}s`;
+        if (phase3ResendTimer) phase3ResendTimer.textContent = formatCountdownTime(secondsRemaining);
     }, 1000);
 }
 
 async function sendOTP(purposeOverride = null) {
     if (otpRequestInProgress) return;
 
-    const formatted = formatPhone(phoneInput.value);
+    const formatted = requestedPhoneNumber || formatPhone(phoneInput.value);
     if (!formatted) {
         showInlineError(2, t('auth.enter_valid_phone', "Enter a valid 10-digit Indian mobile number."));
-        phoneInput.focus();
+        goToPhase(2);
         return;
     }
 
     otpRequestInProgress = true;
     loginFlowStarted = true;
-    phase2ContinueBtn.disabled = true;
-    phase2ContinueLabel.textContent = t('auth.sending_otp', "Sending OTP...");
+    if (phase3VerifyBtn) {
+        phase3VerifyBtn.disabled = true;
+        phase3VerifyBtn.firstElementChild.textContent = t('auth.sending_otp', "Sending OTP...");
+    }
 
     const purpose = purposeOverride || (authIntent === "reset" ? "reset" : (authIntent === "driver" ? "driver_register" : "register"));
 
@@ -632,16 +731,17 @@ async function sendOTP(purposeOverride = null) {
 
         requestedPhoneNumber = formatted;
         saveActiveOtpSession(formatted, otpSessionId, authIntent, activeOtpProvider);
-        goToPhase(3);
         startResendTimer();
         initWebOtpListener();
     } catch (error) {
         console.error("sendOTP error:", error);
-        showInlineError(2, getAuthErrorMessage(error, t('auth.send_otp_failed', "Could not send OTP. Please try again.")));
+        showInlineError(3, getAuthErrorMessage(error, t('auth.send_otp_failed', "Could not send OTP. Please try again.")));
     } finally {
         otpRequestInProgress = false;
-        phase2ContinueBtn.disabled = false;
-        phase2ContinueLabel.textContent = t('auth.btn_continue', "Continue");
+        if (phase3VerifyBtn) {
+            phase3VerifyBtn.disabled = false;
+            phase3VerifyBtn.firstElementChild.textContent = t('auth.btn_verify_otp', "Verify OTP");
+        }
     }
 }
 
@@ -692,7 +792,7 @@ async function resendOTP() {
 }
 
 // =============================================================================
-// OTP Input Boxes (Auto-focus, Advance, Backspace, Paste)
+// OTP Input Boxes (Auto-advance, Backspace, Overwrite, Paste)
 // =============================================================================
 function clearOtpBoxes() {
     otpBoxes.forEach(box => {
@@ -712,11 +812,13 @@ function setupOtpBoxes() {
         if (!box) return;
 
         box.addEventListener('input', (e) => {
-            const val = e.target.value.replace(/\D/g, "");
-            e.target.value = val ? val[0] : "";
-            e.target.classList.toggle('filled', Boolean(e.target.value));
+            const raw = e.target.value.replace(/\D/g, "");
+            // Taking slice(-1) enables overwriting when typing into an already filled box
+            const char = raw ? raw.slice(-1) : "";
+            e.target.value = char;
+            e.target.classList.toggle('filled', Boolean(char));
 
-            if (val && index < otpBoxes.length - 1) {
+            if (char && index < otpBoxes.length - 1) {
                 otpBoxes[index + 1].focus();
             }
 
@@ -726,8 +828,14 @@ function setupOtpBoxes() {
         });
 
         box.addEventListener('keydown', (e) => {
-            if (e.key === "Backspace" && !box.value && index > 0) {
+            if (e.key === "Backspace") {
+                if (!box.value && index > 0) {
+                    otpBoxes[index - 1].focus();
+                }
+            } else if (e.key === "ArrowLeft" && index > 0) {
                 otpBoxes[index - 1].focus();
+            } else if (e.key === "ArrowRight" && index < otpBoxes.length - 1) {
+                otpBoxes[index + 1].focus();
             } else if (e.key === "Enter") {
                 verifyOTP();
             }
@@ -736,12 +844,12 @@ function setupOtpBoxes() {
         box.addEventListener('paste', (e) => {
             e.preventDefault();
             const pasted = (e.clipboardData || window.clipboardData).getData('text');
-            const digits = pasted.replace(/\D/g, "").slice(0, 6);
+            const digits = (pasted || "").replace(/\D/g, "").slice(0, 6);
             if (!digits) return;
 
-            digits.split("").forEach((char, i) => {
+            digits.split("").forEach((c, i) => {
                 if (otpBoxes[i]) {
-                    otpBoxes[i].value = char;
+                    otpBoxes[i].value = c;
                     otpBoxes[i].classList.add('filled');
                 }
             });
@@ -972,6 +1080,34 @@ function setupInteractiveCards() {
 }
 
 // =============================================================================
+// Password Show/Hide Toggle Controller
+// =============================================================================
+function setupPasswordToggles() {
+    const toggleButtons = document.querySelectorAll('.gy-password-toggle');
+    toggleButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const wrapper = btn.closest('.gy-input-wrapper');
+            const input = wrapper ? wrapper.querySelector('input') : null;
+            if (!input) return;
+
+            const isPassword = input.type === "password";
+            input.type = isPassword ? "text" : "password";
+
+            const eyeOpen = btn.querySelector('.eye-open');
+            const eyeClosed = btn.querySelector('.eye-closed');
+
+            if (eyeOpen && eyeClosed) {
+                eyeOpen.classList.toggle('d-none', isPassword);
+                eyeClosed.classList.toggle('d-none', !isPassword);
+            }
+
+            btn.setAttribute('aria-label', isPassword ? "Hide password" : "Show password");
+            btn.setAttribute('aria-pressed', String(isPassword));
+        });
+    });
+}
+
+// =============================================================================
 // Phase 4 & Phase 5 Registration Submission
 // =============================================================================
 function validatePhase4() {
@@ -1050,7 +1186,7 @@ async function handlePhase4Submit() {
             throw new Error(data.error || data.message || t('auth.registration_failed', "Could not create account."));
         }
 
-        const result = await signInWithCustomToken(auth, data.customToken);
+        await signInWithCustomToken(auth, data.customToken);
         routeToHome(data.profile);
     } catch (error) {
         console.error("Passenger registration failed:", error);
@@ -1062,7 +1198,6 @@ async function handlePhase4Submit() {
 
 function validatePhase5() {
     clearInlineError(5);
-    const vehicleType = driverVehicleType?.value || "bike";
     const vehicleNumber = (driverVehicleNumber?.value || "").trim().toUpperCase();
     const vehicleModel = (driverVehicleModel?.value || "").trim();
     const licenseNumber = (driverLicenseNumber?.value || "").trim().toUpperCase();
@@ -1156,7 +1291,7 @@ async function handlePhase5Submit() {
             throw new Error(data.error || data.message || t('auth.registration_failed', "Could not create driver account."));
         }
 
-        const result = await signInWithCustomToken(auth, data.customToken);
+        await signInWithCustomToken(auth, data.customToken);
         routeToHome(data.profile);
     } catch (error) {
         console.error("Driver registration failed:", error);
@@ -1211,6 +1346,7 @@ async function handlePasswordResetSubmit() {
         }
 
         await showAppAlert(t('auth.password_updated_success', "Password updated successfully. You can now login."));
+        authIntent = "passenger";
         goToPhase(2);
         if (loginPasswordInput) {
             loginPasswordInput.value = "";
@@ -1344,11 +1480,7 @@ function initEventListeners() {
         phoneInput.addEventListener('input', handlePhoneInputEvaluation);
         phoneInput.addEventListener('keydown', (e) => {
             if (e.key === "Enter") {
-                if (existingAccountData && existingAccountData.exists && phase2LoginBtn && !phase2LoginBtn.classList.contains('d-none')) {
-                    loginWithPassword();
-                } else {
-                    sendOTP();
-                }
+                handlePhase2Submit();
             }
         });
     }
@@ -1358,21 +1490,35 @@ function initEventListeners() {
         });
     }
     if (phase2ContinueBtn) {
-        phase2ContinueBtn.addEventListener('click', () => sendOTP());
+        phase2ContinueBtn.addEventListener('click', handlePhase2Submit);
     }
     if (phase2LoginBtn) {
         phase2LoginBtn.addEventListener('click', loginWithPassword);
     }
     if (phase2ForgotPasswordLink) {
         phase2ForgotPasswordLink.addEventListener('click', () => {
+            const formatted = formatPhone(phoneInput.value);
+            if (!formatted) {
+                showInlineError(2, t('auth.enter_valid_phone', "Enter a valid 10-digit Indian mobile number."));
+                phoneInput.focus();
+                return;
+            }
+            requestedPhoneNumber = formatted;
             authIntent = "reset";
-            sendOTP("reset");
+            goToPhase(3);
         });
     }
 
     // Phase 3
     if (phase3EditPhoneBtn) {
-        phase3EditPhoneBtn.addEventListener('click', () => goToPhase(2));
+        phase3EditPhoneBtn.addEventListener('click', () => {
+            clearResendTimer();
+            clearActiveOtpSession();
+            otpSessionId = null;
+            verifiedPhoneNumber = null;
+            otpVerificationToken = null;
+            goToPhase(2);
+        });
     }
     if (phase3VerifyBtn) {
         phase3VerifyBtn.addEventListener('click', verifyOTP);
@@ -1403,6 +1549,7 @@ function initEventListeners() {
 setupOtpBoxes();
 setupAvatarUpload();
 setupInteractiveCards();
+setupPasswordToggles();
 initEventListeners();
 fetchOtpConfig();
 

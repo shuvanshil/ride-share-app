@@ -451,7 +451,10 @@ async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
 
             if password and len(password) >= 6:
                 try:
-                    auth_client.update_user(existing_uid, password=password, display_name=name)
+                    update_kwargs: dict[str, Any] = {"password": password, "display_name": name}
+                    if email:
+                        update_kwargs["email"] = email
+                    auth_client.update_user(existing_uid, **update_kwargs)
                 except Exception:
                     pass
 
