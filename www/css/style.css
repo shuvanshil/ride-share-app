@@ -2718,6 +2718,7 @@ select.gy-input:focus {
 }
 
 .gy-btn-wizard-primary {
+    position: relative;
     width: 100%;
     min-height: 52px;
     border-radius: 14px;
@@ -2727,13 +2728,22 @@ select.gy-input:focus {
     font-weight: 700;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 18px;
+    justify-content: center;
+    text-align: center;
+    padding: 0 44px;
     border: none;
     box-shadow: 0 6px 20px rgba(0, 184, 63, 0.28);
     cursor: pointer;
     transition: all 180ms ease;
     box-sizing: border-box;
+}
+
+.gy-btn-wizard-primary > svg:last-child {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
 }
 
 .gy-btn-wizard-primary:hover:not(:disabled) {
@@ -2754,6 +2764,7 @@ select.gy-input:focus {
 }
 
 .gy-btn-wizard-secondary {
+    position: relative;
     width: 100%;
     min-height: 52px;
     border-radius: 14px;
@@ -2763,13 +2774,22 @@ select.gy-input:focus {
     font-weight: 700;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 18px;
+    justify-content: center;
+    text-align: center;
+    padding: 0 44px;
     border: 1.5px solid #00B83F;
     cursor: pointer;
     transition: all 180ms ease;
     margin-top: 12px;
     box-sizing: border-box;
+}
+
+.gy-btn-wizard-secondary > svg:last-child {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
 }
 
 .gy-btn-wizard-secondary:hover:not(:disabled) {

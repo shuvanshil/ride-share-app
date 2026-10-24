@@ -133,16 +133,30 @@ const resetSubmitBtn = document.getElementById('reset-submit-btn');
 // =============================================================================
 // Helper Functions: UI, Messages, Errors
 // =============================================================================
+const inlineErrorTimers = {};
+let phase2NoticeTimer = null;
+
 function showInlineError(phaseId, message) {
     const errorContainer = document.getElementById(`phase${phaseId}-error`) || (phaseId === 'reset' ? resetError : null);
     const textEl = document.getElementById(`phase${phaseId}-error-text`) || (phaseId === 'reset' ? resetErrorText : null);
     if (errorContainer && textEl) {
         textEl.textContent = message;
         errorContainer.classList.add('is-visible');
+
+        if (inlineErrorTimers[phaseId]) {
+            clearTimeout(inlineErrorTimers[phaseId]);
+        }
+        inlineErrorTimers[phaseId] = setTimeout(() => {
+            clearInlineError(phaseId);
+        }, 15000);
     }
 }
 
 function clearInlineError(phaseId) {
+    if (inlineErrorTimers[phaseId]) {
+        clearTimeout(inlineErrorTimers[phaseId]);
+        delete inlineErrorTimers[phaseId];
+    }
     const errorContainer = document.getElementById(`phase${phaseId}-error`) || (phaseId === 'reset' ? resetError : null);
     const textEl = document.getElementById(`phase${phaseId}-error-text`) || (phaseId === 'reset' ? resetErrorText : null);
     if (errorContainer && textEl) {
@@ -155,10 +169,21 @@ function showPhase2Notice(message) {
     if (phase2Notice && phase2NoticeText) {
         phase2NoticeText.textContent = message;
         phase2Notice.classList.add('is-visible');
+
+        if (phase2NoticeTimer) {
+            clearTimeout(phase2NoticeTimer);
+        }
+        phase2NoticeTimer = setTimeout(() => {
+            clearPhase2Notice();
+        }, 15000);
     }
 }
 
 function clearPhase2Notice() {
+    if (phase2NoticeTimer) {
+        clearTimeout(phase2NoticeTimer);
+        phase2NoticeTimer = null;
+    }
     if (phase2Notice && phase2NoticeText) {
         phase2NoticeText.textContent = "";
         phase2Notice.classList.remove('is-visible');
