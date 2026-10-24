@@ -2612,221 +2612,668 @@ select.gy-input:focus {
 }
 
 /* ==========================================================================
-   Driver Signup Link Card & Multi-step Wizard Styles
+   LiphtUp Dynamic Authentication & Registration Wizard
    ========================================================================== */
 
-.auth-driver-signup-cta {
+.wizard-card {
+    width: 100%;
+    max-width: 480px;
+    background: #FFFFFF;
+    border-radius: 24px;
+    border: 1px solid #F1F5F9;
+    box-shadow: 0 16px 40px -10px rgba(15, 23, 42, 0.08), 0 0 1px rgba(0, 0, 0, 0.05);
+    padding: 28px 24px 24px;
+    margin: 0 auto;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.wizard-header-nav {
+    display: flex;
+    align-items: center;
+    position: relative;
+    min-height: 40px;
+    margin-bottom: 8px;
+}
+
+.wizard-back-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid #E2E8F0;
+    background: #FFFFFF;
+    color: #1E293B;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.wizard-back-btn:hover {
+    background: #F8FAFC;
+    border-color: #CBD5E1;
+}
+
+.wizard-back-btn:active {
+    transform: scale(0.95);
+}
+
+.wizard-brand-block {
+    text-align: center;
+    margin: 0 auto 16px;
+}
+
+.wizard-brand-logo {
+    height: 48px;
+    max-height: 52px;
+    width: auto;
+    object-fit: contain;
+    display: inline-block;
+}
+
+.wizard-tagline {
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: #64748B;
+    margin-top: 4px;
+    letter-spacing: -0.01em;
+}
+
+.wizard-illustration-wrap {
+    width: 100%;
+    max-width: 380px;
+    margin: 10px auto 16px;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.wizard-illustration {
+    width: 100%;
+    height: auto;
+    max-height: 200px;
+    object-fit: contain;
+    display: block;
+}
+
+.wizard-title {
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: #0F172A;
+    text-align: center;
+    line-height: 1.25;
+    margin: 10px 0 6px;
+}
+
+.wizard-subtitle {
+    font-size: 0.88rem;
+    color: #64748B;
+    text-align: center;
+    line-height: 1.4;
+    margin: 0 auto 20px;
+    max-width: 360px;
+}
+
+.gy-btn-wizard-primary {
+    width: 100%;
+    min-height: 52px;
+    border-radius: 14px;
+    background: #00B83F;
+    color: #FFFFFF;
+    font-size: 1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    border: none;
+    box-shadow: 0 6px 20px rgba(0, 184, 63, 0.28);
+    cursor: pointer;
+    transition: all 180ms ease;
+    box-sizing: border-box;
+}
+
+.gy-btn-wizard-primary:hover:not(:disabled) {
+    background: #009e36;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0, 184, 63, 0.35);
+}
+
+.gy-btn-wizard-primary:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.gy-btn-wizard-primary:disabled {
+    background: #94E3AD;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+.gy-btn-wizard-secondary {
+    width: 100%;
+    min-height: 52px;
+    border-radius: 14px;
+    background: #FFFFFF;
+    color: #00B83F;
+    font-size: 1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    border: 1.5px solid #00B83F;
+    cursor: pointer;
+    transition: all 180ms ease;
+    margin-top: 12px;
+    box-sizing: border-box;
+}
+
+.gy-btn-wizard-secondary:hover:not(:disabled) {
+    background: #F0FDF4;
+    border-color: #009e36;
+    color: #009e36;
+}
+
+.gy-btn-wizard-secondary:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+/* Phone input row */
+.wizard-phone-card {
+    display: flex;
+    align-items: center;
+    background: #FFFFFF;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 14px;
+    min-height: 52px;
+    padding: 0 14px;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.wizard-phone-card:focus-within {
+    border-color: #00B83F;
+    box-shadow: 0 0 0 3px rgba(0, 184, 63, 0.15);
+}
+
+.wizard-phone-prefix {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1E293B;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.wizard-phone-flag {
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.wizard-phone-divider {
+    width: 1.5px;
+    height: 22px;
+    background: #CBD5E1;
+    margin: 0 12px;
+    flex-shrink: 0;
+}
+
+.wizard-phone-input {
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #0F172A;
+    width: 100%;
+    padding: 0;
+    letter-spacing: 0.5px;
+}
+
+.wizard-phone-input::placeholder {
+    color: #94A3B8;
+    font-weight: 500;
+    letter-spacing: normal;
+}
+
+/* Input Fields */
+.wizard-form-group {
+    margin-bottom: 16px;
+    text-align: left;
     width: 100%;
 }
 
-.auth-divider {
-    display: flex;
-    align-items: center;
-    text-align: center;
-    color: #94A3B8;
-    font-size: 0.82rem;
-    font-weight: 700;
-}
-
-.auth-divider::before,
-.auth-divider::after {
-    content: '';
-    flex: 1;
-    border-bottom: 1.5px solid #E2E8F0;
-}
-
-.auth-divider-text {
-    padding: 0 12px;
-    text-transform: lowercase;
-}
-
-.driver-signup-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #FFFFFF;
-    border: 1.5px solid #BBF7D0;
-    border-radius: 16px;
-    padding: 13px 16px;
-    cursor: pointer;
-    text-decoration: none !important;
-    transition: all 180ms ease;
-    box-shadow: 0 2px 8px rgba(22, 101, 52, 0.05);
-}
-
-.driver-signup-card:hover {
-    border-color: #166534;
-    background: #F0FDF4;
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(22, 101, 52, 0.12);
-}
-
-.driver-signup-card-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-}
-
-.driver-signup-card-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    background: #DCFCE7;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.driver-signup-card-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    text-align: left;
-}
-
-.driver-signup-card-title {
-    font-size: 0.95rem;
-    font-weight: 800;
-    color: #166534;
-    line-height: 1.25;
-}
-
-.driver-signup-card-sub {
-    font-size: 0.78rem;
-    font-weight: 500;
-    color: #64748B;
-    line-height: 1.2;
-    margin-top: 2px;
-}
-
-.driver-signup-card-arrow {
-    color: #166534;
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    transition: transform 0.2s ease;
-}
-
-.driver-signup-card:hover .driver-signup-card-arrow {
-    transform: translateX(3px);
-}
-
-/* Multi-step Driver Wizard */
-.driver-steps-indicator {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin: 4px 0 24px;
-    position: relative;
-    padding: 0 6px;
-}
-
-.driver-steps-track {
-    position: absolute;
-    top: 15px;
-    left: 36px;
-    right: 36px;
-    height: 3px;
-    background: #E2E8F0;
-    z-index: 1;
-}
-
-.driver-steps-progress {
-    height: 100%;
-    background: #166534;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    width: 0%;
-}
-
-.driver-step-item {
-    position: relative;
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    text-align: center;
-}
-
-.driver-step-badge {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: #FFFFFF;
-    color: #64748B;
-    font-size: 0.85rem;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid #E2E8F0;
-    transition: all 0.25s ease;
-}
-
-.driver-step-item.active .driver-step-badge {
-    background: #166534;
-    color: #FFFFFF;
-    border-color: #166534;
-    box-shadow: 0 0 0 4px rgba(22, 101, 52, 0.18);
-}
-
-.driver-step-item.completed .driver-step-badge {
-    background: #DCFCE7;
-    color: #166534;
-    border-color: #166534;
-}
-
-.driver-step-label {
-    font-size: 0.72rem;
+.wizard-form-label {
+    display: block;
+    font-size: 0.86rem;
     font-weight: 600;
+    color: #1E293B;
+    margin-bottom: 6px;
+}
+
+.wizard-input-box {
+    display: flex;
+    align-items: center;
+    background: #FFFFFF;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 14px;
+    min-height: 52px;
+    padding: 0 14px;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.wizard-input-box:focus-within {
+    border-color: #00B83F;
+    box-shadow: 0 0 0 3px rgba(0, 184, 63, 0.15);
+}
+
+.wizard-input-icon {
+    display: flex;
+    align-items: center;
     color: #64748B;
-    white-space: nowrap;
-    transition: color 0.2s ease;
+    margin-right: 12px;
+    flex-shrink: 0;
 }
 
-.driver-step-item.active .driver-step-label {
-    color: #166534;
-    font-weight: 800;
+.wizard-input-control {
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #0F172A;
+    flex: 1;
+    width: 100%;
+    padding: 0;
 }
 
-.driver-step-item.completed .driver-step-label {
+.wizard-input-control::placeholder {
+    color: #94A3B8;
+    font-weight: 500;
+}
+
+.wizard-input-action {
+    background: none;
+    border: none;
+    padding: 4px;
+    color: #64748B;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wizard-input-action:hover {
     color: #0F172A;
 }
 
-.driver-nav-row {
+.wizard-field-hint {
+    font-size: 0.78rem;
+    color: #64748B;
+    margin-top: 4px;
+    line-height: 1.35;
+}
+
+/* OTP Destination Pill */
+.wizard-dest-pill {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 18px;
+    justify-content: space-between;
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 22px;
+}
+
+.wizard-dest-pill-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #166534;
+}
+
+.wizard-dest-edit-btn {
+    background: none;
+    border: none;
+    color: #00B83F;
+    font-size: 0.86rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.wizard-dest-edit-btn:hover {
+    text-decoration: underline;
+}
+
+/* 6 OTP Input Boxes */
+.wizard-otp-grid {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 20px 0 16px;
     width: 100%;
 }
 
-.gy-btn-prev {
-    min-height: 52px;
-    padding: 0 18px;
-    border-radius: 14px;
-    background: #F8FAFC;
-    color: #334155;
-    font-size: 0.95rem;
-    font-weight: 700;
+.wizard-otp-box {
+    flex: 1 1 0;
+    max-width: 52px;
+    height: 56px;
     border: 1.5px solid #E2E8F0;
+    border-radius: 12px;
+    background: #FFFFFF;
+    text-align: center;
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #0F172A;
+    outline: none;
+    transition: all 180ms ease;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.wizard-otp-box:focus {
+    border-color: #00B83F;
+    box-shadow: 0 0 0 3px rgba(0, 184, 63, 0.18);
+    background: #F0FDF4;
+}
+
+.wizard-otp-box.filled {
+    border-color: #00B83F;
+    background: #FFFFFF;
+}
+
+.wizard-resend-row {
+    text-align: center;
+    font-size: 0.86rem;
+    color: #64748B;
+    margin: 14px 0 22px;
+}
+
+.wizard-resend-countdown {
+    color: #00B83F;
+    font-weight: 700;
+}
+
+.wizard-resend-btn {
+    background: none;
+    border: none;
+    color: #00B83F;
+    font-weight: 800;
+    font-size: 0.86rem;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: none;
+}
+
+.wizard-resend-btn:hover:not(:disabled) {
+    text-decoration: underline;
+}
+
+.wizard-resend-btn:disabled {
+    color: #94A3B8;
+    cursor: not-allowed;
+}
+
+/* Profile Photo Upload Row */
+.wizard-avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 12px 0 20px;
+}
+
+.wizard-avatar-preview {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #F1F5F9;
+    border: 2px solid #E2E8F0;
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.wizard-avatar-img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    display: none;
+}
+
+.wizard-avatar-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #00B83F;
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #FFFFFF;
+}
+
+.wizard-add-photo-btn {
+    display: inline-flex;
+    align-items: center;
     gap: 6px;
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    color: #00B83F;
+    font-size: 0.88rem;
+    font-weight: 700;
+    padding: 8px 14px;
+    border-radius: 10px;
     cursor: pointer;
     transition: all 150ms ease;
 }
 
-.gy-btn-prev:hover {
-    background: #F1F5F9;
-    border-color: #CBD5E1;
+.wizard-add-photo-btn:hover {
+    background: #DCFCE7;
+    border-color: #86EFAC;
 }
 
-.gy-btn-prev:active {
-    transform: scale(0.98);
+/* Gender Selection Cards */
+.wizard-gender-cards {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.wizard-gender-card {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 48px;
+    border-radius: 12px;
+    border: 1.5px solid #E2E8F0;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #334155;
+    transition: all 180ms ease;
+    user-select: none;
+    outline: none;
+    padding: 6px;
+}
+
+.wizard-gender-card:hover {
+    border-color: #CBD5E1;
+    background: #F8FAFC;
+}
+
+.wizard-gender-card.active {
+    border-color: #00B83F;
+    background: #F0FDF4;
+    color: #00B83F;
+    font-weight: 700;
+}
+
+/* Vehicle Type Selection Cards */
+.wizard-vehicle-cards {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+
+.wizard-vehicle-card {
+    flex: 1 1 0;
+    min-height: 72px;
+    border-radius: 14px;
+    border: 1.5px solid #E2E8F0;
+    background: #FFFFFF;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #334155;
+    transition: all 180ms ease;
+    user-select: none;
+    outline: none;
+    padding: 10px;
+}
+
+.wizard-vehicle-card:hover {
+    border-color: #CBD5E1;
+    background: #F8FAFC;
+}
+
+.wizard-vehicle-card.active {
+    border-color: #00B83F;
+    background: #F0FDF4;
+    color: #00B83F;
+}
+
+/* Agreement Checkbox */
+.wizard-agreement-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.82rem;
+    color: #475569;
+    line-height: 1.4;
+    cursor: pointer;
+    margin: 16px 0 20px;
+    text-align: left;
+}
+
+.wizard-agreement-checkbox {
+    accent-color: #00B83F;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    margin-top: 1px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+/* Inline Validation / Error Message */
+.wizard-inline-error {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    color: #DC2626;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    line-height: 1.35;
+    margin-bottom: 16px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+}
+
+.wizard-inline-error.is-visible {
+    display: flex;
+}
+
+/* Notice Pill (e.g. Existing Passenger Upgrading) */
+.wizard-notice-pill {
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    color: #1D4ED8;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.35;
+    margin-bottom: 16px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+}
+
+.wizard-notice-pill.is-visible {
+    display: flex;
+}
+
+/* Wizard Phase Container Transitions */
+.wizard-phase {
+    display: none;
+    animation: wizardFadeIn 0.22s ease-out;
+}
+
+.wizard-phase.active {
+    display: block;
+}
+
+@keyframes wizardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 480px) {
+    .wizard-card {
+        padding: 22px 18px 20px;
+        border-radius: 20px;
+    }
+    .wizard-title {
+        font-size: 1.35rem;
+    }
+    .wizard-otp-box {
+        height: 50px;
+        font-size: 1.25rem;
+    }
 }
 
 

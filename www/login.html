@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="preload" href="css/bootstrap.min.css" as="style">
-    <link rel="preload" href="css/style.css?v=20261010-v2" as="style">
+    <link rel="preload" href="css/style.css?v=20261024-v3" as="style">
     <link rel="stylesheet" href="css/bootstrap.min.css" blocking="render">
-    <link rel="stylesheet" href="css/style.css?v=20261010-v2" blocking="render">
+    <link rel="stylesheet" href="css/style.css?v=20261024-v3" blocking="render">
     <script src="js/platform/native-bridge.js"></script>
     <script src="js/platform/routes.js" defer></script>
     <meta name="theme-color" content="#166534">
@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="LiphtUp">
-    <title>LiphtUp Login | Passenger &amp; Driver Sign In</title>
+    <title>LiphtUp Login &amp; Registration | Passenger &amp; Captain Sign In</title>
     <meta name="robots" content="index, follow">
 
     <link rel="manifest" href="manifest.webmanifest">
@@ -29,373 +29,401 @@
 </head>
 <body class="login-page">
     <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
-        <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #166534;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
+        <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #00B83F;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
         <style>@keyframes lu-spin { to { transform: rotate(360deg); } }</style>
         <div style="margin-top:16px;font-family:sans-serif;font-weight:700;color:#166534;font-size:14px;letter-spacing:0.5px;">LiphtUp</div>
     </div>
 
-    <!-- Sticky Header Bar matching Home page approach -->
+    <!-- Sticky Header Bar -->
     <header class="app-bar auth-app-bar">
         <div class="brand-logo">
-            <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
+            <a href="index.html" class="d-inline-flex align-items-center text-decoration-none">
+                <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
+            </a>
         </div>
         <div id="auth-lang-switcher" class="app-bar-actions"></div>
     </header>
 
     <main class="auth-container">
-        <section class="auth-card auth-card-redesign">
+        <section class="wizard-card">
+            <!-- Header Navigation (Back button for phases 2-5) -->
+            <div class="wizard-header-nav">
+                <button id="wizard-back-btn" class="wizard-back-btn d-none" aria-label="Go back" type="button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                </button>
+            </div>
 
-            <!-- Hero Section: Heading, Bullet Features & Illustration -->
-            <div class="auth-hero-row mb-4">
-                <div class="auth-hero-left">
-                    <h1 id="auth-entry-title" class="auth-hero-title" data-i18n="auth.welcome_back">Welcome back!</h1>
-                    <p id="auth-entry-copy" class="auth-hero-sub" data-i18n="auth.login_sub">Login to continue your journey with LiphtUp.</p>
-                    
-                    <div class="auth-feature-list">
-                        <div class="auth-feature-item">
-                            <span class="auth-feature-icon">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                                    <path d="m9 12 2 2 4-4"/>
-                                </svg>
-                            </span>
-                            <span data-i18n="auth.feature_safe">Safe &amp; reliable rides</span>
+            <!-- ========================================== -->
+            <!-- PHASE 1: Welcome Screen -->
+            <!-- ========================================== -->
+            <div id="wizard-phase-1" class="wizard-phase active">
+                <div class="wizard-brand-block">
+                    <img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp" class="wizard-brand-logo">
+                    <p class="wizard-tagline" data-i18n="auth.tagline">Your Local Ride Partner</p>
+                </div>
+
+                <div class="wizard-illustration-wrap">
+                    <img src="assets/auth-illustration.png" alt="LiphtUp Auto and Scooter" class="wizard-illustration" fetchpriority="high">
+                </div>
+
+                <h1 class="wizard-title" data-i18n="auth.welcome_title">Safe Rides for a Better Tomorrow</h1>
+                <p class="wizard-subtitle" data-i18n="auth.welcome_subtitle">Affordable • Safe • Local</p>
+
+                <div class="d-flex flex-column gap-2 mt-3">
+                    <button id="phase1-continue-btn" class="gy-btn-wizard-primary" type="button">
+                        <span data-i18n="auth.btn_continue_mobile">Continue with mobile number</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                    </button>
+
+                    <button id="phase1-driver-signup-btn" class="gy-btn-wizard-secondary" type="button">
+                        <span data-i18n="auth.btn_driver_signup">Captain / Driver Signup</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="m4.93 4.93 4.24 4.24"/>
+                            <path d="m14.83 9.17 4.24-4.24"/>
+                            <path d="m14.83 14.83 4.24 4.24"/>
+                            <path d="m9.17 14.83-4.24 4.24"/>
+                            <circle cx="12" cy="12" r="4"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- PHASE 2: Mobile Number & Password Login -->
+            <!-- ========================================== -->
+            <div id="wizard-phase-2" class="wizard-phase">
+                <div id="phase2-notice" class="wizard-notice-pill">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span id="phase2-notice-text"></span>
+                </div>
+                <div id="phase2-error" class="wizard-inline-error">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <span id="phase2-error-text"></span>
+                </div>
+
+                <h2 id="phase2-title" class="wizard-title" data-i18n="auth.mobile_title">Enter your mobile number</h2>
+                <p id="phase2-sub" class="wizard-subtitle" data-i18n="auth.mobile_subtitle">We will send you a verification code to confirm your number.</p>
+
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="wizard-phone" data-i18n="auth.mobile_label">Mobile number</label>
+                    <div class="wizard-phone-card">
+                        <div class="wizard-phone-prefix">
+                            <span class="wizard-phone-flag" aria-hidden="true">🇮🇳</span>
+                            <span>+91</span>
                         </div>
-                        <div class="auth-feature-item">
-                            <span class="auth-feature-icon">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-                                    <circle cx="12" cy="10" r="3"/>
-                                </svg>
-                            </span>
-                            <span data-i18n="auth.feature_trusted">Trusted by locals</span>
-                        </div>
-                        <div class="auth-feature-item">
-                            <span class="auth-feature-icon">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                                </svg>
-                            </span>
-                            <span data-i18n="auth.feature_fast">Fast, convenient &amp; affordable</span>
-                        </div>
+                        <div class="wizard-phone-divider" aria-hidden="true"></div>
+                        <input id="wizard-phone" class="wizard-phone-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="10" placeholder="Enter 10-digit mobile number" autocomplete="tel-national">
                     </div>
                 </div>
 
-                <div class="auth-hero-right">
-                    <img src="assets/auth-illustration.png" alt="Ride illustration" class="auth-illustration">
+                <!-- Password Reveal for Existing Users -->
+                <div id="phase2-password-container" class="wizard-form-group d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="wizard-field-label mb-0" for="wizard-login-password" data-i18n="auth.password_label">Password</label>
+                        <button id="phase2-forgot-password-link" type="button" class="btn btn-link p-0 text-decoration-none small text-success fw-bold" data-i18n="auth.forgot_password">Forgot password?</button>
+                    </div>
+                    <div class="gy-input-wrapper">
+                        <input id="wizard-login-password" class="gy-input" type="password" placeholder="Enter your password" autocomplete="current-password">
+                        <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
+                            <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <button id="phase2-continue-btn" class="gy-btn-wizard-primary" type="button">
+                        <span id="phase2-continue-label" data-i18n="auth.btn_continue">Continue</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                    </button>
+                    <button id="phase2-login-btn" class="gy-btn-wizard-primary d-none mt-2" type="button">
+                        <span data-i18n="auth.btn_login_now">Login Now</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
 
-            <!-- Mode Switcher (Login / Register) -->
-            <div id="auth-mode-switch-bar" class="auth-mode-switch mb-4" role="tablist">
-                <button id="login-mode-btn" class="auth-mode-btn active" type="button" role="tab" aria-selected="true">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
-                        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                        <circle cx="12" cy="7" r="4"/>
-                    </svg>
-                    <span data-i18n="auth.tab_login">Login</span>
-                </button>
-                <button id="register-mode-btn" class="auth-mode-btn" type="button" role="tab" aria-selected="false">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
-                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                        <circle cx="9" cy="7" r="4"/>
-                        <line x1="19" y1="8" x2="19" y2="14"/>
-                        <line x1="16" y1="11" x2="22" y2="11"/>
-                    </svg>
-                    <span data-i18n="auth.tab_register">Register</span>
-                </button>
-            </div>
+            <!-- ========================================== -->
+            <!-- PHASE 3: OTP Verification -->
+            <!-- ========================================== -->
+            <div id="wizard-phase-3" class="wizard-phase">
+                <div id="phase3-error" class="wizard-inline-error">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <span id="phase3-error-text"></span>
+                </div>
 
-            <!-- Password Login Container -->
-            <div id="password-login-container">
-                <div class="auth-input-group mb-3">
-                    <span class="auth-input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <h2 class="wizard-title" data-i18n="auth.otp_title">Enter OTP</h2>
+                <p class="wizard-subtitle" data-i18n="auth.otp_subtitle">We have sent a 6-digit verification code to your mobile number.</p>
+
+                <!-- Phone number confirmation & Edit Link -->
+                <div class="wizard-dest-pill">
+                    <div class="wizard-dest-pill-left">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/>
                             <path d="M12 18h.01"/>
                         </svg>
-                    </span>
-                    <input type="text" id="login-identifier" class="form-control" placeholder="Phone number or email" data-i18n-placeholder="auth.phone_or_email">
-                    <span class="auth-input-suffix">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect width="18" height="14" x="3" y="5" rx="2"/>
-                            <circle cx="9" cy="11" r="2"/>
-                            <path d="M13 11h4"/>
-                            <path d="M13 14h3"/>
+                        <span id="phase3-phone-display">+91 00000 00000</span>
+                    </div>
+                    <button id="phase3-edit-phone-btn" class="wizard-dest-edit-btn" type="button">
+                        <span data-i18n="auth.edit">Edit</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
                         </svg>
-                    </span>
+                    </button>
                 </div>
 
-                <div class="auth-input-group mb-3">
-                    <span class="auth-input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                    </span>
-                    <input type="password" id="login-password" class="form-control" placeholder="Password" data-i18n-placeholder="auth.password">
+                <!-- 6 Digit OTP Grid -->
+                <div class="wizard-otp-grid">
+                    <input id="otp-box-1" class="wizard-otp-box" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" aria-label="OTP digit 1">
+                    <input id="otp-box-2" class="wizard-otp-box" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="OTP digit 2">
+                    <input id="otp-box-3" class="wizard-otp-box" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="OTP digit 3">
+                    <input id="otp-box-4" class="wizard-otp-box" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="OTP digit 4">
+                    <input id="otp-box-5" class="wizard-otp-box" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="OTP digit 5">
+                    <input id="otp-box-6" class="wizard-otp-box" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="1" aria-label="OTP digit 6">
                 </div>
 
-                <div class="auth-remember-row d-flex align-items-center justify-content-between mb-4">
-                    <label class="auth-checkbox-label d-flex align-items-center gap-2 m-0" for="remember-me-checkbox">
-                        <input type="checkbox" id="remember-me-checkbox" class="auth-checkbox" checked>
-                        <span class="small fw-semibold text-secondary" data-i18n="auth.remember_me">Remember me</span>
+                <!-- Resend Timer / Action -->
+                <div class="wizard-resend-row">
+                    <span data-i18n="auth.didnt_receive_code">Didn't receive the code?</span>
+                    <span id="phase3-resend-wrap">
+                        <span data-i18n="auth.resend_in">Resend in</span>
+                        <span id="phase3-resend-timer" class="wizard-resend-countdown">60s</span>
+                    </span>
+                    <button id="phase3-resend-btn" class="wizard-resend-btn d-none" type="button" data-i18n="auth.resend_otp">Resend OTP</button>
+                </div>
+
+                <button id="phase3-verify-btn" class="gy-btn-wizard-primary" type="button">
+                    <span data-i18n="auth.btn_verify_otp">Verify OTP</span>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- PHASE 4: Basic Profile Registration -->
+            <!-- ========================================== -->
+            <div id="wizard-phase-4" class="wizard-phase">
+                <div id="phase4-error" class="wizard-inline-error">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <span id="phase4-error-text"></span>
+                </div>
+
+                <h2 id="phase4-title" class="wizard-title" data-i18n="auth.create_account_title">Create your account</h2>
+                <p id="phase4-sub" class="wizard-subtitle" data-i18n="auth.create_account_sub">Fill in your details to get started.</p>
+
+                <!-- Avatar Upload Row with Compression -->
+                <div class="wizard-avatar-row">
+                    <div id="avatar-preview-wrap" class="wizard-avatar-preview" tabindex="0" role="button" aria-label="Upload profile photo">
+                        <img id="avatar-img" class="wizard-avatar-img" alt="Avatar preview">
+                        <svg id="avatar-placeholder-icon" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                        </svg>
+                        <div class="wizard-avatar-badge">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-column gap-1">
+                        <button id="avatar-picker-btn" type="button" class="wizard-add-photo-btn">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                            </svg>
+                            <span id="avatar-btn-text" data-i18n="auth.add_photo">Add Photo</span>
+                        </button>
+                        <span class="small text-muted" style="font-size: 0.78rem;" data-i18n="auth.photo_hint">JPG, PNG up to 5 MB</span>
+                        <input id="avatar-file-input" type="file" accept="image/*" class="d-none">
+                    </div>
+                </div>
+
+                <!-- Full Name -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="reg-name" data-i18n="auth.full_name">Full Name</label>
+                    <input id="reg-name" class="gy-input" type="text" placeholder="Enter your full name" autocomplete="name" required>
+                </div>
+
+                <!-- Email (Optional) -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="reg-email">
+                        <span data-i18n="auth.email_label">Email</span>
+                        <span class="text-muted fw-normal small" data-i18n="auth.optional">(Optional)</span>
                     </label>
-                    <button id="forgot-password-btn" class="auth-forgot-link" type="button" data-i18n="auth.forgot_password">Forgot password?</button>
+                    <input id="reg-email" class="gy-input" type="email" placeholder="Enter your email address" autocomplete="email">
                 </div>
 
-                <button id="password-login-btn" class="gy-btn-auth" type="button">
-                    <span data-i18n="auth.login_btn">Login</span>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M5 12h14"/>
-                        <path d="m12 5 7 7-7 7"/>
-                    </svg>
-                </button>
-            </div>
-
-            <!-- OTP Phone Input Container -->
-            <div id="phone-input-container" class="d-none">
-                <div class="auth-input-group mb-3">
-                    <span class="auth-input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/>
-                            <path d="M12 18h.01"/>
-                        </svg>
-                    </span>
-                    <input type="tel" id="phone-number" class="form-control" placeholder="Phone Number" data-i18n-placeholder="auth.mobile_number" maxlength="10">
-                </div>
-                <button id="send-otp-btn" class="gy-btn-auth" type="button">
-                    <span data-i18n="auth.send_registration_otp">Send Registration OTP</span>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M5 12h14"/>
-                        <path d="m12 5 7 7-7 7"/>
-                    </svg>
-                </button>
-                <div id="driver-signup-cta" class="auth-driver-signup-cta">
-                    <div class="auth-divider my-3">
-                        <span class="auth-divider-text" data-i18n="auth.or">or</span>
-                    </div>
-                    <a href="driver-signup.html" id="driver-signup-card-btn" class="driver-signup-card text-decoration-none">
-                        <div class="driver-signup-card-left">
-                            <div class="driver-signup-card-icon">
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 10.7 2 10.8 2 11v5c0 .6.4 1 1 1h2"/>
-                                    <circle cx="7" cy="17" r="2"/>
-                                    <circle cx="17" cy="17" r="2"/>
-                                </svg>
-                            </div>
-                            <div class="driver-signup-card-text">
-                                <strong class="driver-signup-card-title" data-i18n="auth.driver_signup_title">Captain / Driver Signup</strong>
-                                <small class="driver-signup-card-sub" data-i18n="auth.driver_signup_sub">Register as a driver and start earning</small>
-                            </div>
-                        </div>
-                        <div class="driver-signup-card-arrow">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="m9 18 6-6-6-6"/>
-                            </svg>
-                        </div>
-                    </a>
-                </div>
-                <p class="auth-footer-text mt-3 text-center small text-muted" data-i18n-html="auth.already_have_account_login">Already have an account? <a href="#" onclick="document.getElementById('login-mode-btn').click(); return false;" class="text-success fw-bold">Login</a></p>
-            </div>
-
-            <!-- OTP Verification Container -->
-            <div id="otp-input-container" class="d-none">
-                <p id="otp-destination" class="text-center small text-muted mb-3"></p>
-                <div class="auth-input-group mb-3">
-                    <input type="text" id="otp-code" class="form-control text-center fs-4 fw-bold" placeholder="******" maxlength="6">
-                </div>
-                <button id="verify-otp-btn" class="gy-btn-auth" type="button">
-                    <span data-i18n="auth.verify_otp">Verify OTP</span>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M5 12h14"/>
-                        <path d="m12 5 7 7-7 7"/>
-                    </svg>
-                </button>
-                <div class="d-flex justify-content-between mt-3">
-                    <button id="resend-otp-btn" class="btn btn-link text-success fw-bold p-0 text-decoration-none small" type="button" data-i18n="auth.resend_otp" disabled>Resend OTP</button>
-                    <button id="change-phone-btn" class="btn btn-link text-muted p-0 text-decoration-none small" type="button" data-i18n="auth.change_number">Change number</button>
-                </div>
-            </div>
-
-            <!-- Registration Container -->
-            <div id="registration-container" class="d-none">
-                <div class="auth-input-group mb-3">
-                    <span class="auth-input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                    </span>
-                    <input type="text" id="user-name" class="form-control" placeholder="Full Name" data-i18n-placeholder="auth.full_name">
-                </div>
-                <div class="auth-input-group mb-3">
-                    <span class="auth-input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                    </span>
-                    <input type="password" id="user-password" class="form-control" placeholder="Password" data-i18n-placeholder="auth.password">
-                    <input type="hidden" id="user-confirm-password">
-                </div>
-
-                <!-- Gender Selection Redesign (3 Horizontal Cards) -->
-                <div class="auth-gender-section mb-3">
-                    <label class="auth-section-label" data-i18n="auth.gender">Gender</label>
-                    <div class="auth-gender-cards" role="radiogroup" aria-label="Gender">
-                        <button type="button" class="auth-gender-card active" data-gender="Male" role="radio" aria-checked="true">
-                            <span class="auth-gender-radio">
-                                <span class="auth-gender-radio-dot"></span>
-                            </span>
-                            <svg class="auth-gender-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                                <circle cx="12" cy="7" r="4"/>
-                            </svg>
-                            <span class="auth-gender-text" data-i18n="auth.gender_male">Male</span>
-                        </button>
-                        <button type="button" class="auth-gender-card" data-gender="Female" role="radio" aria-checked="false">
-                            <span class="auth-gender-radio">
-                                <span class="auth-gender-radio-dot"></span>
-                            </span>
-                            <svg class="auth-gender-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                                <circle cx="12" cy="7" r="4"/>
-                            </svg>
-                            <span class="auth-gender-text" data-i18n="auth.gender_female">Female</span>
-                        </button>
-                        <button type="button" class="auth-gender-card" data-gender="Others" role="radio" aria-checked="false">
-                            <span class="auth-gender-radio">
-                                <span class="auth-gender-radio-dot"></span>
-                            </span>
-                            <svg class="auth-gender-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                                <circle cx="12" cy="7" r="4"/>
-                            </svg>
-                            <span class="auth-gender-text" data-i18n="auth.gender_others">Other</span>
+                <!-- Password -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="reg-password" data-i18n="auth.password_label">Password</label>
+                    <div class="gy-input-wrapper">
+                        <input id="reg-password" class="gy-input" type="password" placeholder="Create a password" autocomplete="new-password" required minlength="6">
+                        <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
+                            <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
                         </button>
                     </div>
-                    <input type="hidden" id="user-gender" value="Male">
+                    <small class="text-muted d-block mt-1" style="font-size:0.78rem;" data-i18n="auth.password_guidance">Use at least 6 characters with a mix of letters and numbers.</small>
                 </div>
 
-                <!-- Role Selector (Default: Passenger; changing to Driver auto-redirects to driver-signup) -->
-                <div class="liphtup-custom-select-wrapper mb-3" id="auth-role-selector-wrapper">
-                    <label class="auth-section-label" data-i18n="auth.role">Role</label>
-                    <div class="liphtup-custom-select" id="custom-select-user-role" data-target-select="user-role">
-                        <select id="user-role" class="liphtup-native-select-hidden" aria-hidden="true" tabindex="-1">
-                            <option value="passenger" selected data-i18n="auth.role_passenger">Passenger</option>
-                            <option value="driver" data-i18n="auth.role_driver">Driver</option>
-                        </select>
-                        <button type="button" class="liphtup-select-trigger" aria-haspopup="listbox" aria-expanded="false">
-                            <span class="liphtup-select-left">
-                                <span class="liphtup-select-icon">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                                        <circle cx="9" cy="7" r="4"/>
-                                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-                                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                                    </svg>
-                                </span>
-                                <span class="liphtup-select-label" data-i18n="auth.role_passenger">Passenger</span>
-                            </span>
-                            <span class="liphtup-select-arrow">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="m6 9 6 6 6-6"/>
-                                </svg>
-                            </span>
+                <!-- Gender -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" data-i18n="auth.gender">Gender</label>
+                    <div class="wizard-gender-cards">
+                        <button type="button" class="wizard-gender-card active" data-gender="Male">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="5"/><path d="M19 5l-5.4 5.4"/><path d="M15 5h4v4"/></svg>
+                            <span data-i18n="auth.male">Male</span>
                         </button>
-                        <div class="liphtup-select-menu d-none" role="listbox">
-                            <div class="liphtup-select-option active" data-value="passenger" role="option" aria-selected="true">
-                                <div class="liphtup-option-left">
-                                    <span class="liphtup-option-icon">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                                            <circle cx="9" cy="7" r="4"/>
-                                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                                        </svg>
-                                    </span>
-                                    <span class="liphtup-option-text" data-i18n="auth.role_passenger">Passenger</span>
-                                </div>
-                                <span class="liphtup-option-check">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                        <polyline points="20 6 9 17 4 12"/>
-                                    </svg>
-                                </span>
-                            </div>
-                            <div class="liphtup-select-option" data-value="driver" role="option" aria-selected="false">
-                                <div class="liphtup-option-left">
-                                    <span class="liphtup-option-icon">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <circle cx="12" cy="12" r="10"/>
-                                            <path d="m4.93 4.93 4.24 4.24"/>
-                                            <circle cx="12" cy="12" r="3"/>
-                                        </svg>
-                                    </span>
-                                    <span class="liphtup-option-text" data-i18n="auth.role_driver">Driver</span>
-                                </div>
-                                <span class="liphtup-option-check">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                        <polyline points="20 6 9 17 4 12"/>
-                                    </svg>
-                                </span>
-                            </div>
-                        </div>
+                        <button type="button" class="wizard-gender-card" data-gender="Female">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5"/><path d="M12 14v7"/><path d="M9 18h6"/></svg>
+                            <span data-i18n="auth.female">Female</span>
+                        </button>
+                        <button type="button" class="wizard-gender-card" data-gender="Other">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 2v2"/><path d="M12 20v2"/></svg>
+                            <span data-i18n="auth.other">Other</span>
+                        </button>
                     </div>
-                    <div class="auth-field-hint mt-1 text-muted" style="font-size: 12px;" data-i18n="auth.role_hint">Your role helps us show the right features for you.</div>
+                    <input type="hidden" id="reg-gender" value="Male">
                 </div>
-                <button id="register-btn" class="gy-btn-auth" type="button">
-                    <span data-i18n="auth.register_btn">Register</span>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M5 12h14"/>
-                        <path d="m12 5 7 7-7 7"/>
-                    </svg>
-                </button>
+
+                <div class="mt-4">
+                    <button id="phase4-submit-btn" class="gy-btn-wizard-primary" type="button">
+                        <span id="phase4-submit-label" data-i18n="auth.btn_create_account">Create Account</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
 
-            <!-- Reset Password Container -->
-            <div id="reset-password-container" class="d-none">
-                <div class="auth-input-group mb-3">
-                    <span class="auth-input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                    </span>
-                    <input type="password" id="reset-password" class="form-control" placeholder="New Password" data-i18n-placeholder="auth.new_password">
+            <!-- ========================================== -->
+            <!-- PHASE 5: Driver-Specific Registration -->
+            <!-- ========================================== -->
+            <div id="wizard-phase-5" class="wizard-phase">
+                <div id="phase5-error" class="wizard-inline-error">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <span id="phase5-error-text"></span>
                 </div>
-                <div class="auth-input-group mb-3">
-                    <span class="auth-input-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                        </svg>
-                    </span>
-                    <input type="password" id="reset-confirm-password" class="form-control" placeholder="Confirm New Password" data-i18n-placeholder="auth.confirm_new_password">
+
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <h2 class="wizard-title text-start mb-0" data-i18n="auth.driver_reg_title">Driver Registration</h2>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fw-bold rounded-pill" style="font-size:0.75rem;">Step 2 of 2</span>
                 </div>
-                <button id="reset-password-btn" class="gy-btn-auth" type="button" data-i18n="auth.update_password">Update Password</button>
-                <button id="reset-back-btn" class="auth-footer-link mt-3 w-100 text-center" type="button" data-i18n="auth.back_to_login">Back to login</button>
+                <p class="wizard-subtitle text-start mb-3" data-i18n="auth.driver_reg_sub">Enter your vehicle and payment details to start driving.</p>
+
+                <!-- Vehicle Type -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" data-i18n="auth.vehicle_type">Vehicle Type</label>
+                    <div class="wizard-vehicle-cards">
+                        <button type="button" class="wizard-vehicle-card active" data-vehicle="bike">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>
+                            <span class="mt-1" data-i18n="auth.vehicle_type_bike">Bike / Scooty</span>
+                        </button>
+                        <button type="button" class="wizard-vehicle-card" data-vehicle="auto">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+                            <span class="mt-1" data-i18n="auth.vehicle_type_auto">Auto</span>
+                        </button>
+                    </div>
+                    <input type="hidden" id="driver-vehicle-type" value="bike">
+                </div>
+
+                <!-- Vehicle Registration Number -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="driver-vehicle-number" data-i18n="auth.vehicle_number">Vehicle Number</label>
+                    <input id="driver-vehicle-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR01AB1234" autocomplete="off" required>
+                </div>
+
+                <!-- Vehicle Model -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="driver-vehicle-model" data-i18n="auth.vehicle_model">Vehicle Model</label>
+                    <input id="driver-vehicle-model" class="gy-input" type="text" placeholder="e.g. Hero Splendor or Bajaj RE" autocomplete="off" required>
+                </div>
+
+                <!-- Driving Licence Number -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="driver-license-number" data-i18n="auth.licence_number">Licence Number</label>
+                    <input id="driver-license-number" class="gy-input text-uppercase" type="text" placeholder="e.g. TR0120200001234" autocomplete="off" required>
+                </div>
+
+                <!-- UPI ID -->
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="driver-upi-id" data-i18n="auth.upi_id">UPI ID for Earnings</label>
+                    <input id="driver-upi-id" class="gy-input" type="text" placeholder="e.g. name@upi" autocomplete="off" required>
+                </div>
+
+                <!-- Agreement -->
+                <label class="wizard-agreement-row">
+                    <input id="driver-agreement" type="checkbox" class="wizard-agreement-checkbox" required>
+                    <span data-i18n="auth.driver_terms_agree">I agree to LiphtUp's Terms &amp; Conditions &amp; Privacy Policy.</span>
+                </label>
+
+                <div class="mt-3">
+                    <button id="phase5-submit-btn" class="gy-btn-wizard-primary" type="button">
+                        <span data-i18n="auth.create_driver_account">Create Account</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
 
-            <div id="recaptcha-container" class="mt-3 d-flex justify-content-center"></div>
+            <!-- ========================================== -->
+            <!-- PHASE RESET: Create New Password -->
+            <!-- ========================================== -->
+            <div id="wizard-phase-reset" class="wizard-phase">
+                <div id="reset-error" class="wizard-inline-error">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <span id="reset-error-text"></span>
+                </div>
 
-            <!-- Footer Trust Badges Card (Stacked: Icons Above Text) -->
-            <div class="auth-trust-card mt-4">
+                <h2 class="wizard-title" data-i18n="auth.reset_password_title">Reset your password</h2>
+                <p class="wizard-subtitle" data-i18n="auth.reset_password_sub">Verify your registered mobile number, then create a new password.</p>
+
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="reset-password" data-i18n="auth.password_label">New Password</label>
+                    <div class="gy-input-wrapper">
+                        <input id="reset-password" class="gy-input" type="password" placeholder="Enter new password" autocomplete="new-password" required minlength="6">
+                        <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
+                            <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="wizard-form-group">
+                    <label class="wizard-field-label" for="reset-confirm-password" data-i18n="profile.confirm_new_password">Confirm New Password</label>
+                    <div class="gy-input-wrapper">
+                        <input id="reset-confirm-password" class="gy-input" type="password" placeholder="Confirm new password" autocomplete="new-password" required minlength="6">
+                        <button type="button" class="gy-password-toggle" aria-label="Toggle password visibility">
+                            <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="eye-closed d-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button id="reset-submit-btn" class="gy-btn-wizard-primary" type="button">
+                        <span data-i18n="profile.save_password">Save Password</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Trust Badge Row -->
+            <div class="auth-trust-row mt-4">
                 <div class="auth-trust-item">
                     <div class="auth-trust-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                            <path d="m9 12 2 2 4-4"/>
-                        </svg>
-                    </div>
-                    <div class="auth-trust-text">
-                        <strong data-i18n="auth.trust_safety_title">Your safety</strong>
-                        <small data-i18n="auth.trust_safety_sub">our priority</small>
-                    </div>
-                </div>
-                <div class="auth-trust-divider"></div>
-                <div class="auth-trust-item">
-                    <div class="auth-trust-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00B83F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
                             <circle cx="9" cy="7" r="4"/>
                             <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
@@ -410,7 +438,7 @@
                 <div class="auth-trust-divider"></div>
                 <div class="auth-trust-item">
                     <div class="auth-trust-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00B83F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
                         </svg>
@@ -421,47 +449,9 @@
                     </div>
                 </div>
             </div>
-            <!-- Account Already Exists Modal Notice -->
-            <div id="account-exists-modal" class="auth-modal-backdrop d-none" role="dialog" aria-modal="true" aria-labelledby="account-exists-title">
-                <div class="auth-modal-card">
-                    <button id="account-exists-close-x" class="auth-modal-close" type="button" aria-label="Close modal">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                    <div class="auth-modal-icon-badge">
-                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#166534" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                    </div>
-                    <h3 id="account-exists-title" class="auth-modal-title" data-i18n="auth.account_exists_title">Account Already Exists</h3>
-                    <p id="account-exists-desc" class="auth-modal-desc" data-i18n="auth.account_exists_desc">An account with this mobile number is already registered on LiphtUp. Please log in to continue.</p>
-                    <div id="account-exists-phone-pill" class="auth-modal-phone-pill mb-3">
-                        <span class="auth-modal-phone-icon">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect>
-                                <path d="M12 18h.01"></path>
-                            </svg>
-                        </span>
-                        <span id="account-exists-phone-display">+91 XXXXXXXXXX</span>
-                    </div>
-                    <div class="auth-modal-actions">
-                        <button id="account-exists-login-btn" class="gy-btn-auth w-100 mb-2" type="button">
-                            <span data-i18n="auth.go_to_login_btn">Go to Login</span>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M5 12h14"></path>
-                                <path d="m12 5 7 7-7 7"></path>
-                            </svg>
-                        </button>
-                        <button id="account-exists-close-btn" class="btn btn-link text-muted text-decoration-none small w-100" type="button" data-i18n="common.close">Close</button>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Legacy container placeholder for cached client scripts -->
-            <div id="auth-status" class="d-none" style="display:none;" aria-hidden="true"></div>
+            <!-- Legacy container placeholder for backwards compatibility -->
+            <div id="auth-status" class="d-none" aria-hidden="true"></div>
         </section>
     </main>
 
@@ -470,19 +460,12 @@
     <script src="js/bootstrap.bundle.min.js"></script>
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
-    <script type="module" src="js/shared/login.js?v=20261015-v1"></script>
+    <script type="module" src="js/shared/login.js?v=20261024-v3"></script>
     <script type="module" src="js/shared/password-toggle.js"></script>
-    <script type="module" src="js/shared/i18n.js?v=20261015-v1"></script>
+    <script type="module" src="js/shared/i18n.js?v=20261024-v3"></script>
     <script type="module">
         import { renderLanguageSwitcher } from './js/shared/i18n.js';
         renderLanguageSwitcher(document.getElementById('auth-lang-switcher'));
-    </script>
-    <script>
-        const up = document.getElementById('user-password');
-        const ucp = document.getElementById('user-confirm-password');
-        if(up && ucp) {
-            up.addEventListener('input', () => { ucp.value = up.value; });
-        }
     </script>
 </body>
 </html>
