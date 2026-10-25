@@ -10,23 +10,6 @@ function escapeHtml(text) {
     }[ch]));
 }
 
-function maskEmail(email) {
-    if (!email || !email.includes("@")) return email || "";
-    const [user, domain] = email.split("@");
-    if (user.length <= 3) return `${user.slice(0, 1)}***@${domain}`;
-    return `${user.slice(0, 3)}******@${domain}`;
-}
-
-function getInitials(name, email) {
-    if (name && name.trim()) {
-        const parts = name.trim().split(/\s+/);
-        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-        return parts[0].slice(0, 2).toUpperCase();
-    }
-    if (email && email.trim()) return email.slice(0, 2).toUpperCase();
-    return "AD";
-}
-
 function formatDate(isoStr) {
     if (!isoStr) return "N/A";
     try {
@@ -60,7 +43,6 @@ async function withButtonSpinner(btn, actionFn) {
 
 let cachedAdminRoles = [];
 let cachedActiveInvitations = [];
-let cachedPendingRequests = [];
 let pendingRevokeInvitationId = null;
 let pendingDowngradeUid = null;
 
@@ -83,10 +65,8 @@ export async function loadPermissions() {
         const data = await adminGet("/permissions");
         cachedAdminRoles = data.adminRoles || [];
         cachedActiveInvitations = data.activeInvitations || [];
-        cachedPendingRequests = data.pendingRequests || [];
 
         renderFullPermissionsView();
-        renderModalAwaitingApprovalList();
     } catch (error) {
         wrap.innerHTML = `<div class="card border-0 shadow-xs p-4 text-center text-danger">${escapeHtml(error.message)}</div>`;
     }
@@ -109,59 +89,30 @@ function renderFullPermissionsView() {
 
     let html = "";
 
-    // 1. SECTION: Verified Users Awaiting Approval (Prominent if any exist)
-    if (cachedPendingRequests.length > 0) {
-        html += `
-            <div class="card border-0 shadow-xs mb-4">
-                <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
-                    <div>
-                        <h4 class="card-title fw-bold text-dark m-0 d-flex align-items-center gap-2">
-                            <i class="ti ti-users text-primary"></i> Verified Users Awaiting Approval
-                            <span class="badge bg-primary text-white rounded-pill">${cachedPendingRequests.length}</span>
-                        </h4>
-                        <div class="text-secondary small mt-1">These users have entered their invitation code and verified their identity. Review and approve or reject their requested role.</div>
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-vcenter card-table table-hover m-0">
-                        <thead class="bg-light">
-                            <tr>
-                                <th>User</th>
-                                <th>Requested Role</th>
-                                <th>Verification Date</th>
-                                <th>Invitation Type</th>
-                                <th class="text-end">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${cachedPendingRequests.map(renderPendingRequestRow).join("")}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-    }
+    // 1. SECTION: Pending Invitations
+    const pendingInvitations = cachedActiveInvitations.filter(i => {
+        const s = (i.status || "").toLowerCase();
+        return s === "pending" || s === "awaiting_claim";
+    });
 
-    // 2. SECTION: Active Invitations
-    const unclaimedInvitations = cachedActiveInvitations.filter(i => (i.status || "").toLowerCase() === "awaiting_claim");
     html += `
         <div class="card border-0 shadow-xs mb-4">
             <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
                 <div>
                     <h4 class="card-title fw-bold text-dark m-0 d-flex align-items-center gap-2">
-                        <i class="ti ti-mail-fast text-primary"></i> Active Invitations
-                        <span class="badge bg-secondary-lt text-secondary rounded-pill">${unclaimedInvitations.length}</span>
+                        <i class="ti ti-mail-fast text-primary"></i> Pending Invitations
+                        <span class="badge bg-secondary-lt text-secondary rounded-pill">${pendingInvitations.length}</span>
                     </h4>
-                    <div class="text-secondary small mt-1">Pending invitations awaiting user code entry at <code>/authPermissions</code>. Unclaimed codes can be revoked.</div>
+                    <div class="text-secondary small mt-1">Pending invitations awaiting user acceptance. You can copy the link again or withdraw an invitation before expiration.</div>
                 </div>
                 <button type="button" class="btn btn-primary btn-sm d-flex align-items-center gap-1 btn-open-assign-role">
                     <i class="ti ti-user-plus"></i> Invite Admin / Manager
                 </button>
             </div>
-            ${!unclaimedInvitations.length ? `
+            ${!pendingInvitations.length ? `
                 <div class="card-body text-center py-4 text-muted small">
                     <i class="ti ti-circle-check text-success d-block mb-1" style="font-size: 2rem;"></i>
-                    No active unclaimed invitations. Click <strong>Invite Admin / Manager</strong> to issue a new code.
+                    No pending invitations. Click <strong>Invite Admin / Manager</strong> to generate a new invitation link.
                 </div>
             ` : `
                 <div class="table-responsive">
@@ -178,24 +129,34 @@ function renderFullPermissionsView() {
                             </tr>
                         </thead>
                         <tbody>
-                            ${unclaimedInvitations.map(inv => `
+                            ${pendingInvitations.map(inv => `
                                 <tr>
                                     <td>
-                                        <div class="fw-bold">${escapeHtml(inv.targetEmail || "N/A")}</div>
+                                        <div class="fw-bold text-dark">${escapeHtml(inv.targetEmail || "N/A")}</div>
                                         <div class="text-secondary small">${escapeHtml(inv.targetName || "Invited User")}</div>
                                     </td>
                                     <td>${roleBadge(inv.requestedRole)}</td>
                                     <td><span class="small text-secondary">${escapeHtml(inv.createdByEmail || "Super Admin")}</span></td>
                                     <td><span class="small text-secondary">${formatDate(inv.createdAt)}</span></td>
                                     <td><span class="small text-secondary">${formatDate(inv.expiresAt)}</span></td>
-                                    <td><span class="badge bg-warning-lt text-warning"><i class="ti ti-clock me-1"></i>Awaiting Claim</span></td>
+                                    <td><span class="badge bg-warning-lt text-warning"><i class="ti ti-clock me-1"></i>Pending</span></td>
                                     <td class="text-end">
-                                        <button type="button" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-1 btn-trigger-revoke"
-                                            data-invitation-id="${escapeHtml(inv.invitationId || inv.id)}"
-                                            data-email="${escapeHtml(inv.targetEmail || "")}"
-                                            data-role="${escapeHtml(inv.requestedRole || "")}">
-                                            <i class="ti ti-ban"></i> Revoke Invitation
-                                        </button>
+                                        <div class="d-inline-flex align-items-center gap-2">
+                                            <button type="button" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1 btn-copy-invitation-link-row"
+                                                data-invitation-id="${escapeHtml(inv.invitationId || inv.id)}"
+                                                data-email="${escapeHtml(inv.targetEmail || "")}"
+                                                data-role="${escapeHtml(inv.requestedRole || "")}"
+                                                title="Re-copy the secure invitation link">
+                                                <i class="ti ti-copy"></i> Copy Link
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-1 btn-trigger-revoke"
+                                                data-invitation-id="${escapeHtml(inv.invitationId || inv.id)}"
+                                                data-email="${escapeHtml(inv.targetEmail || "")}"
+                                                data-role="${escapeHtml(inv.requestedRole || "")}"
+                                                title="Withdraw this invitation">
+                                                <i class="ti ti-ban"></i> Revoke
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             `).join("")}
@@ -206,7 +167,7 @@ function renderFullPermissionsView() {
         </div>
     `;
 
-    // 3. SECTION: Existing Administrators and Managers
+    // 2. SECTION: Existing Administrators and Managers
     html += `
         <div class="card border-0 shadow-xs mb-3">
             <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
@@ -269,7 +230,7 @@ function renderFullPermissionsView() {
                                                         <button type="button" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1 btn-trigger-promotion"
                                                             data-uid="${escapeHtml(r.uid)}"
                                                             data-email="${escapeHtml(r.email || "")}">
-                                                            <i class="ti ti-arrow-up-circle"></i> Request Promotion to Administrator
+                                                            <i class="ti ti-arrow-up-circle"></i> Promote to Administrator
                                                         </button>
                                                     ` : ''}
 
@@ -296,96 +257,6 @@ function renderFullPermissionsView() {
     bindPermissionActionHandlers(wrap);
 }
 
-function renderPendingRequestRow(req) {
-    const initials = getInitials(req.targetName, req.targetEmail);
-    const maskedEmail = maskEmail(req.targetEmail);
-    const isPromotion = (req.requestType || "") === "manager_promotion";
-
-    return `
-        <tr>
-            <td>
-                <div class="d-flex align-items-center gap-2">
-                    <span class="avatar avatar-sm rounded-circle ${isPromotion ? 'bg-purple-lt text-purple' : 'bg-blue-lt text-primary'} fw-bold" style="width:36px; height:36px; font-size:13px;">
-                        ${initials}
-                    </span>
-                    <div>
-                        <div class="fw-bold text-dark">${escapeHtml(req.targetName || "Verified User")}</div>
-                        <div class="text-secondary small">${escapeHtml(maskedEmail)}</div>
-                    </div>
-                </div>
-            </td>
-            <td>
-                ${roleBadge(req.requestedRole)}
-            </td>
-            <td>
-                <span class="small text-secondary">${formatDate(req.verifiedAt || req.createdAt)}</span>
-            </td>
-            <td>
-                ${isPromotion ? `
-                    <span class="badge bg-purple-lt text-purple fw-semibold px-2 py-1">Manager-to-Administrator Promotion</span>
-                ` : `
-                    <span class="badge bg-blue-lt text-blue fw-semibold px-2 py-1">New Invitation</span>
-                `}
-            </td>
-            <td class="text-end">
-                <div class="d-inline-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-primary btn-sm px-3 d-inline-flex align-items-center gap-1 btn-grant-request"
-                        data-request-id="${escapeHtml(req.requestId || req.id)}"
-                        data-email="${escapeHtml(req.targetEmail || '')}"
-                        data-role="${escapeHtml(req.requestedRole || '')}">
-                        <i class="ti ti-check"></i> Grant
-                    </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm px-3 d-inline-flex align-items-center gap-1 btn-reject-request"
-                        data-request-id="${escapeHtml(req.requestId || req.id)}"
-                        data-email="${escapeHtml(req.targetEmail || '')}">
-                        <i class="ti ti-x"></i> Reject
-                    </button>
-                </div>
-            </td>
-        </tr>
-    `;
-}
-
-function renderModalAwaitingApprovalList() {
-    const wrap = $("modal-awaiting-approval-wrap");
-    const countBadge = $("modal-awaiting-approval-count");
-    if (countBadge) countBadge.textContent = String(cachedPendingRequests.length);
-
-    if (!wrap) return;
-
-    if (!cachedPendingRequests.length) {
-        wrap.innerHTML = `
-            <div class="text-center py-4 text-muted small bg-light rounded-2 border">
-                <i class="ti ti-circle-check text-muted d-block mb-1" style="font-size: 1.8rem;"></i>
-                No verified users currently awaiting approval.
-            </div>
-        `;
-        return;
-    }
-
-    wrap.innerHTML = `
-        <div class="table-responsive border rounded-2">
-            <table class="table table-vcenter card-table table-hover m-0">
-                <thead class="bg-light">
-                    <tr>
-                        <th>User</th>
-                        <th>Requested Role</th>
-                        <th>Verification Date</th>
-                        <th>Invitation Type</th>
-                        <th class="text-end">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${cachedPendingRequests.map(renderPendingRequestRow).join("")}
-                </tbody>
-            </table>
-        </div>
-        <div class="text-secondary small mt-2">Showing ${cachedPendingRequests.length} of ${cachedPendingRequests.length} verified users</div>
-    `;
-
-    bindPendingRequestButtons(wrap);
-}
-
 // =====================================================================
 // EVENT BINDINGS
 // =====================================================================
@@ -395,7 +266,32 @@ function bindPermissionActionHandlers(container) {
         btn.addEventListener("click", openAssignRoleModal);
     });
 
-    bindPendingRequestButtons(container);
+    // Re-copy Invitation Link from Table Row
+    container.querySelectorAll(".btn-copy-invitation-link-row").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const invId = btn.dataset.invitationId;
+            const email = btn.dataset.email;
+            const role = btn.dataset.role;
+
+            await withButtonSpinner(btn, async () => {
+                try {
+                    const res = await adminGet(`/invitations/${invId}/link`);
+                    const url = res.invitationUrl;
+                    if (url && navigator.clipboard) {
+                        await navigator.clipboard.writeText(url);
+                        const orig = btn.innerHTML;
+                        btn.innerHTML = `<i class="ti ti-check"></i> Copied!`;
+                        setTimeout(() => { if (btn) btn.innerHTML = orig; }, 2000);
+                        toast("Invitation link copied to clipboard!", "success");
+                    } else if (url) {
+                        showGeneratedLinkModal(url, email, role);
+                    }
+                } catch (err) {
+                    toast(err.message || "Failed to retrieve invitation link", "error");
+                }
+            });
+        });
+    });
 
     // Revoke Invitation Trigger
     container.querySelectorAll(".btn-trigger-revoke").forEach(btn => {
@@ -448,63 +344,8 @@ function bindPermissionActionHandlers(container) {
     });
 }
 
-function bindPendingRequestButtons(container) {
-    // Grant Request
-    container.querySelectorAll(".btn-grant-request").forEach(btn => {
-        btn.addEventListener("click", async () => {
-            const reqId = btn.dataset.requestId;
-            const email = btn.dataset.email;
-            const role = (btn.dataset.role || "admin").toUpperCase();
-
-            const confirmed = await showTablerConfirm(`Grant ${role} role to ${email}? This will activate administrative access immediately.`, {
-                title: "Grant Administrative Role",
-                variant: "primary",
-                confirmText: "Grant Role"
-            });
-
-            if (!confirmed) return;
-
-            await withButtonSpinner(btn, async () => {
-                try {
-                    await adminPost(`/permissions/requests/${reqId}/approve`, {});
-                    toast(`Role ${role} granted to ${email} successfully!`, "success");
-                    await loadPermissions();
-                } catch (err) {
-                    toast(err.message, "error");
-                }
-            });
-        });
-    });
-
-    // Reject Request
-    container.querySelectorAll(".btn-reject-request").forEach(btn => {
-        btn.addEventListener("click", async () => {
-            const reqId = btn.dataset.requestId;
-            const email = btn.dataset.email;
-
-            const confirmed = await showTablerConfirm(`Reject administrative role request for ${email}? The invitation will be marked rejected and access will not be granted.`, {
-                title: "Reject Role Request",
-                variant: "danger",
-                confirmText: "Reject Request"
-            });
-
-            if (!confirmed) return;
-
-            await withButtonSpinner(btn, async () => {
-                try {
-                    await adminPost(`/permissions/requests/${reqId}/reject`, { notes: "Rejected by Super Admin" });
-                    toast(`Role request for ${email} has been rejected.`, "info");
-                    await loadPermissions();
-                } catch (err) {
-                    toast(err.message, "error");
-                }
-            });
-        });
-    });
-}
-
 // =====================================================================
-// MODAL CONTROLS: ASSIGN ROLE & INVITATION CODE GENERATION
+// MODAL CONTROLS: ASSIGN ROLE & INVITATION LINK GENERATION
 // =====================================================================
 
 function openAssignRoleModal() {
@@ -512,7 +353,6 @@ function openAssignRoleModal() {
     if (!modal) return;
     const form = $("admin-invite-code-form");
     if (form) form.reset();
-    renderModalAwaitingApprovalList();
 
     modal.classList.remove("d-none");
     modal.style.display = "block";
@@ -527,64 +367,29 @@ function closeAssignRoleModal() {
     }
 }
 
-function buildInvitationMessage(code, role) {
-    const roleTitle = (role || "Admin").toLowerCase() === "manager" ? "Manager" : "Administrator";
-    const formattedCode = code.length === 10 ? `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}` : code;
-
-    return `Hello,
-
-Your request for ${roleTitle} access to LiphtUp has been initiated. Before the role can be granted, we need to verify your identity and obtain final approval from the Super Admin.
-
-Your Invitation Code:
-${formattedCode}
-
-How to verify your invitation:
-1. Copy the invitation code exactly as shown above.
-2. Visit https://liphtup.in/authPermissions
-3. Log in to your existing LiphtUp account, if you haven't already.
-4. Enter the invitation code and click Verify Invitation Code.
-5. Once your identity is verified, your request will be forwarded to the Super Admin for final approval.
-
-What happens next?
-Your administrative permissions will remain inactive until the Super Admin approves your request. Once approved, you will be able to access the relevant Admin/Manager panel according to your assigned role.
-
-Important: This code is intended only for you. Please do not share it with anyone other than the authorized recipient of this invitation, and complete the verification before the code expires.
-
-Thank you for being part of LiphtUp!
-
-LiphtUp Team`;
-}
-
-// Display Generated Code Modal
-function showGeneratedCodeModal(code, email, role, isPromotion = false) {
-    const modal = $("admin-code-display-modal");
+// Display Generated Link Modal
+function showGeneratedLinkModal(url, email, role, isPromotion = false) {
+    const modal = $("admin-link-display-modal");
     if (!modal) return;
 
-    const formattedCode = code.length === 10 ? `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}` : code;
+    const titleEl = $("display-link-modal-title");
+    const emailEl = $("display-link-target-email");
+    const roleEl = $("display-link-target-role");
+    const linkInput = $("display-invitation-link-val");
 
-    const titleEl = $("display-code-modal-title");
-    const emailEl = $("display-code-target-email");
-    const roleEl = $("display-code-target-role");
-    const valEl = $("display-invitation-code-val");
-    const msgEl = $("display-invitation-message-text");
-
-    if (titleEl) titleEl.textContent = isPromotion ? "Promotion Code Generated" : "Invitation Code Generated";
+    if (titleEl) titleEl.textContent = isPromotion ? "Promotion Invitation Link Generated" : "Invitation Link Generated";
     if (emailEl) emailEl.textContent = email;
-    if (roleEl) roleEl.textContent = role.toUpperCase();
-    if (valEl) {
-        valEl.textContent = formattedCode;
-        valEl.dataset.rawCode = code;
-    }
-    if (msgEl) {
-        msgEl.value = buildInvitationMessage(code, role);
+    if (roleEl) roleEl.textContent = (role || "Admin").toUpperCase();
+    if (linkInput) {
+        linkInput.value = url;
     }
 
     modal.classList.remove("d-none");
     modal.style.display = "block";
 }
 
-function closeGeneratedCodeModal() {
-    const modal = $("admin-code-display-modal");
+function closeGeneratedLinkModal() {
+    const modal = $("admin-link-display-modal");
     if (modal) {
         modal.classList.add("d-none");
         modal.style.display = "none";
@@ -648,10 +453,10 @@ async function handleInitiatePromotion(btn) {
     const uid = btn.dataset.uid;
     const email = btn.dataset.email;
 
-    const confirmed = await showTablerConfirm(`Initiate promotion for Manager ${email} to Administrator? This will generate a separate promotion verification code that the user must verify.`, {
+    const confirmed = await showTablerConfirm(`Initiate promotion for Manager ${email} to Administrator? This will generate a secure invitation link that the user must accept.`, {
         title: "Initiate Administrator Promotion",
         variant: "primary",
-        confirmText: "Generate Promotion Code"
+        confirmText: "Generate Promotion Link"
     });
 
     if (!confirmed) return;
@@ -659,7 +464,7 @@ async function handleInitiatePromotion(btn) {
     await withButtonSpinner(btn, async () => {
         try {
             const res = await adminPost("/permissions/initiate-promotion", { uid });
-            showGeneratedCodeModal(res.code, email, "Administrator", true);
+            showGeneratedLinkModal(res.invitationUrl, email, "Administrator", true);
             await loadPermissions();
         } catch (err) {
             toast(err.message, "error");
@@ -677,11 +482,11 @@ export function initPermissionsModal() {
     $("assign-role-close-btn")?.addEventListener("click", closeAssignRoleModal);
     $("assign-role-cancel-btn")?.addEventListener("click", closeAssignRoleModal);
 
-    // Form Submission: Generate Invitation Code
+    // Form Submission: Generate Invitation Link
     const inviteForm = $("admin-invite-code-form");
     inviteForm?.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const submitBtn = $("btn-generate-invite-code");
+        const submitBtn = $("btn-generate-invite-link") || $("btn-generate-invite-code");
         const email = ($("invite-admin-email")?.value || "").trim();
         const role = $("invite-admin-role")?.value || "admin";
 
@@ -694,7 +499,7 @@ export function initPermissionsModal() {
             try {
                 const res = await adminPost("/permissions/invite", { email, role });
                 closeAssignRoleModal();
-                showGeneratedCodeModal(res.code, email, role, false);
+                showGeneratedLinkModal(res.invitationUrl, email, role, false);
                 await loadPermissions();
             } catch (err) {
                 toast(err.message, "error");
@@ -702,50 +507,29 @@ export function initPermissionsModal() {
         });
     });
 
-    // Copy Generated Code Button
-    $("btn-copy-invitation-code")?.addEventListener("click", async () => {
-        const valEl = $("display-invitation-code-val");
-        const copyBtn = $("btn-copy-invitation-code");
-        const codeToCopy = valEl?.dataset.rawCode || valEl?.textContent.trim();
+    // Copy Generated Link Button in Display Modal
+    $("btn-copy-invitation-link")?.addEventListener("click", async () => {
+        const valEl = $("display-invitation-link-val");
+        const copyBtn = $("btn-copy-invitation-link");
+        const linkToCopy = valEl?.value?.trim() || valEl?.textContent.trim();
 
-        if (codeToCopy && navigator.clipboard) {
+        if (linkToCopy && navigator.clipboard) {
             try {
-                await navigator.clipboard.writeText(codeToCopy);
+                await navigator.clipboard.writeText(linkToCopy);
                 if (copyBtn) {
                     const originalText = copyBtn.innerHTML;
                     copyBtn.innerHTML = `<i class="ti ti-check"></i> Copied!`;
                     setTimeout(() => { if (copyBtn) copyBtn.innerHTML = originalText; }, 2000);
                 }
-                toast("Invitation code copied to clipboard!", "success");
+                toast("Invitation link copied to clipboard!", "success");
             } catch (_) {
-                toast("Could not copy automatically. Please copy the code manually.", "info");
+                toast("Could not copy automatically. Please copy the link manually.", "info");
             }
         }
     });
 
-    // Copy Shareable Invitation Message Button
-    $("btn-copy-invitation-message")?.addEventListener("click", async () => {
-        const msgEl = $("display-invitation-message-text");
-        const copyBtn = $("btn-copy-invitation-message");
-        const textToCopy = msgEl?.value || "";
-
-        if (textToCopy && navigator.clipboard) {
-            try {
-                await navigator.clipboard.writeText(textToCopy);
-                if (copyBtn) {
-                    const originalText = copyBtn.innerHTML;
-                    copyBtn.innerHTML = `<i class="ti ti-check"></i> Copied!`;
-                    setTimeout(() => { if (copyBtn) copyBtn.innerHTML = originalText; }, 2000);
-                }
-                toast("Invitation message copied to clipboard!", "success");
-            } catch (_) {
-                toast("Could not copy automatically. Please copy the message manually.", "info");
-            }
-        }
-    });
-
-    $("code-display-close-btn")?.addEventListener("click", closeGeneratedCodeModal);
-    $("btn-done-invitation-code")?.addEventListener("click", closeGeneratedCodeModal);
+    $("link-display-close-btn")?.addEventListener("click", closeGeneratedLinkModal);
+    $("btn-done-invitation-link")?.addEventListener("click", closeGeneratedLinkModal);
 
     // Confirm Revoke Invitation
     $("revoke-invitation-close-btn")?.addEventListener("click", closeRevokeInvitationModal);
@@ -761,7 +545,7 @@ export function initPermissionsModal() {
                     invitationId: pendingRevokeInvitationId,
                     reason: reason
                 });
-                toast("Invitation revoked successfully. The code is now invalid.", "success");
+                toast("Invitation withdrawn successfully. The link is now invalid.", "success");
                 closeRevokeInvitationModal();
                 await loadPermissions();
             } catch (err) {

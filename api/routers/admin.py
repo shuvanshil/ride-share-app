@@ -36,6 +36,11 @@ from ..core.admin import (
     generate_invitation_code,
     clean_invitation_code,
     hash_invitation_code,
+    generate_invitation_token,
+    hash_invitation_token,
+    encrypt_invitation_token,
+    decrypt_invitation_token,
+    build_invitation_url,
 )
 from ..core.auth import verify_firebase_token
 from ..core.config import get_env
@@ -472,7 +477,7 @@ def bootstrap_admin(body: BootstrapAdminBody) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Permissions Management (Super Admin Only & Invitation Verification)
+# Permissions Management (Secure Invitation Links & Role Management)
 # ---------------------------------------------------------------------------
 
 class CreateInvitationBody(BaseModel):
@@ -483,7 +488,7 @@ class CreateInvitationBody(BaseModel):
 
 class RevokeInvitationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    invitationId: str = Field(min_length=1, max_length=128)
+    invitationId: Optional[str] = Field(default="", max_length=128)
     reason: Optional[str] = Field(default="", max_length=500)
 
 
@@ -498,14 +503,34 @@ class InitiatePromotionBody(BaseModel):
     uid: str = Field(min_length=1, max_length=128)
 
 
-class VerifyInvitationBody(BaseModel):
+class ResolveInvitationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    code: str = Field(min_length=4, max_length=50)
+    token: str = Field(min_length=10, max_length=256)
 
 
-class DecideRoleRequestBody(BaseModel):
+class AcceptInvitationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    notes: Optional[str] = Field(default="", max_length=500)
+    token: Optional[str] = Field(default="", max_length=256)
+
+
+class RejectInvitationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    token: Optional[str] = Field(default="", max_length=256)
+    reason: Optional[str] = Field(default="", max_length=500)
+
+
+def _find_invitation_by_token(db, raw_token: str):
+    token_digest = hash_invitation_token(raw_token)
+    matches = list(db.collection("adminInvitations").where("tokenHash", "==", token_digest).limit(1).stream())
+    if matches:
+        return matches[0].id, _doc_dict(matches[0])
+    
+    # Fallback scan for unindexed or mock queries
+    for doc in db.collection("adminInvitations").stream():
+        d = _doc_dict(doc)
+        if d.get("tokenHash") and hmac.compare_digest(d.get("tokenHash", ""), token_digest):
+            return doc.id, d
+    return None, None
 
 
 @router.get("/permissions")
@@ -513,65 +538,82 @@ def list_permissions(admin_user: dict[str, Any] = Depends(require_super_admin)) 
     db = _db()
     roles_docs = [_doc_dict(d) for d in db.collection("adminRoles").stream()]
     
-    # Active & recent invitations
-    invitations_docs = []
+    # Active & unexpired invitations only
+    now = datetime.now(timezone.utc)
+    active_invitations = []
     try:
-        inv_stream = db.collection("adminInvitations").order_by("createdAt", direction=fb_firestore.Query.DESCENDING).limit(100).stream()
+        inv_stream = db.collection("adminInvitations").where("status", "==", "pending").stream()
         for doc in inv_stream:
             d = _doc_dict(doc)
-            d.pop("codeHmac", None)  # Never expose code digest
-            invitations_docs.append(d)
+            d.pop("tokenHash", None)
+            d.pop("encryptedToken", None)
+            d.pop("codeHmac", None)
+            exp_str = d.get("expiresAt")
+            if exp_str:
+                try:
+                    exp_dt = datetime.fromisoformat(exp_str.replace("Z", "+00:00"))
+                    if now > exp_dt:
+                        getattr(doc, "reference", None) and doc.reference.update({"status": "expired", "encryptedToken": ""})
+                        continue
+                except Exception:
+                    pass
+            active_invitations.append(d)
+        active_invitations.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
     except Exception:
-        # Fallback if index not yet created
         inv_stream = db.collection("adminInvitations").limit(100).stream()
         for doc in inv_stream:
             d = _doc_dict(doc)
-            d.pop("codeHmac", None)
-            invitations_docs.append(d)
-        invitations_docs.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
-
-    # Pending role requests awaiting Super Admin approval
-    pending_requests = []
-    try:
-        req_stream = db.collection("adminRoleRequests").where("status", "==", "pending").stream()
-        for doc in req_stream:
-            pending_requests.append(_doc_dict(doc))
-        pending_requests.sort(key=lambda x: str(x.get("verifiedAt") or x.get("createdAt") or ""), reverse=True)
-    except Exception:
-        req_stream = db.collection("adminRoleRequests").limit(100).stream()
-        for doc in req_stream:
-            d = _doc_dict(doc)
             if d.get("status") == "pending":
-                pending_requests.append(d)
-        pending_requests.sort(key=lambda x: str(x.get("verifiedAt") or ""), reverse=True)
+                d.pop("tokenHash", None)
+                d.pop("encryptedToken", None)
+                d.pop("codeHmac", None)
+                active_invitations.append(d)
+        active_invitations.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
 
-    users_query = db.collection("users").limit(150)
-    all_users = [_doc_dict(u) for u in users_query.stream()]
-    
     return {
         "ok": True,
         "adminRoles": roles_docs,
-        "activeInvitations": invitations_docs,
-        "pendingRequests": pending_requests,
-        "eligibleUsers": [
-            {
-                "uid": u.get("id"),
-                "name": u.get("name") or "Unnamed User",
-                "email": u.get("email") or "",
-                "phone": u.get("phone") or "",
-                "userRole": u.get("role") or "user"
-            }
-            for u in all_users if u.get("email") or u.get("id")
-        ]
+        "activeInvitations": active_invitations,
     }
 
 
+@router.get("/invitations")
+def list_pending_invitations(admin_user: dict[str, Any] = Depends(require_super_admin)) -> dict[str, Any]:
+    """Super Admin lists pending, unexpired invitations."""
+    db = _db()
+    now = datetime.now(timezone.utc)
+    invitations = []
+    try:
+        stream = db.collection("adminInvitations").where("status", "==", "pending").stream()
+        for doc in stream:
+            d = _doc_dict(doc)
+            d.pop("tokenHash", None)
+            d.pop("encryptedToken", None)
+            d.pop("codeHmac", None)
+            exp_str = d.get("expiresAt")
+            if exp_str:
+                try:
+                    exp_dt = datetime.fromisoformat(exp_str.replace("Z", "+00:00"))
+                    if now > exp_dt:
+                        getattr(doc, "reference", None) and doc.reference.update({"status": "expired", "encryptedToken": ""})
+                        continue
+                except Exception:
+                    pass
+            invitations.append(d)
+        invitations.sort(key=lambda x: str(x.get("createdAt") or ""), reverse=True)
+    except Exception as exc:
+        logger.warning("Error querying invitations: %s", exc)
+
+    return {"ok": True, "invitations": invitations}
+
+
+@router.post("/invitations")
 @router.post("/permissions/invite")
 def create_role_invitation(
     body: CreateInvitationBody,
     admin_user: dict[str, Any] = Depends(require_super_admin)
 ) -> dict[str, Any]:
-    """Generates a secure 10-character one-time invitation code for an existing user."""
+    """Generates a secure unguessable invitation link for an existing user."""
     norm_email = body.email.strip().lower()
     target_role = body.role.lower()
     if target_role not in {"admin", "manager"}:
@@ -579,7 +621,6 @@ def create_role_invitation(
 
     db = _db()
 
-    # Find existing LiphtUp account by email
     target_uid = None
     target_name = "Invited User"
     target_phone = ""
@@ -592,21 +633,24 @@ def create_role_invitation(
         target_name = target_data.get("name") or target_name
         target_phone = target_data.get("phone") or ""
     else:
-        # Fallback check via Firebase Auth
         try:
             fb_u = fb_auth.get_user_by_email(norm_email, app=get_admin_app())
             target_uid = fb_u.uid
             target_name = fb_u.display_name or target_name
             target_phone = fb_u.phone_number or ""
+            if fb_u.disabled:
+                raise ApiError("This user account is disabled.", 400)
         except Exception as exc:
+            if isinstance(exc, ApiError):
+                raise
             raise ApiError(f"No existing LiphtUp account found with email '{norm_email}'. User must register first.", 404) from exc
 
-    # Check if user is disabled
     if target_data and target_data.get("status") in ("suspended", "blocked", "disabled"):
         raise ApiError("This user account is suspended or disabled.", 400)
 
-    # Check if user already holds this exact role or is a Super Admin
+    # Role eligibility checks
     role_snap = db.collection("adminRoles").document(target_uid).get()
+    is_manager_promotion = False
     if role_snap.exists:
         curr_role = (role_snap.to_dict() or {}).get("role")
         if curr_role == "super_admin":
@@ -614,25 +658,36 @@ def create_role_invitation(
         if curr_role == target_role:
             raise ApiError(f"User is already assigned the {target_role.upper()} role.", 400)
         if curr_role == "manager" and target_role == "admin":
-            raise ApiError("Direct invitation cannot be used to promote an existing Manager. Use 'Request Promotion to Administrator'.", 400)
+            is_manager_promotion = True
+        elif curr_role == "admin" and target_role == "manager":
+            raise ApiError("Administrator should be downgraded to Manager directly via role actions.", 400)
 
     # Check for active conflicting invitation
-    existing_invs = list(
-        db.collection("adminInvitations")
-        .where("targetUid", "==", target_uid)
-        .where("status", "in", ["awaiting_claim", "pending_approval"])
-        .limit(1)
-        .stream()
-    )
-    if existing_invs:
-        raise ApiError("An active invitation or pending role request already exists for this user. Revoke it first to issue a new one.", 409)
-
-    # Generate 10-character cryptographic code
-    raw_code = generate_invitation_code(10)
-    code_digest = hash_invitation_code(raw_code)
     now = datetime.now(timezone.utc)
+    for doc in db.collection("adminInvitations").where("targetUid", "==", target_uid).stream():
+        d = _doc_dict(doc)
+        if d.get("status") == "pending":
+            exp_str = d.get("expiresAt")
+            if exp_str:
+                try:
+                    exp_dt = datetime.fromisoformat(exp_str.replace("Z", "+00:00"))
+                    if now <= exp_dt:
+                        raise ApiError(
+                            "An active invitation already exists for this user. Revoke it first to issue a new one.",
+                            409
+                        )
+                    else:
+                        getattr(doc, "reference", None) and doc.reference.update({"status": "expired", "encryptedToken": ""})
+                except Exception as ex:
+                    if isinstance(ex, ApiError):
+                        raise
+
+    raw_token = generate_invitation_token()
+    token_digest = hash_invitation_token(raw_token)
+    encrypted_tok = encrypt_invitation_token(raw_token)
     expires_at = now + timedelta(days=7)
     inv_id = f"inv_{uuid.uuid4().hex[:12]}"
+    inv_url = build_invitation_url(raw_token)
 
     inv_doc = {
         "invitationId": inv_id,
@@ -641,15 +696,15 @@ def create_role_invitation(
         "targetEmailNormalized": norm_email,
         "targetName": target_name,
         "targetPhone": target_phone,
-        "invitationType": "standard_role",
+        "invitationType": "manager_promotion" if is_manager_promotion else "standard_role",
         "requestedRole": target_role,
         "createdByUid": admin_user.get("uid"),
         "createdByEmail": admin_user.get("email") or admin_user.get("uid"),
         "createdAt": fb_firestore.SERVER_TIMESTAMP,
         "expiresAt": expires_at.isoformat(),
-        "codeHmac": code_digest,
-        "failedAttempts": 0,
-        "status": "awaiting_claim",
+        "tokenHash": token_digest,
+        "encryptedToken": encrypted_tok,
+        "status": "pending",
     }
     db.collection("adminInvitations").document(inv_id).set(inv_doc)
 
@@ -663,45 +718,109 @@ def create_role_invitation(
             "targetUid": target_uid,
             "targetEmail": norm_email,
             "requestedRole": target_role,
-            "invitationType": "standard_role",
+            "invitationType": inv_doc["invitationType"],
             "expiresAt": expires_at.isoformat(),
         },
-        notes=f"Generated invitation code for {norm_email} for role {target_role}",
+        notes=f"Generated invitation link for {norm_email} for role {target_role}",
     )
 
     return {
         "ok": True,
         "invitationId": inv_id,
-        "code": raw_code,
+        "invitationUrl": inv_url,
         "expiresAt": expires_at.isoformat(),
         "targetEmail": norm_email,
         "targetName": target_name,
         "requestedRole": target_role,
-        "message": "Invitation code generated successfully.",
+        "message": "Invitation link generated successfully.",
     }
 
 
-@router.post("/permissions/revoke-invitation")
-def revoke_role_invitation(
-    body: RevokeInvitationBody,
+@router.get("/invitations/{invitation_id}/link")
+def get_invitation_link(
+    invitation_id: str,
     admin_user: dict[str, Any] = Depends(require_super_admin)
 ) -> dict[str, Any]:
-    """Atomically revokes an unclaimed active invitation, permanently destroying its code."""
+    """Super Admin retrieves the active invitation URL for re-copying."""
     db = _db()
-    ref = db.collection("adminInvitations").document(body.invitationId)
+    ref = db.collection("adminInvitations").document(invitation_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Invitation not found.", 404)
+
+    inv = snap.to_dict() or {}
+    status = inv.get("status")
+    if status != "pending":
+        raise ApiError(f"Cannot retrieve link for invitation with status '{status}'.", 400)
+
+    now = datetime.now(timezone.utc)
+    expires_at_str = inv.get("expiresAt")
+    if expires_at_str:
+        try:
+            exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            if now > exp_dt:
+                ref.update({"status": "expired", "encryptedToken": ""})
+                raise ApiError("This invitation has expired.", 410)
+        except Exception as e:
+            if isinstance(e, ApiError):
+                raise
+
+    encrypted_tok = inv.get("encryptedToken")
+    if not encrypted_tok:
+        raise ApiError("Invitation link cannot be retrieved.", 400)
+
+    try:
+        raw_token = decrypt_invitation_token(encrypted_tok)
+        inv_url = build_invitation_url(raw_token)
+    except Exception as err:
+        raise ApiError("Could not reconstruct invitation link.", 500) from err
+
+    write_audit_log(
+        admin_user,
+        "admin_invitation_link_copied",
+        "admin_invitation",
+        invitation_id,
+        before=None,
+        after={"targetEmail": inv.get("targetEmail")},
+        notes=f"Super Admin retrieved invitation link for {inv.get('targetEmail')}",
+    )
+
+    return {
+        "ok": True,
+        "invitationId": invitation_id,
+        "invitationUrl": inv_url,
+        "targetEmail": inv.get("targetEmail"),
+        "requestedRole": inv.get("requestedRole"),
+        "expiresAt": inv.get("expiresAt"),
+    }
+
+
+@router.post("/invitations/{invitation_id}/revoke")
+@router.post("/permissions/revoke-invitation")
+def revoke_role_invitation(
+    invitation_id: Optional[str] = None,
+    body: RevokeInvitationBody = RevokeInvitationBody(),
+    admin_user: dict[str, Any] = Depends(require_super_admin)
+) -> dict[str, Any]:
+    """Atomically revokes an active invitation, immediately invalidating the link."""
+    target_id = invitation_id or body.invitationId
+    if not target_id:
+        raise ApiError("Invitation ID required.", 400)
+
+    db = _db()
+    ref = db.collection("adminInvitations").document(target_id)
     snap = ref.get()
     if not snap.exists:
         raise ApiError("Invitation not found.", 404)
 
     inv = snap.to_dict() or {}
     curr_status = inv.get("status")
-    if curr_status != "awaiting_claim":
-        raise ApiError(f"Cannot revoke invitation with status '{curr_status}'. Only unclaimed invitations can be revoked.", 400)
+    if curr_status != "pending":
+        raise ApiError(f"Cannot revoke invitation with status '{curr_status}'. Only pending invitations can be revoked.", 400)
 
-    now = datetime.now(timezone.utc)
     after = {
         "status": "revoked",
-        "codeHmac": "",  # Code digest completely destroyed
+        "encryptedToken": "",  # Wiped immediately
         "revokedAt": fb_firestore.SERVER_TIMESTAMP,
         "revokedByUid": admin_user.get("uid"),
         "revokedByEmail": admin_user.get("email") or admin_user.get("uid"),
@@ -713,13 +832,335 @@ def revoke_role_invitation(
         admin_user,
         "admin_invitation_revoked",
         "admin_invitation",
-        body.invitationId,
+        target_id,
         before={"status": curr_status, "targetEmail": inv.get("targetEmail")},
         after=after,
         notes=f"Revoked invitation for {inv.get('targetEmail')}. Reason: {body.reason or 'No reason provided'}",
     )
 
     return {"ok": True, "message": "Invitation revoked successfully."}
+
+
+@router.post("/invitations/resolve")
+def resolve_invitation(
+    body: ResolveInvitationBody,
+    authorization: Optional[str] = Header(None)
+) -> dict[str, Any]:
+    """User-facing resolution endpoint: verifies link validity, token, and authenticated identity matching."""
+    raw_token = body.token.strip()
+    if not raw_token:
+        raise ApiError("Missing invitation token.", 400)
+
+    db = _db()
+    inv_id, inv = _find_invitation_by_token(db, raw_token)
+    if not inv:
+        raise ApiError(
+            "This invitation link does not exist, has expired, or is invalid.",
+            404,
+            extra={"state": "invalid", "details": {"state": "invalid"}}
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at_str = inv.get("expiresAt")
+    is_expired = False
+    if expires_at_str:
+        try:
+            exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            if now > exp_dt:
+                is_expired = True
+                if inv.get("status") == "pending":
+                    db.collection("adminInvitations").document(inv_id).update({
+                        "status": "expired",
+                        "encryptedToken": "",
+                    })
+                    inv["status"] = "expired"
+        except Exception:
+            pass
+
+    status = inv.get("status", "pending")
+    if is_expired or status == "expired":
+        return {
+            "ok": True,
+            "state": "expired",
+            "message": "This invitation has expired and can no longer be accepted. Please contact the Super Admin for a new invitation.",
+            "invitation": {
+                "invitationId": inv_id,
+                "invitedRole": inv.get("requestedRole", "manager").title(),
+                "expiresAt": inv.get("expiresAt"),
+            }
+        }
+
+    if status == "revoked":
+        return {
+            "ok": True,
+            "state": "revoked",
+            "message": "This invitation has been withdrawn by the LiphtUp Super Admin and can no longer be accepted. Please contact the Super Admin if you believe this is a mistake.",
+            "invitation": {
+                "invitationId": inv_id,
+                "invitedRole": inv.get("requestedRole", "manager").title(),
+            }
+        }
+
+    if status == "accepted":
+        return {
+            "ok": True,
+            "state": "accepted",
+            "message": "This invitation has already been accepted and administrative permissions have been granted.",
+            "invitation": {
+                "invitationId": inv_id,
+                "invitedRole": inv.get("requestedRole", "manager").title(),
+            }
+        }
+
+    if status == "rejected":
+        return {
+            "ok": True,
+            "state": "rejected",
+            "message": "This invitation was declined and cannot be reused.",
+            "invitation": {
+                "invitationId": inv_id,
+                "invitedRole": inv.get("requestedRole", "manager").title(),
+            }
+        }
+
+    # If visitor is not yet signed in, prompt login while preserving token
+    if not authorization or not authorization.startswith("Bearer "):
+        return {
+            "ok": True,
+            "state": "unauthenticated",
+            "message": "Please sign in to your LiphtUp account to view and accept this invitation.",
+            "invitation": {
+                "invitationId": inv_id,
+                "invitedRole": inv.get("requestedRole", "manager").title(),
+            }
+        }
+
+    try:
+        decoded = verify_firebase_token(authorization)
+    except Exception:
+        return {
+            "ok": True,
+            "state": "unauthenticated",
+            "message": "Please sign in to your LiphtUp account to view and accept this invitation.",
+            "invitation": {
+                "invitationId": inv_id,
+                "invitedRole": inv.get("requestedRole", "manager").title(),
+            }
+        }
+
+    user_uid = decoded.get("uid") or decoded.get("sub") or ""
+    user_email = (decoded.get("email") or "").strip().lower()
+
+    target_uid = inv.get("targetUid")
+    target_email = (inv.get("targetEmail") or "").strip().lower()
+
+    if user_uid != target_uid:
+        parts = target_email.split("@")
+        masked_email = target_email
+        if len(parts) == 2 and len(parts[0]) > 2:
+            masked_email = f"{parts[0][:2]}******@{parts[1]}"
+        elif len(parts) == 2:
+            masked_email = f"{parts[0][:1]}***@{parts[1]}"
+
+        return {
+            "ok": True,
+            "state": "mismatch",
+            "message": f"Signed in as {user_email or 'another user'}, but this invitation was sent to {masked_email}. Please switch accounts to accept this invitation.",
+            "currentUser": {
+                "uid": user_uid,
+                "email": user_email,
+            },
+            "invitation": {
+                "invitationId": inv_id,
+                "invitedRole": inv.get("requestedRole", "manager").title(),
+                "targetEmailMasked": masked_email,
+            }
+        }
+
+    role_name = inv.get("requestedRole", "manager").title()
+    role_desc = (
+        "Full administrative access across all operational console sections (Drivers, Payments, Safety, Analytics, Reports, Live Rides). Cannot manage permissions."
+        if inv.get("requestedRole") == "admin"
+        else "Restricted access to day-to-day operations (Dashboard, Drivers, Weekly Payments, Safety). Cannot view system analytics or manage permissions."
+    )
+
+    return {
+        "ok": True,
+        "state": "ready",
+        "message": "Invitation is active and ready for acceptance.",
+        "invitation": {
+            "invitationId": inv_id,
+            "invitedRole": role_name,
+            "roleRaw": inv.get("requestedRole", "manager"),
+            "invitedEmail": target_email,
+            "createdAt": str(inv.get("createdAt") or ""),
+            "expiresAt": inv.get("expiresAt"),
+            "invitedBy": "LiphtUp Super Admin",
+            "roleDescription": role_desc,
+        }
+    }
+
+
+@router.post("/invitations/{invitation_id}/accept")
+def accept_invitation(
+    invitation_id: str,
+    body: AcceptInvitationBody = AcceptInvitationBody(),
+    authorization: Optional[str] = Header(None)
+) -> dict[str, Any]:
+    """Target user accepts invitation; role is granted immediately."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise ApiError("Authentication required.", 401)
+
+    decoded = verify_firebase_token(authorization)
+    user_uid = decoded.get("uid") or decoded.get("sub") or ""
+    if not user_uid:
+        raise ApiError("Invalid user identity.", 401)
+
+    db = _db()
+    ref = db.collection("adminInvitations").document(invitation_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Invitation not found.", 404)
+
+    inv = snap.to_dict() or {}
+    if inv.get("targetUid") != user_uid:
+        raise ApiError("You are not authorized to accept this invitation. It was issued for a different account.", 403)
+
+    curr_status = inv.get("status")
+    if curr_status != "pending":
+        if curr_status == "accepted":
+            raise ApiError("This invitation has already been accepted.", 400)
+        if curr_status == "rejected":
+            raise ApiError("This invitation was declined and can no longer be accepted.", 400)
+        if curr_status == "revoked":
+            raise ApiError("This invitation has been withdrawn by the Super Admin.", 400)
+        if curr_status == "expired":
+            raise ApiError("This invitation has expired.", 410)
+        raise ApiError(f"Cannot accept invitation in '{curr_status}' state.", 400)
+
+    now = datetime.now(timezone.utc)
+    expires_at_str = inv.get("expiresAt")
+    if expires_at_str:
+        try:
+            exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            if now > exp_dt:
+                ref.update({"status": "expired", "encryptedToken": ""})
+                raise ApiError("This invitation has expired.", 410)
+        except Exception as e:
+            if isinstance(e, ApiError):
+                raise
+
+    requested_role = inv.get("requestedRole", "manager").lower()
+    if requested_role not in {"admin", "manager"}:
+        raise ApiError("Invalid role specified in invitation.", 400)
+
+    # Set custom claim in Firebase Auth
+    try:
+        fb_auth.set_custom_user_claims(user_uid, {"admin": True}, app=get_admin_app())
+    except Exception as err:
+        logger.warning("Could not set admin custom claim: %s", err)
+
+    # Grant role in adminRoles
+    role_ref = db.collection("adminRoles").document(user_uid)
+    before_role = role_ref.get().to_dict() if role_ref.get().exists else None
+
+    if before_role and before_role.get("role") == "super_admin":
+        raise ApiError("Super Admin accounts cannot be reassigned via invitation.", 403)
+
+    target_email = inv.get("targetEmail") or decoded.get("email") or ""
+    target_name = inv.get("targetName") or decoded.get("name") or target_email or "Admin User"
+
+    after_role = {
+        "uid": user_uid,
+        "email": target_email,
+        "name": target_name,
+        "role": requested_role,
+        "assignedByUid": inv.get("createdByUid"),
+        "assignedByEmail": inv.get("createdByEmail"),
+        "assignedAt": fb_firestore.SERVER_TIMESTAMP,
+        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+    }
+    if not before_role:
+        after_role["createdAt"] = fb_firestore.SERVER_TIMESTAMP
+
+    role_ref.set(after_role, merge=True)
+
+    # Atomically mark accepted & wipe encrypted token
+    ref.update({
+        "status": "accepted",
+        "encryptedToken": "",
+        "acceptedAt": fb_firestore.SERVER_TIMESTAMP,
+        "acceptedByUid": user_uid,
+    })
+
+    write_audit_log(
+        {"uid": user_uid, "email": target_email, "adminRole": requested_role},
+        "admin_invitation_accepted",
+        "admin_invitation",
+        invitation_id,
+        before=before_role,
+        after=after_role,
+        notes=f"User {target_email} accepted invitation for {requested_role.upper()} role",
+    )
+
+    return {
+        "ok": True,
+        "role": requested_role,
+        "message": f"Invitation accepted successfully. You have been granted the {requested_role.title()} role.",
+    }
+
+
+@router.post("/invitations/{invitation_id}/reject")
+def reject_invitation(
+    invitation_id: str,
+    body: RejectInvitationBody = RejectInvitationBody(),
+    authorization: Optional[str] = Header(None)
+) -> dict[str, Any]:
+    """Target user explicitly declines invitation."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise ApiError("Authentication required.", 401)
+
+    decoded = verify_firebase_token(authorization)
+    user_uid = decoded.get("uid") or decoded.get("sub") or ""
+    if not user_uid:
+        raise ApiError("Invalid user identity.", 401)
+
+    db = _db()
+    ref = db.collection("adminInvitations").document(invitation_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Invitation not found.", 404)
+
+    inv = snap.to_dict() or {}
+    if inv.get("targetUid") != user_uid:
+        raise ApiError("You are not authorized to decline this invitation.", 403)
+
+    curr_status = inv.get("status")
+    if curr_status != "pending":
+        raise ApiError(f"Cannot decline invitation in '{curr_status}' state.", 400)
+
+    ref.update({
+        "status": "rejected",
+        "encryptedToken": "",
+        "rejectedAt": fb_firestore.SERVER_TIMESTAMP,
+        "rejectedByUid": user_uid,
+        "rejectReason": body.reason.strip() if body.reason else None,
+    })
+
+    write_audit_log(
+        {"uid": user_uid, "email": inv.get("targetEmail"), "adminRole": "user"},
+        "admin_invitation_rejected",
+        "admin_invitation",
+        invitation_id,
+        before={"status": "pending"},
+        after={"status": "rejected"},
+        notes=f"User {inv.get('targetEmail')} declined invitation for {inv.get('requestedRole')}",
+    )
+
+    return {
+        "ok": True,
+        "message": "Invitation declined. No administrative permissions have been granted.",
+    }
 
 
 @router.post("/permissions/downgrade-admin")
@@ -767,7 +1208,7 @@ def initiate_manager_promotion(
     body: InitiatePromotionBody,
     admin_user: dict[str, Any] = Depends(require_super_admin)
 ) -> dict[str, Any]:
-    """Initiates a controlled Manager -> Administrator promotion by generating a promotion code."""
+    """Initiates a controlled Manager -> Administrator promotion by generating an invitation link."""
     db = _db()
     role_snap = db.collection("adminRoles").document(body.uid).get()
     if not role_snap.exists:
@@ -777,316 +1218,13 @@ def initiate_manager_promotion(
     if curr_role_data.get("role") != "manager":
         raise ApiError("Target user is not currently a Manager.", 400)
 
-    # Check for active promotion invitation
-    existing_invs = list(
-        db.collection("adminInvitations")
-        .where("targetUid", "==", body.uid)
-        .where("status", "in", ["awaiting_claim", "pending_approval"])
-        .limit(1)
-        .stream()
-    )
-    if existing_invs:
-        raise ApiError("A promotion invitation or pending approval already exists for this Manager.", 409)
-
     user_snap = db.collection("users").document(body.uid).get()
     user_data = user_snap.to_dict() if user_snap.exists else {}
     target_email = curr_role_data.get("email") or user_data.get("email") or ""
-    target_name = curr_role_data.get("name") or user_data.get("name") or "Manager User"
+    if not target_email:
+        raise ApiError("Manager has no registered email.", 400)
 
-    raw_code = generate_invitation_code(10)
-    code_digest = hash_invitation_code(raw_code)
-    now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(days=7)
-    inv_id = f"inv_prom_{uuid.uuid4().hex[:10]}"
-
-    inv_doc = {
-        "invitationId": inv_id,
-        "targetUid": body.uid,
-        "targetEmail": target_email,
-        "targetEmailNormalized": target_email.lower().strip(),
-        "targetName": target_name,
-        "invitationType": "manager_promotion",
-        "requestedRole": "admin",
-        "createdByUid": admin_user.get("uid"),
-        "createdByEmail": admin_user.get("email") or admin_user.get("uid"),
-        "createdAt": fb_firestore.SERVER_TIMESTAMP,
-        "expiresAt": expires_at.isoformat(),
-        "codeHmac": code_digest,
-        "failedAttempts": 0,
-        "status": "awaiting_claim",
-    }
-    db.collection("adminInvitations").document(inv_id).set(inv_doc)
-
-    write_audit_log(
-        admin_user,
-        "admin_promotion_initiated",
-        "admin_invitation",
-        inv_id,
-        before=None,
-        after={
-            "targetUid": body.uid,
-            "targetEmail": target_email,
-            "requestedRole": "admin",
-            "invitationType": "manager_promotion",
-        },
-        notes=f"Initiated promotion for Manager {target_email} to Administrator",
-    )
-
-    return {
-        "ok": True,
-        "invitationId": inv_id,
-        "code": raw_code,
-        "expiresAt": expires_at.isoformat(),
-        "targetEmail": target_email,
-        "targetName": target_name,
-        "requestedRole": "admin",
-        "invitationType": "manager_promotion",
-        "message": "Promotion verification code generated successfully.",
-    }
-
-
-@router.post("/permissions/verify-invitation")
-def verify_invitation_code(
-    body: VerifyInvitationBody,
-    authorization: Optional[str] = Header(None)
-) -> dict[str, Any]:
-    """User-facing verification endpoint: validates the 10-char code and submits a pending role request."""
-    decoded = verify_firebase_token(authorization)
-    user_uid = decoded.get("uid") or decoded.get("sub") or ""
-    if not user_uid:
-        raise ApiError("Authenticated user ID missing.", 401)
-
-    user_email = (decoded.get("email") or "").strip().lower()
-    cleaned_code = clean_invitation_code(body.code)
-    if len(cleaned_code) < 6:
-        raise ApiError("Invalid invitation code format.", 400, extra={"state": "invalid_code", "details": {"state": "invalid_code"}})
-
-    code_digest = hash_invitation_code(cleaned_code)
-    db = _db()
-
-    # Query invitations for this authenticated UID
-    user_invitations = []
-    for doc in db.collection("adminInvitations").where("targetUid", "==", user_uid).stream():
-        ref = getattr(doc, "reference", None) or db.collection("adminInvitations").document(doc.id)
-        user_invitations.append((ref, _doc_dict(doc)))
-
-    if not user_invitations:
-        # Check if code belongs to another status or another account
-        raise ApiError("Invalid invitation code. No active invitation found for your account.", 400, extra={"state": "invalid_code", "details": {"state": "invalid_code"}})
-
-    # Look for matching code digest
-    matching_item = None
-    awaiting_item = None
-    for ref, inv in user_invitations:
-        st = inv.get("status")
-        if st == "awaiting_claim":
-            awaiting_item = (ref, inv)
-            if inv.get("codeHmac") and hmac.compare_digest(inv.get("codeHmac", ""), code_digest):
-                matching_item = (ref, inv)
-                break
-        elif st in ("revoked", "expired") and inv.get("codeHmac") and hmac.compare_digest(inv.get("codeHmac", ""), code_digest):
-            raise ApiError("This invitation code is no longer valid. It has expired or been revoked.", 400, extra={"state": "expired_or_revoked", "details": {"state": "expired_or_revoked"}})
-
-    if not matching_item:
-        if awaiting_item:
-            ref, inv = awaiting_item
-            curr_attempts = int(inv.get("failedAttempts") or 0) + 1
-            ref.update({"failedAttempts": curr_attempts})
-            if curr_attempts >= 5:
-                raise ApiError("Too many failed attempts. This invitation code is temporarily locked. Please contact the Super Admin.", 429, extra={"state": "too_many_attempts", "details": {"state": "too_many_attempts"}})
-        raise ApiError("Invalid invitation code. The code you entered does not match our records.", 400, extra={"state": "invalid_code", "details": {"state": "invalid_code"}})
-
-    ref, inv = matching_item
-
-    # Check expiration
-    expires_at_str = inv.get("expiresAt")
-    if expires_at_str:
-        try:
-            exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-            if datetime.now(timezone.utc) > exp_dt:
-                ref.update({"status": "expired", "codeHmac": ""})
-                raise ApiError("This invitation code has expired. Please contact the Super Admin for a new invitation code.", 410, extra={"state": "expired_or_revoked", "details": {"state": "expired_or_revoked"}})
-        except Exception as dt_err:
-            if isinstance(dt_err, ApiError):
-                raise
-            pass
-
-    # If manager promotion, confirm user is currently a Manager
-    inv_type = inv.get("invitationType", "standard_role")
-    req_role = inv.get("requestedRole", "admin")
-    if inv_type == "manager_promotion":
-        curr_role_snap = db.collection("adminRoles").document(user_uid).get()
-        if not curr_role_snap.exists or (curr_role_snap.to_dict() or {}).get("role") != "manager":
-            raise ApiError("Account is not eligible for this promotion. Current role is not Manager.", 400)
-
-    # Consume code atomically & transition to pending_approval
-    now_iso = datetime.now(timezone.utc).isoformat()
-    ref.update({
-        "status": "pending_approval",
-        "codeHmac": "",  # Destroy usable code digest
-        "claimedAt": fb_firestore.SERVER_TIMESTAMP,
-        "claimedByUid": user_uid,
-    })
-
-    # Create/update adminRoleRequests
-    req_id = f"req_{inv.get('invitationId') or ref.id}"
-    req_ref = db.collection("adminRoleRequests").document(req_id)
-    req_doc = {
-        "requestId": req_id,
-        "invitationId": inv.get("invitationId") or ref.id,
-        "targetUid": user_uid,
-        "targetEmail": inv.get("targetEmail") or user_email,
-        "targetName": inv.get("targetName") or decoded.get("name") or "User",
-        "currentRole": "manager" if inv_type == "manager_promotion" else "user",
-        "requestedRole": req_role,
-        "requestType": "manager_promotion" if inv_type == "manager_promotion" else "new_invitation",
-        "verifiedAt": now_iso,
-        "status": "pending",
-        "initiatedByUid": inv.get("createdByUid"),
-        "initiatedByEmail": inv.get("createdByEmail"),
-        "createdAt": fb_firestore.SERVER_TIMESTAMP,
-    }
-    req_ref.set(req_doc, merge=True)
-
-    action_name = "admin_promotion_verified" if inv_type == "manager_promotion" else "admin_invitation_claimed"
-    write_audit_log(
-        {"uid": user_uid, "email": user_email, "adminRole": "user"},
-        action_name,
-        "admin_role_request",
-        req_id,
-        before=None,
-        after={"requestedRole": req_role, "requestType": req_doc["requestType"]},
-        notes=f"User {user_email} verified invitation for role {req_role}",
-    )
-
-    return {
-        "ok": True,
-        "state": "success",
-        "requestedRole": req_role,
-        "invitationType": inv_type,
-        "message": "Request submitted successfully. Awaiting Super Admin final approval.",
-    }
-
-
-@router.post("/permissions/requests/{request_id}/approve")
-def approve_role_request(
-    request_id: str,
-    admin_user: dict[str, Any] = Depends(require_super_admin)
-) -> dict[str, Any]:
-    """Super Admin final approval for a claimed invitation or promotion request."""
-    db = _db()
-    req_ref = db.collection("adminRoleRequests").document(request_id)
-    req_snap = req_ref.get()
-    if not req_snap.exists:
-        raise ApiError("Role request not found.", 404)
-
-    req_data = req_snap.to_dict() or {}
-    if req_data.get("status") != "pending":
-        raise ApiError(f"Request is not pending approval (current status: {req_data.get('status')}).", 400)
-
-    target_uid = req_data.get("targetUid")
-    target_email = req_data.get("targetEmail")
-    target_name = req_data.get("targetName") or "Admin User"
-    requested_role = req_data.get("requestedRole", "admin")
-    req_type = req_data.get("requestType", "new_invitation")
-
-    # Set custom claim in Firebase Auth
-    try:
-        fb_auth.set_custom_user_claims(target_uid, {"admin": True}, app=get_admin_app())
-    except Exception as err:
-        logger.warning("Could not set admin custom claim: %s", err)
-
-    # Set authoritative role in adminRoles
-    role_ref = db.collection("adminRoles").document(target_uid)
-    before_role = role_ref.get().to_dict() if role_ref.get().exists else None
-    after_role = {
-        "uid": target_uid,
-        "email": target_email,
-        "name": target_name,
-        "role": requested_role,
-        "assignedByUid": admin_user.get("uid"),
-        "assignedByEmail": admin_user.get("email") or admin_user.get("uid"),
-        "assignedAt": fb_firestore.SERVER_TIMESTAMP,
-        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-    }
-    role_ref.set(after_role, merge=True)
-
-    # Mark request and invitation approved
-    req_ref.update({
-        "status": "approved",
-        "decidedByUid": admin_user.get("uid"),
-        "decidedByEmail": admin_user.get("email") or admin_user.get("uid"),
-        "decidedAt": fb_firestore.SERVER_TIMESTAMP,
-    })
-    inv_id = req_data.get("invitationId")
-    if inv_id:
-        db.collection("adminInvitations").document(inv_id).update({
-            "status": "approved",
-            "decidedByUid": admin_user.get("uid"),
-            "decidedAt": fb_firestore.SERVER_TIMESTAMP,
-        })
-
-    audit_action = "admin_promotion_granted" if req_type == "manager_promotion" else "admin_role_granted"
-    write_audit_log(
-        admin_user,
-        audit_action,
-        "admin_role_request",
-        request_id,
-        before=before_role,
-        after=after_role,
-        notes=f"Granted {requested_role.upper()} role to {target_email} ({req_type})",
-    )
-
-    return {"ok": True, "message": f"Successfully granted {requested_role.upper()} role to {target_email}."}
-
-
-@router.post("/permissions/requests/{request_id}/reject")
-def reject_role_request(
-    request_id: str,
-    body: DecideRoleRequestBody,
-    admin_user: dict[str, Any] = Depends(require_super_admin)
-) -> dict[str, Any]:
-    """Super Admin rejects a pending role request."""
-    db = _db()
-    req_ref = db.collection("adminRoleRequests").document(request_id)
-    req_snap = req_ref.get()
-    if not req_snap.exists:
-        raise ApiError("Role request not found.", 404)
-
-    req_data = req_snap.to_dict() or {}
-    if req_data.get("status") != "pending":
-        raise ApiError(f"Request is not pending approval (current status: {req_data.get('status')}).", 400)
-
-    req_ref.update({
-        "status": "rejected",
-        "decidedByUid": admin_user.get("uid"),
-        "decidedByEmail": admin_user.get("email") or admin_user.get("uid"),
-        "decidedAt": fb_firestore.SERVER_TIMESTAMP,
-        "rejectionNotes": body.notes.strip() if body.notes else None,
-    })
-    inv_id = req_data.get("invitationId")
-    if inv_id:
-        db.collection("adminInvitations").document(inv_id).update({
-            "status": "rejected",
-            "decidedByUid": admin_user.get("uid"),
-            "decidedAt": fb_firestore.SERVER_TIMESTAMP,
-            "decisionReason": body.notes.strip() if body.notes else None,
-        })
-
-    req_type = req_data.get("requestType", "new_invitation")
-    audit_action = "admin_promotion_rejected" if req_type == "manager_promotion" else "admin_role_rejected"
-    write_audit_log(
-        admin_user,
-        audit_action,
-        "admin_role_request",
-        request_id,
-        before={"status": "pending"},
-        after={"status": "rejected"},
-        notes=f"Rejected {req_type} role request for {req_data.get('targetEmail')}. Notes: {body.notes or 'None'}",
-    )
-
-    return {"ok": True, "message": "Role request rejected."}
-
+    return create_role_invitation(CreateInvitationBody(email=target_email, role="admin"), admin_user)
 
 class AssignRoleBody(BaseModel):
     model_config = ConfigDict(extra="forbid")

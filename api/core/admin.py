@@ -43,6 +43,51 @@ def hash_invitation_code(code: str) -> str:
 
 
 
+import base64
+from cryptography.fernet import Fernet
+
+def _get_encryption_key() -> bytes:
+    raw_secret = (
+        os.environ.get("ADMIN_INVITATION_SECRET")
+        or os.environ.get("ADMIN_BOOTSTRAP_SECRET")
+        or "liphtup-invitation-secure-salt-2026-v2"
+    ).encode("utf-8")
+    derived_32 = hashlib.sha256(raw_secret).digest()
+    return base64.urlsafe_b64encode(derived_32)
+
+def generate_invitation_token() -> str:
+    """Generate at least 256 bits of cryptographic randomness for invitation token."""
+    return secrets.token_urlsafe(32)
+
+def hash_invitation_token(token: str) -> str:
+    """Compute HMAC-SHA256 digest of invitation token for safe lookup."""
+    raw_secret = (
+        os.environ.get("ADMIN_INVITATION_SECRET")
+        or os.environ.get("ADMIN_BOOTSTRAP_SECRET")
+        or "liphtup-invitation-secure-salt-2026-v2"
+    ).encode("utf-8")
+    return hmac.new(raw_secret, str(token or "").strip().encode("utf-8"), hashlib.sha256).hexdigest()
+
+def encrypt_invitation_token(token: str) -> str:
+    """Encrypt invitation token so Super Admin can reconstruct link while active."""
+    fernet = Fernet(_get_encryption_key())
+    return fernet.encrypt(str(token).encode("utf-8")).decode("utf-8")
+
+def decrypt_invitation_token(ciphertext: str) -> str:
+    """Decrypt stored encrypted token."""
+    fernet = Fernet(_get_encryption_key())
+    return fernet.decrypt(str(ciphertext).encode("utf-8")).decode("utf-8")
+
+def build_invitation_url(token: str) -> str:
+    """Build canonical invitation link using production origin."""
+    origin = (
+        os.environ.get("PRODUCTION_ORIGIN")
+        or os.environ.get("APP_URL")
+        or "https://liphtup.in"
+    ).rstrip("/")
+    return f"{origin}/admin/invitation?token={token}"
+
+
 def get_user_admin_role(uid: str, email: str = "") -> str:
     """Retrieves the administrative role for a given user from `adminRoles`.
     If no record exists yet for a user with the `admin: true` claim, they are

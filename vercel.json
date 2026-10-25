@@ -15,12 +15,12 @@
       "destination": "/api/index"
     },
     {
-      "source": "/authPermissions",
-      "destination": "/authPermissions.html"
+      "source": "/admin/invitation",
+      "destination": "/admin/invitation.html"
     },
     {
-      "source": "/authPermissions/",
-      "destination": "/authPermissions.html"
+      "source": "/admin/invitation/",
+      "destination": "/admin/invitation.html"
     },
     {
       "source": "/admin-access-denied",

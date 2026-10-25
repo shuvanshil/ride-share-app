@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>LiphtUp Administrative Invitation</title>
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap & Tabler Icons -->
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+
+    <style>
+        :root {
+            --lu-primary: #1877F2;
+            --lu-primary-hover: #166FE5;
+            --lu-bg: #F8FAFC;
+            --lu-text: #0F172A;
+            --lu-muted: #64748B;
+            --lu-border: #E2E8F0;
+        }
+
+        body.invitation-page {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--lu-bg);
+            color: var(--lu-text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Top Bar */
+        .invitation-header {
+            background: #ffffff;
+            border-bottom: 1px solid var(--lu-border);
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+
+        .invitation-brand img {
+            height: 32px;
+            width: auto;
+            object-fit: contain;
+        }
+
+        .user-avatar-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: #E0F2FE;
+            color: #0369A1;
+            font-weight: 700;
+            font-size: 13.5px;
+            letter-spacing: 0.5px;
+            border: 1px solid #BAE6FD;
+            text-decoration: none;
+        }
+
+        /* Main Container */
+        .invitation-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 16px;
+        }
+
+        .invitation-card {
+            background: #ffffff;
+            border: 1px solid var(--lu-border);
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(15, 23, 42, 0.05);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px 36px;
+            text-align: center;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+
+        @media (max-width: 540px) {
+            .invitation-card {
+                padding: 28px 20px;
+                border-radius: 20px;
+            }
+        }
+
+        .invitation-icon-circle {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 18px;
+            font-size: 28px;
+        }
+
+        .invitation-icon-circle.blue {
+            background: #EFF6FF;
+            color: #2563EB;
+        }
+
+        .invitation-icon-circle.green {
+            background: #DCFCE7;
+            color: #16A34A;
+        }
+
+        .invitation-icon-circle.amber {
+            background: #FEF3C7;
+            color: #D97706;
+        }
+
+        .invitation-icon-circle.red {
+            background: #FEE2E2;
+            color: #DC2626;
+        }
+
+        .invitation-icon-circle.gray {
+            background: #F1F5F9;
+            color: #64748B;
+        }
+
+        .invitation-title {
+            font-size: 26px;
+            font-weight: 800;
+            color: #0F172A;
+            margin: 0 0 6px;
+            letter-spacing: -0.4px;
+        }
+
+        .invitation-subtitle {
+            font-size: 14.5px;
+            color: #64748B;
+            margin: 0 0 24px;
+            line-height: 1.5;
+        }
+
+        /* Details Table Card */
+        .invitation-details-box {
+            background: #FAFBFD;
+            border: 1px solid #EDF2F7;
+            border-radius: 16px;
+            padding: 12px 18px;
+            text-align: left;
+            margin-bottom: 20px;
+        }
+
+        .invitation-detail-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            font-size: 14px;
+        }
+
+        .invitation-detail-row:not(:last-child) {
+            border-bottom: 1px solid #F1F5F9;
+        }
+
+        .invitation-detail-label {
+            color: #64748B;
+            font-weight: 500;
+        }
+
+        .invitation-detail-val {
+            color: #0F172A;
+            font-weight: 600;
+            text-align: right;
+            word-break: break-all;
+        }
+
+        .role-pill-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .role-pill-badge.manager {
+            background: #DBEAFE;
+            color: #1D4ED8;
+        }
+
+        .role-pill-badge.admin {
+            background: #EDE9FE;
+            color: #6D28D9;
+        }
+
+        /* Disclaimer Notice */
+        .invitation-notice-box {
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            border-radius: 14px;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #1E3A8A;
+            line-height: 1.5;
+            text-align: left;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+
+        .invitation-notice-box i {
+            font-size: 18px;
+            color: #2563EB;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        /* Actions */
+        .invitation-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 440px) {
+            .invitation-actions {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .invitation-actions button,
+            .invitation-actions a {
+                width: 100% !important;
+            }
+        }
+
+        .btn-invite-accept {
+            background: #1877F2;
+            color: #ffffff;
+            font-weight: 700;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 28px;
+            font-size: 15px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.16s ease;
+            box-shadow: 0 4px 14px rgba(24, 119, 242, 0.25);
+            flex: 1;
+        }
+
+        .btn-invite-accept:hover {
+            background: #166FE5;
+            color: #ffffff;
+            transform: translateY(-1px);
+        }
+
+        .btn-invite-accept:active {
+            transform: scale(0.98);
+        }
+
+        .btn-invite-reject {
+            background: #ffffff;
+            color: #DC2626;
+            font-weight: 700;
+            border: 1.5px solid #FCA5A5;
+            border-radius: 12px;
+            padding: 11px 24px;
+            font-size: 15px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.16s ease;
+            flex: 1;
+        }
+
+        .btn-invite-reject:hover {
+            background: #FEF2F2;
+            border-color: #EF4444;
+            color: #B91C1C;
+        }
+
+        .btn-invite-reject:active {
+            transform: scale(0.98);
+        }
+
+        /* Footer */
+        .invitation-footer {
+            text-align: center;
+            padding: 16px;
+            color: #94A3B8;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body class="invitation-page">
+
+    <!-- Top App Bar -->
+    <header class="invitation-header">
+        <a href="/" class="invitation-brand">
+            <img src="/assets/branding/liphtup-logo.jpeg" alt="LiphtUp">
+        </a>
+        <div id="header-user-avatar-wrap">
+            <span class="user-avatar-pill" id="user-avatar-pill" title="Current Account">
+                <i class="ti ti-user"></i>
+            </span>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="invitation-container">
+
+        <!-- 1. Loading View -->
+        <div id="view-loading" class="invitation-card">
+            <div class="py-5">
+                <div class="spinner-border text-primary mb-3" style="width: 44px; height: 44px;" role="status"></div>
+                <h2 class="h5 fw-bold text-dark">Checking invitation...</h2>
+                <p class="text-muted small m-0">Please wait while we verify your secure invitation link.</p>
+            </div>
+        </div>
+
+        <!-- 2. Active Ready View (Matches Mockup) -->
+        <div id="view-ready" class="invitation-card d-none">
+            <div class="invitation-icon-circle blue">
+                <i class="ti ti-mail"></i>
+            </div>
+            <h1 class="invitation-title">You've been invited!</h1>
+            <p class="invitation-subtitle">You've been invited to join the LiphtUp administrative team.</p>
+
+            <div class="invitation-details-box">
+                <div class="invitation-detail-row">
+                    <span class="invitation-detail-label">Invited Role</span>
+                    <span class="invitation-detail-val">
+                        <span id="card-invited-role-badge" class="role-pill-badge manager">Manager</span>
+                    </span>
+                </div>
+                <div class="invitation-detail-row">
+                    <span class="invitation-detail-label">Invited Email</span>
+                    <span id="card-invited-email" class="invitation-detail-val">user@example.com</span>
+                </div>
+                <div class="invitation-detail-row">
+                    <span class="invitation-detail-label">Invited On</span>
+                    <span id="card-invited-on" class="invitation-detail-val">Oct 24, 2026 at 10:32 AM</span>
+                </div>
+                <div class="invitation-detail-row">
+                    <span class="invitation-detail-label">Invited By</span>
+                    <span id="card-invited-by" class="invitation-detail-val">LiphtUp Super Admin</span>
+                </div>
+                <div class="invitation-detail-row">
+                    <span class="invitation-detail-label">Expires On</span>
+                    <span id="card-expires-on" class="invitation-detail-val">Oct 31, 2026 at 10:32 AM</span>
+                </div>
+            </div>
+
+            <div class="invitation-notice-box">
+                <i class="ti ti-info-circle"></i>
+                <div id="card-notice-text">
+                    Accepting this invitation will immediately grant the permissions associated with the <strong id="notice-role-name">Manager</strong> role. Only accept if you recognize this invitation and agree to the responsibilities.
+                </div>
+            </div>
+
+            <div class="invitation-actions">
+                <button type="button" id="btn-accept-invite" class="btn-invite-accept">
+                    <i class="ti ti-check"></i> Accept Invite
+                </button>
+                <button type="button" id="btn-reject-invite" class="btn-invite-reject">
+                    <i class="ti ti-x"></i> Reject Invitation
+                </button>
+            </div>
+        </div>
+
+        <!-- 3. Unauthenticated State (Prompt Sign In) -->
+        <div id="view-unauthenticated" class="invitation-card d-none">
+            <div class="invitation-icon-circle blue">
+                <i class="ti ti-lock"></i>
+            </div>
+            <h1 class="invitation-title">Sign In Required</h1>
+            <p class="invitation-subtitle">
+                You have received an administrative invitation. Please sign in with your LiphtUp account to verify your identity and view this invitation.
+            </p>
+            <div class="mt-4">
+                <button type="button" id="btn-signin-redirect" class="btn btn-primary px-4 py-2 rounded-3 fw-bold">
+                    <i class="ti ti-login me-1"></i> Sign In to LiphtUp
+                </button>
+            </div>
+        </div>
+
+        <!-- 4. Account Mismatch State -->
+        <div id="view-mismatch" class="invitation-card d-none">
+            <div class="invitation-icon-circle amber">
+                <i class="ti ti-user-x"></i>
+            </div>
+            <h1 class="invitation-title">Account Mismatch</h1>
+            <p id="mismatch-explanation" class="invitation-subtitle">
+                You are currently signed in with an account that does not match this invitation.
+            </p>
+            <div class="alert alert-warning py-3 px-3 text-start mb-4 rounded-3 small">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <i class="ti ti-alert-triangle fs-3 text-warning"></i>
+                    <strong>Switch account required:</strong>
+                </div>
+                <div>This invitation was sent to <strong id="mismatch-target-email"></strong>. Please sign out and sign in with the invited email address to continue.</div>
+            </div>
+            <div>
+                <button type="button" id="btn-switch-account" class="btn btn-outline-danger px-4 py-2 rounded-3 fw-bold">
+                    <i class="ti ti-logout me-1"></i> Switch Account
+                </button>
+            </div>
+        </div>
+
+        <!-- 5. Withdrawn / Revoked State -->
+        <div id="view-revoked" class="invitation-card d-none">
+            <div class="invitation-icon-circle gray">
+                <i class="ti ti-shield-off"></i>
+            </div>
+            <h1 class="invitation-title">Invitation Withdrawn</h1>
+            <p class="invitation-subtitle">
+                This invitation has been withdrawn by the LiphtUp Super Admin and can no longer be accepted. Please contact the Super Admin if you believe this is a mistake.
+            </p>
+            <div>
+                <a href="/" class="btn btn-outline-secondary px-4 py-2 rounded-3">Return to Home</a>
+            </div>
+        </div>
+
+        <!-- 6. Expired State -->
+        <div id="view-expired" class="invitation-card d-none">
+            <div class="invitation-icon-circle amber">
+                <i class="ti ti-clock-pause"></i>
+            </div>
+            <h1 class="invitation-title">Invitation Expired</h1>
+            <p class="invitation-subtitle">
+                This invitation link has expired and is no longer valid. Please contact the LiphtUp Super Admin to request a new invitation.
+            </p>
+            <div>
+                <a href="/" class="btn btn-outline-secondary px-4 py-2 rounded-3">Return to Home</a>
+            </div>
+        </div>
+
+        <!-- 7. Already Accepted State -->
+        <div id="view-accepted" class="invitation-card d-none">
+            <div class="invitation-icon-circle green">
+                <i class="ti ti-circle-check"></i>
+            </div>
+            <h1 class="invitation-title">Invitation Accepted</h1>
+            <p class="invitation-subtitle">
+                This invitation has already been accepted and the administrative role has been granted to your account.
+            </p>
+            <div>
+                <a href="/admin" class="btn btn-primary px-4 py-2 rounded-3 fw-bold">
+                    <i class="ti ti-layout-grid me-1"></i> Go to Admin Login
+                </a>
+            </div>
+        </div>
+
+        <!-- 8. Rejected State -->
+        <div id="view-rejected" class="invitation-card d-none">
+            <div class="invitation-icon-circle red">
+                <i class="ti ti-circle-x"></i>
+            </div>
+            <h1 class="invitation-title">Invitation Rejected</h1>
+            <p class="invitation-subtitle">
+                You have declined this invitation. No administrative permissions have been granted.
+            </p>
+            <div>
+                <a href="/" class="btn btn-outline-secondary px-4 py-2 rounded-3">Return to Home</a>
+            </div>
+        </div>
+
+        <!-- 9. Success State (Post Acceptance) -->
+        <div id="view-success" class="invitation-card d-none">
+            <div class="invitation-icon-circle green">
+                <i class="ti ti-circle-check"></i>
+            </div>
+            <h1 class="invitation-title">Invitation Accepted Successfully!</h1>
+            <p class="invitation-subtitle">
+                You have accepted your invitation and your LiphtUp <strong id="success-role-name">Administrator</strong> role has been granted.
+            </p>
+            <div class="alert alert-success py-3 px-3 text-start mb-4 rounded-3 small">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <i class="ti ti-shield-check fs-3 text-success"></i>
+                    <strong>Role Granted:</strong>
+                </div>
+                <div>Your account permissions have been updated. You can now access the LiphtUp administrative portal.</div>
+            </div>
+            <div>
+                <a href="/admin" class="btn btn-primary px-4 py-2 rounded-3 fw-bold">
+                    <i class="ti ti-layout-grid me-1"></i> Go to Admin Login
+                </a>
+            </div>
+        </div>
+
+        <!-- 10. Invalid / Error State -->
+        <div id="view-invalid" class="invitation-card d-none">
+            <div class="invitation-icon-circle red">
+                <i class="ti ti-alert-triangle"></i>
+            </div>
+            <h1 class="invitation-title">Invalid Invitation Link</h1>
+            <p id="invalid-error-copy" class="invitation-subtitle">
+                This invitation link does not exist, has expired, or is invalid. Please make sure you have the correct URL.
+            </p>
+            <div>
+                <a href="/" class="btn btn-outline-secondary px-4 py-2 rounded-3">Return to Home</a>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal: Confirm Accept -->
+    <div class="modal fade" id="modal-confirm-accept" tabindex="-1" aria-hidden="true" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
+            <div class="modal-content border-0 shadow-lg rounded-3">
+                <div class="modal-header border-bottom py-3 px-4">
+                    <h5 class="modal-title fw-bold">Accept Administrative Invitation?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 text-start">
+                    <p class="text-secondary small mb-3">
+                        You are about to accept the LiphtUp <strong id="modal-accept-role" class="text-dark">Manager</strong> role. If you continue, the permissions associated with this role will be granted to your account immediately.
+                    </p>
+                    <div class="alert alert-info py-2 px-3 small rounded-2 mb-0">
+                        <i class="ti ti-info-circle me-1"></i> Only proceed if you agree to the responsibilities of this role.
+                    </div>
+                </div>
+                <div class="modal-footer border-top py-2 px-4 d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="btn-modal-confirm-accept" class="btn btn-primary btn-sm px-3">
+                        Accept and Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Confirm Reject -->
+    <div class="modal fade" id="modal-confirm-reject" tabindex="-1" aria-hidden="true" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
+            <div class="modal-content border-0 shadow-lg rounded-3">
+                <div class="modal-header border-bottom py-3 px-4">
+                    <h5 class="modal-title fw-bold text-danger">Reject Invitation?</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 text-start">
+                    <p class="text-secondary small mb-0">
+                        Are you sure you want to decline this LiphtUp administrative invitation? You will not receive the role associated with this invitation.
+                    </p>
+                </div>
+                <div class="modal-footer border-top py-2 px-4 d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="btn-modal-confirm-reject" class="btn btn-danger btn-sm px-3">
+                        Reject Invitation
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="invitation-footer">
+        &copy; 2026 LiphtUp Technologies Private Limited. All rights reserved.
+    </footer>
+
+    <!-- Bootstrap Bundle -->
+    <script src="/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Client Script -->
+    <script type="module">
+        import { auth } from "/js/platform/firebase-init.js";
+        import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        const $ = (id) => document.getElementById(id);
+
+        let invitationData = null;
+        let currentUser = null;
+        let invitationToken = null;
+
+        // Views list
+        const ALL_VIEWS = [
+            "view-loading",
+            "view-ready",
+            "view-unauthenticated",
+            "view-mismatch",
+            "view-revoked",
+            "view-expired",
+            "view-accepted",
+            "view-rejected",
+            "view-success",
+            "view-invalid"
+        ];
+
+        function setView(viewId) {
+            ALL_VIEWS.forEach(id => {
+                const el = $(id);
+                if (el) el.classList.add("d-none");
+            });
+            const activeEl = $(viewId);
+            if (activeEl) activeEl.classList.remove("d-none");
+        }
+
+        function formatDisplayDate(dateStr) {
+            if (!dateStr) return "--";
+            try {
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return dateStr;
+                return d.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true
+                });
+            } catch {
+                return dateStr;
+            }
+        }
+
+        // 1. Token retrieval & address bar cleanliness
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryToken = urlParams.get("token");
+        if (queryToken) {
+            invitationToken = queryToken.trim();
+            sessionStorage.setItem("liphtup_invitation_token", invitationToken);
+            // Remove secret token from visible address bar and referrer
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } else {
+            invitationToken = sessionStorage.getItem("liphtup_invitation_token");
+        }
+
+        if (!invitationToken) {
+            setView("view-invalid");
+            $("invalid-error-copy").textContent = "No invitation token was provided. Please verify your invitation link.";
+        }
+
+        // 2. Auth State Observer
+        onAuthStateChanged(auth, async (user) => {
+            currentUser = user;
+
+            // Header avatar
+            if (user) {
+                const email = user.email || "";
+                const displayName = user.displayName || "";
+                let initials = "U";
+                if (displayName) {
+                    const parts = displayName.trim().split(/\s+/);
+                    initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].slice(0, 2).toUpperCase();
+                } else if (email) {
+                    initials = email.slice(0, 2).toUpperCase();
+                }
+                const avatarEl = $("user-avatar-pill");
+                if (avatarEl) {
+                    avatarEl.textContent = initials;
+                    avatarEl.title = `Signed in as ${email}`;
+                }
+            }
+
+            if (invitationToken) {
+                await resolveInvitation();
+            }
+        });
+
+        // 3. Resolve Invitation
+        async function resolveInvitation() {
+            setView("view-loading");
+            try {
+                let idToken = null;
+                if (currentUser) {
+                    idToken = await currentUser.getIdToken(false);
+                }
+
+                const headers = { "Content-Type": "application/json" };
+                if (idToken) {
+                    headers["Authorization"] = `Bearer ${idToken}`;
+                }
+
+                const res = await fetch("/api/admin/invitations/resolve", {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({ token: invitationToken })
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok && res.status === 404) {
+                    setView("view-invalid");
+                    return;
+                }
+
+                const state = data.state;
+
+                if (state === "unauthenticated") {
+                    setView("view-unauthenticated");
+                    return;
+                }
+
+                if (state === "mismatch") {
+                    setView("view-mismatch");
+                    $("mismatch-target-email").textContent = data.invitation?.targetEmailMasked || "the invited email";
+                    return;
+                }
+
+                if (state === "revoked") {
+                    setView("view-revoked");
+                    return;
+                }
+
+                if (state === "expired") {
+                    setView("view-expired");
+                    return;
+                }
+
+                if (state === "accepted") {
+                    setView("view-accepted");
+                    return;
+                }
+
+                if (state === "rejected") {
+                    setView("view-rejected");
+                    return;
+                }
+
+                if (state === "ready" && data.invitation) {
+                    invitationData = data.invitation;
+                    renderReadyView(data.invitation);
+                    setView("view-ready");
+                    return;
+                }
+
+                setView("view-invalid");
+            } catch (err) {
+                console.error("Resolve invitation error:", err);
+                setView("view-invalid");
+            }
+        }
+
+        function renderReadyView(inv) {
+            const roleBadge = $("card-invited-role-badge");
+            const role = (inv.invitedRole || "Manager").toLowerCase();
+            if (roleBadge) {
+                roleBadge.textContent = inv.invitedRole || "Manager";
+                roleBadge.className = `role-pill-badge ${role.includes("admin") ? "admin" : "manager"}`;
+            }
+
+            $("card-invited-email").textContent = inv.invitedEmail || "--";
+            $("card-invited-on").textContent = formatDisplayDate(inv.createdAt);
+            $("card-invited-by").textContent = inv.invitedBy || "LiphtUp Super Admin";
+            $("card-expires-on").textContent = formatDisplayDate(inv.expiresAt);
+            $("notice-role-name").textContent = inv.invitedRole || "Manager";
+            $("modal-accept-role").textContent = inv.invitedRole || "Manager";
+        }
+
+        // Actions
+        $("btn-signin-redirect")?.addEventListener("click", () => {
+            const redirectUrl = encodeURIComponent(window.location.pathname);
+            window.location.href = `/login.html?redirect=${redirectUrl}`;
+        });
+
+        $("btn-switch-account")?.addEventListener("click", async () => {
+            await signOut(auth);
+            const redirectUrl = encodeURIComponent(window.location.pathname);
+            window.location.href = `/login.html?redirect=${redirectUrl}`;
+        });
+
+        const acceptModalEl = $("modal-confirm-accept");
+        const acceptModal = acceptModalEl ? new bootstrap.Modal(acceptModalEl) : null;
+
+        $("btn-accept-invite")?.addEventListener("click", () => {
+            acceptModal?.show();
+        });
+
+        $("btn-modal-confirm-accept")?.addEventListener("click", async () => {
+            if (!invitationData?.invitationId) return;
+            const btn = $("btn-modal-confirm-accept");
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Granting permissions...`;
+
+            try {
+                const idToken = await currentUser.getIdToken(true);
+                const res = await fetch(`/api/admin/invitations/${invitationData.invitationId}/accept`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({ token: invitationToken })
+                });
+
+                const data = await res.json().catch(() => ({}));
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                acceptModal?.hide();
+
+                if (res.ok && data.ok) {
+                    sessionStorage.removeItem("liphtup_invitation_token");
+                    $("success-role-name").textContent = data.role ? data.role.toUpperCase() : "Administrator";
+                    setView("view-success");
+                } else {
+                    alert(data.detail?.message || data.detail || data.message || "Could not accept invitation. Please try again.");
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                alert("Network error. Please check your connection and try again.");
+            }
+        });
+
+        const rejectModalEl = $("modal-confirm-reject");
+        const rejectModal = rejectModalEl ? new bootstrap.Modal(rejectModalEl) : null;
+
+        $("btn-reject-invite")?.addEventListener("click", () => {
+            rejectModal?.show();
+        });
+
+        $("btn-modal-confirm-reject")?.addEventListener("click", async () => {
+            if (!invitationData?.invitationId) return;
+            const btn = $("btn-modal-confirm-reject");
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Declining...`;
+
+            try {
+                const idToken = await currentUser.getIdToken(false);
+                const res = await fetch(`/api/admin/invitations/${invitationData.invitationId}/reject`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({ token: invitationToken })
+                });
+
+                const data = await res.json().catch(() => ({}));
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                rejectModal?.hide();
+
+                if (res.ok && data.ok) {
+                    sessionStorage.removeItem("liphtup_invitation_token");
+                    setView("view-rejected");
+                } else {
+                    alert(data.detail?.message || data.detail || data.message || "Could not decline invitation. Please try again.");
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                alert("Network error. Please check your connection and try again.");
+            }
+        });
+    </script>
+</body>
+</html>
