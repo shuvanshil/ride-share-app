@@ -147,6 +147,29 @@ export function clearAdminCache() {
     cache.clear();
 }
 
+export async function adminPut(path, body, { busyLabel = "Updating record..." } = {}) {
+    const doneBusy = beginAdminBusy(busyLabel);
+    try {
+        let response = await fetch(`/api/admin${path}`, {
+            method: "PUT",
+            headers: { ...(await authHeader()), "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        if (response.status === 401 || response.status === 403) {
+            response = await fetch(`/api/admin${path}`, {
+                method: "PUT",
+                headers: { ...(await authHeader(true)), "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+        }
+        const data = await handleResponse(response);
+        clearAdminCache();
+        return data;
+    } finally {
+        doneBusy();
+    }
+}
+
 export async function adminPatch(path, body, { busyLabel = "Updating record..." } = {}) {
     const doneBusy = beginAdminBusy(busyLabel);
     try {

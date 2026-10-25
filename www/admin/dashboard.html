@@ -1383,6 +1383,48 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- Global In-App Notices Subsection -->
+                        <div class="card shadow-xs border-0 mt-4 mb-3" id="admin-global-notices-card">
+                            <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div>
+                                    <h3 class="card-title fw-bold text-dark m-0 d-flex align-items-center gap-2">
+                                        <i class="ti ti-speakerphone text-primary"></i> Global Notices
+                                        <span id="notices-total-badge" class="badge bg-secondary-lt text-secondary rounded-pill">0</span>
+                                    </h3>
+                                    <div class="text-secondary small mt-1">Schedule and manage in-app popup notices displayed to drivers and passengers.</div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <button type="button" id="btn-refresh-global-notices" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1">
+                                        <i class="ti ti-refresh"></i> Refresh
+                                    </button>
+                                    <button type="button" id="btn-open-create-notice-modal" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-1">
+                                        <i class="ti ti-plus"></i> Create Global Notice
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-vcenter card-table table-striped table-hover m-0">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th>Title</th>
+                                            <th>Audience</th>
+                                            <th>Schedule</th>
+                                            <th>Display Mode</th>
+                                            <th>Status</th>
+                                            <th>Last Updated</th>
+                                            <th class="text-end">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="global-notices-tbody">
+                                        <tr>
+                                            <td colspan="7" class="text-center py-4 text-secondary small">
+                                                <span class="spinner-border spinner-border-sm me-2"></span>Loading notices...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </section>
 
                     <!-- Audit log -->
@@ -1883,6 +1925,120 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Create / Edit Global Notice -->
+    <div id="admin-notice-modal" class="modal modal-blur fade show d-none" tabindex="-1" role="dialog" aria-modal="true" style="background: rgba(0, 0, 0, 0.5); z-index: 1070;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document" style="max-width: 680px;">
+            <div class="modal-content shadow-lg border-0 rounded-3">
+                <div class="modal-header border-bottom py-3 px-4">
+                    <div>
+                        <h5 class="modal-title fw-bold d-flex align-items-center" style="font-size: 1.15rem;">
+                            <span class="avatar avatar-sm bg-blue-lt text-primary rounded me-2"><i class="ti ti-speakerphone"></i></span>
+                            <span id="notice-modal-header-title">Create Global Notice</span>
+                        </h5>
+                        <div class="text-secondary small mt-1">Configure an in-app popup modal notice with scheduled display and audience targeting.</div>
+                    </div>
+                    <button id="notice-modal-close-btn" type="button" class="btn-close" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body p-4">
+                    <form id="form-admin-notice">
+                        <input type="hidden" id="notice-id-input" value="">
+
+                        <!-- Section: Schedule -->
+                        <div class="mb-3">
+                            <label class="form-label required fw-bold small mb-1">Notice Schedule</label>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label for="notice-start-time-input" class="form-label small text-muted mb-1">Start Date &amp; Time</label>
+                                    <input type="datetime-local" id="notice-start-time-input" class="form-control" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="notice-end-time-input" class="form-label small text-muted mb-1">End Date &amp; Time</label>
+                                    <input type="datetime-local" id="notice-end-time-input" class="form-control" required>
+                                </div>
+                            </div>
+                            <div class="form-text text-secondary" style="font-size: 0.75rem;">Times are evaluated in UTC. Notice will appear automatically at start time and expire at end time. Overlapping notices for the same audience are prohibited.</div>
+                        </div>
+
+                        <!-- Section: Target Audience -->
+                        <div class="mb-3">
+                            <label for="notice-audience-select" class="form-label required fw-bold small mb-1">Target Audience</label>
+                            <select id="notice-audience-select" class="form-select" required>
+                                <option value="both" selected>Drivers and Passengers (All Users)</option>
+                                <option value="drivers">Drivers Only</option>
+                                <option value="passengers">Passengers Only</option>
+                            </select>
+                        </div>
+
+                        <!-- Section: Display Mode -->
+                        <div class="mb-3 p-3 bg-light border rounded-3">
+                            <div class="form-check form-switch mb-1">
+                                <input class="form-check-input" type="checkbox" id="notice-closable-switch" checked>
+                                <label class="form-check-label fw-bold text-dark small" for="notice-closable-switch">Allow users to close this notice (Closable)</label>
+                            </div>
+                            <div id="notice-closable-desc" class="text-secondary small" style="font-size: 0.78rem;">
+                                <strong>Closable:</strong> Users can dismiss the notice using the 'X' icon or 'Close' button. Once dismissed, that version will not reappear.<br>
+                                <strong>Non-closable:</strong> Users cannot dismiss the notice. It remains on screen blocking application interaction until stopped or expired.
+                            </div>
+                        </div>
+
+                        <!-- Section: Default Content -->
+                        <div class="card border rounded-3 mb-3 shadow-none">
+                            <div class="card-body p-3">
+                                <div class="fw-bold text-dark small mb-2 d-flex align-items-center gap-1">
+                                    <i class="ti ti-file-text text-primary"></i> Default Notice Content
+                                </div>
+                                <div class="mb-2">
+                                    <label for="notice-title-input" class="form-label required small fw-bold mb-1">Notice Title</label>
+                                    <input type="text" id="notice-title-input" class="form-control" maxlength="120" placeholder="e.g. Important Service Update" required>
+                                </div>
+                                <div class="mb-2">
+                                    <label for="notice-description-input" class="form-label required small fw-bold mb-1">Notice Description</label>
+                                    <textarea id="notice-description-input" class="form-control" rows="3" maxlength="1000" placeholder="Enter the main message displayed to users..." required></textarea>
+                                </div>
+                                <div>
+                                    <label for="notice-callout-input" class="form-label small fw-bold mb-1 text-muted">Notice Note / Callout (Optional)</label>
+                                    <input type="text" id="notice-callout-input" class="form-control form-control-sm" maxlength="250" placeholder="e.g. Thank you for being a valued member of the LiphtUp community!">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Driver-Specific Content Toggle -->
+                        <div id="notice-driver-toggle-wrap" class="card border rounded-3 mb-3 shadow-none">
+                            <div class="card-body p-3">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="notice-driver-content-switch">
+                                    <label class="form-check-label fw-bold text-dark small" for="notice-driver-content-switch">Use Different Content for Drivers</label>
+                                </div>
+                                <div id="notice-driver-fields-wrap" class="d-none pt-2 border-top">
+                                    <div class="mb-2">
+                                        <label for="notice-driver-title-input" class="form-label required small fw-bold mb-1">Driver Notice Title</label>
+                                        <input type="text" id="notice-driver-title-input" class="form-control" maxlength="120" placeholder="e.g. Important Driver Partner Notice">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="notice-driver-description-input" class="form-label required small fw-bold mb-1">Driver Notice Description</label>
+                                        <textarea id="notice-driver-description-input" class="form-control" rows="3" maxlength="1000" placeholder="Enter the driver-specific message..."></textarea>
+                                    </div>
+                                    <div>
+                                        <label for="notice-driver-callout-input" class="form-label small fw-bold mb-1 text-muted">Driver Note / Callout (Optional)</label>
+                                        <input type="text" id="notice-driver-callout-input" class="form-control form-control-sm" maxlength="250" placeholder="e.g. Drive safe and ensure complete ride safety compliance.">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 pt-2">
+                            <button type="button" id="notice-modal-cancel-btn" class="btn btn-outline-secondary">Cancel</button>
+                            <button type="submit" id="notice-submit-btn" class="btn btn-primary px-4 d-inline-flex align-items-center gap-2">
+                                <i class="ti ti-check"></i> <span id="notice-submit-btn-text">Save Notice</span>
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>

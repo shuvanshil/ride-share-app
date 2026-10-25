@@ -9,6 +9,7 @@ import { initAdminPayments, loadAdminPayments, loadAdminPassengerWallets, initAd
 import { loadPermissions, initPermissionsModal } from "./admin-permissions.js?v=2.7.0";
 import { initAdminCoupons, loadAdminCoupons } from "./admin-coupons.js?v=2.7.0";
 import { initAdminReports, loadAdminReports } from "./admin-reports.js?v=2.7.0";
+import { loadGlobalNotices, initGlobalNoticesAdminEvents } from "./admin-global-notices.js?v=2.7.0";
 
 const $ = (id) => document.getElementById(id);
 
@@ -4213,6 +4214,8 @@ function initNotificationsEvents() {
 
 async function loadNotificationsCenter() {
     initNotificationsEvents();
+    initGlobalNoticesAdminEvents();
+    loadGlobalNotices();
     const tbody = $("admin-broadcast-history-tbody") || $("broadcast-history-tbody");
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-secondary small"><span class="spinner-border spinner-border-sm me-2"></span>Loading broadcast history...</td></tr>`;

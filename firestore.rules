@@ -290,6 +290,14 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Global In-App Notices:
+    // Authenticated users can read notices for real-time in-app delivery;
+    // client direct writes are strictly prohibited (managed via backend Admin API).
+    match /globalNotices/{noticeId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Ride Operations Audit Trail:
     // Admin read only; writes managed by FastAPI Admin SDK.
     match /ride_audits/{auditId} {

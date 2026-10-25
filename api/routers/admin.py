@@ -5445,3 +5445,437 @@ def decide_distance_review(
 
 
 
+
+
+# =====================================================================
+# GLOBAL NOTICES SYSTEM
+# =====================================================================
+
+class CreateGlobalNoticeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=1000)
+    callout: Optional[str] = Field(default="", max_length=250)
+    audience: str = Field(default="both")
+    closable: bool = Field(default=True)
+    driverContentEnabled: bool = Field(default=False)
+    driverTitle: Optional[str] = Field(default="", max_length=120)
+    driverDescription: Optional[str] = Field(default="", max_length=1000)
+    driverCallout: Optional[str] = Field(default="", max_length=250)
+    startsAt: str = Field(min_length=1)
+    endsAt: str = Field(min_length=1)
+
+class UpdateGlobalNoticeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, min_length=1, max_length=1000)
+    callout: Optional[str] = Field(default=None, max_length=250)
+    audience: Optional[str] = Field(default=None)
+    closable: Optional[bool] = Field(default=None)
+    driverContentEnabled: Optional[bool] = Field(default=None)
+    driverTitle: Optional[str] = Field(default=None, max_length=120)
+    driverDescription: Optional[str] = Field(default=None, max_length=1000)
+    driverCallout: Optional[str] = Field(default=None, max_length=250)
+    startsAt: Optional[str] = Field(default=None)
+    endsAt: Optional[str] = Field(default=None)
+
+def _parse_iso_utc(iso_str: str) -> datetime:
+    try:
+        clean = iso_str.strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(clean)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception as ex:
+        raise ApiError(f"Invalid timestamp format '{iso_str}'. Expected ISO 8601.", 400) from ex
+
+def _compute_notice_status(doc: dict[str, Any], now: Optional[datetime] = None) -> str:
+    state = doc.get("state", "enabled")
+    if state == "deleted":
+        return "deleted"
+    if state == "stopped":
+        return "stopped"
+
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    try:
+        starts_at = _parse_iso_utc(str(doc.get("startsAt") or ""))
+        ends_at = _parse_iso_utc(str(doc.get("endsAt") or ""))
+        if now < starts_at:
+            return "scheduled"
+        if starts_at <= now <= ends_at:
+            return "active"
+        return "ended"
+    except Exception:
+        return "ended"
+
+def _check_notice_overlap(
+    db: Any,
+    starts_at: datetime,
+    ends_at: datetime,
+    audience: str,
+    exclude_notice_id: Optional[str] = None
+) -> None:
+    now = datetime.now(timezone.utc)
+    norm_audience = audience.strip().lower()
+    if norm_audience not in {"both", "drivers", "passengers"}:
+        raise ApiError(f"Invalid audience '{audience}'. Must be 'both', 'drivers', or 'passengers'.", 400)
+
+    query = db.collection("globalNotices").where("state", "==", "enabled")
+    for doc in _stream(query):
+        d = _doc_dict(doc)
+        n_id = d.get("noticeId") or getattr(doc, "id", None)
+        if exclude_notice_id and n_id == exclude_notice_id:
+            continue
+
+        try:
+            ex_starts = _parse_iso_utc(str(d.get("startsAt") or ""))
+            ex_ends = _parse_iso_utc(str(d.get("endsAt") or ""))
+        except Exception:
+            continue
+
+        if ex_ends <= now:
+            continue
+
+        ex_aud = str(d.get("audience") or "both").strip().lower()
+        audiences_overlap = (
+            norm_audience == "both"
+            or ex_aud == "both"
+            or norm_audience == ex_aud
+        )
+        if not audiences_overlap:
+            continue
+
+        if starts_at < ex_ends and ends_at > ex_starts:
+            ex_title = d.get("title", "Existing Notice")
+            raise ApiError(
+                f"A notice ('{ex_title}') is already active or scheduled for audience '{ex_aud}' from {ex_starts.isoformat()} to {ex_ends.isoformat()}. Overlapping notices are not allowed.",
+                409
+            )
+
+@router.get("/notices")
+def list_global_notices(
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    notices: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
+    try:
+        for doc in _stream(db.collection("globalNotices")):
+            d = _doc_dict(doc)
+            if d.get("state") == "deleted":
+                continue
+            d["computedStatus"] = _compute_notice_status(d, now)
+            notices.append(d)
+        notices.sort(key=lambda x: str(x.get("createdAt") or x.get("startsAt") or ""), reverse=True)
+    except Exception as exc:
+        logger.warning("Error fetching global notices: %s", exc)
+        notices = []
+    return {"ok": True, "notices": notices}
+
+@router.post("/notices")
+def create_global_notice(
+    body: CreateGlobalNoticeBody,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    starts_at = _parse_iso_utc(body.startsAt)
+    ends_at = _parse_iso_utc(body.endsAt)
+    now = datetime.now(timezone.utc)
+
+    if ends_at <= starts_at:
+        raise ApiError("End time must be after start time.", 400)
+    if ends_at <= now:
+        raise ApiError("End time cannot be in the past.", 400)
+
+    audience = body.audience.strip().lower()
+    if audience not in {"both", "drivers", "passengers"}:
+        raise ApiError("Invalid audience. Must be 'both', 'drivers', or 'passengers'.", 400)
+
+    driver_content_enabled = bool(body.driverContentEnabled) and audience != "passengers"
+    if driver_content_enabled:
+        if not (body.driverTitle and body.driverTitle.strip()):
+            raise ApiError("Driver notice title is required when driver-specific content is enabled.", 400)
+        if not (body.driverDescription and body.driverDescription.strip()):
+            raise ApiError("Driver notice description is required when driver-specific content is enabled.", 400)
+
+    db = _db()
+    _check_notice_overlap(db, starts_at, ends_at, audience)
+
+    notice_id = f"gn_{uuid.uuid4().hex[:12]}"
+    created_at_iso = now.isoformat()
+    notice_doc = {
+        "noticeId": notice_id,
+        "title": body.title.strip(),
+        "description": body.description.strip(),
+        "callout": (body.callout or "").strip(),
+        "audience": audience,
+        "closable": bool(body.closable),
+        "driverContentEnabled": driver_content_enabled,
+        "driverTitle": (body.driverTitle or "").strip() if driver_content_enabled else "",
+        "driverDescription": (body.driverDescription or "").strip() if driver_content_enabled else "",
+        "driverCallout": (body.driverCallout or "").strip() if driver_content_enabled else "",
+        "startsAt": starts_at.isoformat(),
+        "endsAt": ends_at.isoformat(),
+        "state": "enabled",
+        "version": 1,
+        "createdByUid": admin_user.get("uid"),
+        "createdByEmail": admin_user.get("email") or admin_user.get("uid"),
+        "createdAt": created_at_iso,
+        "updatedByUid": admin_user.get("uid"),
+        "updatedByEmail": admin_user.get("email") or admin_user.get("uid"),
+        "updatedAt": created_at_iso,
+    }
+
+    db.collection("globalNotices").document(notice_id).set(notice_doc)
+
+    write_audit_log(
+        admin_user,
+        "global_notice_created",
+        "globalNotice",
+        notice_id,
+        before={},
+        after=notice_doc,
+        notes=f"Created global notice '{notice_doc['title']}' for audience '{audience}' ({starts_at.isoformat()} - {ends_at.isoformat()})",
+    )
+
+    notice_doc["computedStatus"] = _compute_notice_status(notice_doc, now)
+    return {"ok": True, "notice": notice_doc, "message": "Global notice created successfully."}
+
+@router.get("/notices/{notice_id}")
+def get_global_notice(
+    notice_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    snap = db.collection("globalNotices").document(notice_id).get()
+    if not snap.exists:
+        raise ApiError("Global notice not found.", 404)
+    doc = snap.to_dict() or {}
+    if doc.get("state") == "deleted":
+        raise ApiError("Global notice not found.", 404)
+    doc["computedStatus"] = _compute_notice_status(doc)
+    return {"ok": True, "notice": doc}
+
+@router.put("/notices/{notice_id}")
+def update_global_notice(
+    notice_id: str,
+    body: UpdateGlobalNoticeBody,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    ref = db.collection("globalNotices").document(notice_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Global notice not found.", 404)
+    curr = snap.to_dict() or {}
+    if curr.get("state") == "deleted":
+        raise ApiError("Cannot edit a deleted notice.", 400)
+
+    now = datetime.now(timezone.utc)
+    new_starts_str = body.startsAt if body.startsAt is not None else curr.get("startsAt")
+    new_ends_str = body.endsAt if body.endsAt is not None else curr.get("endsAt")
+    starts_at = _parse_iso_utc(str(new_starts_str))
+    ends_at = _parse_iso_utc(str(new_ends_str))
+
+    if ends_at <= starts_at:
+        raise ApiError("End time must be after start time.", 400)
+
+    audience = (body.audience or curr.get("audience", "both")).strip().lower()
+    if audience not in {"both", "drivers", "passengers"}:
+        raise ApiError("Invalid audience. Must be 'both', 'drivers', or 'passengers'.", 400)
+
+    if curr.get("state") == "enabled":
+        _check_notice_overlap(db, starts_at, ends_at, audience, exclude_notice_id=notice_id)
+
+    driver_content_enabled = body.driverContentEnabled if body.driverContentEnabled is not None else curr.get("driverContentEnabled", False)
+    if audience == "passengers":
+        driver_content_enabled = False
+
+    driver_title = body.driverTitle if body.driverTitle is not None else curr.get("driverTitle", "")
+    driver_desc = body.driverDescription if body.driverDescription is not None else curr.get("driverDescription", "")
+    driver_callout = body.driverCallout if body.driverCallout is not None else curr.get("driverCallout", "")
+
+    if driver_content_enabled:
+        if not (driver_title and driver_title.strip()):
+            raise ApiError("Driver notice title is required when driver-specific content is enabled.", 400)
+        if not (driver_desc and driver_desc.strip()):
+            raise ApiError("Driver notice description is required when driver-specific content is enabled.", 400)
+
+    updated_fields = {
+        "title": body.title.strip() if body.title is not None else curr.get("title", ""),
+        "description": body.description.strip() if body.description is not None else curr.get("description", ""),
+        "callout": body.callout.strip() if body.callout is not None else curr.get("callout", ""),
+        "audience": audience,
+        "closable": body.closable if body.closable is not None else curr.get("closable", True),
+        "driverContentEnabled": driver_content_enabled,
+        "driverTitle": driver_title.strip() if driver_content_enabled else "",
+        "driverDescription": driver_desc.strip() if driver_content_enabled else "",
+        "driverCallout": driver_callout.strip() if driver_content_enabled else "",
+        "startsAt": starts_at.isoformat(),
+        "endsAt": ends_at.isoformat(),
+        "version": int(curr.get("version", 1)) + 1,
+        "updatedByUid": admin_user.get("uid"),
+        "updatedByEmail": admin_user.get("email") or admin_user.get("uid"),
+        "updatedAt": now.isoformat(),
+    }
+
+    ref.update(updated_fields)
+
+    write_audit_log(
+        admin_user,
+        "global_notice_updated",
+        "globalNotice",
+        notice_id,
+        before=curr,
+        after={**curr, **updated_fields},
+        notes=f"Updated global notice '{updated_fields['title']}' (version {updated_fields['version']})",
+    )
+
+    merged = {**curr, **updated_fields}
+    merged["computedStatus"] = _compute_notice_status(merged, now)
+    return {"ok": True, "notice": merged, "message": "Global notice updated successfully."}
+
+@router.post("/notices/{notice_id}/stop")
+def stop_global_notice(
+    notice_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    ref = db.collection("globalNotices").document(notice_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Global notice not found.", 404)
+    curr = snap.to_dict() or {}
+    if curr.get("state") == "deleted":
+        raise ApiError("Cannot stop a deleted notice.", 400)
+    if curr.get("state") == "stopped":
+        return {"ok": True, "message": "Notice is already stopped."}
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    new_version = int(curr.get("version", 1)) + 1
+    update_data = {
+        "state": "stopped",
+        "stoppedAt": now_iso,
+        "stoppedByUid": admin_user.get("uid"),
+        "stoppedByEmail": admin_user.get("email") or admin_user.get("uid"),
+        "version": new_version,
+        "updatedAt": now_iso,
+        "updatedByUid": admin_user.get("uid"),
+    }
+    ref.update(update_data)
+
+    write_audit_log(
+        admin_user,
+        "global_notice_stopped",
+        "globalNotice",
+        notice_id,
+        before=curr,
+        after={**curr, **update_data},
+        notes=f"Stopped global notice '{curr.get('title')}'",
+    )
+
+    return {"ok": True, "message": "Global notice stopped successfully."}
+
+@router.delete("/notices/{notice_id}")
+def delete_global_notice(
+    notice_id: str,
+    admin_user: dict[str, Any] = Depends(require_admin_or_super_admin),
+) -> dict[str, Any]:
+    db = _db()
+    ref = db.collection("globalNotices").document(notice_id)
+    snap = ref.get()
+    if not snap.exists:
+        raise ApiError("Global notice not found.", 404)
+    curr = snap.to_dict() or {}
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    new_version = int(curr.get("version", 1)) + 1
+    update_data = {
+        "state": "deleted",
+        "deletedAt": now_iso,
+        "deletedByUid": admin_user.get("uid"),
+        "deletedByEmail": admin_user.get("email") or admin_user.get("uid"),
+        "version": new_version,
+        "updatedAt": now_iso,
+        "updatedByUid": admin_user.get("uid"),
+    }
+    ref.update(update_data)
+
+    write_audit_log(
+        admin_user,
+        "global_notice_deleted",
+        "globalNotice",
+        notice_id,
+        before=curr,
+        after={**curr, **update_data},
+        notes=f"Deleted global notice '{curr.get('title')}'",
+    )
+
+    return {"ok": True, "message": "Global notice deleted successfully."}
+
+@router.get("/notices/active")
+def get_active_notice_for_client(
+    authorization: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise ApiError("Authentication required.", 401)
+
+    decoded = verify_firebase_token(authorization)
+    uid = decoded.get("uid") or decoded.get("sub") or ""
+    if not uid:
+        raise ApiError("Invalid user identity.", 401)
+
+    db = _db()
+    user_snap = db.collection("users").document(uid).get()
+    user_role = "passenger"
+    if user_snap.exists:
+        user_data = user_snap.to_dict() or {}
+        user_role = str(user_data.get("role") or "passenger").strip().lower()
+
+    now = datetime.now(timezone.utc)
+
+    eligible_notices: list[dict[str, Any]] = []
+    for doc in _stream(db.collection("globalNotices").where("state", "==", "enabled")):
+        d = _doc_dict(doc)
+        try:
+            s_dt = _parse_iso_utc(str(d.get("startsAt") or ""))
+            e_dt = _parse_iso_utc(str(d.get("endsAt") or ""))
+            if s_dt <= now <= e_dt:
+                aud = str(d.get("audience") or "both").strip().lower()
+                if aud == "both" or (aud == "drivers" and user_role == "driver") or (aud == "passengers" and user_role == "passenger"):
+                    eligible_notices.append(d)
+        except Exception:
+            continue
+
+    if not eligible_notices:
+        return {"ok": True, "active": False, "notice": None}
+
+    eligible_notices.sort(key=lambda x: str(x.get("startsAt") or ""), reverse=True)
+    target = eligible_notices[0]
+
+    is_driver = (user_role == "driver")
+    use_driver_content = is_driver and target.get("driverContentEnabled", False)
+
+    content_title = target.get("driverTitle") if use_driver_content else target.get("title")
+    content_desc = target.get("driverDescription") if use_driver_content else target.get("description")
+    content_callout = target.get("driverCallout") if use_driver_content else target.get("callout")
+
+    return {
+        "ok": True,
+        "active": True,
+        "notice": {
+            "noticeId": target.get("noticeId") or target.get("id"),
+            "title": content_title or target.get("title"),
+            "description": content_desc or target.get("description"),
+            "callout": content_callout or target.get("callout", ""),
+            "closable": bool(target.get("closable", True)),
+            "version": int(target.get("version", 1)),
+            "startsAt": target.get("startsAt"),
+            "endsAt": target.get("endsAt"),
+            "audience": target.get("audience"),
+            "userRole": user_role,
+        }
+    }
