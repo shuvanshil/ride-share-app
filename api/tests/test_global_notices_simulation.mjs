@@ -330,6 +330,44 @@ const deletedResult = processNoticesForUser({ notices: [deletedNotice], userUid:
 assert.strictEqual(deletedResult, null, "Deleted notice immediately ceases display");
 console.log("✔ PASS: Non-closable notices cannot be bypassed and immediately dismiss when stopped or deleted.\n");
 
+// -------------------------------------------------------------
+// Test 7: IST Timezone verification & scheduled notice wakeup delay
+// -------------------------------------------------------------
+console.log("[Test 7] Testing IST Timezone formatting & future notice wakeup calculation...");
+
+// 1. IST formatting check
+const testIsoUtc = "2026-10-26T04:30:00.000Z"; // 4:30 AM UTC = 10:00 AM IST
+const istFormatted = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+}).format(new Date(testIsoUtc)) + ' IST';
+
+assert.ok(istFormatted.includes("10:00") && istFormatted.includes("IST"), `Expected 10:00 AM IST but got ${istFormatted}`);
+
+// 2. Upcoming notice wakeup timer delay calculation
+function computeNextWakeupDelay(notices, userRole, nowMs) {
+    let earliestFutureStartsMs = Infinity;
+    for (const n of notices) {
+        if (n.state !== "enabled") continue;
+        const aud = String(n.audience || "both").toLowerCase();
+        const matchesAudience = (aud === "both") || (aud === "drivers" && userRole === "driver") || (aud === "passengers" && userRole === "passenger");
+        if (!matchesAudience) continue;
+
+        const startMs = new Date(n.startsAt).getTime();
+        const endMs = new Date(n.endsAt).getTime();
+        if (startMs > nowMs && endMs > nowMs && startMs < earliestFutureStartsMs) {
+            earliestFutureStartsMs = startMs;
+        }
+    }
+    return (earliestFutureStartsMs !== Infinity) ? (earliestFutureStartsMs - nowMs) : null;
+}
+
+const scheduledDelay = computeNextWakeupDelay([noticeFuture], "passenger", now);
+assert.strictEqual(scheduledDelay, 3600000, "Wakeup timer must fire exactly when future notice starts");
+console.log("✔ PASS: IST Timezone strictly formatted and future notice wakeup correctly computed.\n");
+
 console.log("========================================================");
-console.log("🎉 ALL 6 CLIENT SIMULATION SUITES PASSED FLAWLESSLY!");
+console.log("🎉 ALL 7 CLIENT SIMULATION SUITES PASSED FLAWLESSLY!");
 console.log("========================================================");

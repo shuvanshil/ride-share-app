@@ -15,30 +15,37 @@ function formatLocalDate(isoStr) {
     try {
         const d = new Date(isoStr);
         if (isNaN(d.getTime())) return isoStr;
-        return d.toLocaleDateString("en-US", {
+        const datePart = d.toLocaleDateString("en-IN", {
+            timeZone: "Asia/Kolkata",
             month: "short",
             day: "numeric",
             year: "numeric"
-        }) + " " + d.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit"
         });
+        const timePart = d.toLocaleTimeString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+        });
+        return `${datePart}, ${timePart} IST`;
     } catch (_) {
         return isoStr;
     }
 }
 
-function toLocalDatetimeInputString(isoStr) {
-    if (!isoStr) return "";
+function toLocalDatetimeInputString(dateOrIso) {
+    if (!dateOrIso) return "";
     try {
-        const d = new Date(isoStr);
+        const d = (dateOrIso instanceof Date) ? dateOrIso : new Date(dateOrIso);
         if (isNaN(d.getTime())) return "";
+        // Convert UTC to IST (+5h 30m)
+        const istDate = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
         const pad = (n) => String(n).padStart(2, "0");
-        const year = d.getFullYear();
-        const month = pad(d.getMonth() + 1);
-        const day = pad(d.getDate());
-        const hours = pad(d.getHours());
-        const minutes = pad(d.getMinutes());
+        const year = istDate.getUTCFullYear();
+        const month = pad(istDate.getUTCMonth() + 1);
+        const day = pad(istDate.getUTCDate());
+        const hours = pad(istDate.getUTCHours());
+        const minutes = pad(istDate.getUTCMinutes());
         return `${year}-${month}-${day}T${hours}:${minutes}`;
     } catch (_) {
         return "";
@@ -362,9 +369,16 @@ export function initGlobalNoticesAdminEvents() {
             return;
         }
 
-        const startDt = new Date(startTimeVal);
-        const endDt = new Date(endTimeVal);
-        if (isNaN(startDt.getTime()) || isNaN(endDt.getTime())) {
+        const parseIstInputToDate = (val) => {
+            if (!val) return null;
+            const normalized = val.length === 16 ? `${val}:00+05:30` : `${val}+05:30`;
+            const d = new Date(normalized);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        const startDt = parseIstInputToDate(startTimeVal);
+        const endDt = parseIstInputToDate(endTimeVal);
+        if (!startDt || !endDt) {
             toast("Invalid schedule date format.", "warning");
             return;
         }

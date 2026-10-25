@@ -5549,8 +5549,10 @@ def _check_notice_overlap(
 
         if starts_at < ex_ends and ends_at > ex_starts:
             ex_title = d.get("title", "Existing Notice")
+            ex_starts_ist = ex_starts.astimezone(KOLKATA_TZ).strftime("%b %d, %Y, %I:%M %p IST")
+            ex_ends_ist = ex_ends.astimezone(KOLKATA_TZ).strftime("%b %d, %Y, %I:%M %p IST")
             raise ApiError(
-                f"A notice ('{ex_title}') is already active or scheduled for audience '{ex_aud}' from {ex_starts.isoformat()} to {ex_ends.isoformat()}. Overlapping notices are not allowed.",
+                f"A notice ('{ex_title}') is already active or scheduled for audience '{ex_aud}' from {ex_starts_ist} to {ex_ends_ist}. Overlapping notices are not allowed.",
                 409
             )
 

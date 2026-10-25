@@ -220,6 +220,11 @@ export function dismissNoticeModal() {
         activeModalEl.remove();
         activeModalEl = null;
     }
+    try {
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.style.overflow = '';
+        }
+    } catch (_) {}
     currentDisplayedNoticeId = null;
     currentDisplayedNoticeVersion = null;
 }
@@ -249,6 +254,12 @@ function renderNoticeModal(notice, userUid, userRole) {
 
     currentDisplayedNoticeId = noticeId;
     currentDisplayedNoticeVersion = version;
+
+    try {
+        if (typeof document !== 'undefined' && document.body) {
+            document.body.style.overflow = 'hidden';
+        }
+    } catch (_) {}
 
     const backdrop = document.createElement('div');
     backdrop.className = 'lup-notice-backdrop';
@@ -309,7 +320,13 @@ function renderNoticeModal(notice, userUid, userRole) {
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                     </svg>
-                    <span>Required Notice &bull; Active until ${escapeHtml(new Date(notice.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span>
+                    <span>Required Notice &bull; Active until ${escapeHtml((() => {
+                    try {
+                        return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(notice.endsAt)) + ' IST';
+                    } catch (_) {
+                        return new Date(notice.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                })())}</span>
                 </div>
             `}
         </div>
@@ -362,8 +379,39 @@ function renderNoticeModal(notice, userUid, userRole) {
     activeModalEl = backdrop;
 }
 
+let upcomingNoticeTimer = null;
+
 function processNoticesList(notices, userUid, userRole) {
     const nowMs = Date.now();
+
+    if (upcomingNoticeTimer) {
+        clearTimeout(upcomingNoticeTimer);
+        upcomingNoticeTimer = null;
+    }
+
+    // Check for future scheduled notices for this audience to set a wakeup timer
+    let earliestFutureStartsMs = Infinity;
+    for (const n of notices) {
+        if (n.state !== "enabled") continue;
+        const aud = String(n.audience || "both").toLowerCase();
+        const matchesAudience = (aud === "both") || (aud === "drivers" && userRole === "driver") || (aud === "passengers" && userRole === "passenger");
+        if (!matchesAudience) continue;
+
+        const startMs = parseNoticeTimestamp(n.startsAt);
+        const endMs = parseNoticeTimestamp(n.endsAt);
+        if (startMs > nowMs && endMs > nowMs && startMs < earliestFutureStartsMs) {
+            earliestFutureStartsMs = startMs;
+        }
+    }
+
+    if (earliestFutureStartsMs !== Infinity) {
+        const delay = Math.max(200, earliestFutureStartsMs - nowMs);
+        if (delay < 2147483647) {
+            upcomingNoticeTimer = setTimeout(() => {
+                processNoticesList(notices, userUid, userRole);
+            }, delay);
+        }
+    }
 
     // Filter notices that are:
     // 1. state == "enabled"
@@ -413,6 +461,10 @@ export function initGlobalNotices() {
     const startNoticeService = (user) => {
         if (!user || !user.uid) {
             dismissNoticeModal();
+            if (upcomingNoticeTimer) {
+                clearTimeout(upcomingNoticeTimer);
+                upcomingNoticeTimer = null;
+            }
             if (firestoreUnsubscribe) {
                 firestoreUnsubscribe();
                 firestoreUnsubscribe = null;
