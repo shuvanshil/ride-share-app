@@ -2912,23 +2912,7 @@ function ensureNavToggleButton() {
 let googleMapsNavBtn = null;
 function ensureGoogleMapsNavButton() {
     if (googleMapsNavBtn) return;
-    const existing = document.getElementById("driver-open-gmaps-btn");
-    if (existing) {
-        googleMapsNavBtn = existing;
-    } else if (mapHost?.parentElement) {
-        googleMapsNavBtn = document.createElement("button");
-        googleMapsNavBtn.id = "driver-open-gmaps-btn";
-        googleMapsNavBtn.type = "button";
-        googleMapsNavBtn.className = "driver-open-gmaps-btn d-none";
-        googleMapsNavBtn.setAttribute("aria-label", "Navigate in Google Maps");
-        googleMapsNavBtn.innerHTML = `
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" class="me-1" aria-hidden="true">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-            </svg>
-            <span>Google Maps</span>
-        `;
-        mapHost.parentElement.appendChild(googleMapsNavBtn);
-    }
+    googleMapsNavBtn = document.getElementById("driver-open-gmaps-btn");
     if (googleMapsNavBtn) {
         googleMapsNavBtn.onclick = () => {
             if (currentTarget?.position) {
@@ -2943,8 +2927,14 @@ function ensureGoogleMapsNavButton() {
 }
 
 function updateGoogleMapsNavButtonVisibility() {
+    ensureGoogleMapsNavButton();
+    const shouldShow = Boolean(currentTarget?.position);
+    const wrapper = document.getElementById("driver-gmaps-nav-wrapper");
+    if (wrapper) {
+        wrapper.classList.toggle("d-none", !shouldShow);
+    }
     if (googleMapsNavBtn) {
-        googleMapsNavBtn.classList.toggle("d-none", !currentTarget);
+        googleMapsNavBtn.classList.toggle("d-none", !shouldShow);
     }
 }
 

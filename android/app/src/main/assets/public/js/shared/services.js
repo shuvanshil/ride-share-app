@@ -377,6 +377,44 @@ function bindServicesControls() {
         });
     }
 
+    const inlineCurrentLocBtn = document.getElementById('pickup-current-loc-inline-btn');
+    if (inlineCurrentLocBtn) {
+        inlineCurrentLocBtn.addEventListener('click', () => {
+            if (window.useCurrentPickupLocation) {
+                window.useCurrentPickupLocation();
+            } else if (servicesRefreshBtn) {
+                servicesRefreshBtn.click();
+            }
+        });
+    }
+
+    const optCurrentLocBtn = document.getElementById('option-use-current-location-btn');
+    if (optCurrentLocBtn) {
+        optCurrentLocBtn.addEventListener('click', () => {
+            if (window.useCurrentPickupLocation) {
+                window.useCurrentPickupLocation();
+            } else if (servicesRefreshBtn) {
+                servicesRefreshBtn.click();
+            }
+        });
+    }
+
+    const optSelectMapBtn = document.getElementById('option-select-pickup-map-btn');
+    if (optSelectMapBtn) {
+        optSelectMapBtn.addEventListener('click', () => {
+            const pInput = document.getElementById('pickup-input');
+            if (window.startPickupMapPick) {
+                window.startPickupMapPick(pInput);
+                const mapSection = document.getElementById('services-map-card');
+                if (mapSection) {
+                    mapSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            } else {
+                window.dispatchEvent(new CustomEvent('request-destination-pick-on-map'));
+            }
+        });
+    }
+
     if (clearDropBtn) {
         clearDropBtn.addEventListener('click', () => {
             if (dropInput && dropInput.readOnly) return;

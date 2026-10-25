@@ -12,7 +12,7 @@ import {
 const DEFAULT_PICKUP = { lat: 23.8315, lng: 91.2868 };
 const TRIPURA_CENTER = { lat: 23.8315, lng: 91.2868 };
 const PICKUP_CACHE_KEY = "liphtup_last_passenger_pickup";
-const DESTINATION_SEARCH_DEBOUNCE_MS = 50;
+const DESTINATION_SEARCH_DEBOUNCE_MS = 180;
 const AUTOCOMPLETE_CACHE_TTL_MS = 2 * 60 * 1000;
 const AUTOCOMPLETE_CACHE_MAX_ENTRIES = 40;
 const MAX_VISIBLE_SUGGESTIONS = 5;
@@ -945,6 +945,7 @@ function addGoogleMapStyles() {
         }
 
         .assigned-driver-tracking {
+            display: none !important;
             position: absolute;
             right: 12px;
             bottom: 12px;
@@ -1366,29 +1367,14 @@ function getAssignedDriverTrend(distanceKm) {
 }
 
 function renderAssignedDriverTracking(routeDetails, straightLineDistanceKm = null) {
-    const mapContainer = document.getElementById("map-container");
-    if (!mapContainer) return;
-
+    // Info bar removed from map per user request
+    if (assignedDriverTrackingElement) {
+        assignedDriverTrackingElement.remove();
+        assignedDriverTrackingElement = null;
+    }
     const distanceKm = Number.isFinite(Number(routeDetails?.distanceKm))
         ? Number(routeDetails.distanceKm)
         : Number(straightLineDistanceKm);
-    const durationMinutes = Number(routeDetails?.durationMinutes);
-    const trend = getAssignedDriverTrend(distanceKm);
-
-    if (!assignedDriverTrackingElement) {
-        assignedDriverTrackingElement = document.createElement("div");
-        assignedDriverTrackingElement.className = "assigned-driver-tracking";
-        assignedDriverTrackingElement.setAttribute("role", "status");
-        assignedDriverTrackingElement.setAttribute("aria-live", "polite");
-        mapContainer.appendChild(assignedDriverTrackingElement);
-    }
-
-    assignedDriverTrackingElement.innerHTML = `
-        <div><span>Driver</span><strong>${trend}</strong></div>
-        <div><span>Distance</span><strong>${formatTrackingDistance(distanceKm)}</strong></div>
-        <div><span>ETA</span><strong>${formatTrackingDuration(durationMinutes)}</strong></div>
-    `;
-
     if (Number.isFinite(distanceKm)) {
         assignedDriverLastDistanceKm = distanceKm;
     }
@@ -3725,6 +3711,8 @@ function startPickupMapPick(pickupInput) {
         detail: { name: "Move the map and confirm the pickup pin" }
     }));
 }
+window.startPickupMapPick = startPickupMapPick;
+window.useCurrentPickupLocation = useCurrentPickupLocation;
 
 async function completePickupMapPick(lat, lng) {
     if (!pickupMapPickMode) return;
@@ -3919,20 +3907,11 @@ function setupFareEngineListeners() {
             return;
         }
 
-        if (fareAmountSpan) fareAmountSpan.innerText = "Just a sec...";
-        if (fareQuoteBox) {
-            fareQuoteBox.classList.remove("d-none");
-            fareQuoteBox.classList.add("d-flex");
-        }
         window.latestFareQuote = null;
 
         const cachedDestinations = getCachedAutocompleteResults(query);
         if (cachedDestinations) {
             showDestinationSuggestions(dropInput, cachedDestinations.slice(0, MAX_VISIBLE_SUGGESTIONS), fareQuoteBox, fareAmountSpan);
-            if (fareQuoteBox) {
-                fareQuoteBox.classList.add("d-none");
-                fareQuoteBox.classList.remove("d-flex");
-            }
         }
 
         destinationSearchTimer = setTimeout(async () => {

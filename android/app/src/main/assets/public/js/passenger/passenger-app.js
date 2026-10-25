@@ -268,6 +268,11 @@ function setPassengerDestinationLocked(locked, destinationName = "", pickupName 
         refreshLocationBtn.disabled = locked;
         refreshLocationBtn.classList.toggle('d-none', locked);
     }
+    const inlineCurrentLocBtn = document.getElementById('pickup-current-loc-inline-btn');
+    if (inlineCurrentLocBtn) {
+        inlineCurrentLocBtn.disabled = locked;
+        inlineCurrentLocBtn.classList.toggle('d-none', locked);
+    }
 
     if (locked && destinationName) {
         dropInput.value = destinationName;
