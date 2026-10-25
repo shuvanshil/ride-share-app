@@ -10166,12 +10166,16 @@ select.profile-field-input {
 /* ==========================================
    Scroll to Proceed UX Floating Button
    ========================================== */
+.scroll-to-proceed-btn.d-none {
+    display: none !important;
+}
+
 .scroll-to-proceed-btn {
     position: fixed;
     bottom: 82px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 990;
+    z-index: 10050 !important;
     background: #111827;
     color: #FFFFFF;
     border: 1.5px solid rgba(255, 255, 255, 0.2);
@@ -12864,7 +12868,7 @@ gmp-internal-camera-control,
     width: 48px;
     height: 48px;
     border-radius: 14px;
-    background: #E8F8EE;
+    background: rgba(26, 122, 46, 0.1) !important;
     display: grid;
     place-items: center;
     flex-shrink: 0;
@@ -12921,7 +12925,7 @@ gmp-internal-camera-control,
     width: 32px !important;
     height: 32px !important;
     border-radius: 50% !important;
-    background: #E8F8EE !important;
+    background: rgba(26, 122, 46, 0.1) !important;
     display: grid !important;
     place-items: center !important;
     flex-shrink: 0 !important;
@@ -12947,7 +12951,7 @@ gmp-internal-camera-control,
 .route-line-dotted {
     width: 2px !important;
     height: 100% !important;
-    border-left: 2px dotted #00B83F !important;
+    border-left: 2px dotted rgb(26, 122, 46) !important;
     margin-left: 15px !important;
 }
 
@@ -12964,8 +12968,8 @@ gmp-internal-camera-control,
 }
 
 .mockup-input-box:focus-within {
-    border-color: #00B83F !important;
-    box-shadow: 0 0 0 3px rgba(0, 184, 63, 0.12) !important;
+    border-color: rgb(26, 122, 46) !important;
+    box-shadow: 0 0 0 3px rgba(26, 122, 46, 0.12) !important;
 }
 
 .mockup-field-input {
@@ -12992,8 +12996,8 @@ gmp-internal-camera-control,
     height: 32px !important;
     border-radius: 50% !important;
     border: none !important;
-    background: #E8F8EE !important;
-    color: #00B83F !important;
+    background: rgba(26, 122, 46, 0.1) !important;
+    color: rgb(26, 122, 46) !important;
     display: grid !important;
     place-items: center !important;
     flex-shrink: 0 !important;
@@ -13003,7 +13007,7 @@ gmp-internal-camera-control,
 
 .mockup-inline-action-btn:hover,
 .mockup-inline-swap-btn:hover {
-    background: #DCFCE7 !important;
+    background: rgba(26, 122, 46, 0.18) !important;
     transform: scale(1.04) !important;
 }
 
@@ -13012,7 +13016,7 @@ gmp-internal-camera-control,
     transform: scale(0.92) !important;
 }
 
-/* Options Below Card (Matches Mockup) */
+/* Quick Location Options List Below Card */
 .mockup-options-list {
     display: flex !important;
     flex-direction: column !important;
@@ -13021,83 +13025,83 @@ gmp-internal-camera-control,
 }
 
 .mockup-action-card {
-    width: 100% !important;
-    background: #ffffff !important;
-    border: 1px solid #E2E8F0 !important;
-    border-radius: 16px !important;
-    padding: 12px 16px !important;
-    display: flex !important;
-    align-items: center !important;
-    cursor: pointer !important;
-    text-align: left !important;
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.02) !important;
-    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important;
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    text-align: left;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.02);
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .mockup-action-card:hover {
-    background: #F8FAFC !important;
-    border-color: #CBD5E1 !important;
+    background: #F8FAFC;
+    border-color: rgb(26, 122, 46);
 }
 
 .mockup-action-card:active {
-    transform: scale(0.985) !important;
+    transform: scale(0.985);
 }
 
 .mockup-action-icon-badge {
-    width: 42px !important;
-    height: 42px !important;
-    border-radius: 12px !important;
-    background: #E8F8EE !important;
-    display: grid !important;
-    place-items: center !important;
-    margin-right: 14px !important;
-    flex-shrink: 0 !important;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(26, 122, 46, 0.1) !important;
+    display: grid;
+    place-items: center;
+    margin-right: 14px;
+    flex-shrink: 0;
 }
 
 .mockup-action-text {
-    flex: 1 !important;
+    flex: 1;
 }
 
 .mockup-action-text strong {
-    display: block !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    color: #0F172A !important;
-    line-height: 1.25 !important;
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: #0F172A;
+    line-height: 1.25;
 }
 
 .mockup-action-text small {
-    display: block !important;
-    font-size: 12.5px !important;
-    color: #64748B !important;
-    margin-top: 2px !important;
+    display: block;
+    font-size: 12.5px;
+    color: #64748B;
+    margin-top: 2px;
 }
 
 .mockup-chevron {
-    flex-shrink: 0 !important;
-    margin-left: 8px !important;
+    flex-shrink: 0;
+    margin-left: 8px;
 }
 
 .mockup-pill-btn-primary {
-    width: 100% !important;
-    background-color: #00B83F !important;
+    width: 100%;
+    background-color: rgb(26, 122, 46) !important;
     border: none !important;
     border-radius: 16px !important;
     padding: 14px 18px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     color: #ffffff !important;
     font-size: 15.5px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
-    box-shadow: 0 4px 14px rgba(0, 184, 63, 0.25) !important;
+    box-shadow: 0 4px 14px rgba(26, 122, 46, 0.25) !important;
     transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease !important;
 }
 
 .mockup-pill-btn-primary:hover {
-    background-color: #00A337 !important;
-    box-shadow: 0 6px 18px rgba(0, 184, 63, 0.35) !important;
+    background-color: rgb(20, 100, 38) !important;
+    box-shadow: 0 6px 18px rgba(26, 122, 46, 0.35) !important;
 }
 
 .mockup-pill-btn-primary:active {
@@ -13105,15 +13109,15 @@ gmp-internal-camera-control,
 }
 
 .mockup-pill-btn-outline {
-    width: 100% !important;
+    width: 100%;
     background-color: #ffffff !important;
-    border: 1.5px solid #00B83F !important;
+    border: 1.5px solid rgb(26, 122, 46) !important;
     border-radius: 16px !important;
     padding: 13px 18px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    color: #00B83F !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: rgb(26, 122, 46) !important;
     font-size: 15.5px !important;
     font-weight: 700 !important;
     cursor: pointer !important;
@@ -13121,11 +13125,19 @@ gmp-internal-camera-control,
 }
 
 .mockup-pill-btn-outline:hover {
-    background-color: #F0FDF4 !important;
+    background-color: rgba(26, 122, 46, 0.06) !important;
 }
 
 .mockup-pill-btn-outline:active {
     transform: scale(0.985) !important;
+}
+
+/* Guaranteed display none override for hidden buttons */
+.mockup-action-card.d-none,
+.mockup-pill-btn-primary.d-none,
+.mockup-pill-btn-outline.d-none,
+#quick-location-chips-row .d-none {
+    display: none !important;
 }
 
 /* Hide driver holding / ETA tracking bar permanently */

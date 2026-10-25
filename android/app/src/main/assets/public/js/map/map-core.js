@@ -789,16 +789,7 @@ function addGoogleMapStyles() {
             line-height: 1.45;
         }
 
-        .destination-map-pick-btn {
-            margin-top: 12px;
-            border: 0;
-            border-radius: 8px;
-            background: #15803d;
-            color: #fff;
-            font-weight: 800;
-            padding: 10px 12px;
-            width: 100%;
-        }
+        /* .destination-map-pick-btn replaced by mockup design */
 
         .is-location-pick-mode,
         .is-location-pick-mode * {
@@ -3494,6 +3485,7 @@ function setupPickupSearchListeners() {
     pickupInput.addEventListener("focus", () => {
         hideDestinationSuggestions();
         hidePickupSuggestions();
+        window.updateQuickLocationOptions?.('pickup');
     });
 
     pickupInput.addEventListener("input", () => {
@@ -3588,6 +3580,7 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
             pickupInput.value = resolved.mainName || resolved.name;
             rememberPickupLocation(resolved, pickupInput.value);
             hidePickupSuggestions();
+            window.updateQuickLocationOptions?.(null);
             addPickupMarker(resolved);
             window.mapInstance?.panTo(googleLatLngLiteral(resolved));
             window.mapInstance?.setZoom(15);
@@ -3712,6 +3705,7 @@ async function completePickupMapPick(lat, lng) {
     pickMode.pickupInput.value = pickup.name;
     rememberPickupLocation(pickup, pickup.name);
     hideCenterMapPicker();
+    window.updateQuickLocationOptions?.(null);
     addPickupMarker(pickup);
     window.mapInstance?.panTo({ lat, lng });
     window.mapInstance?.setZoom(15);
@@ -3870,6 +3864,7 @@ function setupFareEngineListeners() {
     dropInput.addEventListener("focus", () => {
         hidePickupSuggestions();
         hideDestinationSuggestions();
+        window.updateQuickLocationOptions?.('destination');
     });
 
     dropInput.addEventListener("input", (event) => {
@@ -4358,27 +4353,14 @@ function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareA
                 </span>
             </button>
         `).join("")}
-        <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;vertical-align:text-bottom;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span>Select drop on map</span>
-        </button>
     `;
-
-    suggestions.querySelector("#choose-destination-on-map-btn")?.addEventListener("click", () => {
-        startDestinationMapPick({
-            name: dropInput.value.trim() || "Pinned destination",
-            mainName: dropInput.value.trim() || "Pinned destination",
-            source: "google-map-pick",
-            provider: "google",
-            typeHint: "Pinned location"
-        }, dropInput, fareQuoteBox, fareAmountSpan);
-    });
 
     suggestions.querySelectorAll(".destination-suggestion-item").forEach((item) => {
         item.addEventListener("click", async () => {
             const selected = destinations[Number(item.dataset.index)];
             if (!selected) return;
             await chooseDestination(selected, dropInput, fareQuoteBox, fareAmountSpan);
+            window.updateQuickLocationOptions?.(null);
         });
     });
 
@@ -4455,6 +4437,7 @@ function startDestinationMapPick(destination, dropInput, fareQuoteBox, fareAmoun
 
     dropInput.value = destination.mainName || destination.name || dropInput.value;
 }
+window.startDestinationMapPick = startDestinationMapPick;
 
 async function reverseGeocodeLocation(lat, lng) {
     try {
@@ -4527,6 +4510,7 @@ async function completeDestinationMapPick(lat, lng) {
     }
 
     hideCenterMapPicker();
+    window.updateQuickLocationOptions?.(null);
     pickMode.dropInput.value = destination.mainName || destination.name || destination.fullAddress || "Pinned destination";
     window.selectedDestination = buildSelectedDestination(destination);
     renderDestinationFare(destination, pickMode.fareQuoteBox, pickMode.fareAmountSpan);

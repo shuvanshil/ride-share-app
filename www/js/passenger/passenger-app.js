@@ -2890,28 +2890,25 @@ addOptionalClickListener('pending-rebook-btn', () => {
 // ==========================================
 let scrollHintTimer = null;
 
-function isElementInViewport(el) {
-    if (!el) return false;
-    const rect = el.getBoundingClientRect();
+function hasUserScrolledToVehicleOptions() {
+    const vehicleSection = document.getElementById('ride-service-options');
+    if (!vehicleSection || vehicleSection.classList.contains('d-none')) return true;
+
+    const rect = vehicleSection.getBoundingClientRect();
     const windowHeight = window.innerHeight || document.documentElement.clientHeight;
-    return (
-        rect.top < windowHeight * 0.85 &&
-        rect.bottom > 0
-    );
+    return rect.top < (windowHeight * 0.7);
 }
 
 function startScrollHintTimer() {
     if (scrollHintTimer) clearTimeout(scrollHintTimer);
-    const vehicleSection = document.getElementById('ride-service-options');
-    if (!vehicleSection || isElementInViewport(vehicleSection)) return;
 
     scrollHintTimer = setTimeout(() => {
-        const vehicleSec = document.getElementById('ride-service-options');
-        if (vehicleSec && !vehicleSec.classList.contains('d-none') && !isElementInViewport(vehicleSec) && !currentPassengerRideId) {
+        const vehicleSection = document.getElementById('ride-service-options');
+        if (vehicleSection && !vehicleSection.classList.contains('d-none') && !hasUserScrolledToVehicleOptions() && !currentPassengerRideId) {
             const btn = document.getElementById('scroll-to-proceed-btn');
             if (btn) btn.classList.remove('d-none');
         }
-    }, 3000);
+    }, 1000);
 }
 
 function hideScrollHintButton() {
@@ -2927,16 +2924,16 @@ function handleUserScroll() {
     const vehicleSection = document.getElementById('ride-service-options');
     if (!vehicleSection || vehicleSection.classList.contains('d-none')) return;
 
-    if (isElementInViewport(vehicleSection)) {
+    if (hasUserScrolledToVehicleOptions()) {
         hideScrollHintButton();
     } else if (scrollHintTimer) {
         clearTimeout(scrollHintTimer);
         scrollHintTimer = setTimeout(() => {
-            if (vehicleSection && !vehicleSection.classList.contains('d-none') && !isElementInViewport(vehicleSection) && !currentPassengerRideId) {
+            if (vehicleSection && !vehicleSection.classList.contains('d-none') && !hasUserScrolledToVehicleOptions() && !currentPassengerRideId) {
                 const btn = document.getElementById('scroll-to-proceed-btn');
                 if (btn) btn.classList.remove('d-none');
             }
-        }, 3000);
+        }, 1500);
     }
 }
 

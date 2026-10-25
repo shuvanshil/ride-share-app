@@ -398,6 +398,8 @@ function bindServicesControls() {
         }
         savedPlaces?.classList.remove('d-none');
     }
+    window.updateQuickLocationOptions = updateQuickLocationOptions;
+    updateQuickLocationOptions(null);
 
     const pIn = document.getElementById('pickup-input');
     const dIn = document.getElementById('drop-input');
