@@ -1321,6 +1321,180 @@ def get_active_pending_request(
     return {"ok": True, "hasActivePending": True, "pendingRequest": {**data, "requestId": doc.id}}
 
 
+
+def check_driver_available_for_pickup(
+    db: Any,
+    pickup_lat: float,
+    pickup_lng: float,
+    search_radius_km: float = 5.0,
+    vehicle_type: str = "auto",
+) -> Optional[dict[str, Any]]:
+    """Check whether any online/searching driver is currently within pickup radius."""
+    if not db or pickup_lat is None or pickup_lng is None:
+        return None
+    req_veh = (vehicle_type or "auto").strip().lower()
+
+    # 1. First check DAP (Dispatch Available Pool)
+    try:
+        from ..dispatch.config import COLLECTION_DAP
+        stream = db.collection(COLLECTION_DAP).where("state", "in", ["IDLE", "SHARE_OPEN"]).stream()
+        for doc in stream:
+            d_val = doc.to_dict() or {}
+            d_veh = str(d_val.get("vehicle_type") or "auto").strip().lower()
+            if req_veh != "any" and req_veh != d_veh and req_veh != "share":
+                continue
+            d_loc = d_val.get("loc") or {}
+            d_lat = d_loc.get("lat")
+            d_lng = d_loc.get("lng")
+            if d_lat is not None and d_lng is not None:
+                dist = _haversine_km(float(d_lat), float(d_lng), pickup_lat, pickup_lng)
+                if dist <= search_radius_km:
+                    return {"driverId": doc.id, "distanceKm": dist, "vehicleType": d_veh}
+    except Exception as exc:
+        logger.debug("DAP check error in check_driver_available_for_pickup: %s", exc)
+
+    # 2. Fallback check driverPresence
+    try:
+        p_stream = db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).limit(25).stream()
+        for dp_doc in p_stream:
+            dp_val = dp_doc.to_dict() or {}
+            if dp_val.get("isConnected") is False:
+                continue
+            dp_loc = dp_val.get("driverLocation") or {}
+            dp_lat = dp_loc.get("lat")
+            dp_lng = dp_loc.get("lng")
+            if dp_lat is not None and dp_lng is not None:
+                dp_veh = str(dp_val.get("vehicle_type") or dp_val.get("vehicleType") or "auto").strip().lower()
+                if req_veh != "any" and req_veh != dp_veh and req_veh != "share":
+                    continue
+                dist = _haversine_km(float(dp_lat), float(dp_lng), pickup_lat, pickup_lng)
+                if dist <= search_radius_km:
+                    return {"driverId": dp_doc.id, "distanceKm": dist, "vehicleType": dp_veh}
+    except Exception as exc:
+        logger.debug("driverPresence check error in check_driver_available_for_pickup: %s", exc)
+
+    return None
+
+
+def check_and_notify_pending_passengers(
+    db: Any,
+    driver_uid: str,
+    driver_loc: Optional[dict[str, Any]] = None,
+    driver_vehicle_type: str = "auto",
+) -> int:
+    """Notify any nearby waiting passengers in notify_only or scheduled mode when a driver is free."""
+    if not db or not driver_uid:
+        return 0
+    if not driver_loc or not isinstance(driver_loc, dict):
+        return 0
+    d_lat = _coord_or_none(driver_loc.get("lat"))
+    d_lng = _coord_or_none(driver_loc.get("lng"))
+    if d_lat is None or d_lng is None:
+        return 0
+
+    driver_veh = (driver_vehicle_type or "auto").strip().lower()
+    now_dt = datetime.now(timezone.utc)
+    now_ts = now_dt.timestamp()
+    notified_count = 0
+
+    try:
+        pending_docs = list(
+            db.collection("pendingRideRequests")
+            .where("status", "==", "pending")
+            .limit(50)
+            .stream()
+        )
+        for doc in pending_docs:
+            data = doc.to_dict() or {}
+            passenger_id = str(data.get("passengerId") or "")
+            if not passenger_id or passenger_id == driver_uid:
+                continue
+
+            last_notified = data.get("lastNotifiedAt")
+            if last_notified:
+                last_sec = _timestamp_seconds(last_notified)
+                if last_sec and (now_ts - last_sec) < 300:
+                    continue
+
+            rejected_drivers = list(data.get("rejected_driver_ids") or [])
+            if driver_uid in rejected_drivers:
+                continue
+
+            mode = str(data.get("mode") or "notify_only").strip().lower()
+            if mode == "schedule":
+                activates_at = data.get("activatesAt")
+                if activates_at:
+                    act_dt = _to_utc_datetime(activates_at)
+                    if act_dt and act_dt > (now_dt + timedelta(minutes=20)):
+                        continue
+
+            req_veh = str(data.get("vehicleType") or "auto").strip().lower()
+            if req_veh != "any" and req_veh != "share" and driver_veh != "any" and req_veh != driver_veh:
+                continue
+
+            pickup = data.get("pickup") or {}
+            p_lat = _coord_or_none(pickup.get("lat"))
+            p_lng = _coord_or_none(pickup.get("lng"))
+            if p_lat is None or p_lng is None:
+                continue
+
+            search_radius_m = float(data.get("searchRadius") or 5000.0)
+            search_radius_km = search_radius_m / 1000.0
+            dist = _haversine_km(d_lat, d_lng, p_lat, p_lng)
+            if dist <= search_radius_km:
+                doc.reference.update({
+                    "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
+                    "matchedDriverId": driver_uid,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+                try:
+                    db.collection("dispatchNotifyMe").document(doc.id).update({
+                        "lastNotifiedAt": fb_firestore.SERVER_TIMESTAMP,
+                        "updated_at": now_ts,
+                    })
+                except Exception:
+                    pass
+
+                p_name = pickup.get("name") or "your pickup location"
+                title = "Driver Available Nearby!" if mode != "schedule" else "Driver Available for Scheduled Ride!"
+                body = f"An approved driver is now available near {p_name}. Tap to start searching now!"
+                _send_passenger_push_and_inapp(
+                    db=db,
+                    passenger_id=passenger_id,
+                    title=title,
+                    body=body,
+                    data_payload={
+                        "requestId": doc.id,
+                        "type": "pending_driver_available",
+                        "driverId": driver_uid,
+                        "url": f"{APP_BASE_URL}/services?restorePending={doc.id}",
+                    },
+                )
+                try:
+                    DispatchPoolManager.enqueue_notification(
+                        db,
+                        recipient_id=passenger_id,
+                        recipient_role="passenger",
+                        notif_type="pending_driver_available",
+                        title=title,
+                        body=body,
+                        data_payload={
+                            "requestId": doc.id,
+                            "type": "pending_driver_available",
+                            "driverId": driver_uid,
+                            "url": f"{APP_BASE_URL}/services?restorePending={doc.id}",
+                        },
+                    )
+                except Exception:
+                    pass
+
+                notified_count += 1
+    except Exception as exc:
+        logger.warning("Error in check_and_notify_pending_passengers: %s", exc)
+
+    return notified_count
+
+
 @router.post("/pending-request")
 async def create_pending_request(
     body: PendingRideRequestBody,
@@ -1423,13 +1597,41 @@ async def create_pending_request(
         "rejected_driver_ids": [],
     }
 
-    req_ref.set(pending_doc_data, merge=True)
-
-    # Immediately trigger activation & driver matching sweep if due or searching
+    # Check if an approved driver is already available nearby right now
+    search_radius_m = float(body.searchRadius or 5000.0)
+    search_radius_km = search_radius_m / 1000.0
+    immediate_driver = None
     try:
-        activate_due_scheduled_requests(db)
-    except Exception as exc:
-        print(f"Immediate scheduled activation error: {exc}")
+        immediate_driver = check_driver_available_for_pickup(
+            db,
+            pickup_lat=pickup_lat,
+            pickup_lng=pickup_lng,
+            search_radius_km=search_radius_km,
+            vehicle_type=pending_vehicle_type,
+        )
+    except Exception as imm_err:
+        logger.debug("Immediate driver check error: %s", imm_err)
+
+    if immediate_driver:
+        pending_doc_data["lastNotifiedAt"] = fb_firestore.SERVER_TIMESTAMP
+        pending_doc_data["matchedDriverId"] = immediate_driver["driverId"]
+        try:
+            _send_passenger_push_and_inapp(
+                db=db,
+                passenger_id=uid,
+                title="Driver Available Nearby!" if mode != "schedule" else "Driver Available for Scheduled Ride!",
+                body=f"An approved driver is now available near {body.pickupName}. Tap to start searching now!",
+                data_payload={
+                    "requestId": req_ref.id,
+                    "type": "pending_driver_available",
+                    "driverId": immediate_driver["driverId"],
+                    "url": f"{APP_BASE_URL}/services?restorePending={req_ref.id}",
+                },
+            )
+        except Exception as notif_err:
+            logger.debug("Error sending immediate notification: %s", notif_err)
+
+    req_ref.set(pending_doc_data, merge=True)
 
     try:
         if mode == "auto":
@@ -1471,6 +1673,8 @@ async def create_pending_request(
         "requestId": req_ref.id,
         "mode": mode,
         "expiresAt": expires_at.isoformat(),
+        "driverAvailableImmediately": bool(immediate_driver),
+        "matchedDriverId": immediate_driver["driverId"] if immediate_driver else None,
     }
 
 
@@ -2153,17 +2357,22 @@ def transition_driver_ride(
                         profile_data={**profile, "uid": uid},
                     )
                     if availability_status == "searching":
+                        driver_eff_loc = profile.get("driverLocation") or profile.get("location")
                         try:
                             DispatchPoolManager.sync_driver_dap(
                                 db=db,
                                 driver_id=uid,
-                                loc=profile.get("driverLocation") or profile.get("location"),
+                                loc=driver_eff_loc,
                                 availability=availability_status,
                                 vehicle_type=_driver_type(profile),
                             )
                         except Exception:
                             pass
-                        _dispatch_with_fallback(db, uid, profile, profile.get("driverLocation") or profile.get("location"))
+                        try:
+                            check_and_notify_pending_passengers(db, uid, driver_eff_loc, _driver_type(profile))
+                        except Exception as notify_err:
+                            logger.warning("Error notifying pending passengers on driver trip completion: %s", notify_err)
+                        _dispatch_with_fallback(db, uid, profile, driver_eff_loc)
                 except Exception:
                     pass
             elif open_share_trips:
@@ -2363,6 +2572,10 @@ def update_driver_availability(
                     activate_due_scheduled_requests(db_inst)
                 except Exception as sched_err:
                     logger.warning("Error activating scheduled requests on driver online: %s", sched_err)
+                try:
+                    check_and_notify_pending_passengers(db_inst, driver_uid, driver_loc, _driver_type(driver_prof))
+                except Exception as notify_err:
+                    logger.warning("Error notifying pending passengers on driver online: %s", notify_err)
                 try:
                     _dispatch_with_fallback(db_inst, driver_uid, driver_prof, driver_loc)
                 except Exception as disp_err:
@@ -2621,6 +2834,10 @@ def update_driver_location(
                 )
             except Exception:
                 pass
+            try:
+                check_and_notify_pending_passengers(db, uid, location, _driver_type(profile))
+            except Exception as notify_err:
+                logger.warning("Error notifying pending passengers on driver location: %s", notify_err)
             _dispatch_with_fallback(db, uid, profile, location)
         elif ride_id:
             try:

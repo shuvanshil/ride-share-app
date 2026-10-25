@@ -1269,6 +1269,12 @@ function hidePassengerCancelButton() {
 }
 
 function resetPassengerBookingUi(options = {}) {
+    if (activePendingRequestId) {
+        // While user has an active pending/waiting request, do NOT clear destination or hide pending card
+        const pendingCard = document.getElementById('pending-active-card');
+        if (pendingCard) pendingCard.classList.remove('d-none');
+        return;
+    }
     const preserveSelections = Boolean(options.preserveSelections);
     clearDispatchExpansionTimer();
     stopSearchStateUi();
@@ -1581,6 +1587,7 @@ function closeScheduleModal() {
 
 async function confirmScheduleRide() {
     const timeInput = document.getElementById('schedule-time-input');
+    const confirmBtn = document.getElementById('schedule-modal-confirm-btn');
     if (!timeInput?.value) {
         await showAlert("Please choose a pickup time.");
         return;
@@ -1590,25 +1597,60 @@ async function confirmScheduleRide() {
         await showAlert("Please select a time in the future.");
         return;
     }
-    closeScheduleModal();
-    await submitPendingRideRequest("schedule", chosenDate.toISOString());
+    const origBtnHtml = confirmBtn ? confirmBtn.innerHTML : "";
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Scheduling...';
+    }
+    window.LiphtUpLoading?.showPageLoader?.(t('services.scheduling_ride', "Scheduling your ride..."));
+
+    try {
+        closeScheduleModal();
+        await submitPendingRideRequest("schedule", chosenDate.toISOString());
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = origBtnHtml || "Confirm Schedule";
+        }
+        window.LiphtUpLoading?.hidePageLoader?.();
+    }
 }
 
 async function handleNotifyMeWhenAvailable() {
-    closeModalById('notify-ride-modal');
-    try {
-        const { registerForPush, sendTokenToBackend } = await import('../platform/notifications.js');
-        const pushResult = await registerForPush();
-        if (pushResult?.ok && pushResult.token) {
-            await sendTokenToBackend(pushResult.token);
-        } else if (pushResult?.reason === "denied") {
-            await showAlert("Notification permission denied. We won't be able to send you background push notifications, but we'll monitor in-app.");
-        }
-    } catch (e) {
-        console.warn("Push token registration check skipped:", e);
+    const confirmBtn = document.getElementById('notify-modal-confirm-btn');
+    const origBtnHtml = confirmBtn ? confirmBtn.innerHTML : "";
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving...';
     }
+    window.LiphtUpLoading?.showPageLoader?.(t('services.saving_waiting_request', "Setting up notifications..."));
 
-    await submitPendingRideRequest("notify_only");
+    try {
+        const pushPromise = (async () => {
+            try {
+                const { registerForPush, sendTokenToBackend } = await import('../platform/notifications.js');
+                const pushResult = await registerForPush();
+                if (pushResult?.ok && pushResult.token) {
+                    await sendTokenToBackend(pushResult.token);
+                }
+            } catch (e) {
+                console.warn("Push token registration check skipped:", e);
+            }
+        })();
+        await Promise.race([
+            pushPromise,
+            new Promise(res => setTimeout(res, 1200))
+        ]);
+
+        closeModalById('notify-ride-modal');
+        await submitPendingRideRequest("notify_only");
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = origBtnHtml || "Notify Me";
+        }
+        window.LiphtUpLoading?.hidePageLoader?.();
+    }
 }
 
 async function handleIncreaseSearchRadius() {
@@ -1680,6 +1722,17 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
         }
 
         activePendingRequestId = data.requestId;
+        window._ignoringCancelledRideId = currentPassengerRideId;
+
+        // Clean any rideId query param from URL
+        try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('rideId')) {
+                url.searchParams.delete('rideId');
+                history.replaceState({}, '', url.toString());
+            }
+        } catch (_) {}
+
         clearDispatchExpansionTimer();
         hideNoDriverOptions();
         stopSearchStateUi();
@@ -1694,11 +1747,21 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
             cancelActiveRideSilently(oldRideId);
         }
 
-        await showAlert(
-            mode === "schedule"
-                ? t('services.ride_scheduled_alert', "Ride scheduled! We'll auto-search for nearby drivers when your time arrives.")
-                : t('services.queue_joined_alert', "You're in queue! We'll notify you the moment an approved driver becomes free.")
-        );
+        if (data.driverAvailableImmediately) {
+            const availablePrompt = document.getElementById('pending-driver-available-prompt');
+            if (availablePrompt) availablePrompt.classList.remove('d-none');
+            const titleEl = document.getElementById('pending-mode-title');
+            const descEl = document.getElementById('pending-mode-desc');
+            if (titleEl) titleEl.innerText = t('services.drivers_available_title', "Drivers are available!");
+            if (descEl) descEl.innerText = t('services.drivers_available_sub', "Some drivers are now available for your ride. Would you like to start the searching again?");
+            await showAlert(t('services.drivers_available_now', "A driver is available right now! Tap 'Yes, start the search' to find a driver."));
+        } else {
+            await showAlert(
+                mode === "schedule"
+                    ? t('services.ride_scheduled_alert', "Ride scheduled! We'll auto-search for nearby drivers when your time arrives.")
+                    : t('services.queue_joined_alert', "You're in queue! We'll notify you the moment an approved driver becomes free.")
+            );
+        }
     } catch (e) {
         console.error("Pending request error:", e);
         await showAlert(e.message || t('services.save_pending_failed', "Could not save pending request."));
@@ -2203,6 +2266,7 @@ window.addEventListener('user-session-ready', (e) => {
 
 async function restorePassengerActiveRide() {
     if (!currentUser || currentUser.role !== "passenger") return;
+    if (activePendingRequestId) return;
 
     try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -2423,6 +2487,10 @@ requestRideButton.addEventListener('click', async () => {
 }
 
 function handlePassengerRideCancelled(ride) {
+    const cancelledRideId = ride?.id || ride?.rideId;
+    if (activePendingRequestId || (cancelledRideId && cancelledRideId === window._ignoringCancelledRideId)) {
+        return;
+    }
     clearDispatchExpansionTimer();
     stopSearchStateUi();
     hideNoDriverOptions();
@@ -2987,9 +3055,6 @@ function listenToPendingRequestUpdates(requestId) {
                 currentPassengerRideId = rideId;
                 listenToRideStatusUpdates(rideId);
             }
-        } else if (data.status === "pending") {
-            const pendingCard = document.getElementById('pending-active-card');
-            if (pendingCard) pendingCard.classList.remove('d-none');
         } else if (data.status === "cancelled" || data.status === "expired") {
             const pendingCard = document.getElementById('pending-active-card');
             if (pendingCard) pendingCard.classList.add('d-none');
@@ -3206,6 +3271,10 @@ window.addEventListener('languageChanged', () => {
 });
 
 async function refreshPassengerActiveRideStatus() {
+    if (activePendingRequestId) {
+        listenToPendingRequestUpdates(activePendingRequestId);
+        return;
+    }
     const rideId = currentPassengerRideId || window._currentActiveRideId;
     if (rideId) {
         try {

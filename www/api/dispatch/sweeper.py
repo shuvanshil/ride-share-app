@@ -531,11 +531,13 @@ def sweep_notify_me(db: Any, now: float) -> int:
                 if matched_driver_id:
                     doc.reference.update({
                         "lastNotifiedAt": now,
+                        "matchedDriverId": matched_driver_id,
                         "updated_at": now,
                     })
                     try:
                         db.collection("pendingRideRequests").document(doc.id).update({
                             "lastNotifiedAt": now,
+                            "matchedDriverId": matched_driver_id,
                             "updatedAt": now,
                         })
                     except Exception:
