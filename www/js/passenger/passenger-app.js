@@ -2492,7 +2492,7 @@ requestRideButton.addEventListener('click', async () => {
 }
 
 function handlePassengerRideCancelled(ride) {
-    const cancelledRideId = ride?.id || ride?.rideId;
+    const cancelledRideId = ride?.id || ride?.rideId || currentPassengerRideId || window._currentActiveRideId;
     if (activePendingRequestId || (cancelledRideId && cancelledRideId === window._ignoringCancelledRideId)) {
         return;
     }
@@ -2512,7 +2512,6 @@ function handlePassengerRideCancelled(ride) {
         activeRideListener();
         activeRideListener = null;
     }
-    const cancelledRideId = ride?.id || ride?.rideId || currentPassengerRideId || window._currentActiveRideId;
     if (ride?.status === "cancelled_by_driver") {
         if (cancelledRideId && cancelledRideId !== window._lastAlertedCancelledRideId) {
             window._lastAlertedCancelledRideId = cancelledRideId;

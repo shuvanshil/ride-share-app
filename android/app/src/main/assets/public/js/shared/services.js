@@ -377,11 +377,58 @@ function bindServicesControls() {
         });
     }
 
+    function updateQuickLocationOptions(mode) {
+        const optCurrentLoc = document.getElementById('option-use-current-location-btn');
+        const optSelectPickup = document.getElementById('option-select-pickup-map-btn');
+        const optSelectDrop = document.getElementById('option-select-drop-map-btn');
+        const savedPlaces = document.getElementById('chip-saved-places-btn');
+
+        if (mode === 'pickup') {
+            optCurrentLoc?.classList.remove('d-none');
+            optSelectPickup?.classList.remove('d-none');
+            optSelectDrop?.classList.add('d-none');
+        } else if (mode === 'destination') {
+            optCurrentLoc?.classList.add('d-none');
+            optSelectPickup?.classList.add('d-none');
+            optSelectDrop?.classList.remove('d-none');
+        } else {
+            optCurrentLoc?.classList.add('d-none');
+            optSelectPickup?.classList.add('d-none');
+            optSelectDrop?.classList.add('d-none');
+        }
+        savedPlaces?.classList.remove('d-none');
+    }
+
+    const pIn = document.getElementById('pickup-input');
+    const dIn = document.getElementById('drop-input');
+
+    pIn?.addEventListener('focus', () => updateQuickLocationOptions('pickup'));
+    pIn?.addEventListener('click', () => updateQuickLocationOptions('pickup'));
+
+    dIn?.addEventListener('focus', () => updateQuickLocationOptions('destination'));
+    dIn?.addEventListener('click', () => updateQuickLocationOptions('destination'));
+
+    document.addEventListener('pointerdown', (e) => {
+        const locCard = document.querySelector('.services-location-card');
+        const chipsRow = document.getElementById('quick-location-chips-row');
+        const pickupSugg = document.getElementById('pickup-suggestions');
+        const dropSugg = document.getElementById('destination-suggestions');
+
+        if (locCard?.contains(e.target) || chipsRow?.contains(e.target) || pickupSugg?.contains(e.target) || dropSugg?.contains(e.target)) {
+            return;
+        }
+        updateQuickLocationOptions(null);
+    });
+
     const inlineCurrentLocBtn = document.getElementById('pickup-current-loc-inline-btn');
     if (inlineCurrentLocBtn) {
-        inlineCurrentLocBtn.addEventListener('click', () => {
-            if (window.useCurrentPickupLocation) {
-                window.useCurrentPickupLocation();
+        inlineCurrentLocBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof useCurrentPickupLocation === 'function') {
+                await useCurrentPickupLocation();
+            } else if (typeof window.useCurrentPickupLocation === 'function') {
+                await window.useCurrentPickupLocation();
             } else if (servicesRefreshBtn) {
                 servicesRefreshBtn.click();
             }
@@ -390,9 +437,13 @@ function bindServicesControls() {
 
     const optCurrentLocBtn = document.getElementById('option-use-current-location-btn');
     if (optCurrentLocBtn) {
-        optCurrentLocBtn.addEventListener('click', () => {
-            if (window.useCurrentPickupLocation) {
-                window.useCurrentPickupLocation();
+        optCurrentLocBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof useCurrentPickupLocation === 'function') {
+                await useCurrentPickupLocation();
+            } else if (typeof window.useCurrentPickupLocation === 'function') {
+                await window.useCurrentPickupLocation();
             } else if (servicesRefreshBtn) {
                 servicesRefreshBtn.click();
             }
@@ -401,10 +452,38 @@ function bindServicesControls() {
 
     const optSelectMapBtn = document.getElementById('option-select-pickup-map-btn');
     if (optSelectMapBtn) {
-        optSelectMapBtn.addEventListener('click', () => {
+        optSelectMapBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             const pInput = document.getElementById('pickup-input');
             if (window.startPickupMapPick) {
                 window.startPickupMapPick(pInput);
+                const mapSection = document.getElementById('services-map-card');
+                if (mapSection) {
+                    mapSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            } else {
+                window.dispatchEvent(new CustomEvent('request-destination-pick-on-map'));
+            }
+        });
+    }
+
+    const optSelectDropMapBtn = document.getElementById('option-select-drop-map-btn');
+    if (optSelectDropMapBtn) {
+        optSelectDropMapBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const dropInputEl = document.getElementById('drop-input');
+            const fareQuoteBox = document.getElementById('fare-quote-box');
+            const fareAmountSpan = document.getElementById('fare-amount') || document.getElementById('availability-price-amount');
+            if (window.startDestinationMapPick) {
+                window.startDestinationMapPick({
+                    name: dropInputEl?.value?.trim() || "Pinned destination",
+                    mainName: dropInputEl?.value?.trim() || "Pinned destination",
+                    source: "google-map-pick",
+                    provider: "google",
+                    typeHint: "Pinned location"
+                }, dropInputEl, fareQuoteBox, fareAmountSpan);
                 const mapSection = document.getElementById('services-map-card');
                 if (mapSection) {
                     mapSection.scrollIntoView({ behavior: 'smooth', block: 'center' });

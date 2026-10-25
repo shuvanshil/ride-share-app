@@ -12,7 +12,7 @@ import {
 const DEFAULT_PICKUP = { lat: 23.8315, lng: 91.2868 };
 const TRIPURA_CENTER = { lat: 23.8315, lng: 91.2868 };
 const PICKUP_CACHE_KEY = "liphtup_last_passenger_pickup";
-const DESTINATION_SEARCH_DEBOUNCE_MS = 180;
+const DESTINATION_SEARCH_DEBOUNCE_MS = 75;
 const AUTOCOMPLETE_CACHE_TTL_MS = 2 * 60 * 1000;
 const AUTOCOMPLETE_CACHE_MAX_ENTRIES = 40;
 const MAX_VISIBLE_SUGGESTIONS = 5;
@@ -3520,8 +3520,6 @@ function setupPickupSearchListeners() {
         const cachedPickups = getCachedAutocompleteResults(query);
         if (cachedPickups) {
             showPickupSuggestions(pickupInput, cachedPickups.slice(0, MAX_VISIBLE_SUGGESTIONS));
-        } else {
-            hidePickupSuggestions();
         }
 
         pickupSearchTimer = setTimeout(async () => {
@@ -3747,13 +3745,24 @@ export async function useCurrentPickupLocation() {
 
     const existingDestination = window.selectedDestination;
     hidePickupSuggestions();
-    const coords = await getUserLocation();
-    addPickupMarker(coords);
-    window.mapInstance?.panTo(googleLatLngLiteral(coords));
-    window.mapInstance?.setZoom(15);
-    window.dispatchEvent(new CustomEvent("pickup-location-updated", {
-        detail: { name: coords.label, lat: coords.lat, lng: coords.lng }
-    }));
+
+    const previousValue = pickupInput.value;
+    pickupInput.placeholder = "Detecting current location...";
+    pickupInput.value = "";
+
+    try {
+        const coords = await getUserLocation();
+        pickupInput.value = coords.label || coords.fullAddress || "Current location";
+        addPickupMarker(coords);
+        window.mapInstance?.panTo(googleLatLngLiteral(coords));
+        window.mapInstance?.setZoom(16);
+        window.dispatchEvent(new CustomEvent("pickup-location-updated", {
+            detail: { name: pickupInput.value, lat: coords.lat, lng: coords.lng }
+        }));
+    } catch (err) {
+        console.warn("Could not retrieve current location:", err);
+        pickupInput.value = previousValue || "Current location";
+    }
 
     window.latestFareQuote = null;
     window.dispatchEvent(new CustomEvent("fare-quote-reset"));
@@ -4000,8 +4009,22 @@ function getCachedAutocompleteResults(query) {
             autocompleteCache.delete(key);
             continue;
         }
-        if (entry.locationKey !== locationKey || !entry.query.startsWith(normalizedQuery)) continue;
-        if (!bestMatch || entry.query.length < bestMatch.query.length) bestMatch = entry;
+        if (entry.locationKey !== locationKey) continue;
+        if (entry.query === normalizedQuery) {
+            return entry.results;
+        }
+        if (entry.query.startsWith(normalizedQuery)) {
+            if (!bestMatch || entry.query.length < bestMatch.query.length) bestMatch = entry;
+        } else if (normalizedQuery.startsWith(entry.query) && Array.isArray(entry.results) && entry.results.length) {
+            const words = normalizedQuery.split(/\s+/).filter(Boolean);
+            const filtered = entry.results.filter(r => {
+                const text = `${r.mainName || r.name || ""} ${r.fullAddress || ""}`.toLowerCase();
+                return words.every(w => text.includes(w));
+            });
+            if (filtered.length && (!bestMatch || entry.query.length > bestMatch.query.length)) {
+                bestMatch = { results: filtered, query: entry.query };
+            }
+        }
     }
     return bestMatch ? bestMatch.results : null;
 }
