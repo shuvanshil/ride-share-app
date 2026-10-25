@@ -3493,9 +3493,7 @@ function setupPickupSearchListeners() {
 
     pickupInput.addEventListener("focus", () => {
         hideDestinationSuggestions();
-        if (!pickupInput.readOnly) {
-            showPickupSuggestions(pickupInput, [], false);
-        }
+        hidePickupSuggestions();
     });
 
     pickupInput.addEventListener("input", () => {
@@ -3556,29 +3554,14 @@ async function searchGooglePickups(query) {
 }
 
 function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
-    const suggestions = ensurePickupSuggestions(pickupInput);
-    if (!pickups.length) {
-        suggestions.innerHTML = `
-            <button class="destination-suggestion-item use-current-pickup-item" type="button">
-                <span class="destination-suggestion-pin"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></span>
-                <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
-            </button>
-            <button class="destination-map-pick-btn choose-pickup-on-map-btn" type="button">Select pickup on map</button>
-            ${showEmptyMessage ? '<div class="destination-suggestion-empty">No Google result found for this pickup name.</div>' : ''}
-        `;
-        suggestions.querySelector(".use-current-pickup-item")?.addEventListener("click", useCurrentPickupLocation);
-        suggestions.querySelector(".choose-pickup-on-map-btn")?.addEventListener("click", () => startPickupMapPick(pickupInput));
-        suggestions.classList.add("is-visible");
+    if (!pickups || !pickups.length) {
+        hidePickupSuggestions();
         return;
     }
 
+    const suggestions = ensurePickupSuggestions(pickupInput);
     suggestions.innerHTML = `
         <div class="destination-suggestions-title">Pickup search results</div>
-        <button class="destination-suggestion-item use-current-pickup-item" type="button">
-            <span class="destination-suggestion-pin"><span class="webicon webicon-use-current-location" aria-hidden="true"></span></span>
-            <span><strong class="destination-suggestion-main">Use current location</strong><small class="destination-suggestion-sub">Detect this device's GPS location</small></span>
-        </button>
-        <button class="destination-map-pick-btn choose-pickup-on-map-btn" type="button">Select pickup on map</button>
         ${pickups.map((pickup, index) => `
             <button class="destination-suggestion-item" type="button" role="option" data-index="${index}">
                 <span class="destination-suggestion-pin"><span class="webicon webicon-current-location" aria-hidden="true"></span></span>
@@ -3590,9 +3573,6 @@ function showPickupSuggestions(pickupInput, pickups, showEmptyMessage = true) {
             </button>
         `).join("")}
     `;
-
-    suggestions.querySelector(".use-current-pickup-item")?.addEventListener("click", useCurrentPickupLocation);
-    suggestions.querySelector(".choose-pickup-on-map-btn")?.addEventListener("click", () => startPickupMapPick(pickupInput));
 
     suggestions.querySelectorAll(".destination-suggestion-item[data-index]").forEach((item) => {
         item.addEventListener("click", async () => {
@@ -3880,9 +3860,7 @@ function setupFareEngineListeners() {
     fareEngineListenersBound = true;
     dropInput.addEventListener("focus", () => {
         hidePickupSuggestions();
-        if (!passengerDestinationLocked && !dropInput.readOnly) {
-            showDestinationSuggestions(dropInput, [], fareQuoteBox, fareAmountSpan, false);
-        }
+        hideDestinationSuggestions();
     });
 
     dropInput.addEventListener("input", (event) => {
@@ -4326,30 +4304,22 @@ async function resolveGooglePlace(destination) {
 }
 
 function showDestinationSuggestions(dropInput, destinations, fareQuoteBox, fareAmountSpan, showEmptyMessage = true) {
-    const suggestions = ensureDestinationSuggestions(dropInput);
-
-    if (!destinations.length) {
+    if (!destinations || !destinations.length) {
+        if (!showEmptyMessage) {
+            hideDestinationSuggestions();
+            return;
+        }
+        const suggestions = ensureDestinationSuggestions(dropInput);
         suggestions.innerHTML = `
             <div class="destination-suggestion-empty">
-                ${showEmptyMessage ? '<div>No Google result found for this name.</div>' : ''}
-                <button id="choose-destination-on-map-btn" class="destination-map-pick-btn" type="button">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;vertical-align:text-bottom;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    <span>Select drop on map</span>
-                </button>
+                <div>No Google result found for this name.</div>
             </div>
         `;
-        suggestions.querySelector("#choose-destination-on-map-btn")?.addEventListener("click", () => {
-            startDestinationMapPick({
-                name: dropInput.value.trim() || "Pinned destination",
-                mainName: dropInput.value.trim() || "Pinned destination",
-                source: "google-map-pick",
-                provider: "google",
-                typeHint: "Pinned location"
-            }, dropInput, fareQuoteBox, fareAmountSpan);
-        });
         suggestions.classList.add("is-visible");
         return;
     }
+
+    const suggestions = ensureDestinationSuggestions(dropInput);
 
     suggestions.innerHTML = `
         <div class="destination-suggestions-title">Search results</div>

@@ -7237,69 +7237,7 @@ select.profile-field-input {
     font-weight: 500;
 }
 
-.services-location-card {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    padding: 12px 14px;
-    border: 1px solid #E5E7EB;
-    border-radius: 14px;
-    background: #FFFFFF;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-}
-
-.location-card-connector {
-    position: absolute;
-    left: 27.5px;
-    top: 36px;
-    bottom: 36px;
-    width: 1.5px;
-    background: #eee;
-    z-index: 0;
-}
-
-.location-field-divider {
-    height: 1px;
-    background: #f1f1f1;
-    margin: 4px 0 4px 44px;
-}
-
-.services-location-field {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 4px 0;
-}
-
-.location-dot-wrap {
-    width: 24px;
-    display: flex;
-    justify-content: center;
-}
-
-
-
-.location-input-wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-}
-
-.location-input-wrap label {
-    font-size: 11px;
-    color: #999;
-    margin-bottom: -2px;
-}
-
-.location-input-wrap .gy-input {
-    border: 0 !important;
-    padding: 4px 0 !important;
-    font-size: 15px !important;
-    font-weight: 600 !important;
-    box-shadow: none !important;
-    height: auto !important;
-    background: transparent !important;
-}
+/* Old location card styles removed */
 
 .gy-btn-success-subtle {
     background: #1A7A2E;
@@ -11572,108 +11510,7 @@ select.profile-field-input {
     font-weight: 500;
 }
 
-.services-location-card {
-    position: relative;
-    padding: 12px 14px;
-    border-radius: 16px;
-    border: 1px solid #E5E7EB;
-    background: #fff;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03);
-}
-
-.location-card-connector-dotted {
-    position: absolute;
-    left: 29px;
-    top: 36px;
-    bottom: 36px;
-    width: 2px;
-    border-left: 2px dotted #1A7A2E;
-    z-index: 1;
-    pointer-events: none;
-}
-
-.floating-swap-btn {
-    position: absolute;
-    right: 18px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 10;
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    border: 1px solid #E5E7EB;
-    background: #fff;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.09);
-    display: grid;
-    place-items: center;
-    cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.floating-swap-btn:hover {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
-    transform: translateY(-50%) scale(1.04);
-}
-
-.floating-swap-btn:active {
-    transform: translateY(-50%) scale(0.92);
-}
-
-.location-badge-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    z-index: 2;
-    flex-shrink: 0;
-}
-
-.location-badge-icon.pickup-badge {
-    background: #E8F5E9;
-}
-
-.location-badge-icon.drop-badge {
-    background: #FFEBEE;
-}
-
-.field-chevron {
-    font-size: 20px;
-    color: #9CA3AF;
-    font-weight: 600;
-    margin-right: 44px;
-}
-
-.quick-location-chips-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-.quick-chip-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 10px 12px;
-    border-radius: 24px;
-    border: 1px solid #E5E7EB;
-    background: #fff;
-    color: #111827;
-    font-size: 13px;
-    font-weight: 600;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
-    cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.quick-chip-btn:hover {
-    background: #F9FAFB;
-    border-color: #D1D5DB;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
-}
+/* Old location card connector & swap btn removed */
 
 .quick-chip-btn:active {
     transform: scale(0.97);
@@ -13008,22 +12845,23 @@ gmp-internal-camera-control,
 }
 
 
+
 /* ==========================================================================
-   Book Your Ride Redesign (Matches Mockup Exactly)
+   Book Your Ride - Exact Mockup Alignment
    ========================================================================== */
 .services-hero {
-    margin-bottom: 14px;
+    margin-bottom: 12px;
 }
 
 .book-ride-header {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
 }
 
 .car-graphic-badge {
-    width: 50px;
-    height: 50px;
+    width: 48px;
+    height: 48px;
     border-radius: 14px;
     background: #E8F8EE;
     display: grid;
@@ -13042,88 +12880,93 @@ gmp-internal-camera-control,
 .book-ride-subtitle {
     font-size: 13px;
     color: #64748B;
-    margin: 3px 0 0;
+    margin: 2px 0 0;
     font-weight: 500;
 }
 
 .services-location-card {
     position: relative;
-    padding: 16px 14px;
-    border-radius: 20px;
-    border: 1px solid #E2E8F0;
-    background: #ffffff;
-    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 14px !important;
+    padding: 16px 14px !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 20px !important;
+    background: #FFFFFF !important;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
 }
 
 .mockup-route-visualizer {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding-top: 26px;
-    flex-shrink: 0;
-    width: 36px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    width: 34px !important;
+    padding-top: 22px !important;
 }
 
 .route-badge-pickup {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: #E8F8EE;
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    background: #E8F8EE !important;
+    display: grid !important;
+    place-items: center !important;
+    flex-shrink: 0 !important;
 }
 
 .route-line-dotted {
-    width: 2px;
-    height: 38px;
-    border-left: 2px dotted #00B83F;
-    margin: 4px 0;
+    width: 2px !important;
+    height: 40px !important;
+    border-left: 2px dotted #00B83F !important;
+    margin: 3px 0 !important;
 }
 
 .route-badge-drop {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    background: #FEE2E2;
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    background: #FEE2E2 !important;
+    display: grid !important;
+    place-items: center !important;
+    flex-shrink: 0 !important;
 }
 
 .mockup-inputs-column {
-    flex: 1;
-    min-width: 0;
+    flex: 1 !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
 }
 
 .mockup-input-group {
-    width: 100%;
+    width: 100% !important;
 }
 
 .mockup-field-label {
-    display: block;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: #64748B;
-    margin-bottom: 6px;
+    display: block !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #64748B !important;
+    margin-bottom: 6px !important;
 }
 
 .mockup-input-box {
-    display: flex;
-    align-items: center;
-    background: #ffffff;
-    border: 1px solid #E2E8F0;
-    border-radius: 12px;
-    padding: 3px 8px 3px 12px;
-    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    display: flex !important;
+    align-items: center !important;
+    background: #ffffff !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 12px !important;
+    padding: 2px 8px 2px 14px !important;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
 }
 
 .mockup-input-box:focus-within {
-    border-color: #00B83F;
-    box-shadow: 0 0 0 3px rgba(0, 184, 63, 0.12);
+    border-color: #00B83F !important;
+    box-shadow: 0 0 0 3px rgba(0, 184, 63, 0.12) !important;
 }
 
 .mockup-field-input {
@@ -13131,159 +12974,159 @@ gmp-internal-camera-control,
     outline: none !important;
     box-shadow: none !important;
     background: transparent !important;
-    font-size: 14.5px;
-    font-weight: 500;
-    color: #1E293B;
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    color: #1E293B !important;
     padding: 8px 4px !important;
-    width: 100%;
+    width: 100% !important;
 }
 
 .mockup-field-input::placeholder {
-    color: #94A3B8;
-    font-size: 13.5px;
-    font-weight: 400;
+    color: #94A3B8 !important;
+    font-size: 13.5px !important;
+    font-weight: 400 !important;
 }
 
 .mockup-inline-action-btn,
 .mockup-inline-swap-btn {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: none;
-    background: #E8F8EE;
-    color: #00B83F;
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    cursor: pointer;
-    transition: transform 0.15s ease, background 0.15s ease;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    border: none !important;
+    background: #E8F8EE !important;
+    color: #00B83F !important;
+    display: grid !important;
+    place-items: center !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+    transition: transform 0.15s ease, background 0.15s ease !important;
 }
 
 .mockup-inline-action-btn:hover,
 .mockup-inline-swap-btn:hover {
-    background: #DCFCE7;
-    transform: scale(1.04);
+    background: #DCFCE7 !important;
+    transform: scale(1.04) !important;
 }
 
 .mockup-inline-action-btn:active,
 .mockup-inline-swap-btn:active {
-    transform: scale(0.92);
+    transform: scale(0.92) !important;
 }
 
-/* Options List Below Card */
+/* 3 Options Below Card (Matches Mockup) */
 .mockup-options-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 14px;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    margin-top: 12px !important;
 }
 
 .mockup-action-card {
-    width: 100%;
-    background: #ffffff;
-    border: 1px solid #E2E8F0;
-    border-radius: 16px;
-    padding: 12px 16px;
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    text-align: left;
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.02);
-    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    width: 100% !important;
+    background: #ffffff !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 16px !important;
+    padding: 12px 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    cursor: pointer !important;
+    text-align: left !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.02) !important;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease !important;
 }
 
 .mockup-action-card:hover {
-    background: #F8FAFC;
-    border-color: #CBD5E1;
+    background: #F8FAFC !important;
+    border-color: #CBD5E1 !important;
 }
 
 .mockup-action-card:active {
-    transform: scale(0.985);
+    transform: scale(0.985) !important;
 }
 
 .mockup-action-icon-badge {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: #E8F8EE;
-    display: grid;
-    place-items: center;
-    margin-right: 14px;
-    flex-shrink: 0;
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 12px !important;
+    background: #E8F8EE !important;
+    display: grid !important;
+    place-items: center !important;
+    margin-right: 14px !important;
+    flex-shrink: 0 !important;
 }
 
 .mockup-action-text {
-    flex: 1;
+    flex: 1 !important;
 }
 
 .mockup-action-text strong {
-    display: block;
-    font-size: 15px;
-    font-weight: 700;
-    color: #0F172A;
-    line-height: 1.25;
+    display: block !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+    line-height: 1.25 !important;
 }
 
 .mockup-action-text small {
-    display: block;
-    font-size: 12.5px;
-    color: #64748B;
-    margin-top: 2px;
+    display: block !important;
+    font-size: 12.5px !important;
+    color: #64748B !important;
+    margin-top: 2px !important;
 }
 
 .mockup-chevron {
-    flex-shrink: 0;
-    margin-left: 8px;
+    flex-shrink: 0 !important;
+    margin-left: 8px !important;
 }
 
 .mockup-pill-btn-primary {
-    width: 100%;
-    background-color: #00B83F;
-    border: none;
-    border-radius: 16px;
-    padding: 14px 18px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    color: #ffffff;
-    font-size: 15.5px;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0, 184, 63, 0.25);
-    transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    width: 100% !important;
+    background-color: #00B83F !important;
+    border: none !important;
+    border-radius: 16px !important;
+    padding: 14px 18px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    color: #ffffff !important;
+    font-size: 15.5px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 14px rgba(0, 184, 63, 0.25) !important;
+    transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease !important;
 }
 
 .mockup-pill-btn-primary:hover {
-    background-color: #00A337;
-    box-shadow: 0 6px 18px rgba(0, 184, 63, 0.35);
+    background-color: #00A337 !important;
+    box-shadow: 0 6px 18px rgba(0, 184, 63, 0.35) !important;
 }
 
 .mockup-pill-btn-primary:active {
-    transform: scale(0.985);
+    transform: scale(0.985) !important;
 }
 
 .mockup-pill-btn-outline {
-    width: 100%;
-    background-color: #ffffff;
-    border: 1.5px solid #00B83F;
-    border-radius: 16px;
-    padding: 13px 18px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    color: #00B83F;
-    font-size: 15.5px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: background-color 0.15s ease, transform 0.15s ease;
+    width: 100% !important;
+    background-color: #ffffff !important;
+    border: 1.5px solid #00B83F !important;
+    border-radius: 16px !important;
+    padding: 13px 18px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    color: #00B83F !important;
+    font-size: 15.5px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    transition: background-color 0.15s ease, transform 0.15s ease !important;
 }
 
 .mockup-pill-btn-outline:hover {
-    background-color: #F0FDF4;
+    background-color: #F0FDF4 !important;
 }
 
 .mockup-pill-btn-outline:active {
-    transform: scale(0.985);
+    transform: scale(0.985) !important;
 }
 
 /* Hide driver holding / ETA tracking bar permanently */
