@@ -645,10 +645,12 @@ def test_simulation_admin_pause_and_unpause_payments(client, sim_db):
     - Unpausing restores normal schedule.
     """
     # 1. Admin sets pause
+    from datetime import date, timedelta
+    today = date.today()
     pause_payload = {
         "message": "Festival Holiday Break — payments paused.",
-        "startDate": "2026-10-20",
-        "endDate": "2026-10-30",
+        "startDate": (today - timedelta(days=2)).isoformat(),
+        "endDate": (today + timedelta(days=10)).isoformat(),
         "isPaused": True,
     }
     res_pause = client.post("/api/admin/driver-payments/pause", json=pause_payload)
