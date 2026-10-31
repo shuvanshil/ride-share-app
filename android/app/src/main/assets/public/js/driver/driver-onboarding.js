@@ -22,6 +22,7 @@ import {
 } from '../shared/messaging.js';
 import { unregisterDevicePushToken } from '../platform/notifications.js';
 import { stopDriverTracking } from '../platform/geolocation.js';
+import { shouldShowDriverLocationDisclosure, showDriverLocationDisclosureModal } from './driver-location-disclosure.js';
 import { driverStatusManager } from './driver-status-manager.js';
 import { paymentReminderManager } from './driver-payment-reminder.js';
 import { renderDriverFareQr } from '../shared/upi-qr-helper.js';
@@ -1965,6 +1966,18 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
     }
 
     const checked = switchInput.checked;
+
+    if (checked && shouldShowDriverLocationDisclosure()) {
+        const allowed = await showDriverLocationDisclosureModal();
+        if (!allowed) {
+            switchInput.checked = false;
+            driverDutyOnline = false;
+            updateDutySwitchUi();
+            isDutySwitchTransitioning = false;
+            delete switchInput.dataset.busy;
+            return;
+        }
+    }
     const targetStatus = checked ? (currentlyAssignedRideId ? "busy" : "searching") : "offline";
     const prevStatus = currentUser?.driverAvailability || "offline";
     const prevDesired = currentUser?.desiredAvailability || "offline";

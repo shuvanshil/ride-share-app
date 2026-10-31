@@ -2,6 +2,7 @@ import { auth, db } from '../platform/firebase-init.js';
 import { createRideMapSurface, fetchRoadRouteDetails, warmGoogleMaps } from '../map/map-core.js';
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { startDriverTracking, updateDriverTrackingState, stopDriverTracking, openGoogleMapsNavigation, isBatteryOptimizationIgnored, requestIgnoreBatteryOptimizations } from '../platform/geolocation.js';
+import { shouldShowDriverLocationDisclosure, showDriverLocationDisclosureModal } from './driver-location-disclosure.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, hideInitialLoader } from '../shared/loading.js';
 import { waitForAuth } from '../shared/auth.js';
@@ -3795,6 +3796,13 @@ function handleLocationError(error) {
 }
 
 async function startLocationTracking() {
+    if (shouldShowDriverLocationDisclosure()) {
+        const allowed = await showDriverLocationDisclosureModal();
+        if (!allowed) {
+            hideLocationLoadingOverlay();
+            return;
+        }
+    }
     showLocationLoadingOverlay();
     const initialPosition = getInitialDriverLocation();
     lastPosition = lastPosition || initialPosition;
@@ -4713,6 +4721,15 @@ let isTogglingOnlineStatus = false;
 
 async function toggleDriverOnlineStatus(targetStatus) {
     if (!auth.currentUser || isTogglingOnlineStatus) return;
+
+    if (targetStatus === "searching" && shouldShowDriverLocationDisclosure()) {
+        const allowed = await showDriverLocationDisclosureModal();
+        if (!allowed) {
+            updateDriverAvailabilityUI("offline");
+            return;
+        }
+    }
+
     isTogglingOnlineStatus = true;
     const prevStatus = currentUser?.driverAvailability || "offline";
     const prevDesired = currentUser?.desiredAvailability || "offline";
