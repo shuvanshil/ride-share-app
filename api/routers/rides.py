@@ -1,6 +1,7 @@
 """Server-authoritative ride lifecycle operations."""
 from __future__ import annotations
 
+import calendar
 import math
 import os
 import secrets
@@ -4239,7 +4240,6 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
                     "vehicleType": ride.get("vehicle_type"),
                 })
 
-                import calendar
         from datetime import datetime as dt_cls, timedelta as td_cls
 
         try:
@@ -4254,15 +4254,21 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
         # Current calendar month: 1st of month to today
         month_dates = [dt_cls(today_date.year, today_date.month, d).strftime("%Y-%m-%d") for d in range(1, today_date.day + 1)]
 
-        _, last_day_of_month = calendar.monthrange(today_date.year, today_date.month)
-        month_end_date = dt_cls(today_date.year, today_date.month, last_day_of_month).date()
+        try:
+            _, last_day_of_month = calendar.monthrange(today_date.year, today_date.month)
+            month_end_date = dt_cls(today_date.year, today_date.month, last_day_of_month).date()
+        except Exception:
+            month_end_date = today_date
 
         def _format_date_range(d1, d2):
-            if d1.year == d2.year:
-                if d1.month == d2.month:
-                    return f"{d1.strftime('%d')} – {d2.strftime('%d %b %Y')}"
-                return f"{d1.strftime('%d %b')} – {d2.strftime('%d %b %Y')}"
-            return f"{d1.strftime('%d %b %Y')} – {d2.strftime('%d %b %Y')}"
+            try:
+                if d1.year == d2.year:
+                    if d1.month == d2.month:
+                        return f"{d1.strftime('%d')} – {d2.strftime('%d %b %Y')}"
+                    return f"{d1.strftime('%d %b')} – {d2.strftime('%d %b %Y')}"
+                return f"{d1.strftime('%d %b %Y')} – {d2.strftime('%d %b %Y')}"
+            except Exception:
+                return f"{d1} – {d2}"
 
         week_start_date = today_date - td_cls(days=6)
         week_label = _format_date_range(week_start_date, today_date)
@@ -4276,10 +4282,14 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
             try:
                 needed_refs = [db.collection("driverDailyStats").document(f"{uid}_{d_str}") for d_str in needed_dates]
                 for snap in db.get_all(needed_refs):
-                    if snap.exists:
-                        s_data = snap.to_dict() or {}
-                        d_key = s_data.get("date") or snap.id.split("_")[-1]
-                        stats_by_date[d_key] = s_data
+                    try:
+                        if getattr(snap, "exists", False):
+                            s_data = snap.to_dict() or {}
+                            d_key = s_data.get("date") or getattr(snap, "id", "").split("_")[-1]
+                            if d_key:
+                                stats_by_date[d_key] = s_data
+                    except Exception:
+                        pass
             except Exception:
                 pass
 

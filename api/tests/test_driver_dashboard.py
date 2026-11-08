@@ -76,3 +76,56 @@ def test_accumulate_online_seconds_updates_stats_and_profile() -> None:
     valid_prev = datetime.now(timezone.utc) - timedelta(seconds=60)
     _accumulate_online_seconds(FakeDb(), "driver_test", valid_prev, still_online=True)
     assert any("users/driver_test" in c[0] for c in calls)
+
+
+def test_get_driver_dashboard_structure(monkeypatch) -> None:
+    from api.routers.rides import get_driver_dashboard
+
+    class FakeDocSnap:
+        def __init__(self, data=None, exists=True, doc_id="id"):
+            self._data = data or {}
+            self.exists = exists
+            self.id = doc_id
+        def to_dict(self):
+            return self._data
+
+    class FakeQuery:
+        def where(self, *args, **kwargs):
+            return self
+        def limit(self, *args, **kwargs):
+            return self
+        def stream(self):
+            return iter([])
+
+    class FakeDocRef:
+        def __init__(self, path):
+            self.path = path
+        def get(self):
+            if "users/" in self.path:
+                return FakeDocSnap({"role": "driver", "verificationStatus": "approved", "total_completed_trips": 5})
+            return FakeDocSnap({"completed_rides": 2, "earnings": 250.0, "online_seconds": 3600})
+
+    class FakeColl:
+        def __init__(self, coll_name):
+            self.coll_name = coll_name
+        def document(self, doc_id):
+            return FakeDocRef(f"{self.coll_name}/{doc_id}")
+        def where(self, *args, **kwargs):
+            return FakeQuery()
+
+    class FakeDb:
+        def collection(self, name):
+            return FakeColl(name)
+        def get_all(self, refs):
+            return [FakeDocSnap({"completed_rides": 1, "earnings": 100.0, "online_seconds": 1800}, exists=True, doc_id="d1")]
+
+    monkeypatch.setattr("api.routers.rides.fb_firestore.client", lambda app: FakeDb())
+    monkeypatch.setattr("api.routers.rides.get_admin_app", lambda: None)
+
+    res = get_driver_dashboard(user={"uid": "test_driver_123"})
+    assert res["ok"] is True
+    assert "week" in res
+    assert "month" in res
+    assert "lifetime" in res
+    assert res["today"]["completedRides"] == 2
+    assert res["today"]["earnings"] == 250.0
