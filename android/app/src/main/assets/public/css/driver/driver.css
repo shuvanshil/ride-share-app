@@ -191,6 +191,224 @@ body {
     font-weight: 500;
 }
 
+/* Dominant Online/Offline Status & Toggle Card */
+.driver-dominant-status-card {
+    border-radius: 16px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: all 0.25s ease;
+}
+
+.driver-dominant-status-card.offline {
+    background-color: #FFF5F5;
+    border: 1px solid #FEE2E2;
+}
+
+.driver-dominant-status-card.online {
+    background-color: #F0FDF4;
+    border: 1px solid #DCFCE7;
+}
+
+.driver-status-left {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.driver-status-pill-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14.5px;
+    font-weight: 700;
+    padding: 8px 14px;
+    border-radius: 24px;
+    white-space: nowrap;
+}
+
+.driver-status-pill-badge.offline {
+    background-color: #FEE2E2;
+    color: #DC2626;
+}
+
+.driver-status-pill-badge.online {
+    background-color: #DCFCE7;
+    color: #15803D;
+}
+
+.driver-status-pill-badge .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.driver-status-pill-badge.offline .status-dot {
+    background-color: #DC2626;
+}
+
+.driver-status-pill-badge.online .status-dot {
+    background-color: #16A34A;
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+}
+
+.driver-status-divider {
+    width: 1px;
+    height: 32px;
+    background-color: #E5E7EB;
+    margin: 0 10px;
+    flex-shrink: 0;
+}
+
+.driver-status-right {
+    display: flex;
+    align-items: center;
+}
+
+.dominant-duty-btn {
+    border: none;
+    border-radius: 12px;
+    padding: 10px 18px;
+    font-size: 15px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.dominant-duty-btn.online-action {
+    background-color: #15803D;
+    color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(21, 128, 61, 0.28);
+}
+
+.dominant-duty-btn.online-action:active {
+    background-color: #166534;
+    transform: scale(0.98);
+}
+
+.dominant-duty-btn.offline-action {
+    background-color: #DC2626;
+    color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+}
+
+.dominant-duty-btn.offline-action:active {
+    background-color: #B91C1C;
+    transform: scale(0.98);
+}
+
+.dominant-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Today's Summary Card on Driver Home */
+.driver-today-summary-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.today-summary-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.summary-calendar-icon {
+    color: #16A34A;
+    flex-shrink: 0;
+}
+
+.today-summary-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #111827;
+    margin: 0;
+    letter-spacing: -0.2px;
+}
+
+.today-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.today-summary-tile {
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.today-summary-tile.tile-earnings {
+    background-color: #ECFDF5;
+}
+
+.today-summary-tile.tile-trips {
+    background-color: #EFF6FF;
+}
+
+.summary-tile-icon-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.summary-tile-icon-badge.badge-mint {
+    background-color: #D1FAE5;
+    color: #15803D;
+}
+
+.summary-tile-icon-badge.badge-blue {
+    background-color: #DBEAFE;
+    color: #2563EB;
+}
+
+.summary-tile-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.summary-tile-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #4B5563;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+
+.summary-tile-val {
+    font-size: 22px;
+    font-weight: 800;
+    color: #111827;
+    letter-spacing: -0.4px;
+    line-height: 1.2;
+}
+
+
 /* Duty Console Card */
 .duty-console-card {
     background: var(--lu-card-bg);

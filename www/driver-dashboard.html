@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#1A7A2E">
+    <meta name="theme-color" content="#15803D">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,29 +24,33 @@
     <link rel="preload" href="css/style.css?v=20261010-v2" as="style">
     <link rel="stylesheet" href="css/bootstrap.min.css" blocking="render">
     <link rel="stylesheet" href="css/style.css?v=20261010-v2" blocking="render">
-    <link rel="preload" href="css/driver/driver.css?v=20261010-v2" as="style">
-    <link rel="stylesheet" href="css/driver/driver.css?v=20261010-v2" blocking="render">
+    <link rel="preload" href="css/driver/driver.css?v=20261103-v1" as="style">
+    <link rel="stylesheet" href="css/driver/driver.css?v=20261103-v1" blocking="render">
+    <link rel="stylesheet" href="css/driver-dashboard.css?v=20261103-v1" blocking="render">
     <script src="js/platform/native-bridge.js"></script>
     <script src="js/platform/routes.js" defer></script>
 </head>
 <body>
     <div id="initial-loader" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;transition:opacity 0.4s ease,visibility 0.4s ease;">
-        <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #1A7A2E;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
+        <div style="width:42px;height:42px;border:4px solid #f3f3f3;border-top:4px solid #15803D;border-radius:50%;animation:lu-spin 0.8s linear infinite;"></div>
         <style>@keyframes lu-spin { to { transform: rotate(360deg); } }</style>
     </div>
     <div id="app-container" class="app-root driver-dashboard-root">
         <div class="screen-shell driver-shell">
-            <header class="app-bar">
-                <div>
-                    <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
-                    <small id="dashboard-welcome-name" data-i18n="driver.dashboard_welcome">Your Dashboard</small>
-                </div>
-                <div class="app-bar-actions d-flex align-items-center gap-2">
-                    <div id="driver-dashboard-lang-switcher"></div>
-                    <button class="back-to-console-btn" type="button" onclick="window.location.href='/driver.html'">
-                        <span class="webicon webicon-services" aria-hidden="true"></span>
-                        <span data-i18n="nav.driver">Duty Console</span>
+            <!-- Header matching mockup -->
+            <header class="driver-dashboard-header">
+                <div class="d-flex align-items-center gap-2">
+                    <button class="dashboard-back-btn" type="button" onclick="window.location.href='/driver.html'" aria-label="Back">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
                     </button>
+                    <h1 class="dashboard-header-title" data-i18n="driver.dashboard_title">Driver Dashboard</h1>
+                </div>
+                <div class="dashboard-header-actions d-flex align-items-center gap-2">
+                    <div id="driver-dashboard-lang-switcher"></div>
+                    <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
                 </div>
             </header>
 
@@ -57,32 +61,77 @@
                 </section>
 
                 <div id="dashboard-content" class="d-none">
-                    <h6 class="section-title" data-i18n="driver.today">Today</h6>
-                    <div class="dashboard-stat-grid">
-                        <div class="dashboard-stat-card">
-                            <span data-i18n="driver.todays_earnings">Today's Earnings</span>
-                            <strong id="stat-today-earnings">Rs 0</strong>
+                    <!-- Today's Performance Card -->
+                    <section class="today-perf-card">
+                        <div class="today-perf-top">
+                            <h2 class="today-perf-heading" data-i18n="driver.today_performance">Today’s Performance</h2>
+                            <span id="dashboard-today-date-badge" class="today-date-pill">Today, 03 Nov 2026</span>
                         </div>
-                        <div class="dashboard-stat-card">
-                            <span data-i18n="driver.completed_rides">Completed Rides</span>
-                            <strong id="stat-today-completed">0</strong>
+                        <div class="today-perf-content">
+                            <div class="today-perf-subcard">
+                                <span class="today-subcard-title" data-i18n="driver.todays_earnings">Today’s Earnings</span>
+                                <strong id="stat-today-earnings" class="today-subcard-val">₹0</strong>
+                            </div>
+                            <div class="today-perf-subcard">
+                                <span class="today-subcard-title" data-i18n="driver.trips_today">Trips Today</span>
+                                <strong id="stat-today-completed" class="today-subcard-val">0</strong>
+                            </div>
                         </div>
-                        <div class="dashboard-stat-card">
-                            <span data-i18n="driver.todays_distance">Today's Distance</span>
-                            <strong id="stat-today-distance">0 km</strong>
-                            <small id="stat-today-distance-review" class="text-muted small d-none" style="font-size:0.75rem;font-weight:normal;"></small>
-                        </div>
-                        <div class="dashboard-stat-card">
-                            <span data-i18n="driver.pending_trips">Pending Trips</span>
-                            <strong id="stat-pending-trips">0</strong>
-                        </div>
-                        <div class="dashboard-stat-card">
-                            <span data-i18n="driver.online_hours">Online Hours</span>
-                            <strong id="stat-online-hours">0.0 h</strong>
-                        </div>
-                    </div>
+                    </section>
 
-                    <section id="dashboard-current-trip" class="dashboard-current-trip d-none">
+                    <!-- Tabbed Period Summary Card (Week / Month) -->
+                    <section class="period-summary-card">
+                        <div class="period-tab-switcher" role="tablist">
+                            <button id="tab-week-btn" class="period-tab-pill active" type="button" role="tab" aria-selected="true" data-i18n="driver.this_week_summary">This Week’s Summary</button>
+                            <button id="tab-month-btn" class="period-tab-pill" type="button" role="tab" aria-selected="false" data-i18n="driver.this_month_summary">This Month’s Summary</button>
+                        </div>
+                        <div id="period-date-range-label" class="period-range-label">27 Oct – 02 Nov 2026</div>
+
+                        <div class="metrics-2x2-grid">
+                            <div class="stat-quad-tile tile-bg-mint">
+                                <span class="quad-tile-label" data-i18n="driver.total_distance">Total Distance</span>
+                                <strong id="period-stat-distance" class="quad-tile-val">0 km</strong>
+                            </div>
+                            <div class="stat-quad-tile tile-bg-blue">
+                                <span class="quad-tile-label" data-i18n="driver.total_earnings">Total Earnings</span>
+                                <strong id="period-stat-earnings" class="quad-tile-val">₹0</strong>
+                            </div>
+                            <div class="stat-quad-tile tile-bg-cream">
+                                <span class="quad-tile-label" data-i18n="driver.total_trips">Total Trips</span>
+                                <strong id="period-stat-trips" class="quad-tile-val">0</strong>
+                            </div>
+                            <div class="stat-quad-tile tile-bg-lavender">
+                                <span class="quad-tile-label" data-i18n="driver.total_online_time">Total Online Time</span>
+                                <strong id="period-stat-online-time" class="quad-tile-val">0h 0m</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Lifetime Summary Card -->
+                    <section class="lifetime-summary-card">
+                        <h2 class="lifetime-heading" data-i18n="driver.lifetime_summary">Lifetime Summary</h2>
+                        <div class="metrics-2x2-grid">
+                            <div class="stat-quad-tile tile-bg-mint">
+                                <span class="quad-tile-label" data-i18n="driver.total_distance">Total Distance</span>
+                                <strong id="lifetime-stat-distance" class="quad-tile-val">0 km</strong>
+                            </div>
+                            <div class="stat-quad-tile tile-bg-blue">
+                                <span class="quad-tile-label" data-i18n="driver.total_earnings">Total Earnings</span>
+                                <strong id="lifetime-stat-earnings" class="quad-tile-val">₹0</strong>
+                            </div>
+                            <div class="stat-quad-tile tile-bg-cream">
+                                <span class="quad-tile-label" data-i18n="driver.total_trips">Total Trips</span>
+                                <strong id="lifetime-stat-trips" class="quad-tile-val">0</strong>
+                            </div>
+                            <div class="stat-quad-tile tile-bg-lavender">
+                                <span class="quad-tile-label" data-i18n="driver.total_online_time">Total Online Time</span>
+                                <strong id="lifetime-stat-online-time" class="quad-tile-val">0h 0m</strong>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Active Trip Section (preserved) -->
+                    <section id="dashboard-current-trip" class="dashboard-current-trip d-none mt-3">
                         <h6 class="section-title" data-i18n="driver.current_trip">Current Trip</h6>
                         <div class="dashboard-current-trip-card">
                             <div>
@@ -93,36 +142,12 @@
                         </div>
                     </section>
 
-                    <section id="dashboard-pending-preview" class="dashboard-pending-preview d-none">
+                    <!-- Queued Ride Requests (preserved) -->
+                    <section id="dashboard-pending-preview" class="dashboard-pending-preview d-none mt-3">
                         <h6 class="section-title" data-i18n="driver.queued_ride_requests">Queued Ride Requests</h6>
                         <div id="pending-preview-list" class="dashboard-pending-list"></div>
                         <button class="gy-btn gy-btn-outline w-100 mt-2" type="button" onclick="window.location.href='/driver.html'" data-i18n="driver.view_in_duty_console">View in Duty Console</button>
                     </section>
-
-                    <h6 class="section-title" data-i18n="driver.performance">Performance</h6>
-                    <div class="dashboard-performance-card">
-                        <div class="dashboard-performance-row">
-                            <span data-i18n="driver.lifetime_earnings">Lifetime Earnings</span>
-                            <strong id="stat-lifetime-earnings">Rs 0</strong>
-                        </div>
-                        <div class="dashboard-performance-row">
-                            <span data-i18n="driver.lifetime_completed_trips">Lifetime Completed Trips</span>
-                            <strong id="stat-lifetime-trips">0</strong>
-                        </div>
-                        <div class="dashboard-performance-row">
-                            <span data-i18n="driver.lifetime_distance">Lifetime Distance</span>
-                            <strong id="stat-lifetime-distance">0 km</strong>
-                        </div>
-                        <div class="dashboard-performance-row">
-                            <span data-i18n="driver.average_fare">Average Fare</span>
-                            <strong id="stat-average-fare">Rs 0</strong>
-                        </div>
-                        <div class="dashboard-performance-row">
-                            <span data-i18n="driver.todays_acceptance_rate">Today's Acceptance Rate</span>
-                            <strong id="stat-acceptance-rate">--</strong>
-                        </div>
-                    </div>
-                    <p class="dashboard-refresh-hint" data-i18n="driver.stats_auto_update">Stats update automatically while this page is open.</p>
                 </div>
 
                 <div id="dashboard-error" class="dashboard-error d-none">
@@ -144,7 +169,7 @@
     <script type="module" src="js/platform/firebase-init.js"></script>
     <script type="module" src="js/shared/loading.js"></script>
     <script type="module" src="js/shared/i18n.js"></script>
-    <script type="module" src="js/driver/driver-dashboard.js?v=2.0.0"></script>
+    <script type="module" src="js/driver/driver-dashboard.js?v=20261103-v1"></script>
     <script src="js/shared/pwa.js" defer></script>
     <script type="module" src="js/shared/global-notices.js"></script>
 </body>

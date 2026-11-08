@@ -1,43 +1,42 @@
 import { auth, db } from '../platform/firebase-init.js';
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { doc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { hideInitialLoader } from '../shared/loading.js';
 import { paymentReminderManager } from './driver-payment-reminder.js';
+import { renderLanguageSwitcher } from '../shared/i18n.js';
 
 const REFRESH_INTERVAL_MS = 30000;
 let refreshTimer = null;
+let dailyRealtimeUnsub = null;
+let currentDashboardData = null;
+let activePeriodTab = 'week'; // 'week' | 'month'
 
 function formatRupees(value) {
     const amount = Number(value);
-    return Number.isFinite(amount) ? `Rs ${Math.round(amount)}` : "Rs 0";
+    if (!Number.isFinite(amount) || amount <= 0) return "₹0";
+    return `₹${Math.round(amount).toLocaleString('en-IN')}`;
 }
 
-function formatDistance(value, options = {}) {
-    try {
-        const isLifetime = typeof options === 'boolean' ? options : Boolean(options && options.isLifetime);
-        const km = Number(value);
-        if (!Number.isFinite(km) || km <= 0) {
-            return "0 km";
-        }
-        if (km < 1) {
-            const meters = Math.round((km * 1000) / 10) * 10;
-            if (meters <= 0) {
-                return "0 km";
-            }
-            if (meters >= 1000) {
-                return isLifetime
-                    ? `${(1).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
-                    : "1.0 km";
-            }
-            return `${meters} m`;
-        }
-        if (isLifetime) {
-            return `${km.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
-        }
-        return `${km.toFixed(1)} km`;
-    } catch (_) {
-        return "0 km";
+function formatDistance(value) {
+    const km = Number(value);
+    if (!Number.isFinite(km) || km <= 0) return "0 km";
+    if (km < 1) {
+        const meters = Math.round((km * 1000) / 10) * 10;
+        return meters <= 0 ? "0 km" : `${meters} m`;
     }
+    return `${km.toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+}
+
+function formatOnlineTime(seconds) {
+    const totalSecs = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(totalSecs / 3600);
+    const minutes = Math.floor((totalSecs % 3600) / 60);
+    return `${hours.toLocaleString('en-IN')}h ${minutes}m`;
+}
+
+function formatCount(value) {
+    const count = Math.max(0, Math.floor(Number(value) || 0));
+    return count.toLocaleString('en-IN');
 }
 
 function escapeHtml(text) {
@@ -46,84 +45,119 @@ function escapeHtml(text) {
     }[ch]));
 }
 
+function updatePeriodView() {
+    if (!currentDashboardData) return;
+    const periodData = activePeriodTab === 'month' ? currentDashboardData.month : currentDashboardData.week;
+    if (!periodData) return;
+
+    // Date range label
+    const rangeEl = document.getElementById('period-date-range-label');
+    if (rangeEl && periodData.label) {
+        rangeEl.textContent = periodData.label;
+    }
+
+    // 4 Quad tiles
+    const distEl = document.getElementById('period-stat-distance');
+    if (distEl) distEl.textContent = formatDistance(periodData.distanceKm);
+
+    const earnEl = document.getElementById('period-stat-earnings');
+    if (earnEl) earnEl.textContent = formatRupees(periodData.earnings);
+
+    const tripEl = document.getElementById('period-stat-trips');
+    if (tripEl) tripEl.textContent = formatCount(periodData.completedRides);
+
+    const timeEl = document.getElementById('period-stat-online-time');
+    if (timeEl) timeEl.textContent = formatOnlineTime(periodData.onlineSeconds);
+}
+
 function renderDashboard(data) {
-    document.getElementById('stat-today-earnings').innerText = formatRupees(data?.today?.earnings);
-    document.getElementById('stat-today-completed').innerText = data?.today?.completedRides ?? 0;
-    document.getElementById('stat-pending-trips').innerText = data?.pendingTrips?.count ?? 0;
-    document.getElementById('stat-online-hours').innerText = `${Number(data?.today?.onlineHours || 0).toFixed(1)} h`;
+    currentDashboardData = data;
 
-    try {
-        const distEl = document.getElementById('stat-today-distance');
-        if (distEl) {
-            distEl.innerText = formatDistance(data?.today?.distanceKm);
-        }
-        const distRevEl = document.getElementById('stat-today-distance-review');
-        if (distRevEl) {
-            const urCount = Number(data?.today?.underReviewCount || 0);
-            const urKm = Number(data?.today?.underReviewKm || 0);
-            if (urCount > 0 && urKm > 0) {
-                distRevEl.innerText = `(+${formatDistance(urKm)} review)`;
-                distRevEl.classList.remove('d-none');
-            } else {
-                distRevEl.classList.add('d-none');
-            }
-        }
-    } catch (e) {
-        console.error("Failed to render today distance:", e);
+    // 1. Today's Performance
+    const todayBadgeEl = document.getElementById('dashboard-today-date-badge');
+    if (todayBadgeEl && data.todayLabel) {
+        todayBadgeEl.textContent = data.todayLabel;
+    }
+    const todayEarnEl = document.getElementById('stat-today-earnings');
+    if (todayEarnEl) todayEarnEl.textContent = formatRupees(data.today?.earnings);
+
+    const todayTripsEl = document.getElementById('stat-today-completed');
+    if (todayTripsEl) todayTripsEl.textContent = formatCount(data.today?.completedRides);
+
+    // 2. Tabbed Period Summary
+    updatePeriodView();
+
+    // 3. Lifetime Summary
+    const lifeDistEl = document.getElementById('lifetime-stat-distance');
+    if (lifeDistEl) {
+        const distKm = data.lifetime?.distanceKm ?? data.performance?.lifetimeDistanceKm;
+        lifeDistEl.textContent = formatDistance(distKm);
     }
 
-    document.getElementById('stat-lifetime-earnings').innerText = formatRupees(data?.performance?.lifetimeEarnings);
-    document.getElementById('stat-lifetime-trips').innerText = data?.performance?.lifetimeCompletedTrips ?? 0;
-    try {
-        const lifeDistEl = document.getElementById('stat-lifetime-distance');
-        if (lifeDistEl) {
-            lifeDistEl.innerText = formatDistance(data?.performance?.lifetimeDistanceKm, { isLifetime: true });
-        }
-    } catch (e) {
-        console.error("Failed to render lifetime distance:", e);
+    const lifeEarnEl = document.getElementById('lifetime-stat-earnings');
+    if (lifeEarnEl) {
+        const earn = data.lifetime?.earnings ?? data.performance?.lifetimeEarnings;
+        lifeEarnEl.textContent = formatRupees(earn);
     }
-    document.getElementById('stat-average-fare').innerText = formatRupees(data.performance.averageFare);
-    document.getElementById('stat-acceptance-rate').innerText = data.today.acceptanceRate === null
-        ? "No decisions yet today"
-        : `${Math.round(data.today.acceptanceRate * 100)}%`;
 
+    const lifeTripEl = document.getElementById('lifetime-stat-trips');
+    if (lifeTripEl) {
+        const trips = data.lifetime?.completedRides ?? data.performance?.lifetimeCompletedTrips;
+        lifeTripEl.textContent = formatCount(trips);
+    }
+
+    const lifeTimeEl = document.getElementById('lifetime-stat-online-time');
+    if (lifeTimeEl) {
+        lifeTimeEl.textContent = formatOnlineTime(data.lifetime?.onlineSeconds);
+    }
+
+    // 4. Current Trip Section (if active)
     const currentTripSection = document.getElementById('dashboard-current-trip');
-    if (data.currentTrip) {
-        document.getElementById('current-trip-route').innerText = `${data.currentTrip.pickupName || "Pickup"} to ${data.currentTrip.dropName || "Drop"}`;
-        document.getElementById('current-trip-passenger').innerText = `${data.currentTrip.passengerName || "Passenger"} · ${data.currentTrip.status}`;
-        document.getElementById('current-trip-fare').innerText = formatRupees(data.currentTrip.fare);
-        currentTripSection.classList.remove('d-none');
-    } else {
-        currentTripSection.classList.add('d-none');
+    if (currentTripSection) {
+        if (data.currentTrip) {
+            const routeEl = document.getElementById('current-trip-route');
+            if (routeEl) routeEl.innerText = `${data.currentTrip.pickupName || "Pickup"} to ${data.currentTrip.dropName || "Drop"}`;
+            const passEl = document.getElementById('current-trip-passenger');
+            if (passEl) passEl.innerText = `${data.currentTrip.passengerName || "Passenger"} · ${data.currentTrip.status}`;
+            const fareEl = document.getElementById('current-trip-fare');
+            if (fareEl) fareEl.innerText = formatRupees(data.currentTrip.fare);
+            currentTripSection.classList.remove('d-none');
+        } else {
+            currentTripSection.classList.add('d-none');
+        }
     }
 
+    // 5. Queued Requests (if any)
     const pendingSection = document.getElementById('dashboard-pending-preview');
     const pendingList = document.getElementById('pending-preview-list');
-    if (data.pendingTrips.preview?.length) {
-        pendingList.innerHTML = data.pendingTrips.preview.map((item) => `
-            <div class="dashboard-pending-item">
-                <div>
-                    <strong>${escapeHtml(item.pickupName || "Pickup")}</strong>
-                    <span class="text-muted small"> to ${escapeHtml(item.dropName || "Drop")}</span>
+    if (pendingSection && pendingList) {
+        if (data.pendingTrips?.preview?.length) {
+            pendingList.innerHTML = data.pendingTrips.preview.map((item) => `
+                <div class="dashboard-pending-item">
+                    <div>
+                        <strong>${escapeHtml(item.pickupName || "Pickup")}</strong>
+                        <span class="text-muted small"> to ${escapeHtml(item.dropName || "Drop")}</span>
+                    </div>
+                    <span class="badge bg-light text-dark border">${formatRupees(item.fare)}</span>
                 </div>
-                <span class="badge bg-light text-dark border">${formatRupees(item.fare)}</span>
-            </div>
-        `).join("");
-        pendingSection.classList.remove('d-none');
-    } else {
-        pendingSection.classList.add('d-none');
+            `).join("");
+            pendingSection.classList.remove('d-none');
+        } else {
+            pendingSection.classList.add('d-none');
+        }
     }
 
-    document.getElementById('dashboard-loading').classList.add('d-none');
-    document.getElementById('dashboard-error').classList.add('d-none');
-    document.getElementById('dashboard-content').classList.remove('d-none');
+    document.getElementById('dashboard-loading')?.classList.add('d-none');
+    document.getElementById('dashboard-error')?.classList.add('d-none');
+    document.getElementById('dashboard-content')?.classList.remove('d-none');
 }
 
 function showError(message) {
-    document.getElementById('dashboard-loading').classList.add('d-none');
-    document.getElementById('dashboard-content').classList.add('d-none');
-    document.getElementById('dashboard-error-text').innerText = message;
-    document.getElementById('dashboard-error').classList.remove('d-none');
+    document.getElementById('dashboard-loading')?.classList.add('d-none');
+    document.getElementById('dashboard-content')?.classList.add('d-none');
+    const errText = document.getElementById('dashboard-error-text');
+    if (errText) errText.innerText = message;
+    document.getElementById('dashboard-error')?.classList.remove('d-none');
 }
 
 async function loadDashboard() {
@@ -142,7 +176,73 @@ async function loadDashboard() {
     }
 }
 
+function setupPeriodTabs() {
+    const weekBtn = document.getElementById('tab-week-btn');
+    const monthBtn = document.getElementById('tab-month-btn');
+
+    weekBtn?.addEventListener('click', () => {
+        if (activePeriodTab === 'week') return;
+        activePeriodTab = 'week';
+        weekBtn.classList.add('active');
+        weekBtn.setAttribute('aria-selected', 'true');
+        monthBtn?.classList.remove('active');
+        monthBtn?.setAttribute('aria-selected', 'false');
+        updatePeriodView();
+    });
+
+    monthBtn?.addEventListener('click', () => {
+        if (activePeriodTab === 'month') return;
+        activePeriodTab = 'month';
+        monthBtn.classList.add('active');
+        monthBtn.setAttribute('aria-selected', 'true');
+        weekBtn?.classList.remove('active');
+        weekBtn?.setAttribute('aria-selected', 'false');
+        updatePeriodView();
+    });
+}
+
+function subscribeRealtimeTodayStats(uid, dayStr) {
+    if (dailyRealtimeUnsub) {
+        dailyRealtimeUnsub();
+        dailyRealtimeUnsub = null;
+    }
+    if (!uid || !dayStr) return;
+
+    try {
+        dailyRealtimeUnsub = onSnapshot(doc(db, "driverDailyStats", `${uid}_${dayStr}`), (snap) => {
+            if (snap.exists() && currentDashboardData) {
+                const fresh = snap.data() || {};
+                const earn = Number(fresh.earnings) || 0;
+                const completed = Number(fresh.completed_rides) || 0;
+                const distance = Number(fresh.distance_km) || 0;
+                const onlineSecs = Number(fresh.online_seconds) || 0;
+
+                // Update today values
+                currentDashboardData.today.earnings = earn;
+                currentDashboardData.today.completedRides = completed;
+                currentDashboardData.today.distanceKm = distance;
+                currentDashboardData.today.onlineSeconds = onlineSecs;
+
+                const todayEarnEl = document.getElementById('stat-today-earnings');
+                if (todayEarnEl) todayEarnEl.textContent = formatRupees(earn);
+                const todayTripsEl = document.getElementById('stat-today-completed');
+                if (todayTripsEl) todayTripsEl.textContent = formatCount(completed);
+            }
+        }, (err) => {
+            console.warn("Realtime daily stats listener notice:", err);
+        });
+    } catch (e) {
+        console.warn("Could not attach daily stats realtime listener:", e);
+    }
+}
+
 document.getElementById('dashboard-retry-btn')?.addEventListener('click', loadDashboard);
+
+setupPeriodTabs();
+
+// Render language switcher in header
+const langEl = document.getElementById('driver-dashboard-lang-switcher');
+if (langEl) renderLanguageSwitcher(langEl);
 
 onAuthStateChanged(auth, async (user) => {
     if (!user) {
@@ -158,7 +258,6 @@ onAuthStateChanged(auth, async (user) => {
             hideInitialLoader();
             return;
         }
-        document.getElementById('dashboard-welcome-name').innerText = `Welcome, ${profile.name || "Driver"}`;
         if (profile.verificationStatus !== "approved") {
             showError("Your driver account is still under review. Dashboard stats are available once approved.");
             hideInitialLoader();
@@ -166,6 +265,12 @@ onAuthStateChanged(auth, async (user) => {
         }
 
         await loadDashboard();
+
+        // Subscribe to today's stats in real-time
+        if (currentDashboardData?.date) {
+            subscribeRealtimeTodayStats(user.uid, currentDashboardData.date);
+        }
+
         paymentReminderManager.init(user);
         hideInitialLoader();
         if (refreshTimer) clearInterval(refreshTimer);

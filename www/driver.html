@@ -81,66 +81,75 @@
                     </div>
                 </section>
 
-                <!-- Driver Duty Console Card -->
-                <section class="duty-console-card">
-                    <div class="duty-console-top">
-                        <div class="duty-console-icon-wrap" aria-hidden="true">
-                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="12" cy="12" r="10"/>
-                                <circle cx="12" cy="12" r="3"/>
-                                <line x1="12" y1="2" x2="12" y2="9"/>
-                                <line x1="2.05" y1="13" x2="9.05" y2="12.5"/>
-                                <line x1="21.95" y1="13" x2="14.95" y2="12.5"/>
-                            </svg>
-                        </div>
-                        <div class="duty-console-info">
-                            <h3 data-i18n="driver.duty_console">Driver Duty Console</h3>
-                            <p id="driver-duty-helper" data-i18n="driver.duty_helper">Ride alerts can continue while you stay online, even if the app is minimized.</p>
-                        </div>
-                        <div class="duty-toggle-wrapper">
-                            <label class="driver-duty-switch" for="driver-duty-switch">
-                                <input id="driver-duty-switch" type="checkbox" checked>
-                                <span aria-hidden="true"></span>
-                            </label>
-                            <strong id="driver-duty-state" data-i18n="driver.duty_online">Online</strong>
-                        </div>
+                <!-- Dominant Online/Offline Status & Action Card -->
+                <section class="driver-dominant-status-card offline" id="driver-status-card">
+                    <div class="driver-status-left">
+                        <span class="driver-status-pill-badge offline" id="driver-status-pill-badge">
+                            <span class="status-dot"></span>
+                            <span id="driver-status-pill-text" data-i18n="driver.you_are_offline">You are Offline</span>
+                        </span>
                     </div>
-                    <div class="duty-console-actions">
-                        <button id="driver-history-btn" class="console-action-card" type="button">
-                            <div class="console-action-badge icon-history" aria-hidden="true">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <circle cx="12" cy="12" r="10"/>
-                                    <polyline points="12 6 12 12 16 14"/>
+                    <div class="driver-status-divider" aria-hidden="true"></div>
+                    <div class="driver-status-right">
+                        <button id="driver-dominant-duty-btn" class="dominant-duty-btn online-action" type="button">
+                            <span id="dominant-btn-icon" class="dominant-btn-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                    <polygon points="5 3 19 12 5 21 5 3"/>
+                                </svg>
+                            </span>
+                            <span id="dominant-btn-text" data-i18n="driver.go_online">Go Online</span>
+                        </button>
+                    </div>
+                    <!-- Hidden original switch elements preserved for full handler compatibility -->
+                    <input id="driver-duty-switch" type="checkbox" class="d-none" aria-hidden="true">
+                    <span id="driver-duty-state" class="d-none"></span>
+                    <span id="driver-duty-helper" class="d-none"></span>
+                    <button id="driver-history-btn" class="d-none" type="button" onclick="window.location.href='/history.html'"></button>
+                    <button id="driver-earnings-btn" class="d-none" type="button" onclick="window.location.href='/driver-payments.html'"></button>
+                </section>
+
+                <!-- Today's Summary Section -->
+                <section class="driver-today-summary-card">
+                    <div class="today-summary-header">
+                        <svg class="summary-calendar-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <h3 class="today-summary-title" data-i18n="driver.today_summary">Today's Summary</h3>
+                    </div>
+                    <div class="today-summary-grid">
+                        <div class="today-summary-tile tile-earnings">
+                            <div class="summary-tile-icon-badge badge-mint" aria-hidden="true">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="9"/>
+                                    <path d="M14.5 9h-4a1.5 1.5 0 0 0 0 3h3a1.5 1.5 0 0 1 0 3h-4"/>
+                                    <path d="M12 7v10"/>
                                 </svg>
                             </div>
-                            <div class="console-action-text">
-                                <span class="console-action-title" data-i18n="driver.ride_history">Ride History</span>
-                                <span class="console-action-sub" data-i18n="driver.view_past_rides">View your past rides</span>
+                            <div class="summary-tile-text">
+                                <span class="summary-tile-label" data-i18n="driver.todays_earnings">Today's Earnings</span>
+                                <strong id="driver-home-today-earnings" class="summary-tile-val">₹0</strong>
                             </div>
-                            <svg class="console-action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="9 18 15 12 9 6"/>
-                            </svg>
-                        </button>
-                        <div class="console-action-v-divider" aria-hidden="true"></div>
-                        <button id="driver-earnings-btn" class="console-action-card" type="button">
-                            <div class="console-action-badge icon-earnings" aria-hidden="true">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
-                                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                        </div>
+                        <div class="today-summary-tile tile-trips">
+                            <div class="summary-tile-icon-badge badge-blue" aria-hidden="true">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11.2 2 11.6 2 12v4c0 .6.4 1 1 1h2"/>
+                                    <circle cx="7" cy="17" r="2"/>
+                                    <circle cx="17" cy="17" r="2"/>
                                 </svg>
                             </div>
-                            <div class="console-action-text">
-                                <span class="console-action-title" data-i18n="driver.earnings">Earnings</span>
-                                <span class="console-action-sub" data-i18n="driver.check_earnings">Check your earnings</span>
+                            <div class="summary-tile-text">
+                                <span class="summary-tile-label" data-i18n="driver.trips_today">Trips Today</span>
+                                <strong id="driver-home-today-trips" class="summary-tile-val">0</strong>
                             </div>
-                            <svg class="console-action-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <polyline points="9 18 15 12 9 6"/>
-                            </svg>
-                        </button>
+                        </div>
                     </div>
                 </section>
 
-                <!-- View Dashboard Primary CTA -->
+                <!-- Dominant View Dashboard Primary CTA -->
                 <button id="driver-dashboard-link-btn" class="driver-dashboard-cta-btn" type="button" onclick="window.location.href='/driver-dashboard.html'">
                     <div class="cta-left-content">
                         <svg class="cta-grid-icon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -149,7 +158,7 @@
                             <rect x="14" y="14" width="7" height="7" rx="1.5"/>
                             <rect x="3" y="14" width="7" height="7" rx="1.5"/>
                         </svg>
-                        <span data-i18n="driver.view_dashboard">View Your Dashboard</span>
+                        <span data-i18n="driver.view_dashboard">View Dashboard</span>
                     </div>
                     <svg class="cta-arrow-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polyline points="9 18 15 12 9 6"/>

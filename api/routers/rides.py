@@ -682,6 +682,12 @@ def _accumulate_online_seconds(db, uid: str, previous_moment: Any, still_online:
     elapsed = datetime.now(timezone.utc).timestamp() - previous_seconds
     if 0 < elapsed <= ONLINE_HEARTBEAT_MAX_GAP_SECONDS:
         _bump_daily_stats(db, uid, {"online_seconds": elapsed})
+        try:
+            db.collection("users").document(uid).set({
+                "lifetime_online_seconds": fb_firestore.Increment(elapsed),
+            }, merge=True)
+        except Exception:
+            pass
 
 
 _SHARE_LIVE_CHILD_STATUSES = {"accepted", "arrived", "started", "en_route"}
@@ -4233,28 +4239,124 @@ def get_driver_dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[s
                     "vehicleType": ride.get("vehicle_type"),
                 })
 
+                import calendar
+        from datetime import datetime as dt_cls, timedelta as td_cls
+
+        try:
+            today_date = dt_cls.strptime(day, "%Y-%m-%d").date()
+        except Exception:
+            today_date = dt_cls.now(timezone.utc).date()
+
+        # Past 7 days up to today for "This Week's Summary"
+        week_dates = [(today_date - td_cls(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+        week_dates.reverse()
+
+        # Current calendar month: 1st of month to today
+        month_dates = [dt_cls(today_date.year, today_date.month, d).strftime("%Y-%m-%d") for d in range(1, today_date.day + 1)]
+
+        _, last_day_of_month = calendar.monthrange(today_date.year, today_date.month)
+        month_end_date = dt_cls(today_date.year, today_date.month, last_day_of_month).date()
+
+        def _format_date_range(d1, d2):
+            if d1.year == d2.year:
+                if d1.month == d2.month:
+                    return f"{d1.strftime('%d')} – {d2.strftime('%d %b %Y')}"
+                return f"{d1.strftime('%d %b')} – {d2.strftime('%d %b %Y')}"
+            return f"{d1.strftime('%d %b %Y')} – {d2.strftime('%d %b %Y')}"
+
+        week_start_date = today_date - td_cls(days=6)
+        week_label = _format_date_range(week_start_date, today_date)
+        month_label = _format_date_range(dt_cls(today_date.year, today_date.month, 1).date(), month_end_date)
+        today_label = f"Today, {today_date.strftime('%d %b %Y')}"
+
+        # Fetch daily stats for needed dates
+        needed_dates = list(dict.fromkeys(week_dates + month_dates))
+        stats_by_date = {}
+        if hasattr(db, "get_all"):
+            try:
+                needed_refs = [db.collection("driverDailyStats").document(f"{uid}_{d_str}") for d_str in needed_dates]
+                for snap in db.get_all(needed_refs):
+                    if snap.exists:
+                        s_data = snap.to_dict() or {}
+                        d_key = s_data.get("date") or snap.id.split("_")[-1]
+                        stats_by_date[d_key] = s_data
+            except Exception:
+                pass
+
+        if not stats_by_date:
+            daily = daily_ref.get().to_dict() or {}
+            stats_by_date[day] = daily
+        else:
+            daily = stats_by_date.get(day) or daily_ref.get().to_dict() or {}
+
         completed_today = int(daily.get("completed_rides") or 0)
         declined_today = int(daily.get("declined_count") or 0)
         decided_today = completed_today + declined_today
-        lifetime_trips = int(profile.get("total_completed_trips") or 0)
-        lifetime_earnings = float(profile.get("lifetime_earnings") or 0)
-        lifetime_distance = float(profile.get("lifetime_distance_km") or 0.0)
         today_distance = float(daily.get("distance_km") or 0.0)
+        today_earnings = float(daily.get("earnings") or 0.0)
+        today_online_seconds = float(daily.get("online_seconds") or 0.0)
         today_under_review_km = float(daily.get("under_review_km") or 0.0)
         today_under_review_count = int(daily.get("under_review_count") or 0)
+
+        # Weekly aggregates
+        week_distance = sum(float(stats_by_date.get(d, {}).get("distance_km") or 0.0) for d in week_dates)
+        week_earnings = sum(float(stats_by_date.get(d, {}).get("earnings") or 0.0) for d in week_dates)
+        week_trips = sum(int(stats_by_date.get(d, {}).get("completed_rides") or 0) for d in week_dates)
+        week_online_seconds = sum(float(stats_by_date.get(d, {}).get("online_seconds") or 0.0) for d in week_dates)
+
+        # Monthly aggregates
+        month_distance = sum(float(stats_by_date.get(d, {}).get("distance_km") or 0.0) for d in month_dates)
+        month_earnings = sum(float(stats_by_date.get(d, {}).get("earnings") or 0.0) for d in month_dates)
+        month_trips = sum(int(stats_by_date.get(d, {}).get("completed_rides") or 0) for d in month_dates)
+        month_online_seconds = sum(float(stats_by_date.get(d, {}).get("online_seconds") or 0.0) for d in month_dates)
+
+        # Lifetime aggregates
+        lifetime_trips = max(int(profile.get("total_completed_trips") or 0), month_trips, week_trips, completed_today)
+        lifetime_earnings = max(float(profile.get("lifetime_earnings") or 0.0), month_earnings, week_earnings, today_earnings)
+        lifetime_distance = max(float(profile.get("lifetime_distance_km") or 0.0), month_distance, week_distance, today_distance)
+        lifetime_online_seconds = max(float(profile.get("lifetime_online_seconds") or 0.0), month_online_seconds, week_online_seconds, today_online_seconds)
 
         return {
             "ok": True,
             "date": day,
+            "todayLabel": today_label,
             "today": {
-                "earnings": round(float(daily.get("earnings") or 0), 2),
+                "earnings": round(today_earnings, 2),
                 "completedRides": completed_today,
                 "declinedRides": declined_today,
                 "distanceKm": round(today_distance, 2),
                 "underReviewKm": round(today_under_review_km, 2),
                 "underReviewCount": today_under_review_count,
-                "onlineHours": round(float(daily.get("online_seconds") or 0) / 3600, 2),
+                "onlineHours": round(today_online_seconds / 3600, 2),
+                "onlineSeconds": round(today_online_seconds, 1),
                 "acceptanceRate": round(completed_today / decided_today, 2) if decided_today else None,
+            },
+            "week": {
+                "label": week_label,
+                "startDate": week_dates[0],
+                "endDate": week_dates[-1],
+                "distanceKm": round(week_distance, 2),
+                "earnings": round(week_earnings, 2),
+                "completedRides": week_trips,
+                "onlineSeconds": round(week_online_seconds, 1),
+                "onlineHours": round(week_online_seconds / 3600, 2),
+            },
+            "month": {
+                "label": month_label,
+                "startDate": month_dates[0],
+                "endDate": month_end_date.strftime("%Y-%m-%d"),
+                "distanceKm": round(month_distance, 2),
+                "earnings": round(month_earnings, 2),
+                "completedRides": month_trips,
+                "onlineSeconds": round(month_online_seconds, 1),
+                "onlineHours": round(month_online_seconds / 3600, 2),
+            },
+            "lifetime": {
+                "distanceKm": round(lifetime_distance, 2),
+                "earnings": round(lifetime_earnings, 2),
+                "completedRides": lifetime_trips,
+                "onlineSeconds": round(lifetime_online_seconds, 1),
+                "onlineHours": round(lifetime_online_seconds / 3600, 2),
             },
             "pendingTrips": {"count": pending_count, "preview": pending_preview},
             "currentTrip": current_trip,

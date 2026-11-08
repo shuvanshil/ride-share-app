@@ -52,3 +52,27 @@ def test_safety_report_categories_include_expected_values() -> None:
     assert "unsafe_driving" in SAFETY_REPORT_CATEGORIES
     assert "harassment" in SAFETY_REPORT_CATEGORIES
     assert "other" in SAFETY_REPORT_CATEGORIES
+
+
+def test_accumulate_online_seconds_updates_stats_and_profile() -> None:
+    calls = []
+
+    class FakeDocRef:
+        def __init__(self, path):
+            self.path = path
+        def set(self, data, merge=False):
+            calls.append((self.path, data, merge))
+
+    class FakeDb:
+        def collection(self, name):
+            return FakeColl(name)
+
+    class FakeColl:
+        def __init__(self, coll_name):
+            self.coll_name = coll_name
+        def document(self, doc_id):
+            return FakeDocRef(f"{self.coll_name}/{doc_id}")
+
+    valid_prev = datetime.now(timezone.utc) - timedelta(seconds=60)
+    _accumulate_online_seconds(FakeDb(), "driver_test", valid_prev, still_online=True)
+    assert any("users/driver_test" in c[0] for c in calls)

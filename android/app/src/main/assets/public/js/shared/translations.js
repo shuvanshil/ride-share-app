@@ -4,7 +4,7 @@
  * Complete parity for all keys in English and Bengali
  */
 
-export const TRANSLATIONS_VERSION = "20261019-v1";
+export const TRANSLATIONS_VERSION = "20261103-v1";
 
 export const TRANSLATIONS = {
     "en": {
@@ -731,6 +731,19 @@ export const TRANSLATIONS = {
             "go_online": "Go Online",
             "go_offline": "Go Offline",
             "greeting_title": "Drive safe & earn with LightUp",
+            "dashboard_title": "Driver Dashboard",
+            "today_performance": "Today's Performance",
+            "today_summary": "Today's Summary",
+            "trips_today": "Trips Today",
+            "this_week_summary": "This Week's Summary",
+            "this_month_summary": "This Month's Summary",
+            "lifetime_summary": "Lifetime Summary",
+            "total_distance": "Total Distance",
+            "total_earnings": "Total Earnings",
+            "total_trips": "Total Trips",
+            "total_online_time": "Total Online Time",
+            "you_are_online": "You are Online",
+            "you_are_offline": "You are Offline",
             "ride_history": "Ride History",
             "view_past_rides": "View your past rides",
             "check_earnings": "Check your earnings",
@@ -781,7 +794,7 @@ export const TRANSLATIONS = {
             "pay_fees_btn": "Pay Outstanding Weekly Fees",
             "upi_qr_notice": "Show this screen to the passenger for easy collection.",
             "earnings": "Earnings",
-            "view_dashboard": "View Your Dashboard",
+            "view_dashboard": "View Dashboard",
             "incoming_requests": "Incoming Local Ride Requests",
             "offline_title": "You're Offline",
             "duty_switch_off": "Duty switch is off",
@@ -2031,6 +2044,20 @@ export const TRANSLATIONS = {
             "go_online": "অনলাইন হন",
             "go_offline": "অফলাইন হন",
             "greeting_title": "নিরাপদে গাড়ি চালান ও লাইটআপ-এ আয় করুন",
+            "dashboard_title": "ড্রাইভার ড্যাশবোর্ড",
+            "today_performance": "আজকের পারফর্ম্যান্স",
+            "today_summary": "আজকের সারাংশ",
+            "trips_today": "আজকের ট্রিপ",
+            "this_week_summary": "এই সপ্তাহের সারাংশ",
+            "this_month_summary": "এই মাসের সারাংশ",
+            "lifetime_summary": "লাইফটাইম সারাংশ",
+            "total_distance": "মোট দূরত্ব",
+            "total_earnings": "মোট উপার্জন",
+            "total_trips": "মোট ট্রিপ",
+            "total_online_time": "মোট অনলাইন সময়",
+            "you_are_online": "আপনি অনলাইনে আছেন",
+            "you_are_offline": "আপনি অফলাইনে আছেন",
+            "view_dashboard": "ড্যাশবোর্ড দেখুন",
             "ride_history": "রাইডের ইতিহাস",
             "view_past_rides": "আপনার পূর্ববর্তী রাইডগুলি দেখুন",
             "check_earnings": "আপনার উপার্জন দেখুন",

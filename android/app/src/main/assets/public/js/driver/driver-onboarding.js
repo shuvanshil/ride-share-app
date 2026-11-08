@@ -686,6 +686,43 @@ function updateDutySwitchUi() {
         }
     }
 
+    // Dominant Online/Offline card & button UI update
+    const dominantCard = document.getElementById('driver-status-card');
+    const dominantPillBadge = document.getElementById('driver-status-pill-badge');
+    const dominantPillText = document.getElementById('driver-status-pill-text');
+    const dominantBtn = document.getElementById('driver-dominant-duty-btn');
+    const dominantBtnText = document.getElementById('dominant-btn-text');
+    const dominantBtnIcon = document.getElementById('dominant-btn-icon');
+
+    if (dominantCard) {
+        dominantCard.classList.toggle('online', online);
+        dominantCard.classList.toggle('offline', !online);
+    }
+    if (dominantPillBadge) {
+        dominantPillBadge.classList.toggle('online', online);
+        dominantPillBadge.classList.toggle('offline', !online);
+    }
+    if (dominantPillText) {
+        dominantPillText.textContent = online ? t('driver.you_are_online', "You are Online") : t('driver.you_are_offline', "You are Offline");
+    }
+    if (dominantBtn) {
+        dominantBtn.classList.toggle('online-action', !online);
+        dominantBtn.classList.toggle('offline-action', online);
+        if (switchInput && switchInput.dataset.busy === "true") {
+            if (dominantBtnText) dominantBtnText.textContent = t('common.updating', "Updating...");
+            if (dominantBtnIcon) dominantBtnIcon.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:16px;height:16px;border-width:2px;"></span>`;
+        } else {
+            if (dominantBtnText) {
+                dominantBtnText.textContent = online ? t('driver.go_offline', "Go Offline") : t('driver.go_online', "Go Online");
+            }
+            if (dominantBtnIcon) {
+                dominantBtnIcon.innerHTML = online
+                    ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`
+                    : `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+            }
+        }
+    }
+
     if (noRidesMsg) {
         if (!online) {
             renderOfflineEmptyState(noRidesMsg);
@@ -1839,6 +1876,7 @@ function startDriverConsole(profile) {
     }
 
     activeConsoleUid = profile.uid;
+    subscribeDriverDailyStats(profile.uid);
     currentUser = { ...(currentUser || {}), ...profile };
     if (!isDutySwitchTransitioning) {
         driverDutyOnline = getDriverDutyStatus(currentUser) === "online";
@@ -1958,6 +1996,65 @@ addOptionalClickListener('logout-btn-review', async () => {
         await showAlert("Could not logout. Please try again.");
     }
 });
+let driverDailyStatsUnsub = null;
+
+function subscribeDriverDailyStats(uid) {
+    if (driverDailyStatsUnsub) {
+        driverDailyStatsUnsub();
+        driverDailyStatsUnsub = null;
+    }
+    if (!uid) return;
+
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + istOffset);
+    const dayStr = istDate.toISOString().slice(0, 10);
+
+    const updateUi = (earn, trips) => {
+        const earnEl = document.getElementById('driver-home-today-earnings');
+        const tripsEl = document.getElementById('driver-home-today-trips');
+        if (earnEl) {
+            const amount = Number(earn) || 0;
+            earnEl.textContent = `₹${Math.round(amount).toLocaleString('en-IN')}`;
+        }
+        if (tripsEl) {
+            const count = Math.max(0, Math.floor(Number(trips) || 0));
+            tripsEl.textContent = count.toLocaleString('en-IN');
+        }
+    };
+
+    try {
+        driverDailyStatsUnsub = onSnapshot(doc(db, "driverDailyStats", `${uid}_${dayStr}`), (snap) => {
+            if (snap.exists()) {
+                const data = snap.data() || {};
+                updateUi(data.earnings, data.completed_rides);
+            }
+        }, (err) => {
+            console.warn("Daily stats subscription notice:", err);
+        });
+    } catch (e) {
+        console.warn("Could not attach daily stats listener:", e);
+    }
+
+    auth.currentUser?.getIdToken().then((idToken) => {
+        if (!idToken) return;
+        fetch("/api/rides/driver-dashboard", {
+            headers: { Authorization: `Bearer ${idToken}` }
+        }).then(res => res.json()).then(data => {
+            if (data?.ok && data.today) {
+                updateUi(data.today.earnings, data.today.completedRides);
+            }
+        }).catch(() => {});
+    }).catch(() => {});
+}
+
+addOptionalClickListener('driver-dominant-duty-btn', () => {
+    const sw = document.getElementById('driver-duty-switch');
+    if (sw && sw.dataset.busy !== "true") {
+        sw.click();
+    }
+});
+
 addOptionalClickListener('driver-duty-switch', async (event) => {
     const switchInput = event.target;
     if (isDutySwitchTransitioning || switchInput.dataset.busy === "true") {
