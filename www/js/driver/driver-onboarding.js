@@ -77,6 +77,7 @@ let activeDriverLocationWatchId = null;
 let driverPresenceWatchId = null;
 let activeDriverTripListener = null;
 let activeDriverJobsListener = null;
+let driverDailyStatsUnsub = null;
 let currentlyAssignedRideId = null;
 let pendingDriverPaymentRideId = null;
 let activeDriverRenderedStatus = null;
@@ -645,6 +646,10 @@ function stopPresenceTracking() {
     if (driverPresenceWatchId !== null) {
         navigator.geolocation.clearWatch(driverPresenceWatchId);
         driverPresenceWatchId = null;
+    }
+    if (driverDailyStatsUnsub) {
+        driverDailyStatsUnsub();
+        driverDailyStatsUnsub = null;
     }
     stopDriverTracking();
     releaseWakeLock();
@@ -1857,6 +1862,56 @@ async function cancelRideByDriver(rideId) {
     }
 }
 
+function subscribeDriverDailyStats(uid) {
+    if (driverDailyStatsUnsub) {
+        driverDailyStatsUnsub();
+        driverDailyStatsUnsub = null;
+    }
+    if (!uid) return;
+
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + istOffset);
+    const dayStr = istDate.toISOString().slice(0, 10);
+
+    const updateUi = (earn, trips) => {
+        const earnEl = document.getElementById('driver-home-today-earnings');
+        const tripsEl = document.getElementById('driver-home-today-trips');
+        if (earnEl) {
+            const amount = Number(earn) || 0;
+            earnEl.textContent = `₹${Math.round(amount).toLocaleString('en-IN')}`;
+        }
+        if (tripsEl) {
+            const count = Math.max(0, Math.floor(Number(trips) || 0));
+            tripsEl.textContent = count.toLocaleString('en-IN');
+        }
+    };
+
+    try {
+        driverDailyStatsUnsub = onSnapshot(doc(db, "driverDailyStats", `${uid}_${dayStr}`), (snap) => {
+            if (snap.exists()) {
+                const data = snap.data() || {};
+                updateUi(data.earnings, data.completed_rides);
+            }
+        }, (err) => {
+            console.warn("Daily stats subscription notice:", err);
+        });
+    } catch (e) {
+        console.warn("Could not attach daily stats listener:", e);
+    }
+
+    auth.currentUser?.getIdToken().then((idToken) => {
+        if (!idToken) return;
+        fetch("/api/rides/driver-dashboard", {
+            headers: { Authorization: `Bearer ${idToken}` }
+        }).then(res => res.json()).then(data => {
+            if (data?.ok && data.today) {
+                updateUi(data.today.earnings, data.today.completedRides);
+            }
+        }).catch(() => {});
+    }).catch(() => {});
+}
+
 function startDriverConsole(profile) {
     if (activeConsoleUid === profile.uid) {
         currentUser = { ...(currentUser || {}), ...profile };
@@ -1996,58 +2051,6 @@ addOptionalClickListener('logout-btn-review', async () => {
         await showAlert("Could not logout. Please try again.");
     }
 });
-let driverDailyStatsUnsub = null;
-
-function subscribeDriverDailyStats(uid) {
-    if (driverDailyStatsUnsub) {
-        driverDailyStatsUnsub();
-        driverDailyStatsUnsub = null;
-    }
-    if (!uid) return;
-
-    const now = new Date();
-    const istOffset = 5.5 * 60 * 60 * 1000;
-    const istDate = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + istOffset);
-    const dayStr = istDate.toISOString().slice(0, 10);
-
-    const updateUi = (earn, trips) => {
-        const earnEl = document.getElementById('driver-home-today-earnings');
-        const tripsEl = document.getElementById('driver-home-today-trips');
-        if (earnEl) {
-            const amount = Number(earn) || 0;
-            earnEl.textContent = `₹${Math.round(amount).toLocaleString('en-IN')}`;
-        }
-        if (tripsEl) {
-            const count = Math.max(0, Math.floor(Number(trips) || 0));
-            tripsEl.textContent = count.toLocaleString('en-IN');
-        }
-    };
-
-    try {
-        driverDailyStatsUnsub = onSnapshot(doc(db, "driverDailyStats", `${uid}_${dayStr}`), (snap) => {
-            if (snap.exists()) {
-                const data = snap.data() || {};
-                updateUi(data.earnings, data.completed_rides);
-            }
-        }, (err) => {
-            console.warn("Daily stats subscription notice:", err);
-        });
-    } catch (e) {
-        console.warn("Could not attach daily stats listener:", e);
-    }
-
-    auth.currentUser?.getIdToken().then((idToken) => {
-        if (!idToken) return;
-        fetch("/api/rides/driver-dashboard", {
-            headers: { Authorization: `Bearer ${idToken}` }
-        }).then(res => res.json()).then(data => {
-            if (data?.ok && data.today) {
-                updateUi(data.today.earnings, data.today.completedRides);
-            }
-        }).catch(() => {});
-    }).catch(() => {});
-}
-
 addOptionalClickListener('driver-dominant-duty-btn', () => {
     const sw = document.getElementById('driver-duty-switch');
     if (sw && sw.dataset.busy !== "true") {
