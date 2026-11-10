@@ -32,9 +32,10 @@ const ACTIVE_DRIVER_ROUTE_RECALC_MIN_INTERVAL_MS = 7000;
 // applyNavigationCamera in driver-service.js) - rotates + tilts the map so
 // the assigned driver's direction of travel always points "up" on screen.
 const PASSENGER_NAV_MODE_CACHE_KEY = "liphtup_passenger_nav_mode";
-const PASSENGER_NAV_CAMERA_TILT = 50;
-const PASSENGER_NAV_CAMERA_ZOOM = 17;
+const PASSENGER_NAV_CAMERA_TILT = 0;
+const PASSENGER_NAV_CAMERA_ZOOM = 16.0;
 const PASSENGER_CAMERA_ROTATE_ANIM_MS = 220;
+let isPassengerTripPickedUp = false;
 // GPS on a phone is commonly 5-20m off (worse in "urban canyons"/dense
 // cover), which is why a raw GPS ping can render the vehicle icon off the
 // road entirely (on a building, footpath, etc). Whenever we already have the
@@ -359,7 +360,7 @@ function sampleRouteAnimation(routeAnimData, progress) {
     return { point: last, heading: last?.segHeading ?? null };
 }
 
-function projectFractionOntoSegment(point, segStart, segEnd) {
+function projectRawFractionOntoSegment(point, segStart, segEnd) {
     const lngScale = Math.cos((segStart.lat * Math.PI) / 180) || 1e-9;
     const segLat = segEnd.lat - segStart.lat;
     const segLng = (segEnd.lng - segStart.lng) * lngScale;
@@ -369,8 +370,12 @@ function projectFractionOntoSegment(point, segStart, segEnd) {
     const segLengthSq = (segLat * segLat) + (segLng * segLng);
     if (segLengthSq <= 1e-18) return 0;
 
-    const fraction = ((pointLat * segLat) + (pointLng * segLng)) / segLengthSq;
-    return Math.max(0, Math.min(1, fraction));
+    return ((pointLat * segLat) + (pointLng * segLng)) / segLengthSq;
+}
+
+function projectFractionOntoSegment(point, segStart, segEnd) {
+    const raw = projectRawFractionOntoSegment(point, segStart, segEnd);
+    return Math.max(0, Math.min(1, raw));
 }
 
 function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeading = null, lastFraction = 0) {
@@ -395,7 +400,25 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeadin
 
     const evaluateCandidate = (currentBest, segIndex, segStart, segEnd, isWindowSearch, snapLimit = maxSnapMeters) => {
         if (!segStart || !segEnd) return currentBest;
-        let fraction = projectFractionOntoSegment(position, segStart, segEnd);
+        const rawFraction = projectRawFractionOntoSegment(position, segStart, segEnd);
+        let fraction = Math.max(0, Math.min(1, rawFraction));
+
+        // Detect destination overshoot past the last route segment:
+        // Do NOT clamp the vehicle to the destination point!
+        if (segIndex === routePath.length - 2 && rawFraction > 1.0) {
+            const distPastDest = calculateDistanceMeters(position, segEnd);
+            if (distPastDest > 6) {
+                return {
+                    index: routePath.length - 1,
+                    fraction: 1.0,
+                    point: position, // REAL position! Continues moving past destination
+                    distanceMeters: distPastDest,
+                    heading: normalizedVehicleHeading ?? calculateBearing(segStart, segEnd),
+                    isPastDestination: true,
+                    score: 0
+                };
+            }
+        }
 
         // Enforce monotonic progress on the same segment when GPS jitter drifts
         // slightly backward (<= 15m) so the vehicle never slides backward at stops.
@@ -1102,6 +1125,14 @@ class RotatingVehicleMarker {
         this.image.draggable = false;
         this.element.appendChild(this.image);
         this.setVehicleType(vehicleType);
+
+        this.currentMap = map;
+        if (map && typeof map.addListener === "function") {
+            this._headingListener = map.addListener("heading_changed", () => {
+                this.updateDisplayedRotation();
+            });
+        }
+
         this.setHeading(this.heading);
 
         this.overlay.onAdd = () => {
@@ -1109,11 +1140,24 @@ class RotatingVehicleMarker {
         };
         this.overlay.draw = () => this.draw();
         this.overlay.onRemove = () => {
+            if (this._headingListener && typeof window.google?.maps?.event?.removeListener === "function") {
+                window.google.maps.event.removeListener(this._headingListener);
+                this._headingListener = null;
+            }
             this.element.style.visibility = "hidden";
             this.element.remove();
         };
-        this.currentMap = map;
         this.overlay.setMap(map);
+    }
+
+    updateDisplayedRotation() {
+        if (this.heading == null || isNaN(this.heading)) return;
+        const mapObj = this.currentMap || window.mapInstance;
+        const cameraHeading = (mapObj && typeof mapObj.getHeading === "function") ? (mapObj.getHeading() || 0) : 0;
+        const displayedAngle = normalizeDegrees(this.heading - cameraHeading);
+        if (this.image) {
+            this.image.style.transform = `rotate(${displayedAngle}deg)`;
+        }
     }
 
     draw() {
@@ -1126,6 +1170,7 @@ class RotatingVehicleMarker {
 
         this.element.style.transform = `translate(${point.x - 24}px, ${point.y - 24}px)`;
         this.element.style.visibility = "visible";
+        this.updateDisplayedRotation();
     }
 
     getPosition() {
@@ -1139,8 +1184,18 @@ class RotatingVehicleMarker {
     }
 
     setMap(map) {
-        if (this.currentMap === map) return;
-        this.currentMap = map;
+        if (this.currentMap !== map) {
+            if (this._headingListener && typeof window.google?.maps?.event?.removeListener === "function") {
+                window.google.maps.event.removeListener(this._headingListener);
+                this._headingListener = null;
+            }
+            this.currentMap = map;
+            if (map && typeof map.addListener === "function") {
+                this._headingListener = map.addListener("heading_changed", () => {
+                    this.updateDisplayedRotation();
+                });
+            }
+        }
         if (!map) {
             this.element.style.visibility = "hidden";
         }
@@ -1166,7 +1221,7 @@ class RotatingVehicleMarker {
         if (normalized == null) return;
 
         this.heading = normalized;
-        this.image.style.transform = `rotate(${normalized}deg)`;
+        this.updateDisplayedRotation();
     }
 
     setLiveTracked(live) {
@@ -1591,42 +1646,144 @@ function stopPassengerCameraAnimation() {
     }
 }
 
+let lastPassengerCameraPanAt = 0;
+
+function calculateForwardLookingCenter(position, heading, aheadMeters = 70) {
+    if (!position || heading == null || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return position;
+    const rad = (heading * Math.PI) / 180;
+    const dLat = (aheadMeters * Math.cos(rad)) / 111320;
+    const cosLat = Math.cos((position.lat * Math.PI) / 180);
+    const dLng = (aheadMeters * Math.sin(rad)) / (111320 * (Math.abs(cosLat) > 0.001 ? cosLat : 1));
+    return {
+        lat: position.lat + dLat,
+        lng: position.lng + dLng
+    };
+}
+
+function calculateOptimalNavZoom(speedKmh, distToTargetMeters = null) {
+    if (distToTargetMeters != null && distToTargetMeters < 250) {
+        return 16.2;
+    }
+    if (speedKmh > 55) return 15.2;
+    if (speedKmh > 35) return 15.5;
+    if (speedKmh > 15) return 15.8;
+    return 16.0;
+}
+
+function updatePassengerNavigationCameraTracking(markerPosition, vehicleHeading, speedMps = 0) {
+    if (!window.mapInstance || passengerUserInteracted || !passengerNavigationModeEnabled) return;
+
+    const speedKmh = (speedMps || 0) * 3.6;
+    const aheadMeters = Math.min(85, Math.max(45, speedKmh * 1.4));
+    const forwardCenter = calculateForwardLookingCenter(markerPosition, vehicleHeading, aheadMeters);
+
+    const now = performance.now();
+    const bounds = window.mapInstance.getBounds?.();
+    if (!bounds) {
+        if (now - lastPassengerCameraPanAt > 1500) {
+            window.mapInstance.panTo(forwardCenter);
+            lastPassengerCameraPanAt = now;
+        }
+        return;
+    }
+
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    const latSpan = ne.lat() - sw.lat();
+    const lngSpan = ne.lng() - sw.lng();
+
+    // Inner 55% safe zone: 22.5% margin from borders to anticipate vehicle movement
+    const safeNorth = ne.lat() - latSpan * 0.22;
+    const safeSouth = sw.lat() + latSpan * 0.22;
+    const safeEast = ne.lng() - lngSpan * 0.22;
+    const safeWest = sw.lng() + lngSpan * 0.22;
+
+    const isOutsideSafeZone =
+        forwardCenter.lat > safeNorth ||
+        forwardCenter.lat < safeSouth ||
+        forwardCenter.lng > safeEast ||
+        forwardCenter.lng < safeWest;
+
+    const elapsedSincePan = now - lastPassengerCameraPanAt;
+
+    if (isOutsideSafeZone || (speedKmh > 5 && elapsedSincePan > 2400)) {
+        const targetZoom = calculateOptimalNavZoom(speedKmh);
+        const currentZoom = window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM;
+        if (Math.abs(currentZoom - targetZoom) >= 0.5) {
+            window.mapInstance.setZoom(targetZoom);
+        }
+        window.mapInstance.panTo(forwardCenter);
+        lastPassengerCameraPanAt = now;
+    }
+}
+
+function updateAssignedDriverRouteProgressAtPosition(point) {
+    if (!assignedDriverRoutePolyline || !Array.isArray(activeDriverRouteState.routePath) || activeDriverRouteState.routePath.length < 2 || !point) return;
+
+    const routePath = activeDriverRouteState.routePath;
+    const dest = routePath[routePath.length - 1];
+    const prev = routePath[routePath.length - 2];
+    const rawFrac = projectRawFractionOntoSegment(point, prev, dest);
+    if (rawFrac > 1.02 && calculateDistanceMeters(point, dest) > 6) {
+        // Vehicle has passed destination: no green train, just vehicle moving
+        assignedDriverRoutePolyline.setPath([]);
+        return;
+    }
+
+    const match = matchPositionToRoute(
+        point,
+        routePath,
+        activeDriverMarker?.routeMatchIndex ?? -1,
+        activeDriverMarker?.heading ?? null,
+        activeDriverMarker?.routeMatchFraction ?? 0
+    );
+    if (match && match.isPastDestination) {
+        assignedDriverRoutePolyline.setPath([]);
+        return;
+    }
+
+    // Check if vehicle is moving backward / reversing
+    const markerHeading = activeDriverMarker?.heading;
+    if (markerHeading != null && match && match.heading != null) {
+        const headingDiff = Math.abs(shortestHeadingDelta(match.heading, markerHeading));
+        if (headingDiff > 120) {
+            // Reversing or moving backward: no green train
+            assignedDriverRoutePolyline.setPath([]);
+            return;
+        }
+    }
+
+    const index = match && match.index >= 0 ? match.index : (activeDriverMarker?.routeMatchIndex ?? -1);
+    if (index >= 0) {
+        if (activeDriverMarker) {
+            activeDriverMarker.routeMatchIndex = index;
+            activeDriverMarker.routeMatchPoint = match?.point || point;
+        }
+        if (index >= routePath.length - 1) {
+            assignedDriverRoutePolyline.setPath([]);
+            return;
+        }
+        const remaining = [point].concat(routePath.slice(index + 1));
+        if (remaining.length >= 2) {
+            assignedDriverRoutePolyline.setPath(remaining);
+        } else {
+            assignedDriverRoutePolyline.setPath([]);
+        }
+    }
+}
+
 function applyPassengerNavigationCamera(position, heading, instant = false) {
     if (!window.mapInstance || !passengerNavigationModeEnabled || !position) return;
     if (!assignedDriverTrackingDriverId || !passengerFirstRouteFitComplete) return;
 
-    if (!window.mapInstance.moveCamera) {
-        if (window.mapInstance.panTo) window.mapInstance.panTo(position);
-        return;
-    }
-
-    const targetHeading = normalizeHeading(heading) ?? lastPassengerCameraHeading;
-    const targetZoom = window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM;
-
-    if (instant) {
-        stopPassengerCameraAnimation();
-        window.mapInstance.moveCamera({ center: position, heading: targetHeading, tilt: PASSENGER_NAV_CAMERA_TILT, zoom: Math.max(targetZoom, PASSENGER_NAV_CAMERA_ZOOM) });
-        lastPassengerCameraHeading = targetHeading;
-        return;
-    }
-
     stopPassengerCameraAnimation();
-    const startHeading = normalizeHeading(window.mapInstance.getHeading?.()) ?? lastPassengerCameraHeading;
-    const startedAt = performance.now();
+    const forwardCenter = calculateForwardLookingCenter(position, heading, 65);
+    const targetZoom = calculateOptimalNavZoom(0);
 
-    const step = (now) => {
-        const progress = Math.min(1, (now - startedAt) / PASSENGER_CAMERA_ROTATE_ANIM_MS);
-        const eased = progress * progress * (3 - (2 * progress));
-        const nextHeading = smoothHeading(startHeading, targetHeading, eased);
-        window.mapInstance.moveCamera({ center: position, heading: nextHeading, tilt: PASSENGER_NAV_CAMERA_TILT, zoom: Math.max(window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM, PASSENGER_NAV_CAMERA_ZOOM) });
-        if (progress < 1) {
-            passengerCameraAnimationFrame = requestAnimationFrame(step);
-        } else {
-            lastPassengerCameraHeading = targetHeading;
-            passengerCameraAnimationFrame = null;
-        }
-    };
-    passengerCameraAnimationFrame = requestAnimationFrame(step);
+    window.mapInstance.panTo(forwardCenter);
+    if (Math.abs((window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM) - targetZoom) >= 0.5) {
+        window.mapInstance.setZoom(targetZoom);
+    }
 }
 
 function resetPassengerCameraToOverview() {
@@ -2076,7 +2233,7 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
         const candidateHeading = (isMoving ? docHeading : null) ?? existing?.heading ?? docHeading ?? null;
         const match = matchPositionToRoute(rawPosition, routePath, lastIdx, candidateHeading, lastFrac);
         if (match) {
-            position = match.point;
+            position = match.isPastDestination ? rawPosition : match.point;
             routeMatchIndex = match.index;
             routeMatchFraction = match.fraction ?? 0;
             routeMatchPoint = match.point;
@@ -2085,6 +2242,7 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
                 existing.routeMatchFraction = routeMatchFraction;
                 existing.routeMatchPoint = match.point;
                 existing.offRouteCount = 0;
+                existing.isPastDestination = Boolean(match.isPastDestination);
             }
             if (match.heading != null) {
                 matchedRouteHeading = match.heading;
@@ -2124,18 +2282,17 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
         position = prevPosObj;
     }
 
-    if (matchedRouteHeading != null) {
-        // Vehicle is matched to the active road route; follow road segment bearing
-        heading = matchedRouteHeading;
-    } else if (isMoving) {
-        const motionBearing = (prevRawObj && rawMoveDist >= DRIVER_HEADING_MIN_DISTANCE_METERS)
+    if (isMoving) {
+        const motionBearing = (prevRawObj && rawMoveDist >= 2.5)
             ? calculateBearing(prevRawObj, rawPosition)
             : null;
-        const reliableDocHeading = (docHeading != null && docHeading !== 0 && hasValidSpeed && rawSpeed >= 1.2) ? docHeading : null;
-        heading = reliableDocHeading ?? motionBearing ?? existing?.heading ?? docHeading;
+        const reliableDocHeading = (docHeading != null && docHeading !== 0 && hasValidSpeed && rawSpeed >= 1.0) ? docHeading : null;
+        heading = reliableDocHeading ?? motionBearing ?? matchedRouteHeading ?? existing?.heading ?? docHeading;
     } else if (existing?.heading != null) {
         // Stationary / low-speed: LOCK PREVIOUS HEADING! Never turn or spin in place from compass noise!
         heading = existing.heading;
+    } else if (matchedRouteHeading != null) {
+        heading = matchedRouteHeading;
     }
 
     // If starting from rest or heading is still uninitialized, point towards next route waypoint or target
@@ -2465,6 +2622,7 @@ class UserLocationMarkerOverlay {
 }
 
 function addPickupMarker(coords) {
+    if (isPassengerTripPickedUp) return;
     clearPickupMarker();
     if (!window.mapInstance || !window.google?.maps) return;
 
@@ -2592,6 +2750,12 @@ function handlePassengerLocationUpdate(position) {
         passengerLastAccurateFixAt = now;
     }
 
+    if (isPassengerTripPickedUp) {
+        userLatitude = currentTarget.lat;
+        userLongitude = currentTarget.lng;
+        return;
+    }
+
     // Preserve chosen pickup location during map pick or when custom pickup address was selected
     if (pickupMapPickMode) {
         return;
@@ -2604,6 +2768,11 @@ function handlePassengerLocationUpdate(position) {
 }
 
 function animatePassengerMarker(targetPos) {
+    if (isPassengerTripPickedUp) {
+        userLatitude = targetPos.lat;
+        userLongitude = targetPos.lng;
+        return;
+    }
     if (!userMarker) {
         addPickupMarker(targetPos);
         userLatitude = targetPos.lat;
@@ -2787,6 +2956,11 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
         }
         existing.marker.setPosition(framePosition);
 
+        // Synchronize route progress: erase travelled route directly behind current frame position
+        if (isAssignedActiveMarker && Array.isArray(activeDriverRouteState.routePath) && activeDriverRouteState.routePath.length >= 2) {
+            updateAssignedDriverRouteProgressAtPosition(framePosition);
+        }
+
         let frameHeading = startHeading;
         const desiredHeading = (segHeading != null) ? segHeading : targetHeading;
         if (desiredHeading != null && startHeading != null) {
@@ -2802,16 +2976,7 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
         // Synchronize passenger camera smoothly during marker animation
         if (isAssignedActiveMarker && passengerNavigationModeEnabled && !passengerUserInteracted && window.mapInstance) {
             if (passengerFirstRouteFitComplete) {
-                if (window.mapInstance.moveCamera) {
-                    window.mapInstance.moveCamera({
-                        center: framePosition,
-                        heading: frameHeading,
-                        tilt: PASSENGER_NAV_CAMERA_TILT,
-                        zoom: Math.max(window.mapInstance.getZoom() || PASSENGER_NAV_CAMERA_ZOOM, PASSENGER_NAV_CAMERA_ZOOM)
-                    });
-                } else if (window.mapInstance.panTo) {
-                    window.mapInstance.panTo(framePosition);
-                }
+                updatePassengerNavigationCameraTracking(framePosition, frameHeading, existing.speedMetersPerSecond);
             }
         }
 
@@ -3172,6 +3337,11 @@ async function handleAssignedDriverLocation(event) {
     if (!window.mapInstance) {
         pendingAssignedDriverDetail = detail;
         return;
+    }
+    const locStatus = detail.status || detail.rideStatus;
+    if (["started", "en_route"].includes(locStatus) || Boolean(detail.pinVerifiedAt)) {
+        isPassengerTripPickedUp = true;
+        clearPickupMarker();
     }
 
     const eventRideId = String(detail.rideId || detail.ride_id || "").trim();
@@ -4893,7 +5063,13 @@ window.addEventListener("driver-assigned", () => {
     if (mapContainer) ensurePassengerNavToggleButton(mapContainer);
 });
 window.addEventListener("ride-status-updated", (event) => {
-    const status = event.detail?.status || event.detail?.ride?.status;
+    const ride = event.detail?.ride;
+    const status = event.detail?.status || ride?.status;
+    const pickedUp = ["started", "en_route"].includes(status) || Boolean(ride?.pinVerifiedAt);
+    if (pickedUp) {
+        isPassengerTripPickedUp = true;
+        clearPickupMarker();
+    }
     if (["accepted", "arrived", "started", "en_route"].includes(status)) {
         document.getElementById("services-map-card")?.classList.add("is-expanded");
         document.getElementById("services-map-card")?.classList.add("is-active-trip");
@@ -4901,12 +5077,14 @@ window.addEventListener("ride-status-updated", (event) => {
         const mapContainer = document.getElementById("map-container");
         if (mapContainer) ensurePassengerNavToggleButton(mapContainer);
     } else if (["completed", "cancelled"].includes(status)) {
+        isPassengerTripPickedUp = false;
         document.getElementById("services-map-card")?.classList.remove("is-expanded");
         document.getElementById("services-map-card")?.classList.remove("is-active-trip");
         userMarker?.stopRipple?.();
     }
 });
 window.addEventListener("ride-completed-clear-map", () => {
+    isPassengerTripPickedUp = false;
     document.getElementById("services-map-card")?.classList.remove("is-expanded");
     document.getElementById("services-map-card")?.classList.remove("is-active-trip");
     userMarker?.stopRipple?.();

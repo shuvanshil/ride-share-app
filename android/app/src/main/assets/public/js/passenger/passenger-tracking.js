@@ -285,6 +285,7 @@ function sampleRouteAnimation(routeAnimData, progress) {
 class RotatingVehicleMarker {
     constructor({ map: markerMap, position, title = "", vehicleType = "auto", heading = null, zIndex = 1000 }) {
         ensureVehicleMarkerStyles();
+        this.currentMap = markerMap;
         this.position = position;
         this.heading = normalizeHeading(heading);
         this.vehicleType = vehicleType;
@@ -298,12 +299,35 @@ class RotatingVehicleMarker {
         this.image.draggable = false;
         this.element.appendChild(this.image);
         this.setVehicleType(vehicleType);
+
+        if (markerMap && typeof markerMap.addListener === "function") {
+            this._headingListener = markerMap.addListener("heading_changed", () => {
+                this.updateDisplayedRotation();
+            });
+        }
+
         this.setHeading(this.heading);
 
         this.overlay.onAdd = () => this.overlay.getPanes()?.overlayMouseTarget.appendChild(this.element);
         this.overlay.draw = () => this.draw();
-        this.overlay.onRemove = () => this.element.remove();
+        this.overlay.onRemove = () => {
+            if (this._headingListener && typeof window.google?.maps?.event?.removeListener === "function") {
+                window.google.maps.event.removeListener(this._headingListener);
+                this._headingListener = null;
+            }
+            this.element.remove();
+        };
         this.overlay.setMap(markerMap);
+    }
+
+    updateDisplayedRotation() {
+        if (this.heading == null || isNaN(this.heading)) return;
+        const mapObj = this.currentMap || map;
+        const cameraHeading = (mapObj && typeof mapObj.getHeading === "function") ? (mapObj.getHeading() || 0) : 0;
+        const displayedAngle = normalizeDegrees(this.heading - cameraHeading);
+        if (this.image) {
+            this.image.style.transform = `rotate(${displayedAngle}deg)`;
+        }
     }
 
     draw() {
@@ -312,6 +336,7 @@ class RotatingVehicleMarker {
         const point = projection.fromLatLngToDivPixel(new window.google.maps.LatLng(this.position.lat, this.position.lng));
         if (!point) return;
         this.element.style.transform = `translate(${point.x - 24}px, ${point.y - 24}px)`;
+        this.updateDisplayedRotation();
     }
 
     getPosition() {
@@ -327,7 +352,7 @@ class RotatingVehicleMarker {
         const normalized = normalizeHeading(heading);
         if (normalized == null) return;
         this.heading = normalized;
-        this.image.style.transform = `rotate(${normalized}deg)`;
+        this.updateDisplayedRotation();
     }
 
     setVehicleType(vehicleType = "auto") {
@@ -336,6 +361,18 @@ class RotatingVehicleMarker {
     }
 
     setMap(markerMap) {
+        if (this.currentMap !== markerMap) {
+            if (this._headingListener && typeof window.google?.maps?.event?.removeListener === "function") {
+                window.google.maps.event.removeListener(this._headingListener);
+                this._headingListener = null;
+            }
+            this.currentMap = markerMap;
+            if (markerMap && typeof markerMap.addListener === "function") {
+                this._headingListener = markerMap.addListener("heading_changed", () => {
+                    this.updateDisplayedRotation();
+                });
+            }
+        }
         this.overlay.setMap(markerMap);
     }
 }
@@ -477,7 +514,23 @@ function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, last
         const ptLat = point.lat - p1.lat;
         const ptLng = (point.lng - p1.lng) * (Math.cos((p1.lat * Math.PI) / 180) || 1);
         const segLenSq = (segLat * segLat) + (segLng * segLng);
-        let frac = segLenSq > 1e-18 ? Math.max(0, Math.min(1, ((ptLat * segLat) + (ptLng * segLng)) / segLenSq)) : 0;
+        const rawFrac = segLenSq > 1e-18 ? (((ptLat * segLat) + (ptLng * segLng)) / segLenSq) : 0;
+        let frac = Math.max(0, Math.min(1, rawFrac));
+
+        // Detect destination overshoot: do NOT clamp to destination
+        if (segIndex === path.length - 2 && rawFrac > 1.0) {
+            const distPastDest = calculateDistanceMeters(point, p2);
+            if (distPastDest > 6) {
+                return {
+                    point: point, // REAL position! Continues moving past destination
+                    heading: normalizedHeading ?? calculateBearing(p1, p2),
+                    index: path.length - 1,
+                    fraction: 1.0,
+                    isPastDestination: true,
+                    score: 0
+                };
+            }
+        }
 
         if (isWindowSearch && segIndex === lastIdx && Number.isFinite(lastFrac) && frac < lastFrac) {
             const segLen = calculateDistanceMeters(p1, p2);
@@ -550,6 +603,39 @@ function updateTrackRouteProgress(matchIndex, matchPoint) {
     }
 }
 
+function updateTrackRouteProgressAtPoint(point) {
+    if (!trackRoutePolyline || !Array.isArray(trackRoutePath) || trackRoutePath.length < 2 || !point) return;
+
+    const snap = snapToTrackRoute(point, trackRoutePath, lastRouteMatchIndex, lastDriverHeading, lastRouteMatchFraction);
+    if (snap && snap.isPastDestination) {
+        trackRoutePolyline.setPath([]);
+        return;
+    }
+
+    if (lastDriverHeading != null && snap && snap.heading != null) {
+        const headingDiff = Math.abs(shortestHeadingDelta(snap.heading, lastDriverHeading));
+        if (headingDiff > 120) {
+            trackRoutePolyline.setPath([]);
+            return;
+        }
+    }
+
+    if (snap && snap.index >= 0) {
+        lastRouteMatchIndex = snap.index;
+        lastRouteMatchFraction = snap.fraction || 0;
+        if (snap.index >= trackRoutePath.length - 1) {
+            trackRoutePolyline.setPath([]);
+            return;
+        }
+        const remaining = [point].concat(trackRoutePath.slice(snap.index + 1));
+        if (remaining.length >= 2) {
+            trackRoutePolyline.setPath(remaining);
+        } else {
+            trackRoutePolyline.setPath([]);
+        }
+    }
+}
+
 function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", speed = null) {
     if (!map || !rawTarget || !window.google?.maps) return;
     const now0 = performance.now();
@@ -568,9 +654,8 @@ function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", sp
         effectiveHeading = calculateBearing(targetPosition, trackRoutePath[nextIdx]) ?? lastDriverHeading;
     }
 
-    if (snapResult.index >= 0) {
-        updateTrackRouteProgress(snapResult.index, snapResult.point);
-    }
+    // Synchronized route-progress updates occur frame-by-frame during marker animation
+    // to prevent the green route line from jumping ahead of the vehicle.
 
     if (driverMarkerAnimation) {
         cancelAnimationFrame(driverMarkerAnimation);
@@ -640,6 +725,11 @@ function animateDriverMarker(rawTarget, heading = null, vehicleType = "auto", sp
         }
         markers.driver.setPosition(framePosition);
         lastRenderedDriverLoc = framePosition;
+
+        // Synchronize route progress: erase travelled route directly behind current frame position
+        if (Array.isArray(trackRoutePath) && trackRoutePath.length >= 2) {
+            updateTrackRouteProgressAtPoint(framePosition);
+        }
 
         let frameHeading = initialHeading;
         const targetH = (segHeading != null) ? segHeading : effectiveHeading;
@@ -761,7 +851,7 @@ function renderSnapshot(data) {
     detailsCard.classList.remove('d-none');
 
     const driverLoc = data.driverLocation;
-    const isPickedUp = ["started", "en_route", "completed"].includes(status);
+    const isPickedUp = ["started", "en_route", "completed"].includes(status) || Boolean(data.pinVerifiedAt);
     const pickup = (!isPickedUp && data.pickup_lat && data.pickup_lng) ? { lat: data.pickup_lat, lng: data.pickup_lng } : null;
     const drop = (data.drop_lat && data.drop_lng) ? { lat: data.drop_lat, lng: data.drop_lng } : null;
     const center = driverLoc || pickup || drop;
