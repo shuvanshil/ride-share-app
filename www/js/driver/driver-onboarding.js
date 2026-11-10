@@ -13,7 +13,7 @@ import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, setButtonBusy, hideInitialLoader } from '../shared/loading.js';
-import { waitForAuth } from '../shared/auth.js';
+import { waitForAuth, getAuthToken } from '../shared/auth.js';
 import { t } from '../shared/i18n.js';
 import {
     registerDriverPushToken,
@@ -744,14 +744,29 @@ function updateDutySwitchUi() {
 }
 
 async function updateDriverAvailabilityThroughBackend(status, locationData = null) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
-    const response = await fetch("/api/rides/driver-availability", {
+    let idToken = await getAuthToken(false);
+    if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
+    let response = await fetch("/api/rides/driver-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
         signal: AbortSignal.timeout(15000)
     });
+    if (response.status === 401) {
+        try {
+            idToken = await getAuthToken(true);
+            if (idToken) {
+                response = await fetch("/api/rides/driver-availability", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+                    body: JSON.stringify({ status, ...(locationData || {}) }),
+                    signal: AbortSignal.timeout(15000)
+                });
+            }
+        } catch (retryErr) {
+            console.warn("Token refresh retry failed:", retryErr);
+        }
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
         const error = new Error(data.error || data.detail || "Could not update driver availability.");
@@ -1635,44 +1650,65 @@ function setRideListBusy(busy) {
     });
 }
 
+let isAcceptingRideJob = false;
+
 async function acceptRideJob(rideId) {
+    if (!rideId || isAcceptingRideJob) return;
+
     const clickedBtn = document.querySelector(`.accept-job-btn[data-id="${CSS.escape(rideId)}"]`);
+    if (clickedBtn && (clickedBtn.dataset.busy === "true" || clickedBtn.disabled)) return;
+
     const rideCard = clickedBtn?.closest('.ride-request-card, .card');
     const rideType = rideCard?.dataset?.rideType || clickedBtn?.dataset?.rideType || "";
     const rideFare = rideCard?.dataset?.fare || clickedBtn?.dataset?.fare || "";
     if (rideType === "share") {
         const confirmed = await showConfirm(
             `Shared Ride: You can pick up up to 3 additional passengers through app requests or along the way. Each passenger pays a fixed ₹${rideFare || '10'}. Pickup requests are not guaranteed.`,
-            { okText: "Confirm", cancelText: "Cancel" }
+            { okText: t('common.confirm', "Confirm"), cancelText: t('common.cancel', "Cancel") }
         );
         if (!confirmed) return;
     }
 
+    if (isAcceptingRideJob) return;
+    isAcceptingRideJob = true;
+
     setRideListBusy(true);
-    const restoreBtn = setButtonBusy(clickedBtn, "Accepting…");
+    const restoreBtn = setButtonBusy(clickedBtn, t('driver.accepting', "Accepting…"));
 
     try {
         clearRideRequestTimer(rideId);
         stopRideRequestRing();
         driverPostRideAvailability = currentUser?.desiredAvailability === "offline" ? "offline" : "searching";
+
+        // 1. Transactional backend acceptance (server atomically updates ride status to 'accepted' and driver availability to 'busy')
         const result = await acceptRideThroughBackend(rideId);
         const acceptedRideData = result.ride || {};
-        await setDriverAvailability("busy");
+
+        // 2. Synchronize in-memory profile and state
         currentlyAssignedRideId = rideId;
-        acquireWakeLock();
         activeDriverRideData = acceptedRideData;
-        document.getElementById('active-trip-container').classList.remove('d-none');
-        renderActiveTripStatus("accepted", activeDriverRideData);
-        attachDriverTripListener(doc(db, "rides", rideId));
-        startDriverGpsBroadcast(doc(db, "rides", rideId));
+        if (currentUser) {
+            currentUser.driverAvailability = "busy";
+            currentUser.desiredAvailability = "online";
+            cacheProfile(currentUser);
+        }
+        driverDutyOnline = true;
+        updateDutySwitchUi();
 
-        showPageLoader("Ride accepted — opening trip console…");
+        // 3. Show smooth page loader
+        window.LiphtUpLoading?.showPageLoader?.(t('driver.ride_accepted_opening', "Ride accepted — opening trip console…"));
 
-        const serviceUrl = new URL("/driver-service.html", window.location.href);
-        serviceUrl.searchParams.set("rideId", rideId);
-        window.location.href = serviceUrl.href;
+        // 4. Smooth, immediate navigation to Driver Services page (compatible with web and Capacitor Android)
+        const targetPath = `/driver-service.html?rideId=${encodeURIComponent(rideId)}`;
+        const destUrl = window.getPlatformUrl ? window.getPlatformUrl(targetPath) : targetPath;
+        if (window.navigateToPage) {
+            window.navigateToPage(destUrl);
+        } else {
+            window.location.replace(destUrl);
+        }
     } catch (error) {
-        console.error("Failed to commit transactional state adjustment:", error);
+        console.error("Failed to accept ride request:", error);
+        isAcceptingRideJob = false;
         restoreBtn();
         setRideListBusy(false);
 
@@ -1684,24 +1720,37 @@ async function acceptRideJob(rideId) {
         const alreadyTaken = /already accepted/i.test(error.message || "");
 
         if (isCancelled) {
-            await showAlert("This ride request was cancelled by the passenger.");
+            await showAlert(t('driver.ride_cancelled_by_passenger', "This ride request was cancelled by the passenger."));
         } else if (isExpired) {
-            await showAlert("This ride request has expired.");
+            await showAlert(t('driver.ride_request_expired', "This ride request has expired."));
         } else if (alreadyTaken) {
-            await showAlert("Another driver already accepted this ride. Refreshing the list…");
+            await showAlert(t('driver.another_driver_accepted', "Another driver already accepted this ride. Refreshing the list…"));
         } else {
-            await showAlert(error.message || "Could not accept this ride.");
+            await showAlert(error.message || t('driver.could_not_accept_ride', "Could not accept this ride."));
         }
     }
 }
 
 async function acceptRideThroughBackend(rideId) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
-    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
+    let idToken = await getAuthToken(false);
+    if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
+    let response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
         method: "POST",
         headers: { Authorization: `Bearer ${idToken}` }
     });
+    if (response.status === 401) {
+        try {
+            idToken = await getAuthToken(true);
+            if (idToken) {
+                response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/accept`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${idToken}` }
+                });
+            }
+        } catch (retryErr) {
+            console.warn("Token refresh retry for accept failed:", retryErr);
+        }
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
         const error = new Error(data.error || "Could not accept this ride.");

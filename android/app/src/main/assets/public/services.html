@@ -911,6 +911,9 @@
             </nav>
         </main>
 
+        <!-- ===== Ride Fare Summary Modal (Shown immediately after trip ends, before feedback) ===== -->
+        <div id="passenger-fare-summary-view" class="modal-layer d-none" aria-live="assertive"></div>
+
         <!-- ===== Ride Feedback Modal (Replaces old Book Again receipt card) ===== -->
         <div id="passenger-payment-view" class="modal-layer d-none" aria-live="assertive">
             <div class="fb-card" role="dialog" aria-modal="true" aria-label="Ride feedback">
@@ -1077,6 +1080,7 @@
     <script src="js/shared/navigation.js"></script>
     <script type="module" src="js/map/map-core.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
+    <script type="module" src="js/passenger/passenger-fare-summary.js"></script>
     <script type="module" src="js/passenger/passenger-app.js?v=20261003-share2"></script>
     <script type="module" src="js/shared/services.js?v=20261003-share2"></script>
     <script type="module" src="js/passenger/passenger-feedback.js"></script>

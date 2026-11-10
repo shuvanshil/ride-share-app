@@ -57,6 +57,7 @@ const APP_SHELL = [
     "js/bootstrap.bundle.min.js",
     "js/shared/auth.js",
     "js/passenger/passenger-app.js",
+    "js/passenger/passenger-fare-summary.js",
     "js/passenger/passenger-feedback.js",
     "js/driver/driver-onboarding.js",
     "js/driver/driver-service.js",

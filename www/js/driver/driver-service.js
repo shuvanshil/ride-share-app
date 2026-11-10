@@ -5,7 +5,7 @@ import { startDriverTracking, updateDriverTrackingState, stopDriverTracking, ope
 import { shouldShowDriverLocationDisclosure, showDriverLocationDisclosureModal } from './driver-location-disclosure.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, hideInitialLoader } from '../shared/loading.js';
-import { waitForAuth } from '../shared/auth.js';
+import { waitForAuth, getAuthToken } from '../shared/auth.js';
 import { t } from '../shared/i18n.js';
 import {
     registerDriverPushToken,
@@ -1318,14 +1318,29 @@ function startIncomingRideListener() {
 }
 
 async function updateDriverAvailabilityThroughBackend(status, locationData = null) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
-    const response = await fetch("/api/rides/driver-availability", {
+    let idToken = await getAuthToken(false);
+    if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
+    let response = await fetch("/api/rides/driver-availability", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
         signal: AbortSignal.timeout(15000)
     });
+    if (response.status === 401) {
+        try {
+            idToken = await getAuthToken(true);
+            if (idToken) {
+                response = await fetch("/api/rides/driver-availability", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+                    body: JSON.stringify({ status, ...(locationData || {}) }),
+                    signal: AbortSignal.timeout(15000)
+                });
+            }
+        } catch (retryErr) {
+            console.warn("Token refresh retry failed in driver service:", retryErr);
+        }
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
         const error = new Error(data.error || "Could not update driver availability.");
@@ -1448,15 +1463,28 @@ async function acceptIncomingRide(rideId, button) {
     }
 
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
+        let idToken = await getAuthToken(false);
+        if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
         const endpoint = isAddon
             ? `/api/share/offers/${encodeURIComponent(rideId)}/accept`
             : `/api/rides/${encodeURIComponent(rideId)}/accept`;
-        const response = await fetch(endpoint, {
+        let response = await fetch(endpoint, {
             method: "POST",
             headers: { Authorization: `Bearer ${idToken}` }
         });
+        if (response.status === 401) {
+            try {
+                idToken = await getAuthToken(true);
+                if (idToken) {
+                    response = await fetch(endpoint, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${idToken}` }
+                    });
+                }
+            } catch (retryErr) {
+                console.warn("Token refresh retry for accept in driver service failed:", retryErr);
+            }
+        }
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) {
             throw new Error(data.error || "Could not accept this ride.");
@@ -4482,6 +4510,20 @@ function startActiveRideListener() {
         if (snapshot.empty) {
             lastObservedWalletPaidPaise = 0;
             lastObservedCouponDiscountPaise = 0;
+            if (requestedRideId) {
+                try {
+                    const directSnap = await getDoc(doc(db, "rides", requestedRideId));
+                    if (directSnap.exists()) {
+                        const directData = directSnap.data() || {};
+                        if (directData.driver_id === currentUser.uid && ACTIVE_RIDE_STATUSES.includes(directData.status)) {
+                            renderActiveRideState(directSnap.id, directData);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Direct ride fallback fetch skipped:", e);
+                }
+            }
             if (currentRideId) {
                 try {
                     const rideSnap = await getDoc(doc(db, "rides", currentRideId));
@@ -4896,7 +4938,12 @@ function updateDriverAvailabilityUI(statusOverride) {
 let isTogglingOnlineStatus = false;
 
 async function toggleDriverOnlineStatus(targetStatus) {
-    if (!auth.currentUser || isTogglingOnlineStatus) return;
+    if (isTogglingOnlineStatus) return;
+    const user = auth.currentUser || await waitForAuth().catch(() => null);
+    if (!user) {
+        await showAlert(t('common.auth_required', "Authentication is required."));
+        return;
+    }
 
     if (targetStatus === "searching" && shouldShowDriverLocationDisclosure()) {
         const allowed = await showDriverLocationDisclosureModal();

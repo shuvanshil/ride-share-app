@@ -632,3 +632,133 @@
         font-size: 16px;
     }
 }
+
+/* ---------------------------------------------------------------
+   Fare Summary Modal Styles
+--------------------------------------------------------------- */
+.fare-summary-card {
+    max-width: 390px;
+}
+
+.fs-badge-icon {
+    width: 60px;
+    height: 60px;
+    background: #DCFCE7;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 12px;
+}
+
+.fs-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    text-align: center;
+    margin: 0 0 4px;
+}
+
+.fs-subtitle {
+    font-size: 13px;
+    color: var(--gy-muted, #6B7280);
+    text-align: center;
+    margin: 0 0 16px;
+    line-height: 1.4;
+}
+
+.fs-payable-box {
+    background: #F0FDF4;
+    border: 1.5px solid rgba(26, 122, 46, 0.25);
+    border-radius: 16px;
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.fs-payable-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #166534;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fs-payable-amount {
+    font-size: 32px;
+    font-weight: 800;
+    color: #15803D;
+    line-height: 1.15;
+    margin: 6px 0;
+}
+
+.fs-payable-settled-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #15803D;
+    background: rgba(22, 101, 52, 0.1);
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-top: 4px;
+}
+
+.fs-breakdown-card {
+    background: #F9FAFB;
+    border: 1px solid var(--gy-border, #E5E7EB);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+}
+
+.fs-breakdown-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--gy-muted, #6B7280);
+    margin-bottom: 10px;
+    text-align: left;
+}
+
+.fs-breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.fs-breakdown-row:last-child {
+    border-bottom: none;
+}
+
+.fs-label {
+    color: #374151;
+    font-weight: 500;
+}
+
+.fs-value {
+    color: #111827;
+    font-weight: 700;
+}
+
+.fs-discount-row .fs-value {
+    color: #15803D;
+}
+
+.fs-adjustment-note {
+    font-size: 11px;
+    color: var(--gy-muted, #6B7280);
+    text-align: left;
+    margin-top: 8px;
+    line-height: 1.4;
+}
+
+.fs-close-btn {
+    width: 100%;
+}
+

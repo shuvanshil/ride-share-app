@@ -1208,6 +1208,17 @@ export const TRANSLATIONS = {
             "signin_required": "Please sign in to submit feedback.",
             "submit_failed_retry": "Could not submit. Please try again."
         },
+        "fare_summary": {
+            "title": "Trip Completed",
+            "subtitle": "Your trip has ended. Here is your fare summary.",
+            "fare_breakdown": "Fare Breakdown",
+            "total_trip_fare": "Total Trip Fare",
+            "coupon_discount": "Coupon Discount",
+            "wallet_credit_used": "Wallet Credit Used",
+            "amount_payable_to_driver": "Amount to Pay the Driver",
+            "paid_digitally_note": "Paid digitally — no cash required",
+            "close_btn": "Close"
+        },
         "wallet": {
             "title": "Wallet",
             "wallet_balance": "Wallet Balance",
@@ -2521,6 +2532,17 @@ export const TRANSLATIONS = {
             "helping_improve": "আপনি সবার জন্য LiphtUp-কে আরও উন্নত করতে সাহায্য করছেন।",
             "signin_required": "মতামত জমা দিতে অনুগ্রহ করে সাইন ইন করুন।",
             "submit_failed_retry": "মতামত জমা দেওয়া যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।"
+        },
+        "fare_summary": {
+            "title": "ট্রিপ সম্পন্ন হয়েছে",
+            "subtitle": "আপনার ট্রিপ শেষ হয়েছে। এখানে ভাড়ার বিবরণ দেওয়া হলো।",
+            "fare_breakdown": "ভাড়ার বিবরণ",
+            "total_trip_fare": "মোট ট্রিপের ভাড়া",
+            "coupon_discount": "কুপন ছাড়",
+            "wallet_credit_used": "ব্যবহৃত ওয়ালেট ক্রেডিট",
+            "amount_payable_to_driver": "চালককে প্রদেয় টাকা",
+            "paid_digitally_note": "অনলাইনে পরিশোধিত — কোনো নগদ টাকা দিতে হবে না",
+            "close_btn": "বন্ধ করুন"
         },
         "wallet": {
             "title": "ওয়ালেট",

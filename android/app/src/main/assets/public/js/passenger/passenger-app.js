@@ -14,6 +14,7 @@ import { showAlert, showConfirm } from '../shared/dialog.js';
 import { share, copyToClipboard } from '../platform/share.js';
 import { getCurrentPosition } from '../platform/geolocation.js';
 import { schedulePrompt as triggerRideFeedback } from './passenger-feedback.js';
+import { showFareSummaryModal } from './passenger-fare-summary.js';
 import { t } from '../shared/i18n.js';
 import { registerForPush, sendTokenToBackend } from '../platform/notifications.js';
 
@@ -2626,25 +2627,18 @@ function listenToRideStatusUpdates(rideId) {
             
             window.dispatchEvent(new CustomEvent('ride-completed-clear-map'));
             
-            const finalFare = ride.fare || "0.00";
-            // Display Thank You feedback card (using the exact same trigger logic as the previous completed card)
-            const paymentView = document.getElementById('passenger-payment-view');
-            if (paymentView) paymentView.classList.remove('d-none');
-            
-            const fareEl = document.getElementById('passenger-final-fare');
-            if (fareEl) fareEl.innerText = formatFareAmount(finalFare);
-            renderFareAdjustmentNote('passenger-fare-note', ride);
-
-            // Directly trigger ride feedback prompt (binds step events and prepares flow)
-            try {
-                if (typeof triggerRideFeedback === 'function') {
-                    triggerRideFeedback(rideId, ride);
-                } else if (window.LiphtUpFeedback?.schedulePrompt) {
-                    window.LiphtUpFeedback.schedulePrompt(rideId, ride);
+            // Present authoritative Fare Summary Modal first; when passenger closes it, smoothly open Feedback Modal
+            showFareSummaryModal(rideId, ride, () => {
+                try {
+                    if (typeof triggerRideFeedback === 'function') {
+                        triggerRideFeedback(rideId, ride);
+                    } else if (window.LiphtUpFeedback?.schedulePrompt) {
+                        window.LiphtUpFeedback.schedulePrompt(rideId, ride);
+                    }
+                } catch (fbErr) {
+                    console.error('[feedback] Failed to schedule feedback prompt:', fbErr);
                 }
-            } catch (fbErr) {
-                console.error('[feedback] Failed to schedule feedback prompt:', fbErr);
-            }
+            });
             
             if (activeRideListener) activeRideListener(); // Unsubscribe stream
         }

@@ -42,27 +42,48 @@ registerSignOutHook(async () => {
  * Returns a promise that resolves when Firebase Auth has finished its initial
  * state check. This prevents "Authentication is required" race conditions.
  */
-export function waitForAuth() {
+export function waitForAuth(timeoutMs = 4000) {
     return new Promise((resolve) => {
-        if (authInitialized) {
+        if (auth.currentUser) {
+            authInitialized = true;
             resolve(auth.currentUser);
             return;
         }
+        let resolved = false;
+        const timer = setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                resolve(auth.currentUser);
+            }
+        }, timeoutMs);
+
         const unsubscribe = onAuthStateChanged(auth, (user) => {
-            unsubscribe();
-            authInitialized = true;
-            resolve(user);
+            if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                unsubscribe();
+                authInitialized = true;
+                resolve(user);
+            }
         });
     });
 }
 
 /**
  * Helper to get an ID token, waiting for auth to initialize first.
+ * Supports optional forced refresh (forceRefresh = true).
  */
-export async function getAuthToken() {
-    const user = await waitForAuth();
+export async function getAuthToken(forceRefresh = false) {
+    let user = auth.currentUser;
+    if (!user) {
+        user = await waitForAuth().catch(() => null);
+    }
     if (!user) return null;
-    return user.getIdToken();
+    let token = await user.getIdToken(forceRefresh).catch(() => null);
+    if (!token && !forceRefresh) {
+        token = await user.getIdToken(true).catch(() => null);
+    }
+    return token;
 }
 
 function getCachedProfile() {
