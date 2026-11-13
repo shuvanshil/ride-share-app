@@ -1057,13 +1057,15 @@ async function openPaymentModal() {
     if (uploadProgressBar) uploadProgressBar.style.width = '0%';
 
     // Generate Dynamic UPI URI
-    const payeeUpi = weekInfo.payeeUpiId || 'shuvanshil@oksbi';
-    const payeeName = weekInfo.payeeName || 'LiphtUp';
+    const weekInfo = currentPaymentData?.weekInfo || {};
+    const payeeUpi = currentPaymentData?.payeeUpiId || weekInfo.payeeUpiId || 'shuvanshil@oksbi';
+    const payeeName = currentPaymentData?.payeeName || weekInfo.payeeName || 'LiphtUp';
+    const currentWeekId = weekInfo.weekId || (currentPaymentData?.fees?.[0]?.weekId) || '';
     const upiUri = buildUpiUri({
         upiId: payeeUpi,
         name: payeeName,
         amount: totalAmount,
-        note: `LiphtUp Fee ${weekInfo.weekId || ''}`
+        note: `LiphtUp Fee ${currentWeekId}`.trim()
     });
 
     // Render QR Code onto canvas

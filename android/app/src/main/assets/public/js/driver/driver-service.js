@@ -3990,17 +3990,11 @@ function handleLocationError(error) {
 }
 
 async function startLocationTracking() {
-    if (shouldShowDriverLocationDisclosure()) {
-        const allowed = await showDriverLocationDisclosureModal();
-        if (!allowed) {
-            hideLocationLoadingOverlay();
-            return;
-        }
-    }
     showLocationLoadingOverlay();
     const initialPosition = getInitialDriverLocation();
     lastPosition = lastPosition || initialPosition;
 
+    // Immediately load map & display driver marker without blocking on background permission
     ensureMap(initialPosition).then(() => {
         upsertDriverMarker(initialPosition);
         if (currentTarget) {
@@ -4009,7 +4003,9 @@ async function startLocationTracking() {
         } else {
             map.panTo(initialPosition);
         }
-    }).catch(() => {});
+    }).catch((err) => {
+        console.warn("[driver-service] ensureMap initial load:", err);
+    });
 
     if (locationWatchId !== null) {
         if (typeof locationWatchId === "number") {
@@ -4021,7 +4017,7 @@ async function startLocationTracking() {
 
     setGpsState("loading", "GPS");
     setLifecycleGpsText("GPS locking...");
-    statusText.innerText = "Finding your live position...";
+    if (statusText) statusText.innerText = "Finding your live position...";
 
     const trackingState = currentRideId ? "active_ride" : "on_duty";
     let token = "";
@@ -4031,6 +4027,7 @@ async function startLocationTracking() {
         refreshToken = auth.currentUser?.refreshToken || "";
     } catch (_) {}
 
+    // Start location tracking immediately (foreground/web/native)
     locationWatchId = startDriverTracking({
         state: trackingState,
         rideId: currentRideId || "",
@@ -4041,7 +4038,14 @@ async function startLocationTracking() {
         onError: handleLocationError
     });
 
-    if (!isBatteryOptimizationIgnored()) {
+    // Request background tracking & battery optimization non-blockingly
+    if (shouldShowDriverLocationDisclosure()) {
+        showDriverLocationDisclosureModal().then((allowed) => {
+            if (allowed && !isBatteryOptimizationIgnored()) {
+                requestIgnoreBatteryOptimizations();
+            }
+        }).catch(() => {});
+    } else if (!isBatteryOptimizationIgnored()) {
         const lastPrompt = Number(localStorage.getItem("liphtup_battery_prompt_shown") || "0");
         if (Date.now() - lastPrompt > 24 * 60 * 60 * 1000) {
             localStorage.setItem("liphtup_battery_prompt_shown", String(Date.now()));
@@ -4931,11 +4935,11 @@ async function toggleDriverOnlineStatus(targetStatus) {
     }
 
     if (targetStatus === "searching" && shouldShowDriverLocationDisclosure()) {
-        const allowed = await showDriverLocationDisclosureModal();
-        if (!allowed) {
-            updateDriverAvailabilityUI("offline");
-            return;
-        }
+        showDriverLocationDisclosureModal().then((allowed) => {
+            if (allowed && !isBatteryOptimizationIgnored()) {
+                requestIgnoreBatteryOptimizations();
+            }
+        }).catch(() => {});
     }
 
     isTogglingOnlineStatus = true;

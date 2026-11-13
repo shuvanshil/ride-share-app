@@ -2108,15 +2108,7 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
     const checked = switchInput.checked;
 
     if (checked && shouldShowDriverLocationDisclosure()) {
-        const allowed = await showDriverLocationDisclosureModal();
-        if (!allowed) {
-            switchInput.checked = false;
-            driverDutyOnline = false;
-            updateDutySwitchUi();
-            isDutySwitchTransitioning = false;
-            delete switchInput.dataset.busy;
-            return;
-        }
+        showDriverLocationDisclosureModal().catch(() => {});
     }
     const targetStatus = checked ? (currentlyAssignedRideId ? "busy" : "searching") : "offline";
     const prevStatus = currentUser?.driverAvailability || "offline";

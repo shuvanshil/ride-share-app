@@ -907,6 +907,13 @@ def get_driver_fee_summary(
         },
         "next_deadline": next_deadline_dt.isoformat(),
         "deadline_modal": deadline_modal_obj,
+        "payeeUpiId": "shuvanshil@oksbi",
+        "payeeName": "LiphtUp",
+        "weekInfo": {
+            "weekId": week_id(service_date(curr)),
+            "payeeUpiId": "shuvanshil@oksbi",
+            "payeeName": "LiphtUp",
+        },
         "fees": fees_list,
         "under_review_batches": under_review_batches,
         "under_review_items": under_review_items,

@@ -224,7 +224,13 @@ export function isDriverLocationDisclosureAccepted() {
 }
 
 export function shouldShowDriverLocationDisclosure() {
-    return !isDriverLocationDisclosureAccepted();
+    try {
+        if (localStorage.getItem(DISCLOSURE_KEY) === "1") return false;
+        if (sessionStorage.getItem("liphtup_bg_disc_dismissed") === "1") return false;
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 export function dismissDriverLocationDisclosureModal() {
@@ -272,14 +278,14 @@ export function showDriverLocationDisclosureModal() {
                             <circle cx="12" cy="10" r="3"></circle>
                         </svg>
                     </div>
-                    <h2 class="lup-disc-title" id="lup-disc-dialog-title">Location &amp; Power Access</h2>
-                    <p class="lup-disc-subtitle">Prominent Disclosure &amp; Driver Consent</p>
+                    <h2 class="lup-disc-title" id="lup-disc-dialog-title">Background Location &amp; Battery</h2>
+                    <p class="lup-disc-subtitle">Background Tracking &amp; Battery Optimization</p>
                 </div>
 
                 <!-- Google Play Required Prominent Disclosure Callout -->
                 <div class="lup-disc-notice-box">
                     <p class="lup-disc-notice-quote">
-                        LiphtUp collects your location to share your live location with passengers and help them track your vehicle. Location tracking continues when the app is minimised while Active Mode is enabled.
+                        LiphtUp uses background location tracking to share your continuous live position with passengers and calculate verified trip fares when the app is minimised, in the background, or when using navigation apps.
                     </p>
                 </div>
 
@@ -329,7 +335,7 @@ export function showDriverLocationDisclosureModal() {
                 </div>
 
                 <div class="lup-disc-privacy-note">
-                    Location tracking is active only when Active Mode is turned ON or during an ongoing trip. It stops immediately when you go offline.
+                    Normal foreground map navigation and location tracking always work. Background tracking applies only when the app is minimised during on-duty mode or active trips.
                 </div>
 
                 <!-- Action Buttons: Affirmative Allow and Deny -->
@@ -338,10 +344,10 @@ export function showDriverLocationDisclosureModal() {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
-                        <span>Allow &amp; Continue</span>
+                        <span>Allow Background Tracking</span>
                     </button>
                     <button type="button" class="lup-disc-btn-deny" id="btn-lup-disc-deny">
-                        <span>Deny &amp; Stay Offline</span>
+                        <span>Continue with Foreground Only</span>
                     </button>
                 </div>
             </div>
@@ -351,6 +357,7 @@ export function showDriverLocationDisclosureModal() {
             try {
                 localStorage.setItem(DISCLOSURE_KEY, "1");
                 localStorage.setItem(DISCLOSURE_TIMESTAMP_KEY, String(Date.now()));
+                sessionStorage.removeItem("liphtup_bg_disc_dismissed");
             } catch (_) {}
 
             // Request battery optimization exemption on native Android if not already ignored
@@ -365,6 +372,7 @@ export function showDriverLocationDisclosureModal() {
         const handleDeny = () => {
             try {
                 localStorage.setItem("liphtup_driver_location_disclosure_denied_at", String(Date.now()));
+                sessionStorage.setItem("liphtup_bg_disc_dismissed", "1");
             } catch (_) {}
             dismissDriverLocationDisclosureModal();
             resolve(false);
