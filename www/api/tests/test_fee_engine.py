@@ -679,3 +679,106 @@ def test_sunday_fee_exception_in_actionable_reminders():
     assert due_dt > immediate_deadline
 
 
+def test_stream_generator_compatibility_in_tx_get():
+    """Verify that _tx_get properly unrolls generator from real Firestore transaction.get()."""
+    from api.core.fee_engine import _tx_get
+
+    class MockSnap:
+        exists = True
+        def to_dict(self):
+            return {"key": "val"}
+
+    def fake_stream():
+        yield MockSnap()
+
+    class MockTxnWithGenerator:
+        def get(self, ref):
+            return fake_stream()
+
+    tx = MockTxnWithGenerator()
+    snap = _tx_get(tx, "dummy_ref")
+    assert snap is not None
+    assert snap.exists is True
+    assert snap.to_dict()["key"] == "val"
+
+
+def test_current_day_distance_conversion_in_fee_summary():
+    """Driver with 7.2km today (before 8PM close) has accurate distance & calculated fee in summary."""
+    db = InMemoryFirestore()
+    uid = "driver_7_2km"
+    now = datetime.datetime(2026, 10, 23, 14, 0, tzinfo=IST)
+    today_key = "2026-10-23"
+
+    db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{today_key}").set({
+        "driver_id": uid,
+        "distance_km": 7.2,
+        "service_date": today_key,
+    })
+
+    summary = get_driver_fee_summary(db, uid, now=now)
+    today_fee = next((f for f in summary["fees"] if f["serviceDate"] == today_key), None)
+    assert today_fee is not None
+    assert today_fee["distance_km"] == 7.2
+    assert today_fee["distance_m"] == 7200
+    assert today_fee["fee_paise"] == 720
+    assert today_fee["status"] == "NOT_DUE_YET"
+    assert today_fee["remaining_paise"] == 0
+    assert today_fee["is_current_day"] is True
+
+    assert summary["payable_paise"] == 0
+    assert summary["restriction"]["is_restricted"] is False
+
+
+def test_missed_closed_day_recovery_with_distance():
+    """When a closed day was previously checked with 0km and pointer advanced,
+    subsequent distance (7.2km) in driverDailyStats is recovered and fee generated.
+    """
+    db = InMemoryFirestore()
+    uid = "driver_recovered"
+    now = datetime.datetime(2026, 10, 22, 21, 0, tzinfo=IST)
+    closed_date = "2026-10-22"
+
+    db.collection(COLLECTION_FEE_STATE).document(uid).set({
+        "last_generated_day": closed_date,
+    })
+    db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{closed_date}").set({
+        "driver_id": uid,
+        "distance_km": 7.2,
+        "service_date": closed_date,
+    })
+
+    created = ensure_fees_generated(db, uid, now=now)
+    assert len(created) == 1
+    assert created[0]["serviceDate"] == closed_date
+    assert created[0]["distance_km"] == 7.2
+    assert created[0]["fee_paise"] == 720
+    assert created[0]["remaining_paise"] == 720
+
+    fee_snap = db.collection(COLLECTION_DRIVER_FEES).document(f"{uid}_{closed_date}").get()
+    assert fee_snap.exists
+    assert fee_snap.to_dict()["fee_paise"] == 720
+
+
+def test_reconcile_generates_missing_fee_doc():
+    """reconcile_fee_adjustment generates fee doc if missing and updates week aggregate."""
+    db = InMemoryFirestore()
+    uid = "driver_reconcile_gen"
+    day_str = "2026-10-20"
+
+    db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{day_str}").set({
+        "driver_id": uid,
+        "distance_km": 7.2,
+    })
+
+    res = reconcile_fee_adjustment(db, uid, day_str, source="admin_distance_approval")
+    assert res is not None
+    assert res["adjusted"] is True
+    assert res["fee_paise"] == 720
+
+    fee_snap = db.collection(COLLECTION_DRIVER_FEES).document(f"{uid}_{day_str}").get()
+    assert fee_snap.exists
+    assert fee_snap.to_dict()["fee_paise"] == 720
+    assert fee_snap.to_dict()["billed_distance_m"] == 7200
+
+
+

@@ -286,10 +286,12 @@ def get_fee_calculation(
 
         ride_entry = {
             "rideId": r_id,
+            "ride_id": r_id,
             "terminalTime": str(term_time),
             "pickup": t_data.get("pickup_location") or "Pickup",
             "drop": t_data.get("drop_location") or "Drop",
             "counted_km": c_km,
+            "distance_km": c_km,
             "status": t_data.get("trip_status") or t_data.get("final_status") or "completed",
             "distance_status": d_status,
             "determination_method": determination,
@@ -299,6 +301,12 @@ def get_fee_calculation(
             rides_breakdown.append(ride_entry)
         else:
             excluded_rides.append(ride_entry)
+
+    # Fallback: If finalized_km is 0 in stats/fee doc but counted rides exist, compute from rides
+    if finalized_km <= 0.0 and rides_breakdown:
+        finalized_km = round(sum(float(r.get("counted_km") or 0.0) for r in rides_breakdown), 2)
+        billed_m = int(round(finalized_km * 1000.0))
+        fee_paise = calculate_paise_for_distance(finalized_km)
 
     # Subcollection adjustments
     adjustments_list: List[Dict[str, Any]] = []

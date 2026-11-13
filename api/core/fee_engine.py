@@ -10,7 +10,10 @@ Handles:
 from __future__ import annotations
 
 import datetime
+import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+logger = logging.getLogger("fee_engine")
 
 from .errors import ApiError
 from .service_day import (
@@ -103,21 +106,103 @@ def evaluate_fee_restriction(
 # FIRESTORE INTEGRATION & TRANSACTIONS
 # ============================================================================
 
-def _update_week_aggregate_tx(
+def _tx_get(txn: Any, ref: Any) -> Any:
+    """Safely get DocumentSnapshot inside a transaction.
+    Handles real Firestore (ref.get(transaction=txn)) and mocks (txn.get(ref)).
+    Also unrolls generator if txn.get returned StreamGenerator.
+    """
+    if ref is None:
+        return None
+    if txn is not None and hasattr(ref, "get"):
+        try:
+            return ref.get(transaction=txn)
+        except TypeError:
+            pass
+    if txn is not None and hasattr(txn, "get"):
+        res = txn.get(ref)
+        if hasattr(res, "__next__") or (hasattr(res, "__iter__") and not hasattr(res, "exists")):
+            try:
+                return next(iter(res))
+            except StopIteration:
+                return None
+        return res
+    if hasattr(ref, "get"):
+        return ref.get()
+    return None
+
+
+def _tx_set(txn: Any, ref: Any, data: Any, merge: bool = False) -> None:
+    """Set document inside transaction or directly."""
+    if txn is not None and hasattr(txn, "set"):
+        txn.set(ref, data, merge=merge)
+    elif hasattr(ref, "set"):
+        ref.set(data, merge=merge)
+
+
+def _tx_update(txn: Any, ref: Any, data: Any) -> None:
+    """Update document inside transaction or directly."""
+    if txn is not None and hasattr(txn, "update"):
+        txn.update(ref, data)
+    elif hasattr(ref, "update"):
+        ref.update(data)
+
+
+def _run_tx(db: Any, func: Any, *args: Any, **kwargs: Any) -> Any:
+    """Execute func(txn, *args, **kwargs) within a Firestore transaction safely.
+    Handles real google.cloud.firestore transactions (with begin/commit and retry)
+    as well as test mock databases (InMemoryFirestore / SimFirestoreClient).
+    If transactional execution fails or isn't supported, falls back to direct execution.
+    """
+    if db is None:
+        return None
+    try:
+        from google.cloud import firestore as fb_firestore
+        if hasattr(fb_firestore, "transactional") and hasattr(db, "transaction"):
+            tx = db.transaction()
+            if hasattr(tx, "_commit") or hasattr(tx, "_begin"):
+                wrapped = fb_firestore.transactional(func)
+                return wrapped(tx, *args, **kwargs)
+    except Exception as e:
+        logger.warning("Firestore transactional wrapper unavailable, falling back: %s", e)
+
+    if hasattr(db, "transaction"):
+        try:
+            tx = db.transaction()
+            res = func(tx, *args, **kwargs)
+            if hasattr(tx, "_commit"):
+                try:
+                    tx._commit()
+                except Exception:
+                    pass
+            return res
+        except Exception as e:
+            logger.error("Transaction execution failed: %s", e)
+            raise
+    else:
+        return func(None, *args, **kwargs)
+
+
+def _get_week_aggregate_data(tx: Any, db: Any, uid: str, week_id_str: str) -> Dict[str, Any]:
+    """Read driverFeeWeeks document in read-phase of transaction."""
+    week_doc_id = f"{uid}_{week_id_str}"
+    week_ref = db.collection(COLLECTION_DRIVER_FEE_WEEKS).document(week_doc_id)
+    week_snap = _tx_get(tx, week_ref)
+    return week_snap.to_dict() or {} if (week_snap and week_snap.exists) else {}
+
+
+def _apply_week_aggregate_write(
     tx: Any,
     db: Any,
     uid: str,
     week_id_str: str,
+    week_data: Dict[str, Any],
     fee_paise_delta: int = 0,
     paid_paise_delta: int = 0,
     review_paise_delta: int = 0,
 ) -> Dict[str, Any]:
-    """Atomically update a week aggregate doc in driverFeeWeeks/{uid}_{weekId}."""
+    """Write driverFeeWeeks payload in write-phase of transaction."""
     week_doc_id = f"{uid}_{week_id_str}"
     week_ref = db.collection(COLLECTION_DRIVER_FEE_WEEKS).document(week_doc_id)
-    week_snap = tx.get(week_ref)
-    week_data = week_snap.to_dict() or {} if week_snap.exists else {}
-
     tot_fee = max(0, int(week_data.get("total_fee_paise") or 0) + fee_paise_delta)
     tot_paid = max(0, int(week_data.get("paid_paise") or 0) + paid_paise_delta)
     tot_review = max(0, int(week_data.get("review_paise") or 0) + review_paise_delta)
@@ -133,8 +218,27 @@ def _update_week_aggregate_tx(
         "remaining_paise": tot_rem,
         "updated_at": now.isoformat(),
     }
-    tx.set(week_ref, payload, merge=True)
+    _tx_set(tx, week_ref, payload, merge=True)
     return payload
+
+
+def _update_week_aggregate_tx(
+    tx: Any,
+    db: Any,
+    uid: str,
+    week_id_str: str,
+    fee_paise_delta: int = 0,
+    paid_paise_delta: int = 0,
+    review_paise_delta: int = 0,
+) -> Dict[str, Any]:
+    """Atomically update a week aggregate doc in driverFeeWeeks/{uid}_{weekId}."""
+    week_data = _get_week_aggregate_data(tx, db, uid, week_id_str)
+    return _apply_week_aggregate_write(
+        tx, db, uid, week_id_str, week_data,
+        fee_paise_delta=fee_paise_delta,
+        paid_paise_delta=paid_paise_delta,
+        review_paise_delta=review_paise_delta,
+    )
 
 
 def ensure_fees_generated(
@@ -150,11 +254,11 @@ def ensure_fees_generated(
     - Zero distance days create no driverFees record.
     - Billed fee = (round(distance_km * 1000) + 5) // 10 paise.
     - Advances feeState pointer and updates driverFeeWeeks in transactions.
+    - Enforces read-before-write transactional discipline for Google Cloud Firestore.
+    - Scans past closed days in the active window to recover any missed distance conversions.
     """
     curr = _to_ist_datetime(now)
     # The last closed service day is the day whose day_close is <= curr
-    # For example, if now is 2026-10-20 18:00 IST, today's service day (closing at 20:00) is NOT closed.
-    # Yesterday 2026-10-19 is closed.
     today_serv_date = service_date(curr)
     if is_service_day_closed(today_serv_date, curr):
         last_closed_date = today_serv_date
@@ -188,25 +292,55 @@ def ensure_fees_generated(
         except Exception:
             start_date = max(last_closed_date - datetime.timedelta(days=max_days - 1), datetime.date(2026, 1, 1))
     else:
-        # Check driver registration/creation or default to up to 14 days back
         start_date = max(
             last_closed_date - datetime.timedelta(days=max_days - 1),
             datetime.date(2026, 1, 1),
         )
 
     if reset_anchor_date:
-        # Do not generate fees for days on or before reset anchor
         start_date = max(start_date, reset_anchor_date + datetime.timedelta(days=1))
 
-    if start_date > last_closed_date:
-        return []
+    # Lookback window for missing / zero-billed fee recovery
+    lookback_start = max(
+        last_closed_date - datetime.timedelta(days=max_days - 1),
+        datetime.date(2026, 1, 1),
+    )
+    if reset_anchor_date:
+        lookback_start = max(lookback_start, reset_anchor_date + datetime.timedelta(days=1))
 
-    # Gather dates to process (max 14 days)
-    candidate_dates: List[datetime.date] = []
-    d = start_date
-    while d <= last_closed_date and len(candidate_dates) < max_days:
-        candidate_dates.append(d)
-        d += datetime.timedelta(days=1)
+    candidate_dates_set = set()
+    # 1. Unprocessed forward dates
+    if start_date <= last_closed_date:
+        d = start_date
+        while d <= last_closed_date and len(candidate_dates_set) < max_days:
+            candidate_dates_set.add(d)
+            d += datetime.timedelta(days=1)
+
+    # 2. Lookback recovery: check past closed days in window with distance
+    cur_d = lookback_start
+    while cur_d <= last_closed_date:
+        if cur_d not in candidate_dates_set:
+            c_str = cur_d.strftime("%Y-%m-%d")
+            f_snap = db.collection(COLLECTION_DRIVER_FEES).document(f"{uid}_{c_str}").get()
+            if not f_snap.exists:
+                d_snap = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{c_str}").get()
+                if d_snap.exists:
+                    d_data = d_snap.to_dict() or {}
+                    if float(d_data.get("distance_km") or 0.0) > 0.0:
+                        candidate_dates_set.add(cur_d)
+            else:
+                f_data = f_snap.to_dict() or {}
+                if int(f_data.get("billed_distance_m") or 0) == 0:
+                    d_snap = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{c_str}").get()
+                    if d_snap.exists:
+                        d_data = d_snap.to_dict() or {}
+                        if float(d_data.get("distance_km") or 0.0) > 0.0:
+                            candidate_dates_set.add(cur_d)
+        cur_d += datetime.timedelta(days=1)
+
+    candidate_dates = sorted(list(candidate_dates_set))
+    if not candidate_dates:
+        return []
 
     created_fees: List[Dict[str, Any]] = []
 
@@ -219,16 +353,34 @@ def ensure_fees_generated(
         daily_data = daily_snap.to_dict() or {} if daily_snap.exists else {}
 
         dist_km = float(daily_data.get("distance_km") or 0.0)
+        if dist_km <= 0.0:
+            # Fallback check tripHistory for counted rides on this service date
+            try:
+                trips = list(db.collection("tripHistory").where("driver_id", "==", uid).stream())
+                sum_km = 0.0
+                for ts in trips:
+                    td = ts.to_dict() or {}
+                    t_time = td.get("finalStatusAt") or td.get("completedAt") or td.get("verifiedAt") or td.get("updatedAt")
+                    if t_time and service_date_str(t_time) == c_str:
+                        if str(td.get("distance_status") or "").lower() == "counted":
+                            sum_km += float(td.get("counted_distance_km") or 0.0)
+                if sum_km > 0.0:
+                    dist_km = round(sum_km, 2)
+            except Exception:
+                pass
+
         fee_id = f"{uid}_{c_str}"
         fee_ref = db.collection(COLLECTION_DRIVER_FEES).document(fee_id)
 
-        # Transactionally create fee doc if distance > 0 and doc does not exist
-        tx = db.transaction()
-
+        # Enforce all reads before all writes in transaction
         def _gen_tx(txn: Any) -> Optional[Dict[str, Any]]:
-            f_snap = txn.get(fee_ref)
-            if not f_snap.exists:
-                if dist_km > 0:
+            # Phase 1: Reads
+            f_snap = _tx_get(txn, fee_ref)
+            week_data = _get_week_aggregate_data(txn, db, uid, w_id)
+
+            # Phase 2: Writes
+            if not f_snap or not f_snap.exists:
+                if dist_km > 0.0:
                     metres = int(round(dist_km * 1000.0))
                     fee_paise = (metres + 5) // 10
                     fee_doc = {
@@ -249,26 +401,48 @@ def ensure_fees_generated(
                         "created_at": get_ist_now().isoformat(),
                         "updated_at": get_ist_now().isoformat(),
                     }
-                    txn.set(fee_ref, fee_doc)
-                    _update_week_aggregate_tx(txn, db, uid, w_id, fee_paise_delta=fee_paise)
-                    # Advance pointer in feeState
-                    txn.set(state_ref, {"last_generated_day": c_str, "updated_at": get_ist_now().isoformat()}, merge=True)
+                    _tx_set(txn, fee_ref, fee_doc)
+                    _apply_week_aggregate_write(txn, db, uid, w_id, week_data, fee_paise_delta=fee_paise)
+                    _tx_set(txn, state_ref, {"last_generated_day": c_str, "updated_at": get_ist_now().isoformat()}, merge=True)
                     return fee_doc
                 else:
-                    # Zero distance: advance pointer without fee doc
-                    txn.set(state_ref, {"last_generated_day": c_str, "updated_at": get_ist_now().isoformat()}, merge=True)
+                    _tx_set(txn, state_ref, {"last_generated_day": c_str, "updated_at": get_ist_now().isoformat()}, merge=True)
                     return None
             else:
-                # Fee doc already exists, ensure pointer advanced
-                txn.set(state_ref, {"last_generated_day": c_str, "updated_at": get_ist_now().isoformat()}, merge=True)
-                return f_snap.to_dict()
+                f_data = f_snap.to_dict() or {}
+                # If existing fee doc has 0 billed distance but distance now exists, adjust it
+                curr_billed_m = int(f_data.get("billed_distance_m") or 0)
+                target_m = int(round(dist_km * 1000.0))
+                if dist_km > 0.0 and curr_billed_m < target_m:
+                    target_paise = (target_m + 5) // 10
+                    curr_fee_paise = int(f_data.get("fee_paise") or 0)
+                    delta_paise = target_paise - curr_fee_paise
+                    p_paise = int(f_data.get("paid_paise") or 0)
+                    r_paise = int(f_data.get("review_paise") or 0)
+                    new_rem = max(0, target_paise - p_paise - r_paise)
+                    _tx_update(txn, fee_ref, {
+                        "billed_distance_m": target_m,
+                        "distance_km": dist_km,
+                        "fee_paise": target_paise,
+                        "remaining_paise": new_rem,
+                        "status": fee_status(target_paise, p_paise, r_paise),
+                        "updated_at": get_ist_now().isoformat(),
+                    })
+                    _apply_week_aggregate_write(txn, db, uid, w_id, week_data, fee_paise_delta=delta_paise)
+                    f_data["billed_distance_m"] = target_m
+                    f_data["distance_km"] = dist_km
+                    f_data["fee_paise"] = target_paise
+                    f_data["remaining_paise"] = new_rem
+
+                _tx_set(txn, state_ref, {"last_generated_day": c_str, "updated_at": get_ist_now().isoformat()}, merge=True)
+                return f_data
 
         try:
-            res = _gen_tx(tx)
+            res = _run_tx(db, _gen_tx)
             if res:
                 created_fees.append(res)
-        except Exception:
-            pass
+        except Exception as err:
+            logger.error("Error generating fee for %s: %s", c_str, err)
 
     return created_fees
 
@@ -286,6 +460,7 @@ def reconcile_fee_adjustment(
     - If target_paise > fee_paise:
       Creates an adjustment record in subcollection driverFees/{uid}_{serviceDate}/adjustments/{adjId},
       raises fee_paise, and updates driverFeeWeeks aggregate in same transaction.
+    - If fee doc does not exist yet and dist_km > 0, generates the fee document.
     - If target_paise < fee_paise:
       Sets needs_attention = True.
     - Idempotent: repeated calls create no extra adjustments.
@@ -297,16 +472,59 @@ def reconcile_fee_adjustment(
     fee_ref = db.collection(COLLECTION_DRIVER_FEES).document(fee_id)
     daily_ref = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{s_str}")
 
-    tx = db.transaction()
-
     def _reconcile_tx(txn: Any) -> Optional[Dict[str, Any]]:
-        fee_snap = txn.get(fee_ref)
-        if not fee_snap.exists:
-            # Fee doc hasn't been generated yet (e.g. day not closed or zero distance initially)
-            return None
-        daily_snap = txn.get(daily_ref)
-        daily_data = daily_snap.to_dict() or {} if daily_snap.exists else {}
+        # Phase 1: All Reads
+        fee_snap = _tx_get(txn, fee_ref)
+        daily_snap = _tx_get(txn, daily_ref)
+        daily_data = daily_snap.to_dict() or {} if (daily_snap and daily_snap.exists) else {}
         dist_km = float(daily_data.get("distance_km") or 0.0)
+
+        # Fallback check tripHistory if daily stats is zero
+        if dist_km <= 0.0:
+            try:
+                trips = list(db.collection("tripHistory").where("driver_id", "==", uid).stream())
+                sum_km = 0.0
+                for ts in trips:
+                    td = ts.to_dict() or {}
+                    t_time = td.get("finalStatusAt") or td.get("completedAt") or td.get("verifiedAt") or td.get("updatedAt")
+                    if t_time and service_date_str(t_time) == s_str:
+                        if str(td.get("distance_status") or "").lower() == "counted":
+                            sum_km += float(td.get("counted_distance_km") or 0.0)
+                if sum_km > 0.0:
+                    dist_km = round(sum_km, 2)
+            except Exception:
+                pass
+
+        week_data = _get_week_aggregate_data(txn, db, uid, w_id)
+
+        # If fee doc does not exist yet:
+        if not fee_snap or not fee_snap.exists:
+            if dist_km > 0.0:
+                target_m = int(round(dist_km * 1000.0))
+                fee_paise = (target_m + 5) // 10
+                due_dt = fee_due_at(s_date)
+                fee_doc = {
+                    "uid": uid,
+                    "feeId": fee_id,
+                    "serviceDate": s_str,
+                    "weekId": w_id,
+                    "due_at": due_dt.isoformat(),
+                    "billed_distance_m": target_m,
+                    "distance_km": dist_km,
+                    "fee_paise": fee_paise,
+                    "paid_paise": 0,
+                    "review_paise": 0,
+                    "remaining_paise": fee_paise,
+                    "status": fee_status(fee_paise, 0, 0),
+                    "waived_free": False,
+                    "needs_attention": False,
+                    "created_at": get_ist_now().isoformat(),
+                    "updated_at": get_ist_now().isoformat(),
+                }
+                _tx_set(txn, fee_ref, fee_doc)
+                _apply_week_aggregate_write(txn, db, uid, w_id, week_data, fee_paise_delta=fee_paise)
+                return {"adjusted": True, "created": True, "delta_paise": fee_paise, "fee_paise": fee_paise}
+            return None
 
         fee_data = fee_snap.to_dict() or {}
         curr_fee_paise = int(fee_data.get("fee_paise") or 0)
@@ -316,11 +534,13 @@ def reconcile_fee_adjustment(
         target_paise = (target_m + 5) // 10
         delta_paise = target_paise - curr_fee_paise
 
+        adj_id = f"adj_{target_m}"
+        adj_ref = fee_ref.collection("adjustments").document(adj_id)
+        adj_snap = _tx_get(txn, adj_ref)
+
+        # Phase 2: All Writes
         if delta_paise > 0:
-            adj_id = f"adj_{target_m}"
-            adj_ref = fee_ref.collection("adjustments").document(adj_id)
-            adj_snap = txn.get(adj_ref)
-            if not adj_snap.exists:
+            if not adj_snap or not adj_snap.exists:
                 adj_payload = {
                     "adjId": adj_id,
                     "delta_paise": delta_paise,
@@ -330,7 +550,7 @@ def reconcile_fee_adjustment(
                     "ride_id": ride_id,
                     "created_at": get_ist_now().isoformat(),
                 }
-                txn.set(adj_ref, adj_payload)
+                _tx_set(txn, adj_ref, adj_payload)
 
             new_fee_paise = target_paise
             new_billed_m = target_m
@@ -338,7 +558,7 @@ def reconcile_fee_adjustment(
             r_paise = int(fee_data.get("review_paise") or 0)
             new_rem = max(0, new_fee_paise - p_paise - r_paise)
 
-            txn.update(fee_ref, {
+            _tx_update(txn, fee_ref, {
                 "fee_paise": new_fee_paise,
                 "billed_distance_m": new_billed_m,
                 "distance_km": dist_km,
@@ -346,15 +566,15 @@ def reconcile_fee_adjustment(
                 "status": fee_status(new_fee_paise, p_paise, r_paise),
                 "updated_at": get_ist_now().isoformat(),
             })
-            _update_week_aggregate_tx(txn, db, uid, w_id, fee_paise_delta=delta_paise)
+            _apply_week_aggregate_write(txn, db, uid, w_id, week_data, fee_paise_delta=delta_paise)
             return {"adjusted": True, "delta_paise": delta_paise, "fee_paise": new_fee_paise}
         elif delta_paise < 0:
-            txn.update(fee_ref, {"needs_attention": True, "updated_at": get_ist_now().isoformat()})
+            _tx_update(txn, fee_ref, {"needs_attention": True, "updated_at": get_ist_now().isoformat()})
             return {"adjusted": False, "needs_attention": True}
 
         return {"adjusted": False, "delta_paise": 0}
 
-    return _reconcile_tx(tx)
+    return _run_tx(db, _reconcile_tx)
 
 
 def get_driver_fee_summary(
@@ -400,6 +620,52 @@ def get_driver_fee_summary(
             "waived_free": False,
             "needs_attention": bool(d.get("needs_attention", False)),
         })
+
+    # If the active current service day is not closed, check driverDailyStats
+    # so distance and estimated fee are visible to the driver immediately
+    today_date = service_date(curr)
+    today_str = service_date_str(today_date)
+    has_today = any(f.get("serviceDate") == today_str for f in fees_list)
+    if not has_today and not is_service_day_closed(today_date, curr):
+        try:
+            today_stat_ref = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{today_str}")
+            today_stat_snap = today_stat_ref.get()
+            t_data = today_stat_snap.to_dict() or {} if today_stat_snap.exists else {}
+            t_dist_km = float(t_data.get("distance_km") or 0.0)
+            if t_dist_km <= 0.0:
+                trips = list(db.collection("tripHistory").where("driver_id", "==", uid).stream())
+                sum_km = 0.0
+                for ts in trips:
+                    td = ts.to_dict() or {}
+                    t_time = td.get("finalStatusAt") or td.get("completedAt") or td.get("verifiedAt") or td.get("updatedAt")
+                    if t_time and service_date_str(t_time) == today_str:
+                        if str(td.get("distance_status") or "").lower() == "counted":
+                            sum_km += float(td.get("counted_distance_km") or 0.0)
+                if sum_km > 0.0:
+                    t_dist_km = round(sum_km, 2)
+
+            if t_dist_km > 0.0:
+                t_metres = int(round(t_dist_km * 1000.0))
+                t_fee_paise = (t_metres + 5) // 10
+                fees_list.append({
+                    "feeId": f"{uid}_{today_str}",
+                    "serviceDate": today_str,
+                    "weekId": week_id(today_date),
+                    "distance_m": t_metres,
+                    "distance_km": t_dist_km,
+                    "fee_paise": t_fee_paise,
+                    "paid_paise": 0,
+                    "review_paise": 0,
+                    "remaining_paise": 0,  # Zero: NOT actionable before 8 PM close!
+                    "status": "NOT_DUE_YET",
+                    "due_at": fee_due_at(today_date).isoformat(),
+                    "waived_free": False,
+                    "needs_attention": False,
+                    "is_current_day": True,
+                    "is_closed": False,
+                })
+        except Exception as e:
+            logger.warning("Error checking current service day stats for %s: %s", uid, e)
 
     fees_list.sort(key=lambda x: str(x.get("serviceDate") or ""), reverse=True)
 
@@ -751,8 +1017,6 @@ def allocate_manual_fee_payment(
         s_date = f_data.get("serviceDate")
         w_id = f_data.get("weekId") or (week_id(s_date) if s_date else None)
 
-        tx = db.transaction()
-
         def _alloc_tx(txn: Any) -> None:
             update_fields: Dict[str, Any] = {
                 "paid_paise": new_paid,
@@ -762,11 +1026,11 @@ def allocate_manual_fee_payment(
             }
             if w_id and not f_data.get("weekId"):
                 update_fields["weekId"] = w_id
-            txn.update(f_snap.reference, update_fields)
+            _tx_update(txn, f_snap.reference, update_fields)
             if w_id:
                 _update_week_aggregate_tx(txn, db, uid, w_id, paid_paise_delta=alloc)
 
-        _alloc_tx(tx)
+        _run_tx(db, _alloc_tx)
         rem_to_allocate -= alloc
         allocated_items.append({
             "fee_id": f_snap.id,
@@ -888,18 +1152,19 @@ def create_payment_batch(
         raise ApiError("Duplicate fee allocation in the same payment batch.", 400)
 
     # Fetch and validate all fees inside transaction
-    tx = db.transaction()
-
     def _batch_tx(txn: Any) -> Dict[str, Any]:
+        # Phase 1: All Reads & Validations
         allocations_to_save: List[Dict[str, Any]] = []
+        fee_updates: List[Tuple[Any, Dict[str, Any]]] = []
+        week_deltas: Dict[str, Tuple[Dict[str, Any], int]] = {}
 
         for alloc in allocations_input:
             f_id = str(alloc["fee_id"]).strip()
             req_amount = int(alloc["amount_paise"])
             f_ref = db.collection(COLLECTION_DRIVER_FEES).document(f_id)
-            f_snap = txn.get(f_ref)
+            f_snap = _tx_get(txn, f_ref)
 
-            if not f_snap.exists:
+            if not f_snap or not f_snap.exists:
                 raise ApiError(f"Fee record {f_id} not found.", 404)
 
             f_data = f_snap.to_dict() or {}
@@ -925,15 +1190,20 @@ def create_payment_batch(
             new_review_paise = r_paise + req_amount
             new_rem_paise = remaining_paise(f_paise, p_paise, new_review_paise)
 
-            txn.update(f_ref, {
+            w_id = f_data.get("weekId") or week_id(f_data.get("serviceDate"))
+            if w_id not in week_deltas:
+                week_data = _get_week_aggregate_data(txn, db, uid, w_id)
+                week_deltas[w_id] = (week_data, req_amount)
+            else:
+                prev_data, prev_delta = week_deltas[w_id]
+                week_deltas[w_id] = (prev_data, prev_delta + req_amount)
+
+            fee_updates.append((f_ref, {
                 "review_paise": new_review_paise,
                 "remaining_paise": new_rem_paise,
                 "status": fee_status(f_paise, p_paise, new_review_paise),
                 "updated_at": get_ist_now().isoformat(),
-            })
-
-            w_id = f_data.get("weekId") or week_id(f_data.get("serviceDate"))
-            _update_week_aggregate_tx(txn, db, uid, w_id, review_paise_delta=req_amount)
+            }))
 
             alloc_doc = {
                 "fee_id": f_id,
@@ -968,15 +1238,22 @@ def create_payment_batch(
             "updated_at": get_ist_now().isoformat(),
         }
 
-        txn.set(batch_ref, batch_payload)
+        # Phase 2: All Writes
+        for f_ref, update_data in fee_updates:
+            _tx_update(txn, f_ref, update_data)
+
+        for w_id, (w_data, delta) in week_deltas.items():
+            _apply_week_aggregate_write(txn, db, uid, w_id, w_data, review_paise_delta=delta)
+
+        _tx_set(txn, batch_ref, batch_payload)
         for a_doc in allocations_to_save:
             a_ref = batch_ref.collection("allocations").document(a_doc["fee_id"])
-            txn.set(a_ref, a_doc)
+            _tx_set(txn, a_ref, a_doc)
 
         batch_payload["allocations"] = allocations_to_save
         return batch_payload
 
-    result = _batch_tx(tx)
+    result = _run_tx(db, _batch_tx)
     return {"ok": True, "batch": result, "idempotent": False}
 
 
@@ -1013,15 +1290,14 @@ def decide_payment_allocation(
     admin_email = admin_user.get("email") or admin_user.get("uid", "admin")
     now_str = get_ist_now().isoformat()
 
-    tx = db.transaction()
-
     def _decide_tx(txn: Any) -> Dict[str, Any]:
-        batch_snap = txn.get(batch_ref)
-        if not batch_snap.exists:
+        # Phase 1: All Reads
+        batch_snap = _tx_get(txn, batch_ref)
+        if not batch_snap or not batch_snap.exists:
             raise ApiError(f"Payment batch {batch_id} not found.", 404)
 
-        alloc_snap = txn.get(alloc_ref)
-        if not alloc_snap.exists:
+        alloc_snap = _tx_get(txn, alloc_ref)
+        if not alloc_snap or not alloc_snap.exists:
             raise ApiError(f"Allocation for {fee_id} not found in batch {batch_id}.", 404)
 
         alloc_data = alloc_snap.to_dict() or {}
@@ -1033,8 +1309,8 @@ def decide_payment_allocation(
         if curr_status in ("APPROVED", "DECLINED"):
             raise ApiError(f"Allocation already decided as {curr_status}.", 409)
 
-        fee_snap = txn.get(fee_ref)
-        if not fee_snap.exists:
+        fee_snap = _tx_get(txn, fee_ref)
+        if not fee_snap or not fee_snap.exists:
             raise ApiError(f"Fee doc {fee_id} not found.", 404)
 
         fee_data = fee_snap.to_dict() or {}
@@ -1042,6 +1318,20 @@ def decide_payment_allocation(
         w_id = fee_data.get("weekId") or week_id(fee_data.get("serviceDate"))
         amount = int(alloc_data.get("amount_paise") or 0)
 
+        week_data = _get_week_aggregate_data(txn, db, uid, w_id)
+
+        try:
+            if txn is not None and hasattr(batch_ref.collection("allocations"), "stream"):
+                try:
+                    all_allocs = list(batch_ref.collection("allocations").stream(transaction=txn))
+                except TypeError:
+                    all_allocs = list(batch_ref.collection("allocations").stream())
+            else:
+                all_allocs = list(batch_ref.collection("allocations").stream())
+        except Exception:
+            all_allocs = []
+
+        # Phase 2: All Writes
         f_paise = int(fee_data.get("fee_paise") or 0)
         p_paise = int(fee_data.get("paid_paise") or 0)
         r_paise = int(fee_data.get("review_paise") or 0)
@@ -1051,23 +1341,23 @@ def decide_payment_allocation(
         if clean_dec == "approve":
             new_p_paise = p_paise + amount
             new_rem = remaining_paise(f_paise, new_p_paise, new_r_paise)
-            txn.update(fee_ref, {
+            _tx_update(txn, fee_ref, {
                 "review_paise": new_r_paise,
                 "paid_paise": new_p_paise,
                 "remaining_paise": new_rem,
                 "status": fee_status(f_paise, new_p_paise, new_r_paise),
                 "updated_at": now_str,
             })
-            _update_week_aggregate_tx(txn, db, uid, w_id, paid_paise_delta=amount, review_paise_delta=-amount)
+            _apply_week_aggregate_write(txn, db, uid, w_id, week_data, paid_paise_delta=amount, review_paise_delta=-amount)
         else:  # decline
             new_rem = remaining_paise(f_paise, p_paise, new_r_paise)
-            txn.update(fee_ref, {
+            _tx_update(txn, fee_ref, {
                 "review_paise": new_r_paise,
                 "remaining_paise": new_rem,
                 "status": fee_status(f_paise, p_paise, new_r_paise),
                 "updated_at": now_str,
             })
-            _update_week_aggregate_tx(txn, db, uid, w_id, review_paise_delta=-amount)
+            _apply_week_aggregate_write(txn, db, uid, w_id, week_data, review_paise_delta=-amount)
 
         updated_alloc = {
             **alloc_data,
@@ -1076,10 +1366,8 @@ def decide_payment_allocation(
             "decided_at": now_str,
             "note": clean_note,
         }
-        txn.set(alloc_ref, updated_alloc, merge=True)
+        _tx_set(txn, alloc_ref, updated_alloc, merge=True)
 
-        # Check all allocations in batch to see if all are decided
-        all_allocs = list(batch_ref.collection("allocations").stream(transaction=txn))
         all_decided = True
         for a_s in all_allocs:
             if a_s.id == fee_id:
@@ -1091,11 +1379,11 @@ def decide_payment_allocation(
                 break
 
         if all_decided:
-            txn.update(batch_ref, {"status": "DECIDED", "updated_at": now_str})
+            _tx_update(txn, batch_ref, {"status": "DECIDED", "updated_at": now_str})
         else:
-            txn.update(batch_ref, {"updated_at": now_str})
+            _tx_update(txn, batch_ref, {"updated_at": now_str})
 
         return {"ok": True, "allocation": updated_alloc, "uid": uid}
 
-    result = _decide_tx(tx)
+    result = _run_tx(db, _decide_tx)
     return result

@@ -767,6 +767,13 @@ function renderUnifiedPaymentDetails(data, weekDays) {
 
         if (!isClosed) {
             // Not closed yet (e.g. today before 8PM or future days of week)
+            if (fee && Number(fee.distance_km || 0) > 0) {
+                const distKm = typeof fee.distance_km === 'number' ? fee.distance_km.toFixed(1) : (fee.distance_km || '0.0');
+                distText = `${distKm} km`;
+                const feeInr = Math.round((fee.fee_paise || 0) / 100);
+                amountText = `₹${feeInr}`;
+                isClickable = true;
+            }
             badgeHtml = `<span class="badge" style="background: #F1F5F9; color: #64748B; font-size: 0.74rem; font-weight: 600; border-radius: 9999px; padding: 4px 9px;">${t('driver.not_due_yet', 'Not due yet')}</span>`;
         } else if (fee) {
             const distKm = typeof fee.distance_km === 'number' ? fee.distance_km.toFixed(1) : (fee.distance_km || '0.0');
@@ -996,8 +1003,8 @@ async function openCalculationModal(serviceDate) {
             } else {
                 ridesList.innerHTML = counted.map(r => `
                     <div class="d-flex justify-content-between py-1 border-bottom">
-                        <span class="text-truncate" style="max-width: 200px;">Ride #${(r.ride_id || '').slice(-6)}</span>
-                        <span>${(r.distance_km || 0).toFixed(2)} km</span>
+                        <span class="text-truncate" style="max-width: 200px;">Ride #${(r.rideId || r.ride_id || '').slice(-6)}</span>
+                        <span>${(r.counted_km || r.distance_km || 0).toFixed(2)} km</span>
                     </div>
                 `).join('');
             }
