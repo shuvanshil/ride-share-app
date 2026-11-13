@@ -20,6 +20,7 @@
 
 import { auth } from '../platform/firebase-init.js';
 import { t } from '../shared/i18n.js';
+import { authFetch } from '../shared/auth.js';
 
 // ---------------------------------------------------------------------------
 // Constants & Dynamic Localized Options
@@ -573,15 +574,10 @@ async function _handleSubmit(modal) {
     _goToStep(modal, 'step-loading');
 
     try {
-        const user = auth.currentUser;
-        if (!user) throw new Error(t('feedback.signin_required', 'Please sign in to submit feedback.'));
-        const idToken = await user.getIdToken();
-
-        const response = await fetch(`/api/rides/${encodeURIComponent(_rideId)}/feedback`, {
+        const response = await authFetch(`/api/rides/${encodeURIComponent(_rideId)}/feedback`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 experience: _selectedExp,

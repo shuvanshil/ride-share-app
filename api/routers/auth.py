@@ -62,7 +62,17 @@ def session(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
             last_epoch = int(last_act.timestamp()) if hasattr(last_act, "timestamp") else int(last_act or 0)
             if last_epoch > 1e11:
                 last_epoch = int(last_epoch / 1000)
-            if last_epoch > 0 and (now_epoch - last_epoch) > SEVEN_DAYS_SECONDS:
+            token_iat = user.get("iat", 0)
+            auth_time = user.get("auth_time", 0)
+            auth_epoch = int(auth_time or 0)
+            if auth_epoch > 1e11:
+                auth_epoch = int(auth_epoch / 1000)
+            freshly_authenticated = (
+                auth_epoch > 0
+                and (now_epoch - auth_epoch) < SEVEN_DAYS_SECONDS
+                and auth_epoch >= (last_epoch - 60)
+            )
+            if not freshly_authenticated and last_epoch > 0 and (now_epoch - last_epoch) > SEVEN_DAYS_SECONDS:
                 raise ApiError("Session expired due to 7 days of inactivity. Please login again.", 401)
 
     expires_at_epoch = now_epoch + SEVEN_DAYS_SECONDS

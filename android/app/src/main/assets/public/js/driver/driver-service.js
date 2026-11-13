@@ -5,7 +5,7 @@ import { startDriverTracking, updateDriverTrackingState, stopDriverTracking, ope
 import { shouldShowDriverLocationDisclosure, showDriverLocationDisclosureModal } from './driver-location-disclosure.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, hideInitialLoader } from '../shared/loading.js';
-import { waitForAuth, getAuthToken } from '../shared/auth.js';
+import { waitForAuth, getAuthToken, authFetch } from '../shared/auth.js';
 import { t } from '../shared/i18n.js';
 import {
     registerDriverPushToken,
@@ -216,14 +216,11 @@ function ignoreRideRequest(rideId, isAddon = false) {
 }
 
 async function rejectRideThroughBackend(rideId, isAddon = false) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) return;
     const endpoint = isAddon
         ? `/api/share/offers/${encodeURIComponent(rideId)}/decline`
         : `/api/rides/${encodeURIComponent(rideId)}/reject`;
-    const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${idToken}` }
+    const response = await authFetch(endpoint, {
+        method: "POST"
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -1355,10 +1352,7 @@ let demandPollInterval = null;
 async function pollDriverNearbyDemand() {
     if (!currentUser?.uid || currentUser.driverAvailability === "offline") return;
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) return;
-        const res = await fetch("/api/rides/driver/nearby-demand", {
-            headers: { Authorization: `Bearer ${idToken}` },
+        const res = await authFetch("/api/rides/driver/nearby-demand", {
             signal: AbortSignal.timeout(12000)
         });
         const data = await res.json().catch(() => ({}));
@@ -2159,11 +2153,9 @@ function startShareTripsWatcher() {
 }
 
 async function callShareApi(path, method = "POST") {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
-    const response = await fetch(`/api/share${path}`, {
+    const response = await authFetch(`/api/share${path}`, {
         method,
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` }
+        headers: { "Content-Type": "application/json" }
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.ok === false) {
@@ -3792,8 +3784,6 @@ async function refreshRoute(position, force = false, isDeviation = false) {
 }
 
 async function updateDriverLocationThroughBackend(position, telemetry, rideId = null) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
     const payload = { lat: position.lat, lng: position.lng, rideId, ...telemetry };
     if (rideId && Array.isArray(activeRoutePath) && activeRoutePath.length > 1) {
         try {
@@ -3803,9 +3793,9 @@ async function updateDriverLocationThroughBackend(position, telemetry, rideId = 
             console.warn("Could not encode routePolyline for driver telemetry:", e);
         }
     }
-    const response = await fetch("/api/rides/driver-location", {
+    const response = await authFetch("/api/rides/driver-location", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
     });
     const data = await response.json().catch(() => ({}));
@@ -4305,13 +4295,11 @@ function checkAndRecoverLocationInconsistencyInBackground(ride, driverPos) {
 }
 
 async function transitionRideThroughBackend(rideId, action, pin = "") {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
     window.LiphtUpLoading?.showPageLoader?.(t('driver.updating_trip_status', "Updating trip status..."));
     try {
-        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
+        const response = await authFetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action, pin })
         });
         const data = await response.json().catch(() => ({}));
@@ -4441,13 +4429,10 @@ async function sendDriverSos() {
         );
         if (!confirmSos) return;
 
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-
         window.LiphtUpLoading?.showPageLoader?.(t('driver.sending_emergency_sos', "Sending Emergency SOS..."));
-        const response = await fetch(`/api/rides/${encodeURIComponent(sosRideId)}/sos`, {
+        const response = await authFetch(`/api/rides/${encodeURIComponent(sosRideId)}/sos`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ role: "driver" })
         });
         const data = await response.json().catch(() => ({}));

@@ -1527,6 +1527,19 @@ function routeToHome(profile) {
         saveRememberedAccount(profile);
     }
     cacheUserProfile(profile);
+
+    // Refresh lastActivityAt on the backend immediately upon login
+    if (auth.currentUser) {
+        auth.currentUser.getIdToken().then((token) => {
+            if (token) {
+                fetch('/api/auth/activity', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }).catch(() => {});
+            }
+        }).catch(() => {});
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     let pendingRideId = urlParams.get('rideId');
     if (!pendingRideId && window.LiphtUpNativeStatus && typeof window.LiphtUpNativeStatus.consumePendingRideId === 'function') {

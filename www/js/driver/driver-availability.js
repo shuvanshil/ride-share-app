@@ -1,6 +1,6 @@
 import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import { registerSignOutHook } from '../shared/auth.js';
+import { registerSignOutHook, authFetch } from '../shared/auth.js';
 import { stopDriverTracking } from '../platform/geolocation.js';
 
 export async function markCurrentDriverOffline() {
@@ -14,12 +14,10 @@ export async function markCurrentDriverOffline() {
         const profile = profileSnapshot.exists() ? profileSnapshot.data() : null;
         if (profile?.role !== "driver") return;
 
-        const idToken = await firebaseUser.getIdToken();
-        const response = await fetch("/api/rides/driver-availability", {
+        const response = await authFetch("/api/rides/driver-availability", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({ status: "offline" }),
             // Short timeout for logout operations

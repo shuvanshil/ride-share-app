@@ -235,6 +235,16 @@ async def register_account(body: RegisterAccountBody) -> dict[str, Any]:
             },
             merge=True,
         )
+        now_dt = datetime.now(timezone.utc)
+        db.collection("userSessions").document(created_uid).set(
+            {
+                "uid": created_uid,
+                "lastActivityAt": now_dt,
+                "expiresAt": datetime.fromtimestamp(int(now_dt.timestamp()) + 7 * 24 * 3600, timezone.utc),
+                "isRevoked": False,
+            },
+            merge=True,
+        )
 
         custom_token = auth_client.create_custom_token(created_uid)
         if isinstance(custom_token, bytes):
@@ -448,6 +458,15 @@ async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
                 },
                 merge=True,
             )
+            db.collection("userSessions").document(existing_uid).set(
+                {
+                    "uid": existing_uid,
+                    "lastActivityAt": accepted_at,
+                    "expiresAt": datetime.fromtimestamp(int(accepted_at.timestamp()) + 7 * 24 * 3600, timezone.utc),
+                    "isRevoked": False,
+                },
+                merge=True,
+            )
 
             if password and len(password) >= 6:
                 try:
@@ -522,6 +541,15 @@ async def register_driver(body: RegisterDriverBody) -> dict[str, Any]:
                 "role": "driver",
                 "phone": token_phone,
                 "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+        db.collection("userSessions").document(created_uid).set(
+            {
+                "uid": created_uid,
+                "lastActivityAt": accepted_at,
+                "expiresAt": datetime.fromtimestamp(int(accepted_at.timestamp()) + 7 * 24 * 3600, timezone.utc),
+                "isRevoked": False,
             },
             merge=True,
         )

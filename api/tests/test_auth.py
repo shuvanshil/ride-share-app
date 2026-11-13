@@ -532,3 +532,125 @@ def test_activity_renews_session_deadline(monkeypatch) -> None:
         assert saved_state.get("isRevoked") is False
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_fresh_login_supersedes_stale_inactivity_in_session(monkeypatch) -> None:
+    import time
+    from datetime import datetime, timezone, timedelta
+    from api.core.auth import current_user
+    now_ts = int(time.time())
+    app.dependency_overrides[current_user] = lambda: {
+        "uid": "usr_test_fresh_login",
+        "email": "test@liphtup.com",
+        "phone_number": "+919876543210",
+        "email_verified": True,
+        "iat": now_ts,
+        "auth_time": now_ts,
+    }
+    ten_days_ago = datetime.now(timezone.utc) - timedelta(days=10)
+    saved_state = {}
+
+    class MockDoc:
+        exists = True
+        def to_dict(self):
+            return {
+                "uid": "usr_test_fresh_login",
+                "lastActivityAt": ten_days_ago,
+                "isRevoked": False,
+            }
+
+    class MockDocRef:
+        def get(self):
+            return MockDoc()
+        def set(self, data, merge=False):
+            saved_state.update(data)
+
+    class MockCollection:
+        def document(self, doc_id):
+            return MockDocRef()
+
+    class MockDb:
+        def collection(self, name):
+            return MockCollection()
+
+    monkeypatch.setattr("api.routers.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.routers.auth.fb_firestore.client", lambda app: MockDb())
+
+    client = TestClient(app)
+    try:
+        response = client.get("/api/auth/session")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert saved_state.get("isRevoked") is False
+    finally:
+        app.dependency_overrides.pop(current_user, None)
+
+
+def test_core_auth_enforce_session_inactivity_expiry(monkeypatch) -> None:
+    import time
+    from datetime import datetime, timezone, timedelta
+    import pytest
+    from api.core.auth import enforce_session_inactivity_expiry
+    from api.core.errors import ApiError
+
+    now_ts = int(time.time())
+    ten_days_ago = datetime.now(timezone.utc) - timedelta(days=10)
+    saved_state = {}
+
+    class MockDocRef:
+        def __init__(self, doc_data, exists=True):
+            self._doc_data = doc_data
+            self._exists = exists
+        def get(self):
+            class MockDoc:
+                exists = self._exists
+                def to_dict(inner_self):
+                    return self._doc_data
+            return MockDoc()
+        def set(self, data, merge=False):
+            saved_state.update(data)
+
+    class MockDb:
+        def __init__(self, doc_ref):
+            self._doc_ref = doc_ref
+        def collection(self, name):
+            class Coll:
+                def document(inner_self, doc_id):
+                    return self._doc_ref
+            return Coll()
+
+    # 1. Fresh login with 10-day stale lastActivityAt -> succeeds and renews
+    fresh_user_doc = MockDocRef({"uid": "u1", "lastActivityAt": ten_days_ago, "isRevoked": False})
+    monkeypatch.setattr("api.core.auth.get_admin_app", lambda: object())
+    monkeypatch.setattr("api.core.auth.fb_firestore.client", lambda app: MockDb(fresh_user_doc))
+    enforce_session_inactivity_expiry({"uid": "u1", "iat": now_ts, "auth_time": now_ts})
+    assert saved_state.get("isRevoked") is False
+
+    # 2. Missing userSessions doc -> succeeds and initializes
+    missing_doc = MockDocRef({}, exists=False)
+    monkeypatch.setattr("api.core.auth.fb_firestore.client", lambda app: MockDb(missing_doc))
+    enforce_session_inactivity_expiry({"uid": "u2", "iat": now_ts, "auth_time": now_ts - 1000})
+
+    # 3. Truly inactive user -> raises 401 ApiError
+    stale_user_doc = MockDocRef({"uid": "u3", "lastActivityAt": ten_days_ago, "isRevoked": False})
+    monkeypatch.setattr("api.core.auth.fb_firestore.client", lambda app: MockDb(stale_user_doc))
+    with pytest.raises(ApiError) as exc_info:
+        enforce_session_inactivity_expiry({"uid": "u3", "iat": now_ts, "auth_time": now_ts - 12 * 86400})
+    assert exc_info.value.status_code == 401
+    assert "7 days of inactivity" in str(exc_info.value.message)
+
+    # 4. Token issued after revocation -> clears revocation and succeeds
+    revoked_doc = MockDocRef({"uid": "u4", "isRevoked": True, "revokedAt": now_ts - 300})
+    monkeypatch.setattr("api.core.auth.fb_firestore.client", lambda app: MockDb(revoked_doc))
+    enforce_session_inactivity_expiry({"uid": "u4", "iat": now_ts, "auth_time": now_ts})
+    assert saved_state.get("isRevoked") is False
+
+    # 5. Token issued before revocation -> raises 401
+    revoked_doc2 = MockDocRef({"uid": "u5", "isRevoked": True, "revokedAt": now_ts})
+    monkeypatch.setattr("api.core.auth.fb_firestore.client", lambda app: MockDb(revoked_doc2))
+    with pytest.raises(ApiError) as exc_info2:
+        enforce_session_inactivity_expiry({"uid": "u5", "iat": now_ts - 300, "auth_time": now_ts - 300})
+    assert exc_info2.value.status_code == 401
+    assert "revoked" in str(exc_info2.value.message)
+

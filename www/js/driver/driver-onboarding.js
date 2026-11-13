@@ -13,7 +13,7 @@ import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/
 import { acquireWakeLock, releaseWakeLock } from '../platform/wake-lock.js';
 import { showAlert, showConfirm } from '../shared/dialog.js';
 import { showPageLoader, hidePageLoader, setButtonBusy, hideInitialLoader } from '../shared/loading.js';
-import { waitForAuth, getAuthToken } from '../shared/auth.js';
+import { waitForAuth, getAuthToken, authFetch } from '../shared/auth.js';
 import { t } from '../shared/i18n.js';
 import {
     registerDriverPushToken,
@@ -335,11 +335,9 @@ async function sendDriverSos() {
         if (!confirmed) return;
 
         const position = await getQuickPosition();
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-        const response = await fetch(`/api/rides/${encodeURIComponent(currentlyAssignedRideId)}/sos`, {
+        const response = await authFetch(`/api/rides/${encodeURIComponent(currentlyAssignedRideId)}/sos`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(position ? { lat: position.lat, lng: position.lng } : {})
         });
         const data = await response.json().catch(() => ({}));
@@ -354,11 +352,8 @@ async function sendDriverSos() {
 }
 
 async function rejectRideThroughBackend(rideId) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) return;
-    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/reject`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${idToken}` }
+    const response = await authFetch(`/api/rides/${encodeURIComponent(rideId)}/reject`, {
+        method: "POST"
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
@@ -1195,11 +1190,9 @@ async function markRidePaidAndCreateHistory(rideId) {
 }
 
 async function transitionRideThroughBackend(rideId, action, pin = "") {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
-    const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
+    const response = await authFetch(`/api/rides/${encodeURIComponent(rideId)}/transition`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, pin })
     });
     const data = await response.json().catch(() => ({}));
@@ -1949,16 +1942,14 @@ function subscribeDriverDailyStats(uid) {
         console.warn("Could not attach daily stats listener:", e);
     }
 
-    auth.currentUser?.getIdToken().then((idToken) => {
-        if (!idToken) return;
-        fetch("/api/rides/driver-dashboard", {
-            headers: { Authorization: `Bearer ${idToken}` }
-        }).then(res => res.json()).then(data => {
+    authFetch("/api/rides/driver-dashboard")
+        .then(res => res.json())
+        .then(data => {
             if (data?.ok && data.today) {
                 updateUi(data.today.earnings, data.today.completedRides);
             }
-        }).catch(() => {});
-    }).catch(() => {});
+        })
+        .catch(() => {});
 }
 
 function startDriverConsole(profile) {
@@ -2276,9 +2267,7 @@ async function checkDriverAccountHoldStatus(user, force = false) {
         const now = Date.now();
         if (!force && now - lastAccountHoldCheckAt < 5 * 60 * 1000) return;
         lastAccountHoldCheckAt = now;
-        const token = await user.getIdToken();
-        const response = await fetch('/api/account/driver-payments/status', {
-            headers: { 'Authorization': `Bearer ${token}` },
+        const response = await authFetch('/api/account/driver-payments/status', {
             signal: AbortSignal.timeout(10000)
         });
         if (!response.ok) return;

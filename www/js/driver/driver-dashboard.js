@@ -2,6 +2,7 @@ import { auth, db } from '../platform/firebase-init.js';
 import { doc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { hideInitialLoader } from '../shared/loading.js';
+import { authFetch } from '../shared/auth.js';
 import { paymentReminderManager } from './driver-payment-reminder.js';
 import { renderLanguageSwitcher } from '../shared/i18n.js';
 
@@ -162,11 +163,7 @@ function showError(message) {
 
 async function loadDashboard() {
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-        const response = await fetch("/api/rides/driver-dashboard", {
-            headers: { Authorization: `Bearer ${idToken}` }
-        });
+        const response = await authFetch("/api/rides/driver-dashboard");
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not load your dashboard.");
         renderDashboard(data);

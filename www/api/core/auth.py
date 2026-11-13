@@ -39,37 +39,67 @@ def enforce_session_inactivity_expiry(decoded: dict[str, Any]) -> None:
         if getattr(snap, "exists", False) and hasattr(snap, "to_dict"):
             data = snap.to_dict() or {}
 
-            # Check revocation
+            # 1. Check revocation
             if data.get("isRevoked"):
                 revoked_at = data.get("revokedAt")
                 rev_epoch = int(revoked_at.timestamp()) if hasattr(revoked_at, "timestamp") else int(revoked_at or 0)
                 if rev_epoch > 1e11:
                     rev_epoch = int(rev_epoch / 1000)
+                # If token was issued at or before revocation, reject it
                 if token_iat and token_iat <= rev_epoch:
                     raise ApiError("Your session has been revoked. Please login again.", 401)
+                else:
+                    # Token was issued after revocation: user logged in again, so clear revocation
+                    sess_ref.set({
+                        "uid": uid,
+                        "isRevoked": False,
+                        "lastActivityAt": fb_firestore.SERVER_TIMESTAMP,
+                    }, merge=True)
 
-            # Check 7-day inactivity
+            # 2. Check 7-day inactivity
             last_act = data.get("lastActivityAt")
             if last_act:
                 last_epoch = int(last_act.timestamp()) if hasattr(last_act, "timestamp") else int(last_act or 0)
                 if last_epoch > 1e11:
                     last_epoch = int(last_epoch / 1000)
-                if last_epoch > 0 and (now_epoch - last_epoch) > SEVEN_DAYS_SECONDS:
+
+                auth_epoch = int(auth_time or 0)
+                if auth_epoch > 1e11:
+                    auth_epoch = int(auth_epoch / 1000)
+
+                # Has the user freshly authenticated since last_act?
+                # If auth_time is recent (< 7 days) and at or after last_epoch (with 60s tolerance),
+                # that means this is a newly authenticated session, so prior inactivity is superseded.
+                freshly_authenticated = (
+                    auth_epoch > 0
+                    and (now_epoch - auth_epoch) < SEVEN_DAYS_SECONDS
+                    and auth_epoch >= (last_epoch - 60)
+                )
+
+                if not freshly_authenticated and last_epoch > 0 and (now_epoch - last_epoch) > SEVEN_DAYS_SECONDS:
                     raise ApiError("Session expired due to 7 days of inactivity. Please login again.", 401)
 
-            # Throttled renewal of lastActivityAt (every 5 minutes of active usage)
-            if last_act:
-                last_epoch = int(last_act.timestamp()) if hasattr(last_act, "timestamp") else int(last_act or 0)
-                if last_epoch > 1e11:
-                    last_epoch = int(last_epoch / 1000)
-                if (now_epoch - last_epoch) > 300:
+                # Throttled renewal of lastActivityAt (every 5 minutes of active usage, or upon fresh auth)
+                if (now_epoch - last_epoch) > 300 or freshly_authenticated:
                     sess_ref.set({
                         "uid": uid,
                         "lastActivityAt": fb_firestore.SERVER_TIMESTAMP,
                         "isRevoked": False
                     }, merge=True)
-        elif auth_time and (now_epoch - int(auth_time)) > SEVEN_DAYS_SECONDS:
-            raise ApiError("Session expired due to 7 days of inactivity. Please login again.", 401)
+            else:
+                # Document exists without lastActivityAt: initialize it
+                sess_ref.set({
+                    "uid": uid,
+                    "lastActivityAt": fb_firestore.SERVER_TIMESTAMP,
+                    "isRevoked": False
+                }, merge=True)
+        else:
+            # Document does not exist in userSessions: initialize it
+            sess_ref.set({
+                "uid": uid,
+                "lastActivityAt": fb_firestore.SERVER_TIMESTAMP,
+                "isRevoked": False
+            }, merge=True)
     except ApiError:
         raise
     except Exception:

@@ -86,6 +86,61 @@ export async function getAuthToken(forceRefresh = false) {
     return token;
 }
 
+/**
+ * Authorized fetch wrapper that:
+ * 1. Automatically attaches the Firebase ID token in Authorization header
+ * 2. On 401 response, attempts a force token refresh and retries the request once
+ * 3. On persistent 401 session expiration, alerts the user and redirects to login
+ */
+export async function authFetch(url, options = {}) {
+    let token = await getAuthToken();
+    const makeHeaders = (tok) => {
+        const headers = new Headers(options.headers || {});
+        if (tok) {
+            headers.set('Authorization', `Bearer ${tok}`);
+        }
+        return headers;
+    };
+
+    let response = await fetch(url, {
+        ...options,
+        headers: makeHeaders(token)
+    });
+
+    if (response.status === 401) {
+        // Try forced token refresh once
+        const freshToken = await getAuthToken(true);
+        if (freshToken) {
+            response = await fetch(url, {
+                ...options,
+                headers: makeHeaders(freshToken)
+            });
+        }
+    }
+
+    if (response.status === 401) {
+        try {
+            const clone = response.clone();
+            const data = await clone.json();
+            const errMsg = String(data?.error || data?.detail || "");
+            if (/inactivity|session expired|revoked|login again/i.test(errMsg)) {
+                clearCachedProfile();
+                await showAlert(data.error || "Your session has expired. Please login again.");
+                const currentDest = window.location.pathname + window.location.search;
+                const redirectUrl = `/login.html?redirect=${encodeURIComponent(currentDest)}`;
+                window.location.replace(window.getPlatformUrl ? window.getPlatformUrl(redirectUrl) : redirectUrl);
+            }
+        } catch (_) {}
+    }
+
+    return response;
+}
+
+if (typeof window !== 'undefined') {
+    window.getAuthToken = getAuthToken;
+    window.authFetch = authFetch;
+}
+
 function getCachedProfile() {
     try {
         let cached = JSON.parse(sessionStorage.getItem(PROFILE_CACHE_KEY) || "null");

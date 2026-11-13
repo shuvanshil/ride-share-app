@@ -17,6 +17,7 @@ import { schedulePrompt as triggerRideFeedback } from './passenger-feedback.js';
 import { showFareSummaryModal } from './passenger-fare-summary.js';
 import { t } from '../shared/i18n.js';
 import { registerForPush, sendTokenToBackend } from '../platform/notifications.js';
+import { authFetch, getAuthToken } from '../shared/auth.js';
 
 const ACTIVE_RIDE_STATUSES = ["pending", "accepted", "arrived", "started", "en_route"];
 const DISPATCH_BATCH_SIZE = 10;
@@ -56,38 +57,46 @@ let isFetchingEligibleCoupons = false;
 let lastCouponCheckedRideId = null;
 
 function fetchPassengerWalletBalance(callback) {
-    const user = auth.currentUser;
-    if (!user || isFetchingWalletBalance) return;
+    if (isFetchingWalletBalance) return;
     isFetchingWalletBalance = true;
-    user.getIdToken().then(token => {
-        return fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-    }).then(res => res.json()).then(data => {
-        if (data?.ok && data?.wallet) {
-            cachedPassengerWalletBalance = Number(data.wallet.balance || 0);
-            if (typeof callback === 'function') callback(cachedPassengerWalletBalance);
-        }
-    }).catch(e => {
-        console.warn("Failed to check wallet balance:", e);
-    }).finally(() => {
-        isFetchingWalletBalance = false;
-    });
+    authFetch('/api/wallet', { headers: { Accept: 'application/json' } })
+        .then(res => res.json())
+        .then(data => {
+            if (data?.ok && data?.wallet) {
+                cachedPassengerWalletBalance = Number(data.wallet.balance || 0);
+                if (typeof callback === 'function') callback(cachedPassengerWalletBalance);
+            }
+        })
+        .catch(e => {
+            console.warn("Failed to check wallet balance:", e);
+        })
+        .finally(() => {
+            isFetchingWalletBalance = false;
+        });
 }
 
 function fetchEligibleCouponsForRide(rideId, callback) {
-    const user = auth.currentUser;
-    if (!user || isFetchingEligibleCoupons || !rideId) return;
+    if (isFetchingEligibleCoupons || !rideId) return;
     isFetchingEligibleCoupons = true;
-    user.getIdToken().then(token => {
-        return fetch(`/api/coupons/eligible?rideId=${encodeURIComponent(rideId)}`, {
-            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    authFetch(`/api/coupons/eligible?rideId=${encodeURIComponent(rideId)}`, {
+        headers: { Accept: 'application/json' }
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data?.ok) {
+                cachedEligibleCoupons = data.eligibleCoupons || [];
+                cachedSuggestedCoupon = data.suggestedCoupon || null;
+                lastCouponCheckedRideId = rideId;
+                if (typeof callback === 'function') callback(data);
+            }
+        })
+        .catch(e => {
+            console.warn("Failed to fetch coupons:", e);
+        })
+        .finally(() => {
+            isFetchingEligibleCoupons = false;
         });
-    }).then(res => res.json()).then(data => {
-        if (data?.ok) {
-            cachedEligibleCoupons = data.eligibleCoupons || [];
-            cachedSuggestedCoupon = data.suggestedCoupon || null;
-            lastCouponCheckedRideId = rideId;
-            if (typeof callback === 'function') callback(data);
-        }
+}
     }).catch(e => {
         console.warn("Failed to fetch eligible coupons:", e);
     }).finally(() => {
@@ -418,11 +427,9 @@ async function sendPassengerSos() {
         if (!confirmed) return;
 
         const position = await getQuickPosition();
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
-        const response = await fetch(`/api/rides/${encodeURIComponent(currentPassengerRideId)}/sos`, {
+        const response = await authFetch(`/api/rides/${encodeURIComponent(currentPassengerRideId)}/sos`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(position ? { lat: position.lat, lng: position.lng } : {})
         });
         const data = await response.json().catch(() => ({}));
@@ -443,11 +450,9 @@ async function togglePassengerShareTrip() {
     }
     const enable = !tripShareEnabled;
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-        const response = await fetch(`/api/rides/${encodeURIComponent(currentPassengerRideId)}/share`, {
+        const response = await authFetch(`/api/rides/${encodeURIComponent(currentPassengerRideId)}/share`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ enable })
         });
         const data = await response.json().catch(() => ({}));
@@ -939,13 +944,10 @@ function showTripProgressPanel(ride) {
                     if (couponMsgBox) couponMsgBox.classList.add('d-none');
 
                     try {
-                        const curUser = auth.currentUser;
-                        if (!curUser) throw new Error(t('auth.signin_required', "Please log in to apply coupons."));
-                        const token = await curUser.getIdToken();
                         const idempotencyKey = `cr_${rideId}_${enteredCode}_${Date.now()}`;
-                        const applyRes = await fetch('/api/coupons/apply', {
+                        const applyRes = await authFetch('/api/coupons/apply', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ rideId, code: enteredCode, idempotencyKey }),
                         });
                         const applyData = await applyRes.json().catch(() => ({}));
@@ -1046,8 +1048,7 @@ async function openPassengerRideWalletModal(rideObj) {
 
     window.LiphtUpLoading?.showPageLoader?.(t('wallet.opening_wallet', "Opening wallet..."));
     try {
-        const token = await curUser.getIdToken();
-        const walletRes = await fetch('/api/wallet', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+        const walletRes = await authFetch('/api/wallet', { headers: { Accept: 'application/json' } });
         const walletData = await walletRes.json().catch(() => ({}));
         const userBal = Number(walletData?.wallet?.balance || 0);
         cachedPassengerWalletBalance = userBal;
@@ -1115,9 +1116,9 @@ async function openPassengerRideWalletModal(rideObj) {
                         if (!rideId) throw new Error(t('wallet.missing_ride_id', "Unable to identify active ride ID. Please refresh."));
 
                         const idempotencyKey = `rwp_${rideId}_${Date.now()}`;
-                        const res = await fetch('/api/wallet/pay-current-ride', {
+                        const res = await authFetch('/api/wallet/pay-current-ride', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ rideId, idempotencyKey })
                         });
                         const data = await res.json().catch(() => ({}));
@@ -1465,13 +1466,11 @@ function hideNoDriverOptions() {
 
 async function logClientDemandEvent(eventType, metadata = {}) {
     try {
-        const idToken = await auth.currentUser?.getIdToken();
         const fareQuote = window.latestFareQuote || {};
-        await fetch("/api/rides/log-demand-event", {
+        await authFetch("/api/rides/log-demand-event", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 eventType,
@@ -1693,14 +1692,10 @@ async function submitPendingRideRequest(mode = "notify_only", activatesAt = null
 
     window.LiphtUpLoading?.showPageLoader?.(t('services.saving_waiting_request', "Saving waiting request..."));
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Please log in to continue.");
-
-        const response = await fetch("/api/rides/pending-request", {
+        const response = await authFetch("/api/rides/pending-request", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 pickupName: pickupText,
@@ -1859,17 +1854,13 @@ async function cancelPendingRideRequest() {
     if (pendingCard) pendingCard.classList.add('d-none');
 
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (idToken) {
-            await fetch(`/api/rides/pending-request/${encodeURIComponent(reqId)}/cancel`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${idToken}`
-                },
-                body: JSON.stringify({ reason: "cancelled_by_passenger" })
-            }).catch((err) => console.warn("Background pending cancel fetch exception:", err));
-        }
+        await authFetch(`/api/rides/pending-request/${encodeURIComponent(reqId)}/cancel`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ reason: "cancelled_by_passenger" })
+        }).catch((err) => console.warn("Background pending cancel fetch exception:", err));
     } catch (e) {
         console.warn("Cancel pending request warning:", e);
     } finally {
@@ -1894,11 +1885,8 @@ async function cancelActiveRideSilently(rideId) {
         activeRideListener = null;
     }
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) return;
-        await fetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` }
+        await authFetch(`/api/rides/${encodeURIComponent(rideId)}/cancel`, {
+            method: "POST"
         });
     } catch (e) {
         console.warn("Silent ride cancellation failed:", e);
@@ -2057,14 +2045,10 @@ async function notifyRideDrivers(rideId, driverIds = []) {
     if (currentPassengerRideData?.status && currentPassengerRideData.status !== "pending") return;
 
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) return;
-
-        const response = await fetch("/api/notify-ride-request", {
+        const response = await authFetch("/api/notify-ride-request", {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({ rideId, driverIds: uniqueDriverIds })
         });
@@ -2144,11 +2128,8 @@ async function expandRideDispatch(rideId) {
     }
 
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-        const response = await fetch(`/api/rides/${encodeURIComponent(rideId)}/dispatch`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${idToken}` }
+        const response = await authFetch(`/api/rides/${encodeURIComponent(rideId)}/dispatch`, {
+            method: "POST"
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.ok) throw new Error(data.error || "Could not expand the driver search.");
@@ -2349,14 +2330,10 @@ async function restorePassengerActiveRide() {
 // 2. PASSENGER ENGINE: SUBMIT REQUESTS
 // ==========================================
 async function createRideThroughBackend(payload) {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error("Authentication is required.");
-
-    const response = await fetch("/api/rides", {
+    const response = await authFetch("/api/rides", {
         method: "POST",
         headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`
+            "Content-Type": "application/json"
         },
         body: JSON.stringify(payload)
     });
@@ -2690,13 +2667,9 @@ async function cancelRideByPassenger(rideId) {
     }
 
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (idToken) {
-            await fetch(`/api/rides/${encodeURIComponent(targetRideId)}/cancel`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${idToken}` }
-            }).catch((err) => console.warn("Background ride cancel fetch exception:", err));
-        }
+        await authFetch(`/api/rides/${encodeURIComponent(targetRideId)}/cancel`, {
+            method: "POST"
+        }).catch((err) => console.warn("Background ride cancel fetch exception:", err));
     } catch (error) {
         console.warn("Failed to cancel ride silently:", error);
     } finally {
@@ -2709,14 +2682,10 @@ async function reschedulePendingRequest15min() {
     if (!activePendingRequestId) return;
     window.LiphtUpLoading?.showPageLoader?.(t('services.updating_scheduled_time', "Updating scheduled time..."));
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-
-        const res = await fetch(`/api/rides/pending-request/${encodeURIComponent(activePendingRequestId)}/reschedule-15min`, {
+        const res = await authFetch(`/api/rides/pending-request/${encodeURIComponent(activePendingRequestId)}/reschedule-15min`, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
+                "Content-Type": "application/json"
             }
         });
         const data = await res.json().catch(() => ({}));
@@ -2951,15 +2920,10 @@ window.addEventListener('fare-quote-reset', () => {
 // Check and restore active pending requests on session load
 async function checkActivePendingRequestOnLoad() {
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) return;
-
         const urlParams = new URLSearchParams(window.location.search);
         const restoreId = urlParams.get('restorePending');
 
-        const response = await fetch("/api/rides/pending-request/active", {
-            headers: { Authorization: `Bearer ${idToken}` }
-        });
+        const response = await authFetch("/api/rides/pending-request/active");
         const data = await response.json().catch(() => ({}));
         if (data.ok && data.hasActivePending && data.pendingRequest) {
             activePendingRequestId = data.pendingRequest.requestId;
@@ -3009,13 +2973,9 @@ function listenToPendingRequestUpdates(requestId) {
             return;
         }
         try {
-            const token = await auth.currentUser?.getIdToken();
-            if (token) {
-                await fetch("/api/rides/scheduled/activate-due", {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-            }
+            await authFetch("/api/rides/scheduled/activate-due", {
+                method: "POST"
+            });
         } catch (e) {}
     }, 10000);
 
@@ -3164,9 +3124,6 @@ async function rebookPendingRequestToLiveRide() {
 
     window.LiphtUpLoading?.showPageLoader?.(t('services.starting_search', "Starting search..."));
     try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error("Authentication is required.");
-
         const reqId = activePendingRequestId;
         const data = activePendingRequestData;
 
@@ -3177,11 +3134,10 @@ async function rebookPendingRequestToLiveRide() {
         }
 
         // 2. Cancel the pending request on the backend silently
-        await fetch(`/api/rides/pending-request/${encodeURIComponent(reqId)}/cancel`, {
+        await authFetch(`/api/rides/pending-request/${encodeURIComponent(reqId)}/cancel`, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${idToken}`
+                "Content-Type": "application/json"
             },
             body: JSON.stringify({ reason: "rebooked_to_live" })
         }).catch((err) => console.warn("Failed to cancel pending request before rebooking:", err));
