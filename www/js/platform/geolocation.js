@@ -158,25 +158,26 @@ export function startDriverTracking({ state = "on_duty", rideId = "", authToken 
         fallbackWatchId = null;
     }
 
-    // On standard web / desktop or if native service failed to start, use browser watchPosition
-    if (!nativeStarted) {
-        fallbackWatchId = watchPosition(
-            (pos) => {
-                if (typeof onLocation === "function") onLocation(pos);
-            },
-            (err) => {
-                console.warn("[geolocation] Web watchPosition error:", err);
-                if (typeof onError === "function") {
-                    onError(err);
-                }
-            },
-            {
-                enableHighAccuracy: true,
-                maximumAge: 3000,
-                timeout: 12000
+    // Always establish and maintain foreground browser watchPosition.
+    // This ensures normal location fetching, map updates, and live navigation
+    // work smoothly regardless of whether background location or battery
+    // optimization permissions were granted or denied.
+    fallbackWatchId = watchPosition(
+        (pos) => {
+            if (typeof onLocation === "function") onLocation(pos);
+        },
+        (err) => {
+            console.warn("[geolocation] Foreground watchPosition warning:", err);
+            if (!nativeStarted && typeof onError === "function") {
+                onError(err);
             }
-        );
-    }
+        },
+        {
+            enableHighAccuracy: true,
+            maximumAge: 3000,
+            timeout: 12000
+        }
+    );
 
     return fallbackWatchId;
 }

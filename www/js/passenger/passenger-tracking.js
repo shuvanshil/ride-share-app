@@ -129,6 +129,15 @@ function normalizeHeading(value) {
     return Number.isFinite(heading) ? ((heading % 360) + 360) % 360 : null;
 }
 
+function normalizeDegrees(deg) {
+    const d = Number(deg);
+    if (!Number.isFinite(d)) return 0;
+    return ((d % 360) + 360) % 360;
+}
+if (typeof window !== "undefined") {
+    window.normalizeDegrees = normalizeDegrees;
+}
+
 function shortestHeadingDelta(from, to) {
     return ((to - from + 540) % 360) - 180;
 }

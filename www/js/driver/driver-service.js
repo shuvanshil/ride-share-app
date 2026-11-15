@@ -377,6 +377,15 @@ function normalizeHeading(value) {
     return Number.isFinite(heading) ? ((heading % 360) + 360) % 360 : null;
 }
 
+function normalizeDegrees(deg) {
+    const d = Number(deg);
+    if (!Number.isFinite(d)) return 0;
+    return ((d % 360) + 360) % 360;
+}
+if (typeof window !== "undefined") {
+    window.normalizeDegrees = normalizeDegrees;
+}
+
 function shortestHeadingDelta(from, to) {
     return ((to - from + 540) % 360) - 180;
 }
@@ -1592,7 +1601,10 @@ function rememberDriverLocation(position) {
 }
 
 function getInitialDriverLocation() {
-    return readCachedDriverLocation() || DEFAULT_DRIVER_LOCATION;
+    return readCachedDriverLocation()
+        || normalizeCoordinates(currentUser?.driverLocation?.lat, currentUser?.driverLocation?.lng)
+        || normalizeCoordinates(currentUser?.location?.lat, currentUser?.location?.lng)
+        || DEFAULT_DRIVER_LOCATION;
 }
 
 function distanceMeters(pointA, pointB) {
@@ -3178,23 +3190,27 @@ function ensureDriverRecenterButton() {
 function upsertDriverMarker(position, heading = null, routePath = [], prevRouteIndex = -1, targetRouteIndex = -1) {
     if (!map || !window.google?.maps) return;
 
-    if (!driverMarker) {
-        driverMarker = new RotatingVehicleMarker({
-            map,
-            position,
-            title: "Your live location",
-            vehicleType: inferVehicleType(currentUser),
-            heading,
-            zIndex: 1000,
-            live: true
-        });
-        lastDriverHeading = normalizeHeading(heading) ?? lastDriverHeading;
-        lastDriverMarkerFixAt = performance.now();
-        if (navigationModeEnabled && currentTarget) applyNavigationCamera(position, heading, true);
-        return;
-    }
+    try {
+        if (!driverMarker) {
+            driverMarker = new RotatingVehicleMarker({
+                map,
+                position,
+                title: "Your live location",
+                vehicleType: inferVehicleType(currentUser),
+                heading,
+                zIndex: 1000,
+                live: true
+            });
+            lastDriverHeading = normalizeHeading(heading) ?? lastDriverHeading;
+            lastDriverMarkerFixAt = performance.now();
+            if (navigationModeEnabled && currentTarget) applyNavigationCamera(position, heading, true);
+            return;
+        }
 
-    animateDriverMarkerTo(position, heading, routePath, prevRouteIndex, targetRouteIndex);
+        animateDriverMarkerTo(position, heading, routePath, prevRouteIndex, targetRouteIndex);
+    } catch (markerErr) {
+        console.warn("[driver-service] Failed to upsert driver marker:", markerErr);
+    }
 }
 
 function getTargetMarkerIcon(kind) {
@@ -3940,30 +3956,39 @@ async function handleLocation(position) {
         return;
     }
 
-    upsertDriverMarker(
-        effectivePosition,
-        telemetryResult.heading,
-        activeRoutePath,
-        previousMatchIndex,
-        driverRouteMatchIndex
-    );
+    try {
+        upsertDriverMarker(
+            effectivePosition,
+            telemetryResult.heading,
+            activeRoutePath,
+            previousMatchIndex,
+            driverRouteMatchIndex
+        );
 
-    const isShareRide = currentRide?.rideType === "share" || Boolean(currentRide?.parentTripId);
-    if (isShareRide && lastKnownShareStops.length > 1) {
-        updateDriverRouteProgress();
-        const deviated = activeRoutePath.length > 1 && driverRouteMatchIndex === -1;
-        refreshShareRoute(coords, lastKnownShareStops, deviated);
-    } else if (currentTarget) {
-        upsertTargetMarker();
-        const arrivalDistance = distanceMeters(coords, currentTarget.position);
-        driverMarker?.setArriving?.(Number.isFinite(arrivalDistance) && arrivalDistance <= DRIVER_ARRIVAL_THRESHOLD_METERS);
-        updateDriverRouteProgress();
-        const deviated = activeRoutePath.length > 1 && driverRouteMatchIndex === -1;
-        refreshRoute(coords, deviated, deviated);
-    } else {
-        driverMarker?.setArriving?.(false);
-        map.panTo(syncedCoords);
-        hideRouteWarning();
+        const isShareRide = currentRide?.rideType === "share" || Boolean(currentRide?.parentTripId);
+        if (isShareRide && lastKnownShareStops.length > 1) {
+            updateDriverRouteProgress();
+            const deviated = activeRoutePath.length > 1 && driverRouteMatchIndex === -1;
+            refreshShareRoute(coords, lastKnownShareStops, deviated);
+        } else if (currentTarget) {
+            upsertTargetMarker();
+            const arrivalDistance = distanceMeters(coords, currentTarget.position);
+            driverMarker?.setArriving?.(Number.isFinite(arrivalDistance) && arrivalDistance <= DRIVER_ARRIVAL_THRESHOLD_METERS);
+            updateDriverRouteProgress();
+            const deviated = activeRoutePath.length > 1 && driverRouteMatchIndex === -1;
+            refreshRoute(coords, deviated, deviated);
+        } else {
+            driverMarker?.setArriving?.(false);
+            if (!driverUserInteracted) {
+                map.panTo(syncedCoords);
+            }
+            hideRouteWarning();
+        }
+    } catch (renderErr) {
+        console.warn("[driver-service] Location render error:", renderErr);
+        if (!currentTarget && !driverUserInteracted) {
+            map.panTo(syncedCoords);
+        }
     }
 
 }
