@@ -97,12 +97,6 @@ function fetchEligibleCouponsForRide(rideId, callback) {
             isFetchingEligibleCoupons = false;
         });
 }
-    }).catch(e => {
-        console.warn("Failed to fetch eligible coupons:", e);
-    }).finally(() => {
-        isFetchingEligibleCoupons = false;
-    });
-}
 
 let currentSearchRadiusMeters = DEFAULT_SEARCH_RADIUS_METERS;
 let searchStateInterval = null;
