@@ -636,9 +636,9 @@
                                             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                                         </svg>
                                     </div>
-                                    <h4 id="pending-mode-title" class="pending-mode-title" data-i18n="services.drivers_available_title">Drivers are available!</h4>
+                                    <h4 id="pending-mode-title" class="pending-mode-title" data-i18n="services.looking_for_drivers">Looking for available drivers...</h4>
                                 </div>
-                                <p id="pending-mode-desc" class="pending-mode-desc" data-i18n="services.drivers_available_sub">Some drivers are now available for your ride. Would you like to start the searching again?</p>
+                                <p id="pending-mode-desc" class="pending-mode-desc" data-i18n="services.monitoring_drivers_desc">We are actively monitoring for newly available drivers in your pickup area.</p>
                             </div>
                             <div class="pending-illustration-col">
                                 <div class="pending-backdrop-glow">
@@ -652,7 +652,7 @@
                             </div>
                         </div>
 
-                        <div id="pending-driver-available-prompt" class="pending-action-area">
+                        <div id="pending-driver-available-prompt" class="pending-action-area d-none">
                             <button id="pending-rebook-btn" class="pending-search-action-btn" type="button">
                                 <span class="pending-btn-icon-box">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1081,8 +1081,8 @@
     <script type="module" src="js/map/map-core.js"></script>
     <!-- Shared ride lifecycle engine: booking, dispatch, cancel, PIN, status stream, and payment completion. -->
     <script type="module" src="js/passenger/passenger-fare-summary.js"></script>
-    <script type="module" src="js/passenger/passenger-app.js?v=20261003-share2"></script>
-    <script type="module" src="js/shared/services.js?v=20261003-share2"></script>
+    <script type="module" src="js/passenger/passenger-app.js?v=20261116-pending1"></script>
+    <script type="module" src="js/shared/services.js?v=20261116-pending1"></script>
     <script type="module" src="js/passenger/passenger-feedback.js"></script>
     <script type="module" src="js/shared/i18n.js"></script>
     <script src="js/shared/pwa.js" defer></script>

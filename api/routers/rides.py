@@ -262,6 +262,12 @@ class PendingRideCancelBody(BaseModel):
     reason: Optional[str] = Field(default="cancelled_by_user", max_length=100)
 
 
+class PassengerRideCancelBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    reason: Optional[str] = Field(default="cancelled_by_passenger", max_length=100)
+    keepPendingRequest: bool = Field(default=False)
+
+
 class DemandEventBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     eventType: str = Field(min_length=1, max_length=50)
@@ -1211,6 +1217,7 @@ async def create_passenger_ride(
             tx.set(ride_ref, ride_data)
 
         create_transaction(transaction)
+        _cancel_all_passenger_pending_requests(db, uid, reason="superseded_by_live_ride")
         for d_id in driver_ids:
             try:
                 if is_share:
@@ -1290,6 +1297,57 @@ async def create_passenger_ride(
 # /{ride_id} wildcard routes so FastAPI matches them without ambiguity.
 # ---------------------------------------------------------------------------
 
+def _cancel_all_passenger_pending_requests(
+    db: Any,
+    uid: str,
+    reason: str = "cancelled_by_passenger",
+    exclude_request_id: Optional[str] = None,
+) -> None:
+    """Cancel any active pendingRideRequests, dispatchNotifyMe, and dispatchScheduled docs for a passenger."""
+    if not db or not uid:
+        return
+    now_ts = datetime.now(timezone.utc).timestamp()
+    try:
+        pending_docs = list(
+            db.collection("pendingRideRequests")
+            .where("passengerId", "==", uid)
+            .where("status", "in", ["pending", "dispatching"])
+            .stream()
+        )
+        for p_doc in pending_docs:
+            if exclude_request_id and p_doc.id == exclude_request_id:
+                continue
+            try:
+                p_doc.reference.update({
+                    "status": "cancelled",
+                    "cancelReason": reason[:100],
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+            except Exception:
+                pass
+            try:
+                db.collection("dispatchNotifyMe").document(p_doc.id).update({
+                    "status": "cancelled",
+                    "updated_at": now_ts,
+                })
+            except Exception:
+                pass
+            try:
+                db.collection("dispatchScheduled").document(p_doc.id).update({
+                    "status": "cancelled",
+                    "updated_at": now_ts,
+                })
+            except Exception:
+                pass
+            try:
+                DispatchPoolManager.remove_passenger_wpp(db, p_doc.id, reason=reason)
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.debug("Cleanup of passenger pending requests skipped: %s", exc)
+
+
 @router.get("/pending-request/active")
 def get_active_pending_request(
     user: dict[str, Any] = Depends(current_user),
@@ -1300,6 +1358,22 @@ def get_active_pending_request(
         raise ApiError("Authenticated user identity is missing.", 401)
 
     db = fb_firestore.client(get_admin_app())
+
+    # If the passenger already has an accepted/ongoing ride, any pending request is already fulfilled/superseded
+    try:
+        ongoing_rides = list(
+            db.collection("rides")
+            .where("passenger_id", "==", uid)
+            .where("status", "in", ["accepted", "arrived", "started", "en_route"])
+            .limit(1)
+            .stream()
+        )
+        if ongoing_rides:
+            _cancel_all_passenger_pending_requests(db, uid, reason="ride_already_accepted")
+            return {"ok": True, "hasActivePending": False, "pendingRequest": None}
+    except Exception:
+        pass
+
     pending_q = (
         db.collection("pendingRideRequests")
         .where("passengerId", "==", uid)
@@ -1325,8 +1399,11 @@ def get_active_pending_request(
             _log_demand_event(db, "pending_expired", {"requestId": doc.id, "passengerId": uid})
             return {"ok": True, "hasActivePending": False, "pendingRequest": None}
 
-    return {"ok": True, "hasActivePending": True, "pendingRequest": {**data, "requestId": doc.id}}
-
+    return {
+        "ok": True,
+        "hasActivePending": True,
+        "pendingRequest": {**_safe_ride_dict(data), "requestId": doc.id},
+    }
 
 
 def check_driver_available_for_pickup(
@@ -1335,18 +1412,26 @@ def check_driver_available_for_pickup(
     pickup_lng: float,
     search_radius_km: float = 5.0,
     vehicle_type: str = "auto",
+    excluded_driver_ids: Optional[set[str]] = None,
 ) -> Optional[dict[str, Any]]:
     """Check whether any online/searching driver is currently within pickup radius."""
     if not db or pickup_lat is None or pickup_lng is None:
         return None
     req_veh = (vehicle_type or "auto").strip().lower()
+    excluded = excluded_driver_ids or set()
+    now_ts = datetime.now(timezone.utc).timestamp()
 
     # 1. First check DAP (Dispatch Available Pool)
     try:
-        from ..dispatch.config import COLLECTION_DAP
+        from ..dispatch.config import COLLECTION_DAP, DRIVER_HEARTBEAT_TTL_SECONDS
         stream = db.collection(COLLECTION_DAP).where("state", "in", ["IDLE", "SHARE_OPEN"]).stream()
         for doc in stream:
+            if doc.id in excluded:
+                continue
             d_val = doc.to_dict() or {}
+            last_seen = _timestamp_seconds(d_val.get("last_seen_at") or d_val.get("updated_at"))
+            if last_seen is not None and (now_ts - last_seen) > max(DRIVER_HEARTBEAT_TTL_SECONDS, 180):
+                continue
             d_veh = str(d_val.get("vehicle_type") or "auto").strip().lower()
             if req_veh != "any" and req_veh != d_veh and req_veh != "share":
                 continue
@@ -1364,8 +1449,12 @@ def check_driver_available_for_pickup(
     try:
         p_stream = db.collection("driverPresence").where("driverAvailability", "in", ["searching", "online"]).limit(25).stream()
         for dp_doc in p_stream:
+            if dp_doc.id in excluded:
+                continue
             dp_val = dp_doc.to_dict() or {}
-            if dp_val.get("isConnected") is False:
+            if dp_val.get("isConnected") is False or dp_val.get("desiredAvailability") == "offline":
+                continue
+            if not _driver_recently_connected(dp_val):
                 continue
             dp_loc = dp_val.get("driverLocation") or {}
             dp_lat = dp_loc.get("lat")
@@ -1545,16 +1634,64 @@ async def create_pending_request(
         if activates_at_dt:
             expires_at = max(now + timedelta(seconds=PENDING_REQUEST_DEFAULT_TTL_SECONDS), activates_at_dt + timedelta(hours=2))
 
+    # Atomically supersede any unaccepted live ride search documents for this passenger
+    excluded_driver_ids: set[str] = set()
+    try:
+        unaccepted_rides = list(
+            db.collection("rides")
+            .where("passenger_id", "==", uid)
+            .where("status", "in", ["pending", "searching", "dispatching"])
+            .stream()
+        )
+        for old_ride_doc in unaccepted_rides:
+            old_r_data = old_ride_doc.to_dict() or {}
+            for rej_id in (old_r_data.get("rejected_driver_ids") or []):
+                if rej_id:
+                    excluded_driver_ids.add(str(rej_id))
+            for not_id in (old_r_data.get("notified_driver_ids") or []):
+                if not_id:
+                    excluded_driver_ids.add(str(not_id))
+            try:
+                old_ride_doc.reference.update({
+                    "status": "cancelled_by_passenger",
+                    "cancelReason": "switched_to_pending_request",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+            except Exception:
+                pass
+            try:
+                DispatchPoolManager.remove_passenger_wpp(db, old_ride_doc.id, reason="switched_to_pending_request")
+            except Exception:
+                pass
+        if unaccepted_rides and mode != "auto":
+            try:
+                DispatchPoolManager.remove_passenger_wpp(db, uid, reason="switched_to_pending_request")
+            except Exception:
+                pass
+    except Exception as sup_err:
+        logger.debug("Supersede live rides in create_pending_request skipped: %s", sup_err)
+
     # Prevent duplicate active requests by reusing existing active document
     existing_q = (
         db.collection("pendingRideRequests")
         .where("passengerId", "==", uid)
-        .where("status", "==", "pending")
+        .where("status", "in", ["pending", "dispatching"])
         .limit(1)
     )
     existing_docs = list(existing_q.stream())
     if existing_docs:
         req_ref = existing_docs[0].reference
+        for extra_doc in existing_docs[1:]:
+            try:
+                extra_doc.reference.update({
+                    "status": "cancelled",
+                    "cancelReason": "replaced_by_new_pending_request",
+                    "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                    "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                })
+            except Exception:
+                pass
     else:
         req_ref = db.collection("pendingRideRequests").document()
 
@@ -1584,7 +1721,7 @@ async def create_pending_request(
         },
         "drop": {
             "name": body.dropName.strip()[:200],
-            "address": body.dropFullAddress.strip()[:500] or body.dropName.strip()[:200],
+            "address": (body.dropFullAddress or "").strip()[:500] or body.dropName.strip()[:200],
             "lat": drop_lat,
             "lng": drop_lng,
         },
@@ -1593,7 +1730,7 @@ async def create_pending_request(
         "searchRadius": float(body.searchRadius or 5000.0),
         "mode": mode,
         "status": "pending",
-        "createdAt": fb_firestore.SERVER_TIMESTAMP if not existing_docs else existing_docs[0].to_dict().get("createdAt"),
+        "createdAt": fb_firestore.SERVER_TIMESTAMP,
         "updatedAt": fb_firestore.SERVER_TIMESTAMP,
         "expiresAt": expires_at,
         "activatesAt": activates_at_dt,
@@ -1601,23 +1738,38 @@ async def create_pending_request(
         "distanceKm": pending_distance_km,
         "fareEstimate": fare_estimate,
         "lockedByDriverId": None,
+        "dispatchLockedAt": None,
+        "rideId": None,
+        "lastNotifiedAt": None,
+        "matchedDriverId": None,
+        "scheduleTimedOut": False,
+        "cancelledAt": None,
+        "cancelReason": None,
         "rejected_driver_ids": [],
     }
 
-    # Check if an approved driver is already available nearby right now
+    # Check if an approved driver is already available nearby right now.
+    # For scheduled rides in the future, do NOT trigger immediate driver notification until scheduled time arrives.
     search_radius_m = float(body.searchRadius or 5000.0)
     search_radius_km = search_radius_m / 1000.0
     immediate_driver = None
-    try:
-        immediate_driver = check_driver_available_for_pickup(
-            db,
-            pickup_lat=pickup_lat,
-            pickup_lng=pickup_lng,
-            search_radius_km=search_radius_km,
-            vehicle_type=pending_vehicle_type,
-        )
-    except Exception as imm_err:
-        logger.debug("Immediate driver check error: %s", imm_err)
+    should_check_immediate = (
+        mode != "schedule"
+        or activates_at_dt is None
+        or now >= activates_at_dt
+    )
+    if should_check_immediate:
+        try:
+            immediate_driver = check_driver_available_for_pickup(
+                db,
+                pickup_lat=pickup_lat,
+                pickup_lng=pickup_lng,
+                search_radius_km=search_radius_km,
+                vehicle_type=pending_vehicle_type,
+                excluded_driver_ids=excluded_driver_ids,
+            )
+        except Exception as imm_err:
+            logger.debug("Immediate driver check error: %s", imm_err)
 
     if immediate_driver:
         pending_doc_data["lastNotifiedAt"] = fb_firestore.SERVER_TIMESTAMP
@@ -1640,6 +1792,7 @@ async def create_pending_request(
 
     req_ref.set(pending_doc_data, merge=True)
 
+    now_ts = now.timestamp()
     try:
         if mode == "auto":
             DispatchPoolManager.sync_passenger_wpp(
@@ -1658,9 +1811,17 @@ async def create_pending_request(
             _dispatch_with_fallback(db)
         elif mode == "schedule":
             db.collection("dispatchScheduled").document(req_ref.id).set(pending_doc_data, merge=True)
+            try:
+                db.collection("dispatchNotifyMe").document(req_ref.id).update({"status": "cancelled", "updated_at": now_ts})
+            except Exception:
+                pass
             nudge_dispatch(db)
         elif mode in ("notify_only", "notify"):
             db.collection("dispatchNotifyMe").document(req_ref.id).set(pending_doc_data, merge=True)
+            try:
+                db.collection("dispatchScheduled").document(req_ref.id).update({"status": "cancelled", "updated_at": now_ts})
+            except Exception:
+                pass
             nudge_dispatch(db)
     except Exception as exc:
         print(f"Pool sync on create pending request error: {exc}")
@@ -1682,6 +1843,7 @@ async def create_pending_request(
         "expiresAt": expires_at.isoformat(),
         "driverAvailableImmediately": bool(immediate_driver),
         "matchedDriverId": immediate_driver["driverId"] if immediate_driver else None,
+        "pendingRequest": {**_safe_ride_dict(pending_doc_data), "requestId": req_ref.id},
     }
 
 
@@ -3260,11 +3422,17 @@ def acknowledge_user_notifications(
 @router.post("/{ride_id}/cancel")
 def cancel_passenger_ride(
     ride_id: str,
+    body: Optional[PassengerRideCancelBody] = None,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Cancel an active passenger ride cleanly without blocking the user under any scenario."""
     uid = str(user.get("uid") or "").strip()
     clean_ride_id = str(ride_id or "").strip()[:160]
+    cancel_reason = str((body.reason if body else None) or "cancelled_by_passenger").strip()[:100]
+    keep_pending = bool(
+        (body and body.keepPendingRequest)
+        or cancel_reason == "switched_to_pending_request"
+    )
 
     try:
         db = fb_firestore.client(get_admin_app())
@@ -3279,6 +3447,8 @@ def cancel_passenger_ride(
                 raise ApiError("You can only cancel your own ride request.", 403)
 
             if ride.get("status") in {"completed", "cancelled", "cancelled_by_passenger", "cancelled_by_driver", "no_show"}:
+                if not keep_pending:
+                    _cancel_all_passenger_pending_requests(db, passenger_id or uid, reason=cancel_reason)
                 return {"ok": True, "rideId": clean_ride_id, "status": ride.get("status")}
 
             driver_id = str(ride.get("driver_id") or ride.get("driverId") or "").strip()
@@ -3449,24 +3619,30 @@ def cancel_passenger_ride(
                 else:
                     raise
             if tx_updates.get("status") and tx_updates.get("status") != "cancelled_by_passenger":
+                if not keep_pending:
+                    _cancel_all_passenger_pending_requests(db, passenger_id or uid, reason=cancel_reason)
                 return {"ok": True, "rideId": clean_ride_id, "status": tx_updates.get("status")}
 
             updates = tx_updates
 
-            pending_id = ride.get("pendingRequestId") or ride.get("pending_request_id")
-            if pending_id:
-                try:
-                    db.collection("pendingRideRequests").document(str(pending_id)).update({
-                        "status": "cancelled",
-                        "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
-                        "updatedAt": fb_firestore.SERVER_TIMESTAMP,
-                    })
-                except Exception:
-                    pass
+            if not keep_pending:
+                pending_id = ride.get("pendingRequestId") or ride.get("pending_request_id")
+                if pending_id:
+                    try:
+                        db.collection("pendingRideRequests").document(str(pending_id)).update({
+                            "status": "cancelled",
+                            "cancelReason": cancel_reason,
+                            "cancelledAt": fb_firestore.SERVER_TIMESTAMP,
+                            "updatedAt": fb_firestore.SERVER_TIMESTAMP,
+                        })
+                    except Exception:
+                        pass
+                _cancel_all_passenger_pending_requests(db, passenger_id or uid, reason=cancel_reason)
 
             try:
-                DispatchPoolManager.remove_passenger_wpp(db, uid, reason="cancelled_by_passenger")
-                DispatchPoolManager.remove_passenger_wpp(db, clean_ride_id, reason="cancelled_by_passenger")
+                if not keep_pending:
+                    DispatchPoolManager.remove_passenger_wpp(db, uid, reason=cancel_reason)
+                DispatchPoolManager.remove_passenger_wpp(db, clean_ride_id, reason=cancel_reason)
             except Exception:
                 pass
 
