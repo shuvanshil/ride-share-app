@@ -1321,7 +1321,7 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(30000)
     });
     if (response.status === 401) {
         try {
@@ -1331,7 +1331,7 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
                     body: JSON.stringify({ status, ...(locationData || {}) }),
-                    signal: AbortSignal.timeout(15000)
+                    signal: AbortSignal.timeout(30000)
                 });
             }
         } catch (retryErr) {

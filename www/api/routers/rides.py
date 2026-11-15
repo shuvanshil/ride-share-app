@@ -2534,14 +2534,12 @@ def update_driver_availability(
         if has_other_rides and status == "offline":
             raise ApiError("Cannot go offline while an active ride is in progress.", 400)
         if status != "offline":
-            from ..core.fee_engine import get_driver_fee_summary
+            from ..core.fee_engine import check_driver_fee_restriction_fast
             from ..core.service_day import paise_to_rupees_float
-            fee_sum = get_driver_fee_summary(db, uid)
-            res_info = fee_sum.get("restriction") or {}
-            if res_info.get("is_restricted"):
-                ov_paise = int(res_info.get("overdue_paise") or 0)
+            is_restricted, ov_paise, res_reason = check_driver_fee_restriction_fast(db, uid)
+            if is_restricted:
                 raise ApiError(
-                    res_info.get("reason") or "Your account is restricted due to overdue platform fees. Please pay now to go online.",
+                    res_reason or "Your account is restricted due to overdue platform fees. Please pay now to go online.",
                     403,
                     details={
                         "restricted": True,

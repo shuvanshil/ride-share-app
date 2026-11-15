@@ -781,4 +781,42 @@ def test_reconcile_generates_missing_fee_doc():
     assert fee_snap.to_dict()["billed_distance_m"] == 7200
 
 
+def test_check_driver_fee_restriction_fast():
+    """Verify check_driver_fee_restriction_fast evaluates restrictions quickly without running generation."""
+    from api.core.fee_engine import check_driver_fee_restriction_fast
+    db = InMemoryFirestore()
+    uid = "driver_fast_restriction"
+    now = datetime.datetime(2026, 11, 10, 12, 0, tzinfo=IST)
+
+    # When no fees exist
+    restricted, overdue, reason = check_driver_fee_restriction_fast(db, uid, now=now)
+    assert restricted is False
+    assert overdue == 0
+
+    # Add an overdue fee
+    db.collection(COLLECTION_DRIVER_FEES).document(f"{uid}_2026-11-01").set({
+        "uid": uid,
+        "feeId": f"{uid}_2026-11-01",
+        "serviceDate": "2026-11-01",
+        "fee_paise": 500,
+        "remaining_paise": 500,
+        "due_at": "2026-11-03T23:59:59+05:30",
+        "status": "overdue",
+    })
+
+    restricted, overdue, reason = check_driver_fee_restriction_fast(db, uid, now=now)
+    assert restricted is True
+    assert overdue == 500
+    assert "overdue" in reason.lower()
+
+    # Now simulate payment pause
+    db.collection("systemSettings").document("driverPaymentPause").set({
+        "isPaused": True,
+        "startDate": "2026-11-01",
+        "endDate": "2026-11-15",
+    })
+    restricted, overdue, reason = check_driver_fee_restriction_fast(db, uid, now=now)
+    assert restricted is False
+
+
 

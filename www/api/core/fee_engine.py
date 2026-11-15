@@ -102,6 +102,41 @@ def evaluate_fee_restriction(
     return False, 0, ""
 
 
+def check_driver_fee_restriction_fast(
+    db: Any,
+    uid: str,
+    now: Optional[datetime.datetime] = None,
+) -> Tuple[bool, int, str]:
+    """Lightweight and ultra-fast restriction check for driver availability toggles.
+    Avoids 14-day history lookbacks and transactions; only evaluates existing fee documents.
+    """
+    curr = _to_ist_datetime(now)
+    # Check if payment pause is active in systemSettings
+    try:
+        pause_snap = db.collection("systemSettings").document("driverPaymentPause").get()
+        if pause_snap.exists:
+            p_data = pause_snap.to_dict() or {}
+            is_paused = bool(p_data.get("isPaused", False))
+            start_d = p_data.get("startDate")
+            end_d = p_data.get("endDate")
+            if is_paused and start_d and end_d:
+                from .payment_schedule import is_date_in_pause_range
+                if is_date_in_pause_range(curr, start_d, end_d, True):
+                    return False, 0, ""
+            elif is_paused:
+                return False, 0, ""
+    except Exception:
+        pass
+
+    try:
+        fee_docs = list(db.collection(COLLECTION_DRIVER_FEES).where("uid", "==", uid).stream())
+        fees_list = [snap.to_dict() or {} for snap in fee_docs]
+        return evaluate_fee_restriction(fees_list, curr)
+    except Exception as e:
+        logger.warning("Fast fee restriction check error for %s: %s", uid, e)
+        return False, 0, ""
+
+
 # ============================================================================
 # FIRESTORE INTEGRATION & TRANSACTIONS
 # ============================================================================
@@ -343,6 +378,7 @@ def ensure_fees_generated(
         return []
 
     created_fees: List[Dict[str, Any]] = []
+    driver_trips = None
 
     for c_date in candidate_dates:
         c_str = c_date.strftime("%Y-%m-%d")
@@ -355,19 +391,20 @@ def ensure_fees_generated(
         dist_km = float(daily_data.get("distance_km") or 0.0)
         if dist_km <= 0.0:
             # Fallback check tripHistory for counted rides on this service date
-            try:
-                trips = list(db.collection("tripHistory").where("driver_id", "==", uid).stream())
-                sum_km = 0.0
-                for ts in trips:
-                    td = ts.to_dict() or {}
-                    t_time = td.get("finalStatusAt") or td.get("completedAt") or td.get("verifiedAt") or td.get("updatedAt")
-                    if t_time and service_date_str(t_time) == c_str:
-                        if str(td.get("distance_status") or "").lower() == "counted":
-                            sum_km += float(td.get("counted_distance_km") or 0.0)
-                if sum_km > 0.0:
-                    dist_km = round(sum_km, 2)
-            except Exception:
-                pass
+            if driver_trips is None:
+                try:
+                    driver_trips = list(db.collection("tripHistory").where("driver_id", "==", uid).stream())
+                except Exception:
+                    driver_trips = []
+            sum_km = 0.0
+            for ts in driver_trips:
+                td = ts.to_dict() or {}
+                t_time = td.get("finalStatusAt") or td.get("completedAt") or td.get("verifiedAt") or td.get("updatedAt")
+                if t_time and service_date_str(t_time) == c_str:
+                    if str(td.get("distance_status") or "").lower() == "counted":
+                        sum_km += float(td.get("counted_distance_km") or 0.0)
+            if sum_km > 0.0:
+                dist_km = round(sum_km, 2)
 
         fee_id = f"{uid}_{c_str}"
         fee_ref = db.collection(COLLECTION_DRIVER_FEES).document(fee_id)

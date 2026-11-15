@@ -745,7 +745,7 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ status, ...(locationData || {}) }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(30000)
     });
     if (response.status === 401) {
         try {
@@ -755,7 +755,7 @@ async function updateDriverAvailabilityThroughBackend(status, locationData = nul
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
                     body: JSON.stringify({ status, ...(locationData || {}) }),
-                    signal: AbortSignal.timeout(15000)
+                    signal: AbortSignal.timeout(30000)
                 });
             }
         } catch (retryErr) {
@@ -2190,9 +2190,12 @@ addOptionalClickListener('driver-duty-switch', async (event) => {
             cacheProfile(currentUser);
         }
         updateDutySwitchUi();
-        const displayMsg = (error?.message && error.message !== "Failed to fetch" && !error.backendUnavailable)
-            ? error.message
-            : t('driver.update_status_network_failed', "Could not update online status. Check your connection.");
+        const isTimeout = error?.name === 'TimeoutError' || (error?.message && error.message.toLowerCase().includes('timed out'));
+        const displayMsg = isTimeout
+            ? t('driver.update_status_timeout', "Request timed out while updating status. Please try again.")
+            : (error?.message && error.message !== "Failed to fetch" && !error.backendUnavailable)
+                ? error.message
+                : t('driver.update_status_network_failed', "Could not update online status. Check your connection.");
         await showAlert(displayMsg);
     } finally {
         isDutySwitchTransitioning = false;
