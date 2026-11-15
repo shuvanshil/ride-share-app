@@ -1208,6 +1208,8 @@ function dispatchPassengerDriverLocation(ride) {
             driverHeading: ride.driverHeading ?? location.driverHeading,
             driverSpeed: ride.driverSpeed ?? location.driverSpeed,
             driverAccuracy: ride.driverAccuracy ?? location.driverAccuracy,
+            lastClientTimestampMs: ride.lastClientTimestampMs || null,
+            destinationPassed: Boolean(ride.destinationPassed),
             rideStatus: ride.status,
             status: ride.status,
             pickup_lat: ride.pickup_lat ?? ride.pickup?.lat ?? null,

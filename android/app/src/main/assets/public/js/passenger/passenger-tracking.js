@@ -495,13 +495,31 @@ function filterTrackPositionOutlier(rawPosition, nowMs, sourceTimestampEpochMs =
 }
 
 let trackOffRouteCount = 0;
+let trackHasPassedDestination = false;
+let trackLastPathRef = null;
 
 function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, lastFrac = 0) {
     if (!point || !Array.isArray(path) || path.length < 2) {
         lastRouteMatchIndex = -1;
         lastRouteMatchFraction = 0;
         trackOffRouteCount = 0;
-        return { point, heading: null, index: -1, fraction: 0 };
+        trackHasPassedDestination = false;
+        return { point, heading: null, index: -1, fraction: 0, isPastDestination: false };
+    }
+    if (trackLastPathRef !== path) {
+        trackLastPathRef = path;
+        trackHasPassedDestination = false;
+    }
+    if (trackHasPassedDestination && calculateDistanceMeters(point, path[path.length - 1]) > 6) {
+        lastRouteMatchIndex = path.length - 1;
+        lastRouteMatchFraction = 1.0;
+        return {
+            point,
+            heading: normalizeHeading(vehicleHeading) ?? lastDriverHeading,
+            index: path.length - 1,
+            fraction: 1.0,
+            isPastDestination: true
+        };
     }
     let searchFullRange = lastIdx < 0 || lastIdx >= path.length - 1;
     let windowStart = searchFullRange ? 0 : Math.max(0, lastIdx - 2);
@@ -527,9 +545,10 @@ function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, last
         let frac = Math.max(0, Math.min(1, rawFrac));
 
         // Detect destination overshoot: do NOT clamp to destination
-        if (segIndex === path.length - 2 && rawFrac > 1.0) {
+        const nearEndZone = path.length <= 4 || lastIdx >= path.length - 4;
+        if (segIndex === path.length - 2 && rawFrac > 1.0 && nearEndZone) {
             const distPastDest = calculateDistanceMeters(point, p2);
-            if (distPastDest > 6) {
+            if (distPastDest > 6 && distPastDest <= 350) {
                 return {
                     point: point, // REAL position! Continues moving past destination
                     heading: normalizedHeading ?? calculateBearing(p1, p2),
@@ -583,9 +602,18 @@ function snapToTrackRoute(point, path, lastIdx = -1, vehicleHeading = null, last
 
     if (best) {
         trackOffRouteCount = 0;
+        if (best.isPastDestination) {
+            trackHasPassedDestination = true;
+        }
         lastRouteMatchIndex = best.index;
         lastRouteMatchFraction = best.fraction ?? 0;
-        return { point: best.point, heading: best.heading, index: best.index, fraction: lastRouteMatchFraction };
+        return {
+            point: best.point,
+            heading: best.heading,
+            index: best.index,
+            fraction: lastRouteMatchFraction,
+            isPastDestination: Boolean(best.isPastDestination)
+        };
     }
 
     if (lastRouteMatchIndex >= 0 && trackOffRouteCount < 3) {
@@ -615,8 +643,14 @@ function updateTrackRouteProgress(matchIndex, matchPoint) {
 function updateTrackRouteProgressAtPoint(point) {
     if (!trackRoutePolyline || !Array.isArray(trackRoutePath) || trackRoutePath.length < 2 || !point) return;
 
+    if (trackHasPassedDestination) {
+        trackRoutePolyline.setPath([]);
+        return;
+    }
+
     const snap = snapToTrackRoute(point, trackRoutePath, lastRouteMatchIndex, lastDriverHeading, lastRouteMatchFraction);
     if (snap && snap.isPastDestination) {
+        trackHasPassedDestination = true;
         trackRoutePolyline.setPath([]);
         return;
     }

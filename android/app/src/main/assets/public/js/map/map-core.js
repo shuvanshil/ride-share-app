@@ -414,9 +414,10 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeadin
 
         // Detect destination overshoot past the last route segment:
         // Do NOT clamp the vehicle to the destination point!
-        if (segIndex === routePath.length - 2 && rawFraction > 1.0) {
+        const nearEndZone = routePath.length <= 4 || lastIndex >= routePath.length - 4;
+        if (segIndex === routePath.length - 2 && rawFraction > 1.0 && nearEndZone) {
             const distPastDest = calculateDistanceMeters(position, segEnd);
-            if (distPastDest > 6) {
+            if (distPastDest > 6 && distPastDest <= 350) {
                 return {
                     index: routePath.length - 1,
                     fraction: 1.0,
@@ -1569,10 +1570,20 @@ function splitAssignedDriverRouteAtMatch(path, matchIndex, matchPoint) {
 
 function updateAssignedDriverRouteProgress(routePath, matchIndex, matchPoint) {
     if (!assignedDriverRoutePolyline || !Array.isArray(routePath) || routePath.length < 2) return;
+    if (activeDriverRouteState.hasPassedDestination || activeDriverMarker?.isPastDestination) {
+        assignedDriverRoutePolyline.setPath([]);
+        return;
+    }
     if (matchIndex < 0) return;
+    if (matchIndex >= routePath.length - 1) {
+        assignedDriverRoutePolyline.setPath([]);
+        return;
+    }
     const remaining = splitAssignedDriverRouteAtMatch(routePath, matchIndex, matchPoint);
     if (remaining.length >= 2) {
         assignedDriverRoutePolyline.setPath(remaining);
+    } else {
+        assignedDriverRoutePolyline.setPath([]);
     }
 }
 
@@ -1729,12 +1740,22 @@ function updatePassengerNavigationCameraTracking(markerPosition, vehicleHeading,
 function updateAssignedDriverRouteProgressAtPosition(point) {
     if (!assignedDriverRoutePolyline || !Array.isArray(activeDriverRouteState.routePath) || activeDriverRouteState.routePath.length < 2 || !point) return;
 
+    if (activeDriverRouteState.hasPassedDestination || activeDriverMarker?.isPastDestination) {
+        assignedDriverRoutePolyline.setPath([]);
+        return;
+    }
+
     const routePath = activeDriverRouteState.routePath;
     const dest = routePath[routePath.length - 1];
     const prev = routePath[routePath.length - 2];
+    const lastIdx = activeDriverMarker?.routeMatchIndex ?? -1;
+    const nearEndZone = routePath.length <= 4 || lastIdx >= routePath.length - 4;
     const rawFrac = projectRawFractionOntoSegment(point, prev, dest);
-    if (rawFrac > 1.02 && calculateDistanceMeters(point, dest) > 6) {
-        // Vehicle has passed destination: no green train, just vehicle moving
+    const distFromDest = calculateDistanceMeters(point, dest);
+    if (nearEndZone && rawFrac > 1.02 && distFromDest > 6 && distFromDest <= 350) {
+        // Vehicle has passed destination: latch state, hide green line, continue tracking vehicle
+        activeDriverRouteState.hasPassedDestination = true;
+        if (activeDriverMarker) activeDriverMarker.isPastDestination = true;
         assignedDriverRoutePolyline.setPath([]);
         return;
     }
@@ -1742,11 +1763,13 @@ function updateAssignedDriverRouteProgressAtPosition(point) {
     const match = matchPositionToRoute(
         point,
         routePath,
-        activeDriverMarker?.routeMatchIndex ?? -1,
+        lastIdx,
         activeDriverMarker?.heading ?? null,
         activeDriverMarker?.routeMatchFraction ?? 0
     );
     if (match && match.isPastDestination) {
+        activeDriverRouteState.hasPassedDestination = true;
+        if (activeDriverMarker) activeDriverMarker.isPastDestination = true;
         assignedDriverRoutePolyline.setPath([]);
         return;
     }
@@ -2240,39 +2263,66 @@ function resolveDriverRenderState(existing, rawPosition, driver, routePath = [],
         const lastIdx = existing?.routeMatchIndex ?? -1;
         const lastFrac = existing?.routeMatchFraction ?? 0;
         const candidateHeading = (isMoving ? docHeading : null) ?? existing?.heading ?? docHeading ?? null;
-        const match = matchPositionToRoute(rawPosition, routePath, lastIdx, candidateHeading, lastFrac);
-        if (match) {
-            position = match.isPastDestination ? rawPosition : match.point;
-            routeMatchIndex = match.index;
-            routeMatchFraction = match.fraction ?? 0;
-            routeMatchPoint = match.point;
+        const alreadyPastDest = Boolean(
+            activeDriverRouteState.hasPassedDestination
+            || existing?.isPastDestination
+            || driver?.destinationPassed
+        );
+        const destPt = routePath[routePath.length - 1];
+        const distFromDest = destPt ? calculateDistanceMeters(rawPosition, destPt) : 0;
+
+        if (alreadyPastDest && distFromDest > 6) {
+            activeDriverRouteState.hasPassedDestination = true;
+            position = rawPosition;
+            routeMatchIndex = routePath.length - 1;
+            routeMatchFraction = 1.0;
+            routeMatchPoint = rawPosition;
+            matchedRouteHeading = null;
             if (existing) {
-                existing.routeMatchIndex = match.index;
-                existing.routeMatchFraction = routeMatchFraction;
-                existing.routeMatchPoint = match.point;
+                existing.routeMatchIndex = routeMatchIndex;
+                existing.routeMatchFraction = 1.0;
+                existing.routeMatchPoint = rawPosition;
                 existing.offRouteCount = 0;
-                existing.isPastDestination = Boolean(match.isPastDestination);
+                existing.isPastDestination = true;
             }
-            if (match.heading != null) {
-                matchedRouteHeading = match.heading;
-            }
-        } else if (existing && existing.routeMatchIndex >= 0 && (existing.offRouteCount || 0) < 3) {
-            // Sticky Route Hold: transient GPS spike outside snap corridor.
-            // Hold vehicle on the route at its last valid segment rather than instantly jumping into fields/buildings!
-            existing.offRouteCount = (existing.offRouteCount || 0) + 1;
-            routeMatchIndex = existing.routeMatchIndex;
-            routeMatchFraction = existing.routeMatchFraction ?? 0;
-            routeMatchPoint = existing.routeMatchPoint || routePath[routeMatchIndex] || rawPosition;
-            position = routeMatchPoint;
-            matchedRouteHeading = existing.heading ?? null;
         } else {
-            routeMatchIndex = -1;
-            routeMatchFraction = 0;
-            if (existing) {
-                existing.routeMatchIndex = -1;
-                existing.routeMatchFraction = 0;
-                existing.routeMatchPoint = null;
-                existing.offRouteCount = 0;
+            const match = matchPositionToRoute(rawPosition, routePath, lastIdx, candidateHeading, lastFrac);
+            if (match) {
+                position = match.isPastDestination ? rawPosition : match.point;
+                routeMatchIndex = match.index;
+                routeMatchFraction = match.fraction ?? 0;
+                routeMatchPoint = match.point;
+                if (match.isPastDestination) {
+                    activeDriverRouteState.hasPassedDestination = true;
+                }
+                if (existing) {
+                    existing.routeMatchIndex = match.index;
+                    existing.routeMatchFraction = routeMatchFraction;
+                    existing.routeMatchPoint = match.point;
+                    existing.offRouteCount = 0;
+                    existing.isPastDestination = Boolean(match.isPastDestination);
+                }
+                if (match.heading != null && !match.isPastDestination) {
+                    matchedRouteHeading = match.heading;
+                }
+            } else if (existing && existing.routeMatchIndex >= 0 && (existing.offRouteCount || 0) < 3) {
+                // Sticky Route Hold: transient GPS spike outside snap corridor.
+                // Hold vehicle on the route at its last valid segment rather than instantly jumping into fields/buildings!
+                existing.offRouteCount = (existing.offRouteCount || 0) + 1;
+                routeMatchIndex = existing.routeMatchIndex;
+                routeMatchFraction = existing.routeMatchFraction ?? 0;
+                routeMatchPoint = existing.routeMatchPoint || routePath[routeMatchIndex] || rawPosition;
+                position = routeMatchPoint;
+                matchedRouteHeading = existing.heading ?? null;
+            } else {
+                routeMatchIndex = -1;
+                routeMatchFraction = 0;
+                if (existing) {
+                    existing.routeMatchIndex = -1;
+                    existing.routeMatchFraction = 0;
+                    existing.routeMatchPoint = null;
+                    existing.offRouteCount = 0;
+                }
             }
         }
     } else {
@@ -2897,6 +2947,9 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     if (!current || typeof requestAnimationFrame !== "function") {
         existing.marker.setPosition(targetPosition);
         if (targetHeading != null) existing.marker.setHeading?.(targetHeading);
+        if (existing === activeDriverMarker && Array.isArray(activeDriverRouteState.routePath) && activeDriverRouteState.routePath.length >= 2) {
+            updateAssignedDriverRouteProgressAtPosition(targetPosition);
+        }
         existing.lastFixAt = now0;
         return;
     }
@@ -2907,6 +2960,9 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
     if (Math.abs(latitudeDelta) > 0.05 || Math.abs(longitudeDelta) > 0.05) {
         existing.marker.setPosition(targetPosition);
         if (targetHeading != null) existing.marker.setHeading?.(targetHeading);
+        if (existing === activeDriverMarker && Array.isArray(activeDriverRouteState.routePath) && activeDriverRouteState.routePath.length >= 2) {
+            updateAssignedDriverRouteProgressAtPosition(targetPosition);
+        }
         existing.lastFixAt = now0;
         existing.lastMoveDistanceMeters = 0;
         existing.speedMetersPerSecond = 0;
@@ -2923,6 +2979,9 @@ function animateGlobalDriverMarker(existing, targetPosition, targetHeading = nul
         if (targetHeading != null) {
             existing.heading = smoothHeading(startHeading, targetHeading, 0.35);
             existing.marker.setHeading?.(existing.heading);
+        }
+        if (existing === activeDriverMarker && Array.isArray(activeDriverRouteState.routePath) && activeDriverRouteState.routePath.length >= 2) {
+            updateAssignedDriverRouteProgressAtPosition(targetPosition);
         }
         existing.lastFixAt = now0;
         existing.speedMetersPerSecond = 0;
@@ -3126,7 +3185,8 @@ function resetActiveDriverRouteState() {
         lastRoutePosition: null,
         lastRouteAt: 0,
         routeRequestInFlight: false,
-        queuedDetail: null
+        queuedDetail: null,
+        hasPassedDestination: false
     };
 }
 
@@ -3226,11 +3286,13 @@ async function refreshActiveDriverRoute(detail, position, target) {
         activeDriverRouteState.lastPolyline = "";
         activeDriverRouteState.lastRoutePosition = null;
         activeDriverRouteState.lastRouteAt = 0;
+        activeDriverRouteState.hasPassedDestination = false;
         passengerFirstRouteFitComplete = false;
         if (activeDriverMarker) {
             activeDriverMarker.routeMatchIndex = -1;
             activeDriverMarker.routeMatchFraction = 0;
             activeDriverMarker.routeMatchPoint = null;
+            activeDriverMarker.isPastDestination = false;
         }
     }
 
@@ -3373,6 +3435,8 @@ async function handleAssignedDriverLocation(event) {
 
     const sourceTimestamp = getTimestampMs(
         detail.driverLocationUpdatedAt 
+        || detail.lastClientTimestampMs
+        || detail.clientTimestampMs
         || detail.lastLocationAt 
         || detail.updatedAt 
         || location.updatedAt 
@@ -3417,10 +3481,12 @@ async function handleAssignedDriverLocation(event) {
         if (activeDriverRouteState.targetKey !== targetKey) {
             activeDriverRouteState.routePath = [];
             activeDriverRouteState.lastPolyline = "";
+            activeDriverRouteState.hasPassedDestination = false;
             if (existing) {
                 existing.routeMatchIndex = -1;
                 existing.routeMatchFraction = 0;
                 existing.routeMatchPoint = null;
+                existing.isPastDestination = false;
             }
         }
         const validBackend = selectValidBackendRoute(detail, filteredPosition, target);
@@ -3444,7 +3510,10 @@ async function handleAssignedDriverLocation(event) {
     const routePath = target ? activeDriverRouteState.routePath : [];
     const { position, heading, routeMatchIndex, routeMatchFraction, routeMatchPoint } = resolveDriverRenderState(existing, filteredPosition, detail, routePath, driverId);
 
-    if (routePath.length >= 2 && routeMatchIndex >= 0) {
+    // Only immediately set polyline progress on initial marker placement;
+    // when activeDriverMarker already exists, animateGlobalDriverMarker updates the green
+    // route line frame-by-frame at `framePosition` so the line never jumps ahead of the vehicle!
+    if (!activeDriverMarker && routePath.length >= 2 && routeMatchIndex >= 0) {
         updateAssignedDriverRouteProgress(routePath, routeMatchIndex, routeMatchPoint);
     }
 

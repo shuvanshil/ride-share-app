@@ -199,6 +199,8 @@ class DriverLocationBody(BaseModel):
     heading: Optional[float] = None
     speed: Optional[float] = None
     accuracy: Optional[float] = None
+    clientTimestampMs: Optional[int] = None
+    timestamp: Optional[float] = None
     routePolyline: Optional[str] = Field(default=None, max_length=25000)
     routePolylineLeg: Optional[str] = Field(default=None, max_length=32)
 
@@ -366,6 +368,7 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
 
     prior_max_travelled = _finite_float(ride.get("max_travelled_km") or ride.get("travelled_after_pickup_km") or 0.0)
     prior_max_ratio = _finite_float(ride.get("max_progress_ratio") or ride.get("progress_ratio") or 0.0)
+    prior_max_extra = _finite_float(ride.get("max_extra_dropoff_km") or ride.get("extra_dropoff_distance_km") or 0.0)
 
     if current and planned_km > 0:
         # "How far past/short of the exact drop pin is the driver right now"
@@ -420,8 +423,10 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
                     is_past_drop = True
 
         if is_past_drop:
-            extra_dropoff_km = distance_to_drop_km
+            extra_dropoff_km = max(distance_to_drop_km, prior_max_extra)
             pickup_to_current_km = planned_km + extra_dropoff_km
+        elif prior_max_extra > 0 and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:
+            extra_dropoff_km = max(distance_to_drop_km, prior_max_extra)
 
         curr_progress_ratio = max(0.0, min(1.0, pickup_to_current_km / planned_km))
         curr_travelled_km = max(0.0, pickup_to_current_km if is_past_drop else min(pickup_to_current_km, planned_km))
@@ -433,6 +438,9 @@ def _driver_fare_adjustment(ride: dict[str, Any], action: str) -> dict[str, Any]
         # Fallback when GPS is temporarily missing/offline at terminal event, but was tracked during ride
         travelled_km = prior_max_travelled
         progress_ratio = prior_max_ratio
+        if prior_max_extra > 0:
+            extra_dropoff_km = prior_max_extra
+            distance_to_drop_km = prior_max_extra
 
     if not onboard:
         final_fare = 0
@@ -2797,6 +2805,12 @@ def update_driver_location(
         # correctly mark the driver as busy.
         availability, persisted_desired = _availability_for_location_update(profile, ride_id, db=db, uid=uid)
         _accumulate_online_seconds(db, uid, profile.get("lastLocationAt") or profile.get("lastSeenAt"), availability != "offline")
+        incoming_client_ts: Optional[int] = None
+        if body.clientTimestampMs is not None and body.clientTimestampMs > 0:
+            incoming_client_ts = int(body.clientTimestampMs)
+        elif body.timestamp is not None and math.isfinite(body.timestamp) and body.timestamp > 0:
+            incoming_client_ts = int(body.timestamp * 1000) if body.timestamp < 1e11 else int(body.timestamp)
+
         if ride_id:
             # Validate ride ownership and status when a ride_id is supplied.
             ride_ref = db.collection("rides").document(ride_id)
@@ -2808,19 +2822,40 @@ def update_driver_location(
             if ride.get("status") not in ACTIVE_PASSENGER_STATUSES:
                 raise ApiError("This ride is no longer active.", 409)
 
-            # Validate physical movement plausibility when speed is omitted
-            if body.driverSpeed is None:
-                prev_loc = ride.get("driverLocation") or profile.get("driverLocation")
-                prev_updated = ride.get("driverLocationUpdatedAt") or ride.get("updatedAt") or profile.get("lastLocationAt")
-                if prev_loc and isinstance(prev_loc, dict):
-                    p_lat = _coord_or_none(prev_loc.get("lat"))
-                    p_lng = _coord_or_none(prev_loc.get("lng"))
-                    if p_lat is not None and p_lng is not None and prev_updated and isinstance(prev_updated, datetime):
-                        delta_sec = (datetime.now(timezone.utc) - prev_updated).total_seconds()
-                        if 1.0 <= delta_sec <= 300.0:
-                            jump_dist_m = _haversine_km(p_lat, p_lng, lat, lng) * 1000.0
-                            if (jump_dist_m / delta_sec) > 55.0:
-                                raise ApiError("Invalid GPS speed.", 400)
+            # Reject stale / out-of-order updates by client timestamp so older delayed packets
+            # never overwrite newer coordinates or cause the passenger marker to jump backward.
+            if incoming_client_ts is not None:
+                prev_client_ts = ride.get("lastClientTimestampMs")
+                if prev_client_ts is not None and incoming_client_ts < int(prev_client_ts):
+                    return {
+                        "ok": True,
+                        "status": availability,
+                        "availability": availability,
+                        "staleSkipped": True,
+                    }
+
+            # Validate physical movement plausibility against previous coordinate timestamp
+            prev_loc = ride.get("driverLocation") or profile.get("driverLocation")
+            prev_updated = ride.get("driverLocationUpdatedAt") or ride.get("updatedAt") or profile.get("lastLocationAt")
+            if prev_loc and isinstance(prev_loc, dict):
+                p_lat = _coord_or_none(prev_loc.get("lat"))
+                p_lng = _coord_or_none(prev_loc.get("lng"))
+                prev_sec = _timestamp_seconds(prev_updated)
+                if p_lat is not None and p_lng is not None and prev_sec is not None:
+                    delta_sec = datetime.now(timezone.utc).timestamp() - prev_sec
+                    if 1.0 <= delta_sec <= 300.0:
+                        jump_dist_m = _haversine_km(p_lat, p_lng, lat, lng) * 1000.0
+                        if (jump_dist_m / delta_sec) > 55.0:
+                            raise ApiError("Invalid GPS speed.", 400)
+        elif incoming_client_ts is not None:
+            prev_prof_ts = profile.get("lastClientTimestampMs")
+            if prev_prof_ts is not None and incoming_client_ts < int(prev_prof_ts):
+                return {
+                    "ok": True,
+                    "status": availability,
+                    "availability": availability,
+                    "staleSkipped": True,
+                }
 
         location = {"lat": lat, "lng": lng}
         telemetry = {key: value for key, value in {
@@ -2828,6 +2863,8 @@ def update_driver_location(
             "driverSpeed": body.driverSpeed,
             "driverAccuracy": body.driverAccuracy,
         }.items() if value is not None}
+        if incoming_client_ts is not None:
+            telemetry["lastClientTimestampMs"] = incoming_client_ts
         now = datetime.now(timezone.utc)
         is_connected = availability != "offline"
 
@@ -2929,6 +2966,33 @@ def update_driver_location(
             if is_dest_leg:
                 planned_km = max(0.0, _finite_float(ride.get("distance_km")))
                 accuracy = _finite_float(body.driverAccuracy, 0.0)
+                # Track telemetry sample count, max gap, and coverage for distance reconciliation
+                prev_samples = int(ride.get("breadcrumb_count") or ride.get("n_samples") or 0)
+                new_samples = prev_samples + 1
+                ride_updates["breadcrumb_count"] = new_samples
+                ride_updates["n_samples"] = new_samples
+
+                prev_dest_ts = _timestamp_seconds(
+                    ride.get("driverLocationUpdatedAt") or ride.get("pinVerifiedAt") or ride.get("startedAt")
+                )
+                now_sec = now.timestamp()
+                gap_s = max(0.0, now_sec - prev_dest_ts) if prev_dest_ts is not None else 0.0
+                prior_max_gap_s = _finite_float(ride.get("max_gap_s"), 0.0)
+                max_gap_s = round(max(prior_max_gap_s, gap_s), 1)
+                ride_updates["max_gap_s"] = max_gap_s
+
+                prior_tracked_s = _finite_float(ride.get("tracked_seconds"), 0.0)
+                if 0.0 < gap_s <= 90.0:
+                    prior_tracked_s += gap_s
+                ride_updates["tracked_seconds"] = round(prior_tracked_s, 1)
+                start_ts = _timestamp_seconds(ride.get("pinVerifiedAt") or ride.get("startedAt"))
+                total_trip_s = max(0.0, now_sec - start_ts) if start_ts is not None else 0.0
+                if total_trip_s > 5.0 and max_gap_s > 0.0:
+                    cov_val = min(1.0, max(0.0, prior_tracked_s / total_trip_s))
+                else:
+                    cov_val = 1.0
+                ride_updates["coverage"] = round(cov_val, 3)
+
                 # Only accumulate travel if GPS accuracy is reasonable (<= 250m or unspecified)
                 if planned_km > 0 and (accuracy <= 250 or body.driverAccuracy is None):
                     # Always prefer the full pickup->drop `route_polyline` (anchored at pickup) for cumulative travel distance
@@ -2938,17 +3002,82 @@ def update_driver_location(
                     pickup_obj = ride.get("pickup") if isinstance(ride.get("pickup"), dict) else {}
                     p_lat_v = _coord_or_none(ride.get("pickup_lat") or ride.get("pickupLat") or pickup_obj.get("lat"))
                     p_lng_v = _coord_or_none(ride.get("pickup_lng") or ride.get("pickupLng") or pickup_obj.get("lng"))
+                    drop_obj = ride.get("drop") if isinstance(ride.get("drop"), dict) else {}
+                    d_lat_v = _coord_or_none(ride.get("drop_lat") or ride.get("dropLat") or drop_obj.get("lat"))
+                    d_lng_v = _coord_or_none(ride.get("drop_lng") or ride.get("dropLng") or drop_obj.get("lng"))
+
                     if road_travelled_km is not None:
                         pickup_to_curr_km = road_travelled_km
                     elif p_lat_v is not None and p_lng_v is not None:
                         pickup_to_curr_km = _haversine_km(p_lat_v, p_lng_v, location["lat"], location["lng"])
                     else:
                         pickup_to_curr_km = 0.0
-                    curr_travelled_km = max(0.0, min(pickup_to_curr_km, planned_km))
-                    curr_ratio = max(0.0, min(1.0, pickup_to_curr_km / planned_km))
 
                     prior_max_travelled = _finite_float(ride.get("max_travelled_km") or ride.get("travelled_after_pickup_km") or 0.0)
                     prior_max_ratio = _finite_float(ride.get("max_progress_ratio") or ride.get("progress_ratio") or 0.0)
+                    prior_max_extra = _finite_float(ride.get("max_extra_dropoff_km") or ride.get("extra_dropoff_distance_km") or 0.0)
+
+                    # Check if vehicle has passed the destination point (with accuracy & step-jump guard)
+                    is_past_drop = False
+                    distance_to_drop_km = 0.0
+                    if d_lat_v is not None and d_lng_v is not None:
+                        distance_to_drop_km = _haversine_km(location["lat"], location["lng"], d_lat_v, d_lng_v)
+                        ride_updates["distance_to_drop_km"] = round(distance_to_drop_km, 3)
+
+                        # Guard against single noisy GPS spike falsely latching post-destination travel
+                        prev_ride_loc = ride.get("driverLocation") if isinstance(ride.get("driverLocation"), dict) else None
+                        prev_r_lat = _coord_or_none(prev_ride_loc.get("lat")) if prev_ride_loc else None
+                        prev_r_lng = _coord_or_none(prev_ride_loc.get("lng")) if prev_ride_loc else None
+                        step_from_prev_km = (
+                            _haversine_km(prev_r_lat, prev_r_lng, location["lat"], location["lng"])
+                            if prev_r_lat is not None and prev_r_lng is not None
+                            else 0.0
+                        )
+                        is_high_accuracy = (body.driverAccuracy is None or accuracy <= 100.0)
+                        is_plausible_step = (prev_r_lat is None or step_from_prev_km <= 0.35)
+
+                        if is_high_accuracy and is_plausible_step and distance_to_drop_km > FREE_DROPOFF_EXTRA_KM:
+                            has_reached_end_zone = (
+                                (road_travelled_km is not None and road_travelled_km >= planned_km * FULL_FARE_PROGRESS_RATIO)
+                                or prior_max_ratio >= FULL_FARE_PROGRESS_RATIO
+                                or bool(ride.get("destinationPassed"))
+                            )
+                            if route_points and len(route_points) >= 2:
+                                if has_reached_end_zone:
+                                    p_last = route_points[-1]
+                                    p_prev = route_points[-2]
+                                    for pt in reversed(route_points[:-1]):
+                                        if pt[0] != p_last[0] or pt[1] != p_last[1]:
+                                            p_prev = pt
+                                            break
+                                    d_lat = p_last[0] - p_prev[0]
+                                    d_lng = (p_last[1] - p_prev[1]) * (math.cos(math.radians(p_last[0])) or 1.0)
+                                    pt_lat = location["lat"] - p_last[0]
+                                    pt_lng = (location["lng"] - p_last[1]) * (math.cos(math.radians(p_last[0])) or 1.0)
+                                    forward_dot = (pt_lat * d_lat) + (pt_lng * d_lng)
+                                    if forward_dot >= 0:
+                                        is_past_drop = True
+                            elif p_lat_v is not None and p_lng_v is not None and has_reached_end_zone:
+                                dist_pickup_curr = _haversine_km(p_lat_v, p_lng_v, location["lat"], location["lng"])
+                                dist_pickup_drop = _haversine_km(p_lat_v, p_lng_v, d_lat_v, d_lng_v)
+                                d_lat = d_lat_v - p_lat_v
+                                d_lng = (d_lng_v - p_lng_v) * (math.cos(math.radians(p_lat_v)) or 1.0)
+                                pt_lat = location["lat"] - d_lat_v
+                                pt_lng = (location["lng"] - d_lng_v) * (math.cos(math.radians(d_lat_v)) or 1.0)
+                                forward_dot = (pt_lat * d_lat) + (pt_lng * d_lng)
+                                if forward_dot >= 0 or dist_pickup_curr > dist_pickup_drop:
+                                    is_past_drop = True
+
+                    if is_past_drop:
+                        extra_dropoff_km = max(prior_max_extra, distance_to_drop_km)
+                        curr_travelled_km = planned_km + extra_dropoff_km
+                        curr_ratio = 1.0
+                        ride_updates["destinationPassed"] = True
+                        ride_updates["extra_dropoff_distance_km"] = round(distance_to_drop_km, 3)
+                        ride_updates["max_extra_dropoff_km"] = round(extra_dropoff_km, 3)
+                    else:
+                        curr_travelled_km = max(0.0, min(pickup_to_curr_km, planned_km))
+                        curr_ratio = max(0.0, min(1.0, pickup_to_curr_km / planned_km))
 
                     max_travelled_km = max(prior_max_travelled, curr_travelled_km)
                     max_progress_ratio = max(prior_max_ratio, curr_ratio)

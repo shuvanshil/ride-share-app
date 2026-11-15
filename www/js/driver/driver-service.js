@@ -514,9 +514,10 @@ function matchPositionToRoute(position, routePath, lastIndex = -1, vehicleHeadin
 
         // Detect destination overshoot past the last route segment:
         // Do NOT clamp the vehicle to the destination point!
-        if (i === routePath.length - 2 && rawFraction > 1.0) {
+        const nearEndZone = routePath.length <= 4 || lastIndex >= routePath.length - 4;
+        if (i === routePath.length - 2 && rawFraction > 1.0 && nearEndZone) {
             const distPastDest = distanceMeters(position, segEnd);
-            if (distPastDest > 6) {
+            if (distPastDest > 6 && distPastDest <= 350) {
                 return {
                     index: routePath.length - 1,
                     fraction: 1.0,
@@ -2690,18 +2691,27 @@ function updateDriverNavigationCameraTracking(markerPosition, vehicleHeading, sp
 function updateDriverRouteProgressAtPosition(point) {
     if (!routeRemainingPolyline || !Array.isArray(activeRoutePath) || activeRoutePath.length < 2 || !point) return;
 
-    // Check if passed destination
+    if (driverHasPassedDestination) {
+        routeRemainingPolyline.setPath([]);
+        return;
+    }
+
+    // Check if passed destination when near the final route segments
     const dest = activeRoutePath[activeRoutePath.length - 1];
     const prev = activeRoutePath[activeRoutePath.length - 2];
+    const nearEndZone = activeRoutePath.length <= 4 || driverRouteMatchIndex >= activeRoutePath.length - 4;
     const rawFrac = projectRawFractionOntoSegment(point, prev, dest);
-    if (rawFrac > 1.02 && distanceMeters(point, dest) > 6) {
-        // Vehicle has passed destination: no green train, just vehicle moving
+    const distFromDest = distanceMeters(point, dest);
+    if (nearEndZone && rawFrac > 1.02 && distFromDest > 6 && distFromDest <= 350) {
+        // Vehicle has passed destination: latch state, hide green line, continue tracking vehicle
+        driverHasPassedDestination = true;
         routeRemainingPolyline.setPath([]);
         return;
     }
 
     const match = resolveRouteMatch(point, lastDriverHeading);
     if (match && match.isPastDestination) {
+        driverHasPassedDestination = true;
         routeRemainingPolyline.setPath([]);
         return;
     }
@@ -2747,6 +2757,9 @@ function animateDriverMarkerTo(position, heading = null, routePath = [], prevRou
             driverMarker?.setHeading?.(targetHeading);
             lastDriverHeading = targetHeading;
         }
+        if (Array.isArray(activeRoutePath) && activeRoutePath.length >= 2) {
+            updateDriverRouteProgressAtPosition(position);
+        }
         lastDriverMarkerFixAt = now0;
         if (navigationModeEnabled && !driverUserInteracted) applyNavigationCamera(position, targetHeading, true);
         return;
@@ -2760,6 +2773,9 @@ function animateDriverMarkerTo(position, heading = null, routePath = [], prevRou
         if (targetHeading != null) {
             driverMarker.setHeading?.(targetHeading);
             lastDriverHeading = targetHeading;
+        }
+        if (Array.isArray(activeRoutePath) && activeRoutePath.length >= 2) {
+            updateDriverRouteProgressAtPosition(position);
         }
         driverMarkerAnimationFrame = null;
         lastDriverMarkerFixAt = now0;
@@ -2777,6 +2793,9 @@ function animateDriverMarkerTo(position, heading = null, routePath = [], prevRou
         } else if (targetHeading != null) {
             driverMarker.setHeading?.(targetHeading);
             lastDriverHeading = targetHeading;
+        }
+        if (Array.isArray(activeRoutePath) && activeRoutePath.length >= 2) {
+            updateDriverRouteProgressAtPosition(position);
         }
         lastDriverMarkerFixAt = now0;
         return;
@@ -2871,6 +2890,7 @@ let driverRouteMatchIndex = -1;
 let driverRouteMatchFraction = 0;
 let driverRouteMatchPoint = null;
 let driverLastRoutePathRef = null;
+let driverHasPassedDestination = false;
 let routeCompletedPolyline = null;
 let routeRemainingPolyline = null;
 let routeRevealFrame = null;
@@ -2916,6 +2936,7 @@ function clearRoute() {
     driverRouteMatchFraction = 0;
     driverRouteMatchPoint = null;
     driverLastRoutePathRef = null;
+    driverHasPassedDestination = false;
 }
 
 function clearTarget() {
@@ -3571,9 +3592,17 @@ function splitDriverRoutePathAtMatch(path, matchIndex, matchPoint) {
 
 // Splits the driver's own route into a muted "completed" segment behind
 // them and a highlighted "remaining" segment ahead, updated on every GPS
-// tick from the route-match index already computed for marker snapping.
+// tick when not actively interpolating across animation frames.
 function updateDriverRouteProgress() {
     if (!routeCompletedPolyline || !routeRemainingPolyline || routeRevealFrame) return;
+    if (driverHasPassedDestination) {
+        if (routeCompletedPolyline) routeCompletedPolyline.setPath([]);
+        routeRemainingPolyline.setPath([]);
+        return;
+    }
+    // While marker animation is active, updateDriverRouteProgressAtPosition(framePosition)
+    // trims the green line on every frame so it never jumps ahead of the moving vehicle.
+    if (driverMarkerAnimationFrame) return;
     if (driverRouteMatchIndex < 0 || !activeRoutePath.length) return;
 
     const { remaining } = splitDriverRoutePathAtMatch(
@@ -3648,6 +3677,25 @@ function resolveRouteMatch(position, vehicleHeading = null) {
         driverRouteMatchFraction = 0;
         driverLastRoutePathRef = activeRoutePath;
         driverOffRouteCount = 0;
+        driverHasPassedDestination = false;
+    }
+    if (driverHasPassedDestination && Array.isArray(activeRoutePath) && activeRoutePath.length >= 2) {
+        const destPt = activeRoutePath[activeRoutePath.length - 1];
+        const distFromDest = distanceMeters(position, destPt);
+        if (distFromDest > 6) {
+            driverRouteMatchIndex = activeRoutePath.length - 1;
+            driverRouteMatchFraction = 1.0;
+            driverRouteMatchPoint = position;
+            return {
+                index: activeRoutePath.length - 1,
+                fraction: 1.0,
+                point: position,
+                distanceMeters: distFromDest,
+                heading: normalizeHeading(vehicleHeading) ?? lastDriverHeading,
+                isPastDestination: true,
+                score: 0
+            };
+        }
     }
     const match = matchPositionToRoute(
         position,
@@ -3675,6 +3723,9 @@ function resolveRouteMatch(position, vehicleHeading = null) {
         return null;
     }
     driverOffRouteCount = 0;
+    if (match.isPastDestination) {
+        driverHasPassedDestination = true;
+    }
     driverRouteMatchIndex = match.index;
     driverRouteMatchFraction = match.fraction ?? 0;
     driverRouteMatchPoint = match.point;
@@ -3701,14 +3752,20 @@ function buildLocationTelemetry(coords, browserCoords, previousRawPosition, prev
     const hintHeading = reliableGpsHeading ?? motionBearing ?? normalizeHeading(previousHeading);
     const routeMatch = currentTarget ? resolveRouteMatch(coords, hintHeading) : null;
 
-    // True movement heading hierarchy:
-    // 1. Hardware GPS bearing if moving at reliable speed
-    // 2. Motion bearing from consecutive coordinates if moved >= 2.5m
-    // 3. Fallback to route segment heading or target bearing ONLY if starting from cold rest without prior heading
-    // 4. Retain previous valid heading when stationary or low speed (prevent erratic rotation)
+    // Road-aligned & true movement heading hierarchy:
+    // 1. When on-route (within 35m and not past destination) and not diverging/reversing (> 65 deg),
+    //    align longitudinal axis with road segment tangent so driver and passenger markers match road geometry.
+    // 2. Otherwise use hardware GPS bearing or consecutive coordinate motion bearing when moving.
+    // 3. Retain previous valid heading when stationary or low speed (prevent erratic rotation).
     let heading = null;
     if (isMoving) {
-        heading = reliableGpsHeading ?? motionBearing;
+        const rawMoveHeading = reliableGpsHeading ?? motionBearing;
+        const onRoadCorridor = routeMatch && !routeMatch.isPastDestination && routeMatch.heading != null && (routeMatch.distanceMeters ?? 0) <= 35;
+        if (onRoadCorridor && (rawMoveHeading == null || Math.abs(shortestHeadingDelta(routeMatch.heading, rawMoveHeading)) <= 65)) {
+            heading = routeMatch.heading;
+        } else {
+            heading = rawMoveHeading ?? routeMatch?.heading ?? null;
+        }
     }
     if (heading == null) {
         if (previousHeading != null) {
@@ -3800,7 +3857,13 @@ async function refreshRoute(position, force = false, isDeviation = false) {
 }
 
 async function updateDriverLocationThroughBackend(position, telemetry, rideId = null) {
-    const payload = { lat: position.lat, lng: position.lng, rideId, ...telemetry };
+    const payload = {
+        lat: position.lat,
+        lng: position.lng,
+        rideId,
+        clientTimestampMs: Date.now(),
+        ...telemetry
+    };
     if (rideId && Array.isArray(activeRoutePath) && activeRoutePath.length > 1) {
         try {
             payload.routePolyline = encodePolyline(activeRoutePath);
