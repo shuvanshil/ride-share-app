@@ -36,6 +36,10 @@ export default defineConfig({
       input: {
         about:   'src/pages/About/main.jsx',
         contact: 'src/pages/Contact/main.jsx',
+        terms:   'src/pages/Terms/main.jsx',
+        help:    'src/pages/Help/main.jsx',
+        safety:  'src/pages/Safety/main.jsx',
+        privacy: 'src/pages/Privacy/main.jsx',
       },
       output: {
         entryFileNames: '[name].js',              // → www/js/react/about.js, contact.js

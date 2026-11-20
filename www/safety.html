@@ -28,95 +28,10 @@
     <script src="js/platform/routes.js" defer></script>
 </head>
 <body>
-    <main class="content-page-shell">
-        <header class="content-page-head">
-            <button class="head-back-btn" type="button" onclick="history.length > 1 ? history.back() : window.navigateToPage('profile.html')" aria-label="Go back">
-                <span class="webicon webicon-view-more back-chevron" aria-hidden="true"></span>
-            </button>
-            <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
-            <div class="head-spacer"></div>
-        </header>
-
-        <section class="content-hero-block">
-            <div class="hero-icon-badge">
-                <span class="webicon webicon-safety" aria-hidden="true"></span>
-            </div>
-            <h1>Safety Standards &amp; Guidelines</h1>
-            <p>Your safety is our top priority on every single trip.</p>
-        </section>
-
-        <section class="content-body-container">
-            <article class="content-card">
-                <div class="card-section-header">
-                    <h2>Safety Commitment</h2>
-                </div>
-                <p>At <strong>LiphtUp</strong>, your safety is our top priority. We are committed to providing a secure, reliable, and respectful ride experience for every passenger and driver.</p>
-            </article>
-
-            <article class="content-card">
-                <div class="card-section-header">
-                    <h2>Our Safety Standards</h2>
-                </div>
-                <ul class="styled-list">
-                    <li>Verified drivers with valid driving licences and required vehicle documents.</li>
-                    <li>Vehicle and driver details displayed upfront before every ride.</li>
-                    <li>Real-time trip tracking for complete journey transparency.</li>
-                    <li>Live trip tracking link can be shared with up to 3 trusted emergency contacts.</li>
-                    <li>Easy in-app reporting for unsafe behavior or incidents.</li>
-                    <li>Zero tolerance policy for harassment, discrimination, violence, or fraud.</li>
-                    <li>Personal information protected in strict compliance with our Privacy Policy.</li>
-                    <li>Drivers expected to observe all traffic rules and drive responsibly.</li>
-                    <li>Passengers and drivers must treat each other with mutual respect.</li>
-                    <li>Emergency services should be alerted immediately in any life-threatening situation.</li>
-                </ul>
-            </article>
-
-            <div class="row g-3 my-1">
-                <div class="col-md-6">
-                    <article class="content-card h-100">
-                        <div class="card-section-header">
-                            <h2>Passenger Guidelines</h2>
-                        </div>
-                        <ul class="styled-list">
-                            <li>Verify the driver's name, photo, and vehicle number before boarding.</li>
-                            <li>Do not carry illegal, hazardous, or prohibited items.</li>
-                            <li>Report any suspicious or inappropriate behavior immediately through the app.</li>
-                            <li>Treat your driver and their vehicle with care and respect.</li>
-                        </ul>
-                    </article>
-                </div>
-
-                <div class="col-md-6">
-                    <article class="content-card h-100">
-                        <div class="card-section-header">
-                            <h2>Driver Guidelines</h2>
-                        </div>
-                        <ul class="styled-list">
-                            <li>Keep your vehicle clean, safe, and roadworthy at all times.</li>
-                            <li>Never drive under the influence of alcohol, drugs, or illegal substances.</li>
-                            <li>Follow all speed limits, traffic signals, and safety laws strictly.</li>
-                            <li>Do not request payments outside the official LiphtUp fare system.</li>
-                            <li>Respect every passenger regardless of age, gender, religion, or background.</li>
-                        </ul>
-                    </article>
-                </div>
-            </div>
-
-            <article class="content-card quote-highlight-card">
-                <h3>Building a Safe Community Together</h3>
-                <p class="mb-0">LiphtUp continuously works to improve safety through secure technology, identity verification, and responsive customer support. Together, we build a trusted mobility network for everyone.</p>
-            </article>
-        </section>
-
-        <nav class="bottom-nav profile-bottom-nav">
-            <button type="button" onclick="window.navigateToPage('index.html')"><span class="webicon webicon-home" aria-hidden="true"></span>Home</button>
-            <button type="button" onclick="window.navigateToPage('services.html')"><span class="webicon webicon-services" aria-hidden="true"></span>Services</button>
-            <button type="button" onclick="window.navigateToPage('history.html')"><span class="webicon webicon-history" aria-hidden="true"></span>History</button>
-            <button class="active" type="button" onclick="window.navigateToPage('profile.html')"><span class="webicon webicon-profile" aria-hidden="true"></span>Profile</button>
-        </nav>
-    </main>
-
+    <div id="root"></div>
+    <script type="module" src="js/react/safety.js"></script>
     <script src="js/bootstrap.bundle.min.js"></script>
     <script src="js/shared/pwa.js" defer></script>
 </body>
+
 </html>
