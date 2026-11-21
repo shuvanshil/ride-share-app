@@ -12,6 +12,7 @@ import ProfileContact from './ProfileContact';
 import ProfileHelp from './ProfileHelp';
 import ProfilePrivacy from './ProfilePrivacy';
 import ProfileTerms from './ProfileTerms';
+import { ProfileWallet, ProfileWalletCelebration } from './ProfileWallet';
 
 const root = document.getElementById('profile-root');
 const editRoot = document.getElementById('profile-edit-root');
@@ -24,7 +25,9 @@ const contactRoot = document.getElementById('profile-contact-root');
 const helpRoot = document.getElementById('profile-help-root');
 const privacyRoot = document.getElementById('profile-privacy-root');
 const termsRoot = document.getElementById('profile-terms-root');
-if (root || editRoot || accountRoot || deleteRoot || shareRoot || safetyRoot || aboutRoot || contactRoot || helpRoot || privacyRoot || termsRoot) {
+const walletRoot = document.getElementById('profile-wallet-root');
+const walletCelebrationRoot = document.getElementById('profile-wallet-celebration-root');
+if (root || editRoot || accountRoot || deleteRoot || shareRoot || safetyRoot || aboutRoot || contactRoot || helpRoot || privacyRoot || termsRoot || walletRoot || walletCelebrationRoot) {
   flushSync(() => {
     if (root) ReactDOM.createRoot(root).render(<React.StrictMode><Profile /></React.StrictMode>);
     if (editRoot) ReactDOM.createRoot(editRoot).render(<React.StrictMode><ProfileEdit /></React.StrictMode>);
@@ -37,5 +40,7 @@ if (root || editRoot || accountRoot || deleteRoot || shareRoot || safetyRoot || 
     if (helpRoot) ReactDOM.createRoot(helpRoot).render(<React.StrictMode><ProfileHelp /></React.StrictMode>);
     if (privacyRoot) ReactDOM.createRoot(privacyRoot).render(<React.StrictMode><ProfilePrivacy /></React.StrictMode>);
     if (termsRoot) ReactDOM.createRoot(termsRoot).render(<React.StrictMode><ProfileTerms /></React.StrictMode>);
+    if (walletRoot) ReactDOM.createRoot(walletRoot).render(<React.StrictMode><ProfileWallet /></React.StrictMode>);
+    if (walletCelebrationRoot) ReactDOM.createRoot(walletCelebrationRoot).render(<React.StrictMode><ProfileWalletCelebration /></React.StrictMode>);
   });
 }
