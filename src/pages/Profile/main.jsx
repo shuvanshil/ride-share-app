@@ -5,16 +5,19 @@ import Profile from './Profile';
 import ProfileEdit from './ProfileEdit';
 import ProfileAccount from './ProfileAccount';
 import ProfileDelete from './ProfileDelete';
+import ProfileShare from './ProfileShare';
 
 const root = document.getElementById('profile-root');
 const editRoot = document.getElementById('profile-edit-root');
 const accountRoot = document.getElementById('profile-account-root');
 const deleteRoot = document.getElementById('profile-delete-root');
-if (root || editRoot || accountRoot || deleteRoot) {
+const shareRoot = document.getElementById('profile-share-root');
+if (root || editRoot || accountRoot || deleteRoot || shareRoot) {
   flushSync(() => {
     if (root) ReactDOM.createRoot(root).render(<React.StrictMode><Profile /></React.StrictMode>);
     if (editRoot) ReactDOM.createRoot(editRoot).render(<React.StrictMode><ProfileEdit /></React.StrictMode>);
     if (accountRoot) ReactDOM.createRoot(accountRoot).render(<React.StrictMode><ProfileAccount /></React.StrictMode>);
     if (deleteRoot) ReactDOM.createRoot(deleteRoot).render(<React.StrictMode><ProfileDelete /></React.StrictMode>);
+    if (shareRoot) ReactDOM.createRoot(shareRoot).render(<React.StrictMode><ProfileShare /></React.StrictMode>);
   });
 }
