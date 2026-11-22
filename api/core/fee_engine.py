@@ -110,28 +110,32 @@ def check_driver_fee_restriction_fast(
     """Lightweight and ultra-fast restriction check for driver availability toggles.
     Avoids 14-day history lookbacks and transactions; only evaluates existing fee documents.
     """
-    curr = _to_ist_datetime(now)
-    # Check if payment pause is active in systemSettings
     try:
-        pause_snap = db.collection("systemSettings").document("driverPaymentPause").get()
-        if pause_snap.exists:
-            p_data = pause_snap.to_dict() or {}
-            is_paused = bool(p_data.get("isPaused", False))
-            start_d = p_data.get("startDate")
-            end_d = p_data.get("endDate")
-            if is_paused and start_d and end_d:
-                from .payment_schedule import is_date_in_pause_range
-                if is_date_in_pause_range(curr, start_d, end_d, True):
-                    return False, 0, ""
-            elif is_paused:
-                return False, 0, ""
-    except Exception:
-        pass
-
-    try:
+        curr = _to_ist_datetime(now)
         fee_docs = list(db.collection(COLLECTION_DRIVER_FEES).where("uid", "==", uid).stream())
         fees_list = [snap.to_dict() or {} for snap in fee_docs]
-        return evaluate_fee_restriction(fees_list, curr)
+        is_restricted, overdue_paise, reason = evaluate_fee_restriction(fees_list, curr)
+        if not is_restricted:
+            return False, 0, ""
+
+        # Only read systemSettings/driverPaymentPause when the driver actually has overdue fees
+        try:
+            pause_snap = db.collection("systemSettings").document("driverPaymentPause").get()
+            if pause_snap.exists:
+                p_data = pause_snap.to_dict() or {}
+                is_paused = bool(p_data.get("isPaused", False))
+                start_d = p_data.get("startDate")
+                end_d = p_data.get("endDate")
+                if is_paused and start_d and end_d:
+                    from .payment_schedule import is_date_in_pause_range
+                    if is_date_in_pause_range(curr, start_d, end_d, True):
+                        return False, 0, ""
+                elif is_paused:
+                    return False, 0, ""
+        except Exception:
+            pass
+
+        return is_restricted, overdue_paise, reason
     except Exception as e:
         logger.warning("Fast fee restriction check error for %s: %s", uid, e)
         return False, 0, ""

@@ -236,18 +236,18 @@ def update_driver_presence_synchronized(
         else str(profile.get("desiredAvailability") or ("online" if is_connected else "offline")).strip().lower()
     )
 
-    from ..routers.rides import _build_driver_availability_updates
-
-    user_update, presence_update, map_presence_update = _build_driver_availability_updates(status, profile, location=location)
-    user_update["desiredAvailability"] = desired
-    presence_update["desiredAvailability"] = desired
-    map_presence_update["desiredAvailability"] = desired
-
-    u_ref = db.collection(COLLECTION_USERS).document(clean_driver_id)
-    p_ref = db.collection(COLLECTION_DRIVER_PRESENCE).document(clean_driver_id)
-    m_ref = db.collection(COLLECTION_DRIVER_MAP_PRESENCE).document(clean_driver_id)
-
     try:
+        from ..routers.rides import _build_driver_availability_updates
+
+        user_update, presence_update, map_presence_update = _build_driver_availability_updates(status, profile, location=location)
+        user_update["desiredAvailability"] = desired
+        presence_update["desiredAvailability"] = desired
+        map_presence_update["desiredAvailability"] = desired
+
+        u_ref = db.collection(COLLECTION_USERS).document(clean_driver_id)
+        p_ref = db.collection(COLLECTION_DRIVER_PRESENCE).document(clean_driver_id)
+        m_ref = db.collection(COLLECTION_DRIVER_MAP_PRESENCE).document(clean_driver_id)
+
         if batch_or_tx is not None:
             batch_or_tx.set(u_ref, user_update, merge=True)
             batch_or_tx.set(p_ref, presence_update, merge=True)

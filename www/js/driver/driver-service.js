@@ -1327,31 +1327,39 @@ function startIncomingRideListener() {
 async function updateDriverAvailabilityThroughBackend(status, locationData = null) {
     let idToken = await getAuthToken(false);
     if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
-    let response = await fetch("/api/rides/driver-availability", {
+    const hasValidCoords = locationData
+        && Number.isFinite(Number(locationData.lat))
+        && Number.isFinite(Number(locationData.lng));
+    const payload = hasValidCoords
+        ? { status, lat: Number(locationData.lat), lng: Number(locationData.lng) }
+        : { status };
+
+    const doRequest = (token) => fetch("/api/rides/driver-availability", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ status, ...(locationData || {}) }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(30000)
     });
+
+    let response = await doRequest(idToken);
     if (response.status === 401) {
         try {
             idToken = await getAuthToken(true);
             if (idToken) {
-                response = await fetch("/api/rides/driver-availability", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-                    body: JSON.stringify({ status, ...(locationData || {}) }),
-                    signal: AbortSignal.timeout(30000)
-                });
+                response = await doRequest(idToken);
             }
         } catch (retryErr) {
             console.warn("Token refresh retry failed in driver service:", retryErr);
         }
     }
+    if ([502, 503, 504].includes(response.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        response = await doRequest(idToken);
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
         const error = new Error(data.error || "Could not update driver availability.");
-        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        error.backendUnavailable = [404, 405, 502, 503, 504].includes(response.status);
         throw error;
     }
     return data;
@@ -3928,14 +3936,71 @@ let locationSettlementTimer = null;
 
 function hideLocationLoadingOverlay() {
     isLocationSettled = true;
+    const isOffline = (currentUser?.driverAvailability || "offline") === "offline" && !currentRideId;
     const overlay = document.getElementById("driver-location-loading-overlay");
-    if (overlay) overlay.classList.add("d-none");
+    if (overlay) {
+        if (isOffline) {
+            setLocationOverlayOfflineState(true);
+        } else {
+            overlay.classList.add("d-none");
+        }
+    }
     driverMarker?.element?.classList.remove("is-locating");
+}
+
+function setLocationOverlayOfflineState(isOffline) {
+    const overlay = document.getElementById("driver-location-loading-overlay");
+    const spinner = document.getElementById("driver-location-loading-spinner") || overlay?.querySelector(".lu-spinner");
+    const textEl = document.getElementById("driver-location-loading-text") || overlay?.querySelector("[data-i18n]");
+    const mapLoadingEl = document.querySelector("#driver-service-map .driver-map-loading");
+
+    if (isOffline && !currentRideId) {
+        window.clearTimeout(locationSettlementTimer);
+        if (overlay) overlay.classList.remove("d-none");
+        if (spinner) spinner.classList.add("d-none");
+        if (textEl) {
+            textEl.setAttribute("data-i18n", "driver.currently_offline");
+            textEl.textContent = t('driver.currently_offline', "You are currently offline");
+        }
+        if (mapLoadingEl) {
+            const mapSpinner = mapLoadingEl.querySelector(".lu-spinner");
+            const mapText = mapLoadingEl.querySelector("[data-i18n]") || mapLoadingEl.querySelector("span:last-child");
+            if (mapSpinner) mapSpinner.classList.add("d-none");
+            if (mapText) {
+                mapText.setAttribute("data-i18n", "driver.currently_offline");
+                mapText.textContent = t('driver.currently_offline', "You are currently offline");
+            }
+        }
+    } else {
+        if (spinner) spinner.classList.remove("d-none");
+        if (textEl) {
+            textEl.setAttribute("data-i18n", "driver.getting_location");
+            textEl.textContent = t('driver.getting_location', "Getting your location...");
+        }
+        if (mapLoadingEl) {
+            const mapSpinner = mapLoadingEl.querySelector(".lu-spinner");
+            const mapText = mapLoadingEl.querySelector("[data-i18n]") || mapLoadingEl.querySelector("span:last-child");
+            if (mapSpinner) mapSpinner.classList.remove("d-none");
+            if (mapText) {
+                mapText.setAttribute("data-i18n", "common.loading_map");
+                mapText.textContent = t('common.loading_map', "Loading Map...");
+            }
+        }
+        if (isLocationSettled && overlay) {
+            overlay.classList.add("d-none");
+        }
+    }
 }
 
 function showLocationLoadingOverlay() {
     isLocationSettled = false;
     gpsSampleCount = 0;
+    const isOffline = (currentUser?.driverAvailability || "offline") === "offline" && !currentRideId;
+    if (isOffline) {
+        setLocationOverlayOfflineState(true);
+        return;
+    }
+    setLocationOverlayOfflineState(false);
     const overlay = document.getElementById("driver-location-loading-overlay");
     if (overlay) overlay.classList.remove("d-none");
     driverMarker?.element?.classList.add("is-locating");
@@ -4942,7 +5007,7 @@ async function bootstrapDriverService() {
             startLocationTracking();
         } else {
             stopDriverTracking();
-            ensureMap(lastPosition || getInitialDriverLocation()).catch(() => {});
+            setLocationOverlayOfflineState(true);
         }
         hidePageLoader({ force: true });
         hideInitialLoader();
@@ -5010,6 +5075,8 @@ function updateDriverAvailabilityUI(statusOverride) {
             ? t('driver.currently_offline', "You are currently offline")
             : t('driver.online_searching', "Online & searching for passengers");
     }
+
+    setLocationOverlayOfflineState(isOffline);
 }
 
 let isTogglingOnlineStatus = false;

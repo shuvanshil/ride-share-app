@@ -638,11 +638,11 @@ def _build_driver_availability_updates(
         )
     }
     eff_loc = location or profile.get("driverLocation") or profile.get("location")
-    if not eff_loc or not isinstance(eff_loc, dict) or "lat" not in eff_loc or "lng" not in eff_loc:
-        eff_loc = None
+    eff_lat = _coord_or_none(eff_loc.get("lat")) if isinstance(eff_loc, dict) else None
+    eff_lng = _coord_or_none(eff_loc.get("lng")) if isinstance(eff_loc, dict) else None
 
-    if eff_loc and "lat" in eff_loc and "lng" in eff_loc:
-        loc_dict = {"lat": float(eff_loc["lat"]), "lng": float(eff_loc["lng"])}
+    if eff_lat is not None and eff_lng is not None:
+        loc_dict = {"lat": eff_lat, "lng": eff_lng}
         user_update["driverLocation"] = loc_dict
         user_update["lastLocationAt"] = fb_firestore.SERVER_TIMESTAMP
         presence_update["driverLocation"] = loc_dict
@@ -2674,7 +2674,7 @@ def expand_passenger_dispatch(
 @router.post("/driver-availability")
 def update_driver_availability(
     body: DriverAvailabilityBody,
-    background_tasks: BackgroundTasks,
+    background_tasks: BackgroundTasks = None,
     user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
     """Update driver availability and presence with server-owned identity fields."""
@@ -2696,17 +2696,23 @@ def update_driver_availability(
         db = fb_firestore.client(get_admin_app())
         profile = db.collection("users").document(uid).get().to_dict() or {}
         _require_approved_driver(profile, "Only approved drivers can update driver availability.")
-        open_share_trips = _open_share_trip_driver_ids(db, uid)
         from ..services.db import driver_has_other_active_rides, update_driver_presence_synchronized
-        has_other_rides = driver_has_other_active_rides(db, uid)
-        if open_share_trips and status == "offline":
-            raise ApiError("Cannot go offline while a shared trip is active.", 400)
-        if has_other_rides and status == "offline":
-            raise ApiError("Cannot go offline while an active ride is in progress.", 400)
-        if status != "offline":
-            from ..core.fee_engine import check_driver_fee_restriction_fast
-            from ..core.service_day import paise_to_rupees_float
-            is_restricted, ov_paise, res_reason = check_driver_fee_restriction_fast(db, uid)
+
+        if status == "offline":
+            open_share_trips = _open_share_trip_driver_ids(db, uid)
+            if open_share_trips:
+                raise ApiError("Cannot go offline while a shared trip is active.", 400)
+            has_other_rides = driver_has_other_active_rides(db, uid)
+            if has_other_rides:
+                raise ApiError("Cannot go offline while an active ride is in progress.", 400)
+        else:
+            try:
+                from ..core.fee_engine import check_driver_fee_restriction_fast
+                from ..core.service_day import paise_to_rupees_float
+                is_restricted, ov_paise, res_reason = check_driver_fee_restriction_fast(db, uid)
+            except Exception as fee_err:
+                logger.warning("Fee restriction check skipped during availability update: %s", fee_err)
+                is_restricted, ov_paise, res_reason = False, 0, ""
             if is_restricted:
                 raise ApiError(
                     res_reason or "Your account is restricted due to overdue platform fees. Please pay now to go online.",
@@ -2719,7 +2725,12 @@ def update_driver_availability(
                         "action": "pay_now",
                     },
                 )
-        _accumulate_online_seconds(db, uid, profile.get("lastSeenAt"), status != "offline")
+
+        try:
+            _accumulate_online_seconds(db, uid, profile.get("lastSeenAt"), status != "offline")
+        except Exception:
+            pass
+
         update_driver_presence_synchronized(
             db,
             uid,
@@ -2728,38 +2739,45 @@ def update_driver_availability(
             profile_data={**profile, "uid": uid},
             location={"lat": lat, "lng": lng} if lat is not None else None,
         )
+
+        raw_eff_loc = {"lat": lat, "lng": lng} if lat is not None else (profile.get("driverLocation") or profile.get("location"))
+        eff_lat = _coord_or_none(raw_eff_loc.get("lat")) if isinstance(raw_eff_loc, dict) else None
+        eff_lng = _coord_or_none(raw_eff_loc.get("lng")) if isinstance(raw_eff_loc, dict) else None
+        eff_loc = {"lat": eff_lat, "lng": eff_lng} if (eff_lat is not None and eff_lng is not None) else None
+
         try:
             DispatchPoolManager.sync_driver_dap(
                 db=db,
                 driver_id=uid,
-                loc={"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location"),
+                loc=eff_loc,
                 availability=status,
                 vehicle_type=_driver_type(profile),
                 is_approved=True,
             )
         except Exception:
             pass
+
         if status == "searching":
-            eff_loc = {"lat": lat, "lng": lng} if lat is not None else profile.get("driverLocation") or profile.get("location")
+            import threading
 
             def _post_online_dispatch(db_inst, driver_uid, driver_prof, driver_loc):
-                try:
-                    activate_due_scheduled_requests(db_inst)
-                except Exception as sched_err:
-                    logger.warning("Error activating scheduled requests on driver online: %s", sched_err)
                 try:
                     check_and_notify_pending_passengers(db_inst, driver_uid, driver_loc, _driver_type(driver_prof))
                 except Exception as notify_err:
                     logger.warning("Error notifying pending passengers on driver online: %s", notify_err)
                 try:
-                    _dispatch_with_fallback(db_inst, driver_uid, driver_prof, driver_loc)
+                    nudge_dispatch(db_inst)
                 except Exception as disp_err:
-                    logger.warning("Error running dispatch fallback on driver online: %s", disp_err)
+                    logger.warning("Error nudging dispatch on driver online: %s", disp_err)
 
-            if background_tasks is not None:
-                background_tasks.add_task(_post_online_dispatch, db, uid, profile, eff_loc)
-            else:
-                _post_online_dispatch(db, uid, profile, eff_loc)
+            try:
+                threading.Thread(
+                    target=_post_online_dispatch,
+                    args=(db, uid, profile, eff_loc),
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
         return {"ok": True, "status": status}
     except ApiError:
         raise
@@ -5501,17 +5519,11 @@ def activate_due_scheduled_requests(db) -> int:
                     {"url": f"{APP_BASE_URL}/services", "type": "schedule_timeout_prompt", "requestId": doc.id}
                 )
 
-    try:
-        searching_drivers = list(db.collection("driverPresence").where("driverAvailability", "==", "searching").limit(20).stream())
-        for d_doc in searching_drivers:
-            d_data = d_doc.to_dict() or {}
-            driver_uid = d_doc.id
-            d_profile = db.collection("users").document(driver_uid).get().to_dict() or {}
-            d_loc = d_data.get("driverLocation") or d_profile.get("driverLocation") or d_profile.get("location")
-            if driver_uid and d_loc:
-                _dispatch_with_fallback(db, driver_uid, d_profile, d_loc)
-    except Exception as exc:
-        print(f"Scheduled activation driver sweep error: {exc}")
+    if evaluated_count > 0:
+        try:
+            run_dispatch(db)
+        except Exception as exc:
+            print(f"Scheduled activation driver sweep error: {exc}")
 
     return evaluated_count
 

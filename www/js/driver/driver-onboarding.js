@@ -741,31 +741,39 @@ function updateDutySwitchUi() {
 async function updateDriverAvailabilityThroughBackend(status, locationData = null) {
     let idToken = await getAuthToken(false);
     if (!idToken) throw new Error(t('common.auth_required', "Authentication is required."));
-    let response = await fetch("/api/rides/driver-availability", {
+    const hasValidCoords = locationData
+        && Number.isFinite(Number(locationData.lat))
+        && Number.isFinite(Number(locationData.lng));
+    const payload = hasValidCoords
+        ? { status, lat: Number(locationData.lat), lng: Number(locationData.lng) }
+        : { status };
+
+    const doRequest = (token) => fetch("/api/rides/driver-availability", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ status, ...(locationData || {}) }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
         signal: AbortSignal.timeout(30000)
     });
+
+    let response = await doRequest(idToken);
     if (response.status === 401) {
         try {
             idToken = await getAuthToken(true);
             if (idToken) {
-                response = await fetch("/api/rides/driver-availability", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-                    body: JSON.stringify({ status, ...(locationData || {}) }),
-                    signal: AbortSignal.timeout(30000)
-                });
+                response = await doRequest(idToken);
             }
         } catch (retryErr) {
             console.warn("Token refresh retry failed:", retryErr);
         }
     }
+    if ([502, 503, 504].includes(response.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        response = await doRequest(idToken);
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
         const error = new Error(data.error || data.detail || "Could not update driver availability.");
-        error.backendUnavailable = [404, 405, 502, 503].includes(response.status);
+        error.backendUnavailable = [404, 405, 502, 503, 504].includes(response.status);
         error.status = response.status;
         error.details = data.details || null;
         throw error;

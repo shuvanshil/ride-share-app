@@ -516,3 +516,34 @@ def test_e2e_passing_destination_continued_tracking_and_completion_fare(audit_en
             assert r_late.status_code == 409
     finally:
         app.dependency_overrides.pop(current_user, None)
+
+
+def test_driver_availability_online_offline_toggle_resilience(audit_env):
+    """Verify driver online/offline toggle succeeds immediately even when profile has null coordinates."""
+    db = audit_env["db"]
+    uid = audit_env["driver_uid"]
+    # Simulate a profile with null lat/lng inside driverLocation (which previously crashed float(None) -> 503)
+    db.collection("users").document(uid).update({
+        "driverLocation": {"lat": None, "lng": None},
+        "driverAvailability": "offline",
+        "desiredAvailability": "offline",
+    })
+
+    client = TestClient(app)
+    app.dependency_overrides[current_user] = lambda: audit_env["driver_auth"]
+    try:
+        with patch("api.routers.rides.fb_firestore.client", return_value=db), \
+             patch("api.routers.rides.get_admin_app", return_value=MagicMock()):
+            # 1. Toggle online without coordinates
+            r_on = client.post("/api/rides/driver-availability", json={"status": "searching"})
+            assert r_on.status_code == 200
+            assert r_on.json() == {"ok": True, "status": "searching"}
+            assert db.collection("users").document(uid).get().to_dict()["driverAvailability"] == "searching"
+
+            # 2. Toggle offline without coordinates
+            r_off = client.post("/api/rides/driver-availability", json={"status": "offline"})
+            assert r_off.status_code == 200
+            assert r_off.json() == {"ok": True, "status": "offline"}
+            assert db.collection("users").document(uid).get().to_dict()["driverAvailability"] == "offline"
+    finally:
+        app.dependency_overrides.pop(current_user, None)
