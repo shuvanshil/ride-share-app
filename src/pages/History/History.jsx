@@ -46,14 +46,9 @@ export default function History() {
         <div className="history-summary-card"><span data-i18n="history.total_distance">Distance</span><strong id="history-total-distance">0 km</strong></div>
       </section>
 
-      <section className="history-filter-row" aria-label="History filters">
-        <button className="history-filter" type="button" data-filter="day" data-i18n="history.filter_day">Day</button>
-        <button className="history-filter" type="button" data-filter="week" data-i18n="history.filter_week">Week</button>
-        <button className="history-filter" type="button" data-filter="month" data-i18n="history.filter_month">Month</button>
-        <button className="history-filter active" type="button" data-filter="all" data-i18n="history.filter_all">All</button>
-      </section>
+      <section className="history-filter-row" aria-label="History filters"><HistoryFilters /></section>
 
-      <section id="history-list" className="standalone-history-list"><div className="history-loading-card" data-i18n="history.loading_history">Loading ride history...</div></section>
+      <section className="standalone-history-list"><div id="history-list-status-root"><HistoryListStatus /></div><div id="history-list" /><HistoryLoadMore /></section>
 
       <div id="history-detail-modal" className="modal-layer d-none">
         <div className="gy-modal history-detail-modal"><header className="gy-modal-head"><h2 data-i18n="history.trip_details">Trip Details</h2><button className="modal-close-btn" type="button" aria-label="Close dialog">&times;</button></header><div className="history-detail-content" id="history-detail-content" /></div>
@@ -91,4 +86,51 @@ export function HistoryGuestAction() {
   }, []);
 
   return show ? <button className="guest-login-btn" type="button" onClick={() => go('/login.html')} data-i18n="common.login">Login</button> : null;
+}
+
+export function HistoryListStatus() {
+  const [state, setState] = useState({ listState: 'loading', loadingText: 'Loading ride history...' });
+
+  useEffect(() => {
+    const update = (event) => setState((current) => ({ ...current, ...(event.detail || {}) }));
+    window.addEventListener('liphtup:history-status', update);
+    return () => window.removeEventListener('liphtup:history-status', update);
+  }, []);
+
+  useEffect(() => {
+    const list = document.getElementById('history-list');
+    if (list) list.classList.toggle('d-none', state.listState !== 'data');
+    return () => list?.classList.remove('d-none');
+  }, [state.listState]);
+
+  if (state.listState === 'data') return null;
+  if (state.listState === 'error') return <div className="history-empty-card"><div className="history-empty-icon">!</div><h3>{state.errorTitle}</h3><p>{state.errorDescription}</p><button id="history-retry-btn" className="gy-btn gy-btn-primary" type="button" onClick={() => window.LiphtUpHistoryController?.refresh?.()}>Try Again</button></div>;
+  if (state.listState === 'guest') return <div className="history-empty-card"><div className="history-empty-icon">‹</div><h3>{state.guestTitle}</h3><p>{state.guestDescription}</p><button className="gy-btn gy-btn-primary" type="button" onClick={() => go('/login.html')}>Go to Login</button></div>;
+  if (state.listState === 'empty') return <div className="history-empty-card"><div className="history-empty-icon">·</div><h3>{state.emptyTitle} {state.filterText}</h3><p>{state.emptyDescription}</p><button className="gy-btn gy-btn-primary" type="button" onClick={() => go(state.emptyActionLink)}>{state.emptyActionLabel}</button></div>;
+  return <div className="history-loading-card">{state.loadingText}</div>;
+}
+
+export function HistoryFilters() {
+  const [activeFilter, setActiveFilter] = useState('all');
+  const filters = [['day', 'history.filter_day', 'Day'], ['week', 'history.filter_week', 'Week'], ['month', 'history.filter_month', 'Month'], ['all', 'history.filter_all', 'All']];
+  const selectFilter = (filter) => { setActiveFilter(filter); window.LiphtUpHistoryController?.setFilter?.(filter); };
+  return <>{filters.map(([filter, translation, label]) => <button key={filter} className={`history-filter${activeFilter === filter ? ' active' : ''}`} type="button" data-filter={filter} data-i18n={translation} onClick={() => selectFilter(filter)}>{label}</button>)}</>;
+}
+
+export function HistoryLoadMore() {
+  const [pagination, setPagination] = useState({ hasMore: false, remaining: 0 });
+
+  useEffect(() => {
+    const update = (event) => setPagination((current) => ({ ...current, ...(event.detail || {}) }));
+    window.addEventListener('liphtup:history-pagination', update);
+    return () => window.removeEventListener('liphtup:history-pagination', update);
+  }, []);
+
+  useEffect(() => {
+    const legacyButton = document.getElementById('load-more-history-btn');
+    legacyButton?.classList.add('d-none');
+  }, [pagination.hasMore, pagination.remaining]);
+
+  if (!pagination.hasMore) return null;
+  return <div className="load-more-container"><button type="button" className="load-more-btn" onClick={() => window.LiphtUpHistoryController?.loadMore?.()}><span>Load More ({pagination.remaining} remaining)</span><span className="chevron-down">↓</span></button></div>;
 }

@@ -47,6 +47,10 @@ function publishHistoryStatus(detail) {
     window.dispatchEvent(new CustomEvent('liphtup:history-status', { detail }));
 }
 
+function publishHistoryPagination(detail) {
+    window.dispatchEvent(new CustomEvent('liphtup:history-pagination', { detail }));
+}
+
 function escapeHtml(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -347,6 +351,16 @@ function renderEmptyState() {
     const filterText = getFilterLabel();
     const actionLabel = isDriverAccount() ? t('common.go_home', 'Go Home') : t('common.book_a_ride', 'Book a Ride');
     const actionLink = isDriverAccount() ? "/driver.html" : "/index.html";
+    publishHistoryPagination({ hasMore: false, remaining: 0 });
+
+    publishHistoryStatus({
+        listState: 'empty',
+        filterText,
+        emptyTitle: t('history.no_history_for', 'No ride history for'),
+        emptyDescription: t('history.empty_history_desc', 'Your verified, completed, and cancelled trips will appear here.'),
+        emptyActionLabel: actionLabel,
+        emptyActionLink: actionLink
+    });
 
     historyList.innerHTML = `
         <div class="history-empty-card">
@@ -438,8 +452,11 @@ function renderTrips() {
         return;
     }
 
+    publishHistoryStatus({ listState: 'data' });
+
     const paginatedTrips = allFilteredTrips.slice(0, historyState.visibleCount);
     const hasMore = allFilteredTrips.length > historyState.visibleCount;
+    publishHistoryPagination({ hasMore, remaining: Math.max(0, allFilteredTrips.length - historyState.visibleCount) });
 
     let html = paginatedTrips.map(renderTripCard).join("");
 
@@ -519,25 +536,35 @@ async function reportRideIssue(rideId) {
 }
 
 function setLoadingState() {
-    historyList.innerHTML = `<div class="history-loading-card">${escapeHtml(t('history.loading_history', 'Loading ride history...'))}</div>`;
+    publishHistoryStatus({ listState: 'loading', loadingText: t('history.loading_history', 'Loading ride history...') });
+    historyList.innerHTML = '';
 }
 
 function setErrorState(error) {
     console.error("History load failed:", error);
-    historyList.innerHTML = `
-        <div class="history-empty-card">
-            <div class="history-empty-icon">!</div>
-            <h3>${escapeHtml(t('history.error_title', 'Could not load history'))}</h3>
-            <p>${escapeHtml(t('history.error_desc', 'Please check your internet connection and Firestore rules, then try again.'))}</p>
-            <button id="history-retry-btn" class="gy-btn gy-btn-primary" type="button">${escapeHtml(t('common.refresh', 'Try Again'))}</button>
-        </div>
-    `;
-    document.getElementById('history-retry-btn')?.addEventListener('click', refreshHistory);
+    publishHistoryStatus({
+        listState: 'error',
+        errorTitle: t('history.error_title', 'Could not load history'),
+        errorDescription: t('history.error_desc', 'Please check your internet connection and Firestore rules, then try again.')
+    });
+    historyList.innerHTML = '';
 }
 
 async function refreshHistory() {
     if (!historyState.user) return;
     startHistoryRealtime();
+}
+
+function loadMoreHistory() {
+    historyState.visibleCount += 15;
+    renderTrips();
+}
+
+function setHistoryFilter(filter) {
+    if (!['day', 'week', 'month', 'all'].includes(filter)) return;
+    historyState.activeFilter = filter;
+    historyState.visibleCount = 15;
+    renderTrips();
 }
 
 function bindFilters() {
@@ -551,8 +578,6 @@ function bindFilters() {
         });
     });
 }
-
-bindFilters();
 
 const refreshBtn = document.getElementById('history-refresh-btn');
 if (refreshBtn) {
@@ -574,7 +599,14 @@ async function bootstrapHistory() {
         historyState.user = null;
         historyState.profile = null;
         historyState.trips = [];
-        publishHistoryStatus({ status: 'guest', showGuest: true, context: t('history.login_to_view', "Login to view your ride history") });
+        publishHistoryStatus({
+            status: 'guest',
+            listState: 'guest',
+            showGuest: true,
+            context: t('history.login_to_view', "Login to view your ride history"),
+            guestTitle: t('history.not_logged_in', 'You are not logged in'),
+            guestDescription: t('history.please_login', 'Please login to view your ride history.')
+        });
         historyList.innerHTML = `
             <div class="history-empty-card">
                 <div class="history-empty-icon">○</div>
@@ -631,6 +663,8 @@ async function bootstrapHistory() {
 window.LiphtUpHistoryController = {
     bootstrap: bootstrapHistory,
     refresh: refreshHistory,
+    setFilter: setHistoryFilter,
+    loadMore: loadMoreHistory,
     stop: stopHistoryRealtime
 };
 
