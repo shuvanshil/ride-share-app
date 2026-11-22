@@ -7,7 +7,7 @@
  */
 import { auth, db, storage, ref, uploadBytesResumable, getDownloadURL } from '../platform/firebase-init.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { collection, doc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { showAlert } from '../shared/dialog.js';
 import { t, translateDOM } from '../shared/i18n.js';
 import { registerDriverPushToken } from '../shared/messaging.js';
@@ -204,8 +204,14 @@ function formatFullDateTime(dateStr) {
 // Status & Data Fetching
 // -------------------------------------------------------------
 let isFetchingStatus = false;
+let pendingStatusRefetch = false;
+const calculationCache = new Map();
+
 async function fetchPaymentStatus() {
-    if (isFetchingStatus) return;
+    if (isFetchingStatus) {
+        pendingStatusRefetch = true;
+        return;
+    }
     isFetchingStatus = true;
     try {
         const token = await getAuthToken();
@@ -225,6 +231,7 @@ async function fetchPaymentStatus() {
 
         const data = await response.json();
         currentPaymentData = data;
+        calculationCache.clear();
         renderPaymentPage(data);
     } catch (error) {
         console.error("Error fetching payment status:", error);
@@ -233,6 +240,10 @@ async function fetchPaymentStatus() {
         isFetchingStatus = false;
         if (loadingScreen) loadingScreen.classList.add('d-none');
         if (mainContainer) mainContainer.classList.remove('d-none');
+        if (pendingStatusRefetch) {
+            pendingStatusRefetch = false;
+            fetchPaymentStatus();
+        }
     }
 }
 
@@ -247,15 +258,16 @@ function setupRealtimeListener(uid) {
     }
 
     try {
-        const q = query(
-            collection(db, "feePaymentBatches"),
-            where("uid", "==", uid)
-        );
-
-        realtimeUnsubscribe = onSnapshot(q, () => {
+        let isInitialSnapshot = true;
+        const userDocRef = doc(db, "users", uid);
+        realtimeUnsubscribe = onSnapshot(userDocRef, () => {
+            if (isInitialSnapshot) {
+                isInitialSnapshot = false;
+                return;
+            }
             fetchPaymentStatus();
         }, (err) => {
-            console.warn("Driver fees realtime listener error:", err);
+            console.warn("Driver profile realtime listener warning:", err);
         });
     } catch (err) {
         console.warn("Failed to attach realtime snapshot listener:", err);
@@ -319,15 +331,11 @@ function renderPaymentPage(data) {
     const weekRangeStr = `${formatShortDate(monDay.dateStr)} – ${formatShortDate(sunDay.dateStr)}`;
     const weekSubtext = t('driver.this_week_range', 'This week ({range})', { range: weekRangeStr });
 
-    const closedUnpaidDates = [];
-    weekDays.forEach(day => {
-        if (isDayClosedIST(day.dateStr, data.server_now)) {
-            const fee = (data.fees || []).find(f => f.serviceDate === day.dateStr);
-            if (fee && (fee.remaining_paise || 0) > 0) {
-                closedUnpaidDates.push(day.dateStr);
-            }
-        }
-    });
+    const closedUnpaidDates = (data.fees || [])
+        .filter(f => (f.remaining_paise || 0) > 0 && !f.is_current_day && isDayClosedIST(f.serviceDate, data.server_now))
+        .map(f => f.serviceDate)
+        .filter(Boolean)
+        .sort();
 
     let remainingHeading = '';
     if (closedUnpaidDates.length > 0) {
@@ -556,11 +564,13 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, data) {
         ? t('driver.repay_now_btn', 'RE-PAY ₹{amount} NOW', { amount: totalAmount })
         : t('driver.pay_now_btn', 'PAY ₹{amount} NOW', { amount: totalAmount });
 
-    // Build Daily breakdown rows for Mockup 3
+    // Build Daily breakdown rows for Mockup 3 (focus on payable/unpaid fees so total matches Total to Pay)
+    const unpaidActionableFees = fees.filter(f => (f.remaining_paise || 0) > 0);
+    const breakdownFees = unpaidActionableFees.length > 0 ? unpaidActionableFees : fees;
     let dailyRowsHtml = '';
     let totalKm = 0;
-    let totalFeeSum = 0;
-    fees.forEach(f => {
+    let totalFeePaiseSum = 0;
+    breakdownFees.forEach(f => {
         const sDate = f.serviceDate || '--';
         let dayName = '';
         let dateStr = '';
@@ -574,9 +584,9 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, data) {
         }
         const distNum = typeof f.distance_km === 'number' ? f.distance_km : parseFloat(f.distance_km || 0);
         totalKm += distNum;
-        const feePaise = f.fee_paise || 0;
-        const feeInr = Math.round(feePaise / 100);
-        totalFeeSum += feeInr;
+        const rowPaise = (f.remaining_paise || 0) > 0 ? f.remaining_paise : (f.fee_paise || 0);
+        totalFeePaiseSum += rowPaise;
+        const feeDisplay = (rowPaise % 100 === 0) ? (rowPaise / 100).toString() : (rowPaise / 100).toFixed(2);
 
         dailyRowsHtml += `
             <div class="fee-breakdown-table-row" data-date="${sDate}" role="button" tabindex="0">
@@ -585,7 +595,7 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, data) {
                     <span class="fee-breakdown-day-date">${dateStr}</span>
                 </div>
                 <div class="fee-breakdown-dist-col">${distNum.toFixed(1)} km</div>
-                <div class="fee-breakdown-fee-col">₹${feeInr}</div>
+                <div class="fee-breakdown-fee-col">₹${feeDisplay}</div>
             </div>
         `;
     });
@@ -679,7 +689,7 @@ function renderStep2(state, totalAmount, overdueAmount, baseFee, data) {
     const viewPerDayBtn = document.getElementById('fee-view-per-day-btn');
     if (viewPerDayBtn) {
         viewPerDayBtn.addEventListener('click', () => {
-            const firstDate = fees.length > 0 ? fees[0].serviceDate : null;
+            const firstDate = breakdownFees.length > 0 ? breakdownFees[0].serviceDate : (fees.length > 0 ? fees[0].serviceDate : null);
             if (firstDate) {
                 openCalculationModal(firstDate);
             }
@@ -842,6 +852,41 @@ function renderUnifiedPaymentDetails(data, weekDays) {
         `;
     });
 
+    // Also include any unpaid or under-review fees from earlier weeks so drivers can inspect & verify overdue days
+    const weekDateSet = new Set(weekDays.map(w => w.dateStr));
+    const earlierActiveFees = fees.filter(f => f.serviceDate && !weekDateSet.has(f.serviceDate) && ((f.remaining_paise || 0) > 0 || (f.review_paise || 0) > 0));
+    if (earlierActiveFees.length > 0) {
+        html += `<div class="pt-3 pb-1 fw-bold text-danger small" style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em;">${t('driver.from_previous_week', 'From previous weeks')}</div>`;
+        earlierActiveFees.forEach(fee => {
+            const sDate = fee.serviceDate;
+            const dt = parseYMD(sDate);
+            const dayName = dt && !isNaN(dt.getTime()) ? dt.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' }) : sDate;
+            const distKm = typeof fee.distance_km === 'number' ? fee.distance_km.toFixed(1) : (fee.distance_km || '0.0');
+            const isUnderReview = (fee.status || '').toUpperCase() === 'UNDER_REVIEW' || (fee.review_paise || 0) > 0;
+            const amtPaise = isUnderReview ? (fee.fee_paise || 0) : (fee.remaining_paise || 0);
+            const amtDisplay = (amtPaise % 100 === 0) ? (amtPaise / 100).toString() : (amtPaise / 100).toFixed(2);
+            const badgeHtml = isUnderReview
+                ? `<span class="badge" style="background: #FEF3C7; color: #B45309; font-size: 0.74rem; font-weight: 700; border-radius: 9999px; padding: 4px 9px;">${t('driver.under_review_badge', 'Under review')}</span>`
+                : `<span class="badge" style="background: #FEE2E2; color: #B91C1C; font-size: 0.74rem; font-weight: 700; border-radius: 9999px; padding: 4px 9px;">${t('driver.unpaid_badge', 'Overdue')}</span>`;
+
+            html += `
+                <div class="d-flex justify-content-between align-items-center py-2 border-bottom fee-day-click-row" style="cursor: pointer;" role="button" tabindex="0" data-date="${sDate}">
+                    <div>
+                        <div class="fw-semibold text-dark" style="font-size: 0.88rem;">${dayName}</div>
+                        <div class="text-secondary small" style="font-size: 0.78rem;">${distKm} km</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        ${badgeHtml}
+                        <div class="d-flex align-items-center text-dark fw-bold" style="font-size: 0.92rem; min-width: 44px; justify-content: flex-end;">
+                            <span>₹${amtDisplay}</span>
+                            <span class="text-secondary ms-1 fw-bold" style="font-size: 0.9rem;">&gt;</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
     listEl.innerHTML = html;
 
     listEl.querySelectorAll('.fee-day-click-row').forEach(row => {
@@ -853,7 +898,7 @@ function renderUnifiedPaymentDetails(data, weekDays) {
 
     // 2. Summary Rows
     const totalPaidPaise = fees.reduce((sum, f) => sum + (f.paid_paise || 0), 0);
-    const totalPaidInr = Math.round(totalPaidPaise / 100);
+    const totalPaidInr = (totalPaidPaise % 100 === 0) ? (totalPaidPaise / 100).toString() : (totalPaidPaise / 100).toFixed(2);
     if (summaryTotalPaid) summaryTotalPaid.innerText = `₹${totalPaidInr}`;
 
     const underReviewFees = fees.filter(f => (f.review_paise || 0) > 0 || (f.status || '').toUpperCase() === 'UNDER_REVIEW');
@@ -864,13 +909,15 @@ function renderUnifiedPaymentDetails(data, weekDays) {
         const countKey = count === 1 ? 'driver.under_review_days_count' : 'driver.under_review_days_count_plural';
         const defaultText = count === 1 ? `Under review (1 day)` : `Under review (${count} days)`;
         if (summaryUnderReviewLabel) summaryUnderReviewLabel.innerText = t(countKey, defaultText, { days: count });
-        if (summaryUnderReviewAmount) summaryUnderReviewAmount.innerText = `₹${Math.round(underReviewTotalPaise / 100)}`;
+        const urInr = (underReviewTotalPaise % 100 === 0) ? (underReviewTotalPaise / 100).toString() : (underReviewTotalPaise / 100).toFixed(2);
+        if (summaryUnderReviewAmount) summaryUnderReviewAmount.innerText = `₹${urInr}`;
     } else {
         summaryUnderReviewRow?.classList.add('d-none');
     }
 
-    const remainingThisWeekPaise = fees.filter(f => weekDays.some(wd => wd.dateStr === f.serviceDate)).reduce((sum, f) => sum + (f.remaining_paise || 0), 0);
-    if (summaryRemaining) summaryRemaining.innerText = `₹${Math.round(remainingThisWeekPaise / 100)}`;
+    const totalRemainingPaise = fees.reduce((sum, f) => sum + (f.remaining_paise || 0), 0);
+    const remInr = (totalRemainingPaise % 100 === 0) ? (totalRemainingPaise / 100).toString() : (totalRemainingPaise / 100).toFixed(2);
+    if (summaryRemaining) summaryRemaining.innerText = `₹${remInr}`;
 
     // 3. Last Payment Verified Card
     const approvedHistory = (data.history || []).filter(h => h.status === 'approved');
@@ -968,6 +1015,78 @@ function renderRecentPayments(history) {
 // -------------------------------------------------------------
 // Calculation Breakdown Modal
 // -------------------------------------------------------------
+function renderCalculationModalContent(data, fallbackFee = null) {
+    const distEl = document.getElementById('fee-calc-dist');
+    const ridesCountEl = document.getElementById('fee-calc-rides-count');
+    const feeEl = document.getElementById('fee-calc-fee');
+    const ridesList = document.getElementById('fee-calc-rides-list');
+    const adjWrap = document.getElementById('fee-calc-adjustments-wrap');
+    const adjList = document.getElementById('fee-calc-adjustments-list');
+
+    const finalizedKm = Number(data?.finalized_km ?? fallbackFee?.distance_km ?? 0);
+    const billedMetres = Number(data?.billed_metres ?? fallbackFee?.distance_m ?? Math.round(finalizedKm * 1000));
+    const feePaise = Number(data?.fee_paise ?? fallbackFee?.fee_paise ?? Math.floor((billedMetres + 5) / 10));
+    const counted = Array.isArray(data?.counted_rides) ? data.counted_rides : [];
+
+    if (distEl) distEl.innerText = `${finalizedKm.toFixed(2)} km (${billedMetres} m)`;
+    if (ridesCountEl) ridesCountEl.innerText = counted.length > 0 ? `${counted.length}` : (finalizedKm > 0 ? '1+' : '0');
+    if (feeEl) feeEl.innerText = `₹${(feePaise / 100).toFixed(2)}`;
+
+    if (ridesList) {
+        if (counted.length === 0) {
+            if (finalizedKm > 0) {
+                ridesList.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <div>
+                            <div class="fw-semibold text-dark">GPS-Tracked Service Distance</div>
+                            <div class="text-muted" style="font-size: 0.76rem;">Verified daily odometer distance</div>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold text-dark">${finalizedKm.toFixed(2)} km</div>
+                            <div class="text-primary small fw-semibold">₹${(feePaise / 100).toFixed(2)}</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                ridesList.innerHTML = `<div class="text-muted fst-italic py-2">No completed rides recorded on this service day.</div>`;
+            }
+        } else {
+            ridesList.innerHTML = counted.map(r => {
+                const rKm = Number(r.counted_km || r.distance_km || 0);
+                const rFeeInr = (Math.floor((Math.round(rKm * 1000) + 5) / 10) / 100).toFixed(2);
+                const routeText = (r.pickup && r.drop) ? `${r.pickup} → ${r.drop}` : '';
+                return `
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <div class="pe-2" style="min-width: 0; flex: 1;">
+                            <div class="fw-semibold text-dark">Ride #${String(r.rideId || r.ride_id || '').slice(-6)}</div>
+                            ${routeText ? `<div class="text-muted text-truncate" style="font-size: 0.75rem;">${routeText}</div>` : ''}
+                        </div>
+                        <div class="text-end flex-shrink-0">
+                            <div class="fw-bold text-dark">${rKm.toFixed(2)} km</div>
+                            <div class="text-primary" style="font-size: 0.75rem;">₹${rFeeInr}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    if (adjWrap && adjList) {
+        const adjs = Array.isArray(data?.adjustments) ? data.adjustments : [];
+        if (adjs.length > 0) {
+            adjWrap.classList.remove('d-none');
+            adjList.innerHTML = adjs.map(a => `
+                <div class="d-flex justify-content-between py-1 text-info-emphasis border-bottom">
+                    <span>${a.source || 'Adjustment'}: ${a.from_metres}m → ${a.to_metres}m</span>
+                    <span>+₹${((a.delta_paise || 0) / 100).toFixed(2)}</span>
+                </div>
+            `).join('');
+        } else {
+            adjWrap.classList.add('d-none');
+        }
+    }
+}
+
 async function openCalculationModal(serviceDate) {
     const modal = document.getElementById('fee-calc-modal');
     if (!modal) return;
@@ -975,58 +1094,61 @@ async function openCalculationModal(serviceDate) {
     const distEl = document.getElementById('fee-calc-dist');
     const ridesCountEl = document.getElementById('fee-calc-rides-count');
     const feeEl = document.getElementById('fee-calc-fee');
-    const ridesWrap = document.getElementById('fee-calc-rides-wrap');
     const ridesList = document.getElementById('fee-calc-rides-list');
     const adjWrap = document.getElementById('fee-calc-adjustments-wrap');
-    const adjList = document.getElementById('fee-calc-adjustments-list');
 
-    if (subTitle) subTitle.innerText = `Service Day: ${serviceDate}`;
-    if (distEl) distEl.innerText = 'Loading...';
+    const localFee = (currentPaymentData?.fees || []).find(f => f.serviceDate === serviceDate) || null;
+    if (subTitle) subTitle.innerText = `Service Day: ${formatShortDate(serviceDate) || serviceDate} (${serviceDate})`;
+
+    // 1. Instant 0ms pre-fill from already loaded summary data
+    if (localFee) {
+        const km = Number(localFee.distance_km || 0);
+        const metres = Number(localFee.distance_m || Math.round(km * 1000));
+        const paise = Number(localFee.fee_paise || Math.floor((metres + 5) / 10));
+        if (distEl) distEl.innerText = `${km.toFixed(2)} km (${metres} m)`;
+        if (feeEl) feeEl.innerText = `₹${(paise / 100).toFixed(2)}`;
+        if (ridesCountEl) ridesCountEl.innerText = km > 0 ? '...' : '0';
+    } else {
+        if (distEl) distEl.innerText = 'Loading...';
+        if (feeEl) feeEl.innerText = '₹0.00';
+        if (ridesCountEl) ridesCountEl.innerText = '...';
+    }
+    if (adjWrap) adjWrap.classList.add('d-none');
+
+    if (calculationCache.has(serviceDate)) {
+        renderCalculationModalContent(calculationCache.get(serviceDate), localFee);
+        modal.classList.remove('d-none');
+        return;
+    }
+
+    if (ridesList) {
+        ridesList.innerHTML = `
+            <div class="d-flex align-items-center gap-2 text-secondary py-2">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span>Loading rides breakdown...</span>
+            </div>
+        `;
+    }
     modal.classList.remove('d-none');
 
     try {
         const token = await getAuthToken();
-        const res = await fetch(`/api/fees/${serviceDate}/calculation`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const res = await fetch(`/api/fees/${encodeURIComponent(serviceDate)}/calculation`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
         });
         if (!res.ok) throw new Error('Failed to load calculation details.');
         const data = await res.json();
-
-        if (distEl) distEl.innerText = `${(data.finalized_km || 0).toFixed(2)} km (${data.billed_metres || 0} m)`;
-        if (ridesCountEl) ridesCountEl.innerText = `${(data.counted_rides || []).length}`;
-        if (feeEl) feeEl.innerText = `₹${((data.fee_paise || 0) / 100).toFixed(2)}`;
-
-        if (ridesList) {
-            const counted = data.counted_rides || [];
-            if (counted.length === 0) {
-                ridesList.innerHTML = `<div class="text-muted fst-italic">No completed rides recorded on this service day.</div>`;
-            } else {
-                ridesList.innerHTML = counted.map(r => `
-                    <div class="d-flex justify-content-between py-1 border-bottom">
-                        <span class="text-truncate" style="max-width: 200px;">Ride #${(r.rideId || r.ride_id || '').slice(-6)}</span>
-                        <span>${(r.counted_km || r.distance_km || 0).toFixed(2)} km</span>
-                    </div>
-                `).join('');
-            }
-        }
-
-        if (adjWrap && adjList) {
-            const adjs = data.adjustments || [];
-            if (adjs.length > 0) {
-                adjWrap.classList.remove('d-none');
-                adjList.innerHTML = adjs.map(a => `
-                    <div class="d-flex justify-content-between py-1 text-info-emphasis border-bottom">
-                        <span>${a.source || 'Adjustment'}: ${a.from_metres}m → ${a.to_metres}m</span>
-                        <span>+₹${((a.delta_paise || 0) / 100).toFixed(2)}</span>
-                    </div>
-                `).join('');
-            } else {
-                adjWrap.classList.add('d-none');
-            }
-        }
+        calculationCache.set(serviceDate, data);
+        renderCalculationModalContent(data, localFee);
     } catch (err) {
         console.error("Calculation modal load error:", err);
-        if (distEl) distEl.innerText = 'Error loading details';
+        if (localFee) {
+            renderCalculationModalContent(null, localFee);
+        } else {
+            if (distEl) distEl.innerText = '0.00 km (0 m)';
+            if (ridesCountEl) ridesCountEl.innerText = '0';
+            if (ridesList) ridesList.innerHTML = `<div class="text-danger small py-2">Could not load per-ride details. Please check your connection.</div>`;
+        }
     }
 }
 
@@ -1052,9 +1174,17 @@ async function openPaymentModal() {
         modalOverduePill?.classList.add('d-none');
     }
 
-    // Hide upload progress
+    // Hide upload progress & reset overlay
     uploadProgressWrap?.classList.add('d-none');
     if (uploadProgressBar) uploadProgressBar.style.width = '0%';
+    const uploadOverlay = document.getElementById('fee-upload-overlay');
+    const spinnerWrap = document.getElementById('fee-upload-overlay-spinner-wrap');
+    const successWrap = document.getElementById('fee-upload-overlay-success-wrap');
+    uploadOverlay?.classList.add('d-none');
+    spinnerWrap?.classList.remove('d-none');
+    spinnerWrap?.classList.add('d-flex');
+    successWrap?.classList.add('d-none');
+    successWrap?.classList.remove('d-flex');
 
     // Generate Dynamic UPI URI
     const weekInfo = currentPaymentData?.weekInfo || {};
@@ -1164,8 +1294,26 @@ async function handleScreenshotSelected(event) {
     const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const storagePath = `payment-proofs/${currentAuthUser.uid}/${paymentId}/${cleanFileName}`;
 
+    const uploadOverlay = document.getElementById('fee-upload-overlay');
+    const spinnerWrap = document.getElementById('fee-upload-overlay-spinner-wrap');
+    const successWrap = document.getElementById('fee-upload-overlay-success-wrap');
+    const overlayTitle = document.getElementById('fee-upload-overlay-title');
+    const overlaySub = document.getElementById('fee-upload-overlay-sub');
+    const overlayBar = document.getElementById('fee-upload-overlay-bar');
+
     try {
-        // Show progress indicator
+        // Show full-modal overlay spinner during upload
+        if (uploadOverlay) {
+            uploadOverlay.classList.remove('d-none');
+            spinnerWrap?.classList.remove('d-none');
+            spinnerWrap?.classList.add('d-flex');
+            successWrap?.classList.add('d-none');
+            successWrap?.classList.remove('d-flex');
+        }
+        if (overlayTitle) overlayTitle.innerText = t('driver.uploading_screenshot', 'Uploading payment screenshot...');
+        if (overlaySub) overlaySub.innerText = 'Uploading image (10%)...';
+        if (overlayBar) overlayBar.style.width = '10%';
+
         uploadProgressWrap?.classList.remove('d-none');
         if (uploadStatusText) uploadStatusText.innerText = 'Uploading payment screenshot...';
         if (uploadProgressBar) uploadProgressBar.style.width = '10%';
@@ -1177,8 +1325,11 @@ async function handleScreenshotSelected(event) {
             uploadTask.on(
                 'state_changed',
                 (snapshot) => {
-                    const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 80) + 10;
+                    const total = snapshot.totalBytes || 1;
+                    const progress = Math.round((snapshot.bytesTransferred / total) * 80) + 10;
                     if (uploadProgressBar) uploadProgressBar.style.width = `${progress}%`;
+                    if (overlayBar) overlayBar.style.width = `${progress}%`;
+                    if (overlaySub) overlaySub.innerText = `Uploading image (${progress}%)...`;
                 },
                 (error) => {
                     reject(error);
@@ -1191,6 +1342,9 @@ async function handleScreenshotSelected(event) {
 
         if (uploadStatusText) uploadStatusText.innerText = 'Submitting verification request...';
         if (uploadProgressBar) uploadProgressBar.style.width = '95%';
+        if (overlayTitle) overlayTitle.innerText = 'Submitting for verification...';
+        if (overlaySub) overlaySub.innerText = 'Recording payment proof...';
+        if (overlayBar) overlayBar.style.width = '95%';
 
         let downloadUrl = '';
         try {
@@ -1204,22 +1358,21 @@ async function handleScreenshotSelected(event) {
         }
         const token = await getAuthToken();
 
-        // Build allocations: distribute currentTotalAmount across unpaid fees
+        // Build allocations across all actionable unpaid fees (including overdue days from previous weeks)
         const unpaidFees = (currentPaymentData?.fees || [])
-            .filter(f => (f.remaining_paise || 0) > 0)
+            .filter(f => (f.remaining_paise || 0) > 0 && !f.is_current_day)
             .sort((a, b) => (a.serviceDate || '').localeCompare(b.serviceDate || ''));
 
-        let remPaise = Math.round(currentTotalAmount * 100);
         const allocations = [];
         for (const uf of unpaidFees) {
-            if (remPaise <= 0) break;
-            const alloc = Math.min(uf.remaining_paise, remPaise);
-            if (alloc > 0) {
+            const fId = uf.feeId || uf.fee_id;
+            const rem = Number(uf.remaining_paise || 0);
+            if (fId && rem > 0) {
                 allocations.push({
-                    feeId: uf.feeId,
-                    amount_paise: alloc,
+                    fee_id: fId,
+                    feeId: fId,
+                    amount_paise: rem,
                 });
-                remPaise -= alloc;
             }
         }
 
@@ -1231,6 +1384,8 @@ async function handleScreenshotSelected(event) {
                 'Accept': 'application/json'
             },
             body: JSON.stringify({
+                idempotency_key: paymentId,
+                idempotencyKey: paymentId,
                 amount: currentTotalAmount,
                 proofStoragePath: storagePath,
                 proofDownloadUrl: downloadUrl,
@@ -1247,19 +1402,29 @@ async function handleScreenshotSelected(event) {
         }
 
         if (uploadProgressBar) uploadProgressBar.style.width = '100%';
+        if (overlayBar) overlayBar.style.width = '100%';
 
-        closePaymentModal();
-        showAlert(t('driver.proof_submitted_alert', 'Payment screenshot submitted successfully! Your payment is now under review.'));
+        // Show success state in the overlay, refresh page state, and auto-close modal
+        if (spinnerWrap && successWrap) {
+            spinnerWrap.classList.add('d-none');
+            spinnerWrap.classList.remove('d-flex');
+            successWrap.classList.remove('d-none');
+            successWrap.classList.add('d-flex');
+        }
 
-        // Re-fetch payment status immediately
         await fetchPaymentStatus();
 
         if (window.LiphtUpPaymentReminder) {
             window.LiphtUpPaymentReminder.hideModal();
         }
 
+        await new Promise((resolve) => setTimeout(resolve, 1400));
+        closePaymentModal();
+        uploadOverlay?.classList.add('d-none');
+
     } catch (err) {
         console.error("Screenshot upload/submission error:", err);
+        uploadOverlay?.classList.add('d-none');
         showAlert(err.message || t('driver.upload_failed_retry', 'Failed to upload screenshot. Please try again.'));
     } finally {
         if (uploadProgressWrap) uploadProgressWrap.classList.add('d-none');

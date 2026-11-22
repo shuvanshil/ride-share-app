@@ -819,4 +819,62 @@ def test_check_driver_fee_restriction_fast():
     assert restricted is False
 
 
+def test_submit_fee_payment_endpoint_overdue_previous_week_and_idempotency_fallback():
+    """Verify submit_fee_payment accepts camelCase feeId / optional idempotency_key for overdue previous-week fees."""
+    import asyncio
+    from unittest.mock import patch
+    from api.routers.fees import submit_fee_payment, SubmitFeePaymentRequest, AllocationItem, get_fee_calculation
+
+    db = InMemoryFirestore()
+    uid = "driver_overdue_prev_week"
+    prev_week_date = "2026-11-04"
+    fee_id = f"{uid}_{prev_week_date}"
+
+    db.collection(COLLECTION_DRIVER_FEES).document(fee_id).set({
+        "uid": uid,
+        "feeId": fee_id,
+        "serviceDate": prev_week_date,
+        "weekId": "2026-W45",
+        "distance_km": 14.5,
+        "billed_distance_m": 14500,
+        "fee_paise": 1450,
+        "paid_paise": 0,
+        "review_paise": 0,
+        "remaining_paise": 1450,
+        "status": "OVERDUE",
+        "due_at": "2026-11-08T23:59:59+05:30",
+    })
+    db.collection(COLLECTION_DAILY_STATS).document(fee_id).set({
+        "driver_id": uid,
+        "distance_km": 14.5,
+        "service_date": prev_week_date,
+    })
+
+    # 1. Submit payment with camelCase feeId and omitted idempotency_key (fallback via proofStoragePath)
+    payload = SubmitFeePaymentRequest(
+        allocations=[AllocationItem(feeId=fee_id, amount_paise=1450)],
+        proofDownloadUrl="https://storage.googleapis.com/bucket/proof_prev_week.jpg",
+        proofStoragePath=f"payment_screenshots/{uid}/pay_prev_week_1.jpg",
+    )
+
+    with patch("api.routers.fees.get_firestore", return_value=db), patch(
+        "api.routers.fees._resolve_proof_url",
+        return_value="https://storage.googleapis.com/bucket/proof_prev_week.jpg",
+    ):
+        res = submit_fee_payment(body=payload, auth_user={"uid": uid})
+        assert res["ok"] is True
+        assert res["batch"]["total_paise"] == 1450
+        assert res["batch"]["status"] == "PENDING"
+
+        # 2. Verify fee calculation breakdown endpoint returns fast, accurate breakdown
+        calc = get_fee_calculation(service_date_param=prev_week_date, auth_user={"uid": uid})
+        assert calc["ok"] is True
+        assert calc["serviceDate"] == prev_week_date
+        assert calc["finalized_km"] == 14.5
+        assert calc["billed_metres"] == 14500
+        assert calc["fee_paise"] == 1450
+        assert calc["fee_inr"] == 14.5
+
+
+
 

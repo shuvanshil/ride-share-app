@@ -356,26 +356,61 @@ def ensure_fees_generated(
             d += datetime.timedelta(days=1)
 
     # 2. Lookback recovery: check past closed days in window with distance
+    lookback_dates: List[datetime.date] = []
     cur_d = lookback_start
     while cur_d <= last_closed_date:
         if cur_d not in candidate_dates_set:
-            c_str = cur_d.strftime("%Y-%m-%d")
-            f_snap = db.collection(COLLECTION_DRIVER_FEES).document(f"{uid}_{c_str}").get()
-            if not f_snap.exists:
-                d_snap = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{c_str}").get()
-                if d_snap.exists:
-                    d_data = d_snap.to_dict() or {}
-                    if float(d_data.get("distance_km") or 0.0) > 0.0:
-                        candidate_dates_set.add(cur_d)
-            else:
-                f_data = f_snap.to_dict() or {}
-                if int(f_data.get("billed_distance_m") or 0) == 0:
+            lookback_dates.append(cur_d)
+        cur_d += datetime.timedelta(days=1)
+
+    preloaded_daily_stats: Dict[str, Dict[str, Any]] = {}
+    if lookback_dates:
+        used_batch_get = False
+        if hasattr(db, "get_all"):
+            try:
+                fee_refs = [db.collection(COLLECTION_DRIVER_FEES).document(f"{uid}_{d.strftime('%Y-%m-%d')}") for d in lookback_dates]
+                stat_refs = [db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{d.strftime('%Y-%m-%d')}") for d in lookback_dates]
+                all_snaps = list(db.get_all(fee_refs + stat_refs))
+                fee_map: Dict[str, Any] = {}
+                for snap in all_snaps:
+                    if snap and getattr(snap, "exists", False):
+                        s_id = getattr(snap, "id", "")
+                        s_dict = snap.to_dict() or {}
+                        if "fee_paise" in s_dict or "billed_distance_m" in s_dict or "serviceDate" in s_dict:
+                            fee_map[s_id] = s_dict
+                        else:
+                            preloaded_daily_stats[s_id] = s_dict
+                for d in lookback_dates:
+                    doc_key = f"{uid}_{d.strftime('%Y-%m-%d')}"
+                    f_data = fee_map.get(doc_key)
+                    if f_data is None or int(f_data.get("billed_distance_m") or 0) == 0:
+                        d_data = preloaded_daily_stats.get(doc_key) or {}
+                        if float(d_data.get("distance_km") or 0.0) > 0.0:
+                            candidate_dates_set.add(d)
+                used_batch_get = True
+            except Exception:
+                used_batch_get = False
+
+        if not used_batch_get:
+            for cur_d in lookback_dates:
+                c_str = cur_d.strftime("%Y-%m-%d")
+                f_snap = db.collection(COLLECTION_DRIVER_FEES).document(f"{uid}_{c_str}").get()
+                if not f_snap.exists:
                     d_snap = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{c_str}").get()
                     if d_snap.exists:
                         d_data = d_snap.to_dict() or {}
+                        preloaded_daily_stats[f"{uid}_{c_str}"] = d_data
                         if float(d_data.get("distance_km") or 0.0) > 0.0:
                             candidate_dates_set.add(cur_d)
-        cur_d += datetime.timedelta(days=1)
+                else:
+                    f_data = f_snap.to_dict() or {}
+                    if int(f_data.get("billed_distance_m") or 0) == 0:
+                        d_snap = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{c_str}").get()
+                        if d_snap.exists:
+                            d_data = d_snap.to_dict() or {}
+                            preloaded_daily_stats[f"{uid}_{c_str}"] = d_data
+                            if float(d_data.get("distance_km") or 0.0) > 0.0:
+                                candidate_dates_set.add(cur_d)
 
     candidate_dates = sorted(list(candidate_dates_set))
     if not candidate_dates:
@@ -389,8 +424,11 @@ def ensure_fees_generated(
         w_id = week_id(c_date)
         due_dt = fee_due_at(c_date)
         daily_stat_id = f"{uid}_{c_str}"
-        daily_snap = db.collection(COLLECTION_DAILY_STATS).document(daily_stat_id).get()
-        daily_data = daily_snap.to_dict() or {} if daily_snap.exists else {}
+        if daily_stat_id in preloaded_daily_stats:
+            daily_data = preloaded_daily_stats[daily_stat_id]
+        else:
+            daily_snap = db.collection(COLLECTION_DAILY_STATS).document(daily_stat_id).get()
+            daily_data = daily_snap.to_dict() or {} if daily_snap.exists else {}
 
         dist_km = float(daily_data.get("distance_km") or 0.0)
         if dist_km <= 0.0:
@@ -744,63 +782,6 @@ def get_driver_fee_summary(
             diff_days = max(1, (curr.date() - earliest_due_dt.date()).days)
             overdue_days = diff_days
 
-    # Fetch pending under-review batches and items for this driver
-    under_review_batches: List[Dict[str, Any]] = []
-    under_review_items: List[Dict[str, Any]] = []
-    try:
-        pending_batch_snaps = list(
-            db.collection(COLLECTION_FEE_PAYMENT_BATCHES)
-            .where("uid", "==", uid)
-            .where("status", "==", "PENDING")
-            .stream()
-        )
-        for b_snap in pending_batch_snaps:
-            b_data = b_snap.to_dict() or {}
-            b_id = b_snap.id
-            alloc_snaps = list(b_snap.reference.collection("allocations").stream())
-            b_allocs = []
-            for a_s in alloc_snaps:
-                a_data = a_s.to_dict() or {}
-                st = str(a_data.get("status") or "").upper()
-                if st == "PENDING":
-                    s_date_str = a_data.get("serviceDate") or a_s.id.replace(f"{uid}_", "")
-                    try:
-                        s_dt = _to_date(s_date_str)
-                        formatted_d = s_dt.strftime("%d %b %Y")
-                    except Exception:
-                        formatted_d = s_date_str
-
-                    amt_paise = int(a_data.get("amount_paise") or 0)
-                    fee_match = next((f for f in fees_list if f["feeId"] == a_data.get("fee_id") or f["serviceDate"] == s_date_str), None)
-                    dist_km = fee_match["distance_km"] if fee_match else 0.0
-
-                    item_dict = {
-                        "feeId": a_data.get("fee_id") or a_s.id,
-                        "fee_id": a_data.get("fee_id") or a_s.id,
-                        "serviceDate": s_date_str,
-                        "formatted_date": formatted_d,
-                        "amount_paise": amt_paise,
-                        "amount_inr": paise_to_rupees_float(amt_paise),
-                        "distance_km": dist_km,
-                        "status": "UNDER_REVIEW",
-                        "batchId": b_id,
-                        "proofDownloadUrl": b_data.get("proofDownloadUrl"),
-                    }
-                    b_allocs.append(item_dict)
-                    under_review_items.append(item_dict)
-
-            if b_allocs:
-                under_review_batches.append({
-                    "batchId": b_id,
-                    "created_at": b_data.get("created_at"),
-                    "total_paise": b_data.get("total_paise", 0),
-                    "total_inr": paise_to_rupees_float(b_data.get("total_paise", 0)),
-                    "proofDownloadUrl": b_data.get("proofDownloadUrl"),
-                    "allocations": b_allocs,
-                })
-    except Exception:
-        pass
-
     # Next upcoming deadline
     # Find active fees due in the future
     future_fees = [f for f in fees_list if _to_ist_datetime(f.get("due_at")) > curr and f["remaining_paise"] > 0]
@@ -825,7 +806,9 @@ def get_driver_fee_summary(
         and (overdue_paise > 0 or any(_to_ist_datetime(f["due_at"]) == next_deadline_dt for f in fees_list if f["remaining_paise"] > 0))
     )
 
-    # Complete payment history list for driver
+    # Single-pass fetch of payment batches for both under-review items and complete payment history
+    under_review_batches: List[Dict[str, Any]] = []
+    under_review_items: List[Dict[str, Any]] = []
     payment_history: List[Dict[str, Any]] = []
     try:
         all_batch_snaps = list(
@@ -838,12 +821,40 @@ def get_driver_fee_summary(
             b_id = b_snap.id
             alloc_snaps = list(b_snap.reference.collection("allocations").stream())
             b_status = str(b_data.get("status") or "PENDING").upper()
+            b_allocs_pending = []
+
             if alloc_snaps:
                 for a_s in alloc_snaps:
                     a_data = a_s.to_dict() or {}
                     a_id = a_s.id
                     a_fee_id = a_data.get("fee_id") or a_id
                     a_raw = str(a_data.get("status") or "PENDING").upper()
+                    s_date_str = a_data.get("serviceDate") or a_id.replace(f"{uid}_", "")
+
+                    if b_status == "PENDING" and a_raw == "PENDING":
+                        try:
+                            s_dt = _to_date(s_date_str)
+                            formatted_d = s_dt.strftime("%d %b %Y")
+                        except Exception:
+                            formatted_d = s_date_str
+                        amt_paise = int(a_data.get("amount_paise") or 0)
+                        fee_match = next((f for f in fees_list if f["feeId"] == a_fee_id or f["serviceDate"] == s_date_str), None)
+                        dist_km = fee_match["distance_km"] if fee_match else 0.0
+                        item_dict = {
+                            "feeId": a_fee_id,
+                            "fee_id": a_fee_id,
+                            "serviceDate": s_date_str,
+                            "formatted_date": formatted_d,
+                            "amount_paise": amt_paise,
+                            "amount_inr": paise_to_rupees_float(amt_paise),
+                            "distance_km": dist_km,
+                            "status": "UNDER_REVIEW",
+                            "batchId": b_id,
+                            "proofDownloadUrl": b_data.get("proofDownloadUrl"),
+                        }
+                        b_allocs_pending.append(item_dict)
+                        under_review_items.append(item_dict)
+
                     if a_raw == "APPROVED":
                         alloc_status = "approved"
                     elif a_raw == "DECLINED":
@@ -853,7 +864,6 @@ def get_driver_fee_summary(
                     else:
                         alloc_status = "submitted"
 
-                    s_date_str = a_data.get("serviceDate") or ""
                     try:
                         s_dt = _to_date(s_date_str)
                         week_label = f"Daily Fee ({s_dt.strftime('%d %b %Y')})"
@@ -890,6 +900,16 @@ def get_driver_fee_summary(
                     "verifiedAt": b_data.get("decided_at") or b_data.get("created_at"),
                     "declineReason": None,
                     "proofDownloadUrl": b_data.get("proofDownloadUrl"),
+                })
+
+            if b_allocs_pending:
+                under_review_batches.append({
+                    "batchId": b_id,
+                    "created_at": b_data.get("created_at"),
+                    "total_paise": b_data.get("total_paise", 0),
+                    "total_inr": paise_to_rupees_float(b_data.get("total_paise", 0)),
+                    "proofDownloadUrl": b_data.get("proofDownloadUrl"),
+                    "allocations": b_allocs_pending,
                 })
     except Exception:
         pass

@@ -196,7 +196,7 @@
 
     <!-- ==================== PAYMENT BOTTOM-SHEET MODAL (MOCKUP 1) ==================== -->
     <div id="fee-payment-sheet-modal" class="fee-sheet-backdrop d-none" role="dialog" aria-modal="true" aria-labelledby="fee-sheet-title">
-        <div class="fee-sheet-card">
+        <div class="fee-sheet-card" style="position: relative; overflow: hidden;">
             <!-- Drag Handle -->
             <div class="fee-sheet-handle"></div>
 
@@ -265,6 +265,29 @@
                     <div class="progress mt-1" style="height: 4px;">
                         <div id="fee-upload-progress-bar" class="progress-bar bg-primary" role="progressbar" style="width: 0%;"></div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Full-Modal Upload & Success Overlay -->
+            <div id="fee-upload-overlay" class="d-none" style="position: absolute; inset: 0; z-index: 50; background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; text-align: center;">
+                <!-- Spinner State -->
+                <div id="fee-upload-overlay-spinner-wrap" class="d-flex flex-column align-items-center">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem; border-width: 0.28em;"></div>
+                    <h4 id="fee-upload-overlay-title" class="fw-bold text-dark mb-1" style="font-size: 1.1rem;">Uploading payment screenshot...</h4>
+                    <p id="fee-upload-overlay-sub" class="text-secondary small mb-3">Please wait while we securely upload your proof.</p>
+                    <div class="progress w-100" style="height: 6px; max-width: 240px; border-radius: 999px;">
+                        <div id="fee-upload-overlay-bar" class="progress-bar bg-primary" role="progressbar" style="width: 10%; transition: width 0.25s ease;"></div>
+                    </div>
+                </div>
+                <!-- Success State -->
+                <div id="fee-upload-overlay-success-wrap" class="d-none flex-column align-items-center">
+                    <div class="d-flex align-items-center justify-content-center rounded-circle text-white mb-3" style="width: 64px; height: 64px; background: #16A34A; box-shadow: 0 8px 20px rgba(22, 163, 74, 0.3);">
+                        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </div>
+                    <h4 class="fw-bold text-dark mb-1" style="font-size: 1.18rem;">Payment Submitted!</h4>
+                    <p class="text-secondary small mb-0">Your payment screenshot has been uploaded and is now under review.</p>
                 </div>
             </div>
         </div>
@@ -349,8 +372,8 @@
 
     <!-- Scripts -->
     <script src="js/shared/qrcode.min.js"></script>
-    <script type="module" src="js/driver/driver-payments.js?v=2.4.1"></script>
-    <script type="module" src="js/shared/i18n.js?v=2.4.1"></script>
+    <script type="module" src="js/driver/driver-payments.js?v=2.5.0"></script>
+    <script type="module" src="js/shared/i18n.js?v=2.5.0"></script>
     <script type="module" src="js/shared/global-notices.js"></script>
 </body>
 </html>

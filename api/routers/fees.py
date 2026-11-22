@@ -65,13 +65,22 @@ admin_router = APIRouter(prefix="/admin", tags=["admin-fees"])
 # ============================================================================
 
 class AllocationItem(BaseModel):
-    fee_id: str
+    fee_id: Optional[str] = None
+    feeId: Optional[str] = None
     amount_paise: int = Field(..., gt=0)
+
+    def resolved_fee_id(self) -> str:
+        val = (self.fee_id or self.feeId or "").strip()
+        if not val:
+            raise ApiError("Invalid request: fee_id - Field required", 400)
+        return val
 
 
 class SubmitFeePaymentRequest(BaseModel):
-    idempotency_key: str
-    allocations: List[AllocationItem]
+    idempotency_key: Optional[str] = None
+    idempotencyKey: Optional[str] = None
+    allocations: List[AllocationItem] = Field(default_factory=list)
+    amount: Optional[float] = None
     proofStoragePath: Optional[str] = None
     proofDownloadUrl: Optional[str] = None
     proofFileName: Optional[str] = None
@@ -230,15 +239,17 @@ def get_fee_calculation(
     s_str = s_date.strftime("%Y-%m-%d")
     db = get_firestore()
 
-    # Ensure fee generated if closed
-    ensure_fees_generated(db, uid)
-
     fee_id = f"{uid}_{s_str}"
     fee_ref = db.collection(COLLECTION_DRIVER_FEES).document(fee_id)
     fee_snap = fee_ref.get()
 
     daily_snap = db.collection(COLLECTION_DAILY_STATS).document(f"{uid}_{s_str}").get()
     daily_data = daily_snap.to_dict() or {} if daily_snap.exists else {}
+
+    # Only run lazy fee generation if the requested closed day's fee document does not exist yet
+    if not fee_snap.exists and float(daily_data.get("distance_km") or 0.0) > 0.0:
+        ensure_fees_generated(db, uid)
+        fee_snap = fee_ref.get()
 
     fee_data = fee_snap.to_dict() or {} if fee_snap.exists else {}
     finalized_km = float(daily_data.get("distance_km") or fee_data.get("distance_km") or 0.0)
@@ -249,29 +260,52 @@ def get_fee_calculation(
     trip_snaps = list(db.collection("tripHistory").where("driver_id", "==", uid).stream())
     rides_breakdown: List[Dict[str, Any]] = []
     excluded_rides: List[Dict[str, Any]] = []
+    seen_ride_ids: set[str] = set()
 
-    for t_snap in trip_snaps:
-        t_data = t_snap.to_dict() or {}
+    def _process_ride_doc(r_id: str, t_data: Dict[str, Any]) -> None:
+        if not r_id or r_id in seen_ride_ids:
+            return
         term_time = (
             t_data.get("finalStatusAt")
             or t_data.get("completedAt")
             or t_data.get("cancelledAt")
             or t_data.get("verifiedAt")
             or t_data.get("updatedAt")
+            or t_data.get("createdAt")
         )
         if not term_time:
-            continue
+            return
         try:
             r_serv_date = service_date_str(term_time)
         except Exception:
-            continue
+            return
 
         if r_serv_date != s_str:
-            continue
+            return
 
-        r_id = t_data.get("ride_id") or t_snap.id
-        c_km = float(t_data.get("counted_distance_km") or 0.0)
-        d_status = str(t_data.get("distance_status") or "zero").lower()
+        seen_ride_ids.add(r_id)
+        raw_c_km = float(t_data.get("counted_distance_km") or 0.0)
+        fare_adj = t_data.get("fare_adjustment") if isinstance(t_data.get("fare_adjustment"), dict) else {}
+        fallback_km = float(
+            t_data.get("actual_travelled_km")
+            or fare_adj.get("charged_distance_km")
+            or fare_adj.get("travelled_after_pickup_km")
+            or t_data.get("distance_km")
+            or 0.0
+        )
+        trip_st = str(t_data.get("trip_status") or t_data.get("final_status") or t_data.get("status") or "").lower()
+        raw_d_status = str(t_data.get("distance_status") or "").lower()
+
+        if raw_d_status == "counted" and raw_c_km > 0:
+            c_km = raw_c_km
+            d_status = "counted"
+        elif raw_d_status in {"", "zero"} and trip_st == "completed" and fallback_km > 0:
+            c_km = fallback_km
+            d_status = "counted"
+        else:
+            c_km = raw_c_km if raw_c_km > 0 else fallback_km
+            d_status = raw_d_status or "zero"
+
         rec = t_data.get("distance_reconciliation") or {}
         raw_method = str(rec.get("method") or "TRACKED").upper()
 
@@ -284,15 +318,30 @@ def get_fee_calculation(
         else:
             determination = "tracked"
 
+        pickup_label = (
+            t_data.get("pickup_location")
+            or t_data.get("pickup_display_address")
+            or t_data.get("pickup_name")
+            or "Pickup"
+        )
+        drop_label = (
+            t_data.get("drop_location")
+            or t_data.get("drop_display_address")
+            or t_data.get("drop_name")
+            or "Drop"
+        )
+
         ride_entry = {
             "rideId": r_id,
             "ride_id": r_id,
             "terminalTime": str(term_time),
-            "pickup": t_data.get("pickup_location") or "Pickup",
-            "drop": t_data.get("drop_location") or "Drop",
-            "counted_km": c_km,
-            "distance_km": c_km,
-            "status": t_data.get("trip_status") or t_data.get("final_status") or "completed",
+            "pickup": pickup_label,
+            "drop": drop_label,
+            "counted_km": round(c_km, 2),
+            "distance_km": round(c_km, 2),
+            "fee_paise": calculate_paise_for_distance(c_km),
+            "fee_inr": paise_to_rupees_float(calculate_paise_for_distance(c_km)),
+            "status": trip_st or "completed",
             "distance_status": d_status,
             "determination_method": determination,
         }
@@ -301,6 +350,20 @@ def get_fee_calculation(
             rides_breakdown.append(ride_entry)
         else:
             excluded_rides.append(ride_entry)
+
+    for t_snap in trip_snaps:
+        t_data = t_snap.to_dict() or {}
+        _process_ride_doc(str(t_data.get("ride_id") or t_snap.id), t_data)
+
+    # Fallback: If tripHistory had no matching rides for this day, check rides collection directly
+    if not rides_breakdown:
+        try:
+            for r_snap in db.collection("rides").where("driver_id", "==", uid).stream():
+                r_data = r_snap.to_dict() or {}
+                if str(r_data.get("status") or "").lower() in {"completed", "cancelled_by_driver", "cancelled_by_passenger"}:
+                    _process_ride_doc(str(r_snap.id), r_data)
+        except Exception:
+            pass
 
     # Fallback: If finalized_km is 0 in stats/fee doc but counted rides exist, compute from rides
     if finalized_km <= 0.0 and rides_breakdown:
@@ -374,11 +437,38 @@ def submit_fee_payment(
         "paymentMethod": body.paymentMethod,
     }
 
-    allocations_input = [a.model_dump() for a in body.allocations]
+    allocations_input = [
+        {"fee_id": a.resolved_fee_id(), "amount_paise": int(a.amount_paise)}
+        for a in (body.allocations or [])
+    ]
+    if not allocations_input:
+        # Fallback: auto-derive allocations from the driver's open unpaid fee records
+        ensure_fees_generated(db, uid)
+        open_fee_snaps = list(db.collection(COLLECTION_DRIVER_FEES).where("uid", "==", uid).stream())
+        open_fee_snaps.sort(key=lambda s: str((s.to_dict() or {}).get("serviceDate") or ""))
+        for f_s in open_fee_snaps:
+            fd = f_s.to_dict() or {}
+            rem = remaining_paise(
+                int(fd.get("fee_paise") or 0),
+                int(fd.get("paid_paise") or 0),
+                int(fd.get("review_paise") or 0),
+            )
+            if rem > 0 and int(fd.get("review_paise") or 0) == 0:
+                allocations_input.append({"fee_id": f_s.id, "amount_paise": rem})
+
+    idem_key = (
+        (body.idempotency_key or body.idempotencyKey or "").strip()
+        or (f"proof_{uid}_{body.proofStoragePath.strip()}" if body.proofStoragePath and body.proofStoragePath.strip() else "")
+        or (f"url_{uid}_{body.proofDownloadUrl.strip()[:120]}" if body.proofDownloadUrl and body.proofDownloadUrl.strip() else "")
+        or (f"auto_{uid}_{'_'.join(a['fee_id'] for a in allocations_input)}_{sum(a['amount_paise'] for a in allocations_input)}" if allocations_input else "")
+    )
+    if not idem_key:
+        raise ApiError("Idempotency key is required.", 400)
+
     result = create_payment_batch(
         db=db,
         uid=uid,
-        idempotency_key=body.idempotency_key,
+        idempotency_key=idem_key,
         allocations_input=allocations_input,
         proof_data=proof_data,
         profile=profile,
