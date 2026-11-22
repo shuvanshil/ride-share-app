@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 function go(url) { window.location.href = url; }
 function goHome() { if (typeof window.liphtUpGoHome === 'function') window.liphtUpGoHome(); else go('/index.html'); }
@@ -33,12 +33,12 @@ export default function History() {
         <div className="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp" /></div>
         <div className="app-bar-actions d-flex align-items-center gap-2">
           <div id="history-lang-switcher" />
-          <button className="guest-login-btn d-none" type="button" onClick={() => go('/login.html')} data-i18n="common.login">Login</button>
+          <HistoryGuestAction />
           <button id="history-refresh-btn" className="mini-action" type="button" data-i18n="common.refresh">Refresh</button>
         </div>
       </header>
 
-      <section className="history-title-block"><h1 data-i18n="history.title">Ride History</h1><p id="history-user-context" data-i18n="history.subtitle">Trip by you as passenger</p></section>
+      <section className="history-title-block"><h1 data-i18n="history.title">Ride History</h1><HistoryStatus /></section>
 
       <section id="history-summary-grid" className="history-summary-grid d-none" aria-label="Trip summary">
         <div className="history-summary-card"><span data-i18n="history.total_trips">Total Trips</span><strong id="history-total-trips">0</strong></div>
@@ -67,4 +67,28 @@ export default function History() {
       </nav>
     </main>
   );
+}
+
+export function HistoryStatus() {
+  const [status, setStatus] = useState({ context: 'Trip by you as passenger', showGuest: false });
+
+  useEffect(() => {
+    const update = (event) => setStatus((current) => ({ ...current, ...(event.detail || {}) }));
+    window.addEventListener('liphtup:history-status', update);
+    return () => window.removeEventListener('liphtup:history-status', update);
+  }, []);
+
+  return <p id="history-user-context" data-i18n="history.subtitle">{status.context}</p>;
+}
+
+export function HistoryGuestAction() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    const update = (event) => setShow(Boolean(event.detail?.showGuest));
+    window.addEventListener('liphtup:history-status', update);
+    return () => window.removeEventListener('liphtup:history-status', update);
+  }, []);
+
+  return show ? <button className="guest-login-btn" type="button" onClick={() => go('/login.html')} data-i18n="common.login">Login</button> : null;
 }

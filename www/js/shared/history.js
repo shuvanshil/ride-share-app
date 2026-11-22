@@ -35,7 +35,6 @@ const historyState = {
 };
 
 const historyList = document.getElementById('history-list');
-const userContext = document.getElementById('history-user-context');
 const totalTripsEl = document.getElementById('history-total-trips');
 const totalFareEl = document.getElementById('history-total-fare');
 const totalDistanceEl = document.getElementById('history-total-distance');
@@ -43,6 +42,10 @@ const moneyLabelEl = document.getElementById('history-money-label');
 const summaryGrid = document.getElementById('history-summary-grid');
 const detailModal = document.getElementById('history-detail-modal');
 const detailContent = document.getElementById('history-detail-content');
+
+function publishHistoryStatus(detail) {
+    window.dispatchEvent(new CustomEvent('liphtup:history-status', { detail }));
+}
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -564,14 +567,14 @@ if (detailCloseBtn) {
 }
 
 async function bootstrapHistory() {
+    publishHistoryStatus({ status: 'loading', showGuest: false, context: t('history.subtitle', 'Trip by you as passenger') });
     const user = await waitForAuth();
     if (!user) {
         stopHistoryRealtime();
         historyState.user = null;
         historyState.profile = null;
         historyState.trips = [];
-        document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.remove('d-none'));
-        userContext.innerText = t('history.login_to_view', "Login to view your ride history");
+        publishHistoryStatus({ status: 'guest', showGuest: true, context: t('history.login_to_view', "Login to view your ride history") });
         historyList.innerHTML = `
             <div class="history-empty-card">
                 <div class="history-empty-icon">○</div>
@@ -585,7 +588,7 @@ async function bootstrapHistory() {
         return;
     }
 
-    document.querySelectorAll('.guest-login-btn').forEach((button) => button.classList.add('d-none'));
+    publishHistoryStatus({ status: 'authenticated', showGuest: false });
 
     historyState.user = user;
     const cachedProfile = getCachedProfile();
@@ -594,7 +597,7 @@ async function bootstrapHistory() {
         historyState.profile = cachedProfile;
         const name = cachedProfile.name || t('history.default_user', "LiphtUp user");
         const role = isDriverAccount() ? t('history.role_driver', "driver") : t('history.role_passenger', "passenger");
-        userContext.innerText = `${name} • ${role}`;
+        publishHistoryStatus({ status: 'ready', context: `${name} • ${role}` });
         startHistoryRealtime();
         hideInitialLoader();
 
@@ -603,7 +606,7 @@ async function bootstrapHistory() {
             historyState.profile = profile;
             const updatedName = profile.name || t('history.default_user', "LiphtUp user");
             const updatedRole = isDriverAccount() ? t('history.role_driver', "driver") : t('history.role_passenger', "passenger");
-            userContext.innerText = `${updatedName} • ${updatedRole}`;
+            publishHistoryStatus({ status: 'ready', context: `${updatedName} • ${updatedRole}` });
             if (roleChanged) startHistoryRealtime();
         }).catch((error) => console.warn("Could not refresh history profile:", error));
         return;
@@ -615,10 +618,11 @@ async function bootstrapHistory() {
         historyState.profile = await loadUserProfile(user);
         const name = historyState.profile.name || t('history.default_user', "LiphtUp user");
         const role = isDriverAccount() ? t('history.role_driver', "driver") : t('history.role_passenger', "passenger");
-        userContext.innerText = `${name} • ${role}`;
+        publishHistoryStatus({ status: 'ready', context: `${name} • ${role}` });
         startHistoryRealtime();
         hideInitialLoader();
     } catch (error) {
+        publishHistoryStatus({ status: 'error', context: t('history.error_title', 'Could not load history') });
         setErrorState(error);
         hideInitialLoader();
     }
@@ -645,6 +649,6 @@ window.addEventListener('languageChanged', () => {
     if (historyState.profile && historyState.user) {
         const name = historyState.profile.name || t('history.default_user', 'LiphtUp user');
         const role = isDriverAccount() ? t('history.role_driver', 'driver') : t('history.role_passenger', 'passenger');
-        if (userContext) userContext.innerText = `${name} • ${role}`;
+        publishHistoryStatus({ status: 'ready', context: `${name} • ${role}` });
     }
 });
