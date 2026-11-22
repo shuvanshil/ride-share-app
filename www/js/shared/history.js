@@ -624,7 +624,17 @@ async function bootstrapHistory() {
     }
 }
 
-bootstrapHistory();
+window.LiphtUpHistoryController = {
+    bootstrap: bootstrapHistory,
+    refresh: refreshHistory,
+    stop: stopHistoryRealtime
+};
+
+window.dispatchEvent(new CustomEvent('liphtup:history-controller-ready'));
+
+if (!window.__REACT_HISTORY_MODE__) {
+    bootstrapHistory();
+}
 
 window.addEventListener('languageChanged', () => {
     if (historyState.trips.length) {

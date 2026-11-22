@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 function go(url) { window.location.href = url; }
 function goHome() { if (typeof window.liphtUpGoHome === 'function') window.liphtUpGoHome(); else go('/index.html'); }
@@ -12,6 +12,21 @@ function goServices() {
 }
 
 export default function History() {
+  useEffect(() => {
+    if (window.__HISTORY_CONTROLLER_STARTED__) return undefined;
+
+    window.__HISTORY_CONTROLLER_STARTED__ = true;
+    const startController = () => window.LiphtUpHistoryController?.bootstrap?.();
+
+    if (window.LiphtUpHistoryController) {
+      startController();
+      return undefined;
+    }
+
+    window.addEventListener('liphtup:history-controller-ready', startController, { once: true });
+    return () => window.removeEventListener('liphtup:history-controller-ready', startController);
+  }, []);
+
   return (
     <main className="history-page">
       <header className="history-app-head">

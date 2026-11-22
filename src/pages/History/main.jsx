@@ -4,4 +4,7 @@ import { flushSync } from 'react-dom';
 import History from './History';
 
 const root = document.getElementById('history-root');
-if (root) flushSync(() => ReactDOM.createRoot(root).render(<React.StrictMode><History /></React.StrictMode>));
+if (root) {
+  window.__REACT_HISTORY_MODE__ = true;
+  flushSync(() => ReactDOM.createRoot(root).render(<React.StrictMode><History /></React.StrictMode>));
+}
