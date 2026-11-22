@@ -34,6 +34,8 @@
         <style>@keyframes lu-spin { to { transform: rotate(360deg); } }</style>
         <div style="margin-top:16px;font-family:sans-serif;font-weight:700;color:#1A7A2E;font-size:14px;letter-spacing:0.5px;">LiphtUp</div>
     </div>
+    <div id="history-root"></div>
+    <template id="legacy-history-shell">
     <main class="history-page">
         <header class="history-app-head">
             <div class="brand-logo"><img src="assets/branding/liphtup-logo.jpeg" alt="LiphtUp"></div>
@@ -92,9 +94,11 @@
             <button type="button" onclick="window.location.href='/profile.html'"><span class="webicon webicon-profile" aria-hidden="true"></span><span data-i18n="nav.profile">Profile</span></button>
         </nav>
     </main>
+    </template>
 
     <script type="module" src="js/shared/loading.js"></script>
     <script src="js/shared/navigation.js"></script>
+    <script type="module" src="js/react/history.js"></script>
     <script type="module" src="js/shared/history.js?v=2.1.0"></script>
     <script type="module" src="js/shared/i18n.js"></script>
     <script src="js/shared/pwa.js" defer></script>

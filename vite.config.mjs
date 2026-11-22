@@ -41,6 +41,7 @@ export default defineConfig({
         safety:  'src/pages/Safety/main.jsx',
         privacy: 'src/pages/Privacy/main.jsx',
         profile: 'src/pages/Profile/main.jsx',
+        history: 'src/pages/History/main.jsx',
       },
       output: {
         entryFileNames: '[name].js',              // → www/js/react/about.js, contact.js
